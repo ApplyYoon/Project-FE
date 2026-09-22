@@ -23,20 +23,33 @@
       "Read"
     ],
     "deny": [
-      "Bash(rm -rf *)",
+      "Bash(rm -rf /*)",
       "Bash(git push --force*)",
       "Bash(git push -f *)",
+      "Bash(git push --mirror*)",
+      "Bash(git push --delete*)",
+      "Bash(git push --prune*)",
       "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git filter-branch*)",
+      "Bash(git filter-repo*)",
+      "Bash(git reflog expire*)",
+      "Bash(git gc --prune*)",
+      "Bash(git update-ref -d*)",
+      "Bash(git stash clear*)",
+      "Bash(git stash drop*)",
+      "Bash(git remote remove*)",
+      "Bash(git remote set-url*)",
       "Bash(npm *)",
-      "Bash(yarn *)",
-      "Read(./.env)",
-      "Read(./.env.*)"
+      "Bash(yarn *)"
     ],
     "ask": [
       "Bash(gh pr merge *)",
       "Bash(gh repo *)",
       "Bash(git rebase *)",
-      "Bash(git commit --amend*)"
+      "Bash(git commit --amend*)",
+      "Bash(git branch -d *)",
+      "Bash(git branch -D *)"
     ]
   },
   "hooks": {
@@ -57,10 +70,9 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git *)",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-git.sh\"",
             "timeout": 10,
-            "statusMessage": "git 명령 안전 검사 중..."
+            "statusMessage": "위험한 명령인지 검사 중..."
           }
         ]
       }
