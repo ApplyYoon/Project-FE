@@ -235,7 +235,11 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 `reset --hard`, `clean -f`, `checkout .`, `stash drop`, `filter-branch`,
 `reflog expire`, `gc --prune`, `remote set-url`, `rm -rf .git` 등입니다.
 
+여기에 더해 `.husky/` 의 git 훅이 커밋·푸시 시점에 한 번 더 검사합니다.
+(main·dev 직접 커밋/푸시, 커밋 메시지 형식, 강제 푸시, 브랜치 삭제 푸시)
+
 **차단당하면 우회하지 마세요.** 다른 명령으로 같은 결과를 내려는 시도도 금지입니다.
+특히 `--no-verify` 로 husky 를 건너뛰는 것은 **절대 금지**입니다.
 왜 막혔는지 사용자에게 설명하고, 훅이 알려주는 안전한 대안을 제시하세요.
 
 ### 6-5. 작업 흐름 (요청 하나 = 이 순서)
