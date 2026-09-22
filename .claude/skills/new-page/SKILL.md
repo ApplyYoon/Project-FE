@@ -1,0 +1,70 @@
+---
+name: new-page
+description: 이 프로젝트에 새 화면(페이지)을 추가할 때 사용합니다. 페이지 컴포넌트 파일을 만들고 React Router 에 주소를 연결하고 헤더 메뉴까지 이어줍니다. "~~ 페이지 만들어줘", "화면 추가", "주소 추가", "라우터에 연결" 같은 요청에서 쓰세요.
+---
+
+# 새 페이지 추가하기
+
+## 1. 무엇을 만들지 확인
+
+사용자에게 한 번에 하나씩만 물어보세요. (이미 답이 있으면 묻지 않습니다)
+
+- 화면 이름이 뭔가요? (예: 할 일 목록)
+- 주소는 뭐로 할까요? (예: `/todo`)
+- 헤더 메뉴에도 넣을까요?
+
+## 2. 페이지 파일 만들기
+
+`src/pages/XxxPage.tsx` — PascalCase, `Page` 로 끝나게. **named export** 로.
+
+```tsx
+import { Card } from '@/components/ui/Card'
+
+export function TodoPage() {
+  return (
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">할 일</h1>
+      {/* 여기에 내용 */}
+    </div>
+  )
+}
+```
+
+규칙:
+
+- 바깥을 `<div>` 하나로 감싸고 `flex flex-col gap-*` 로 세로 간격을 줍니다.
+- 제목은 `text-2xl sm:text-3xl` 처럼 **모바일 기준 → sm: 로 키우기**.
+- 페이지 자체에는 좌우 여백을 주지 마세요. `Layout` 이 이미 주고 있습니다.
+- 화면 조각이 커지면 `src/components/` 로 빼고, 이 페이지에서만 쓰는 건 그대로 둡니다.
+
+## 3. 라우터에 연결 (이걸 빼먹으면 화면이 안 나옵니다)
+
+`src/router.tsx` 의 `children` 배열에 한 줄 추가:
+
+```tsx
+{ path: 'todo', element: <TodoPage /> },
+```
+
+⚠️ `{ path: '*', element: <NotFoundPage /> }` 는 **항상 맨 마지막**에 있어야 합니다.
+그 뒤에 추가하면 새 페이지가 404로 빠집니다.
+
+import 도 함께 추가하세요: `import { TodoPage } from '@/pages/TodoPage'`
+
+## 4. 헤더 메뉴 (필요할 때만)
+
+`src/components/layout/Header.tsx` 의 `navItems` 배열에 추가:
+
+```tsx
+{ to: '/todo', label: '할 일' },
+```
+
+## 5. 확인
+
+```bash
+pnpm run typecheck && pnpm run build
+```
+
+그리고 사용자에게 알려주세요.
+
+> `/todo` 주소로 할 일 페이지를 만들었어요.
+> `pnpm run dev` 로 서버를 켜고 http://localhost:5173/todo 에서 확인해 보세요.
