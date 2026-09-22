@@ -29,6 +29,13 @@ pnpm run build
 ```
 
 빌드가 성공하면 환경은 정상입니다.
+`pnpm install` 을 하면 husky(git 훅)도 같이 설치됩니다. 아래로 확인하세요.
+
+```bash
+git config core.hooksPath
+```
+
+`.husky/_` 가 나와야 합니다. 비어 있으면 `pnpm install` 을 다시 하세요.
 
 ## 3. git 사용자 정보 확인
 

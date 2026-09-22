@@ -25,7 +25,7 @@ importers:
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.3
-        version: 4.3.3(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0))
+        version: 4.3.3(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1))
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.6
@@ -37,7 +37,13 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: ^6.1.1
-        version: 6.1.1(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0))
+        version: 6.1.1(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1))
+      husky:
+        specifier: ^9.1.7
+        version: 9.1.7
+      lint-staged:
+        specifier: ^17.5.1
+        version: 17.5.1
       oxlint:
         specifier: ^1.81.0
         version: 1.83.0
@@ -55,7 +61,7 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.3.0
-        version: 8.3.0(@types/node@24.13.6)(jiti@2.7.0)
+        version: 8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1)
 
 packages:
   '@jridgewell/gen-mapping@0.3.13':
@@ -659,6 +665,14 @@ packages:
         integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==,
       }
 
+  husky@9.1.7:
+    resolution:
+      {
+        integrity: sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==,
+      }
+    engines: { node: '>=18' }
+    hasBin: true
+
   jiti@2.7.0:
     resolution:
       {
@@ -886,6 +900,14 @@ packages:
       }
     engines: { node: '>= 12.0.0' }
 
+  lint-staged@17.5.1:
+    resolution:
+      {
+        integrity: sha512-7EDuco1xnBMeVpvAbeMq1U5KXwJGLmY8q6l+Ye78r36C4mPc+Vg1Z2SK8gHyRTyvPro90A0q5/FAZ+Au23d6QQ==,
+      }
+    engines: { node: '>=22.22.1' }
+    hasBin: true
+
   magic-string@0.30.21:
     resolution:
       {
@@ -1067,6 +1089,13 @@ packages:
       }
     engines: { node: '>=0.10.0' }
 
+  string-argv@0.3.2:
+    resolution:
+      {
+        integrity: sha512-aqD2Q0144Z+/RqG52NeHEkZauTAUWJO8c6yTftGJKO3Tja5tUgIfmIl6kExvhtxSDP7fXB6DvzkfMpCd/F3G+Q==,
+      }
+    engines: { node: '>=0.6.19' }
+
   tailwind-merge@3.7.0:
     resolution:
       {
@@ -1085,6 +1114,13 @@ packages:
         integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==,
       }
     engines: { node: '>=6' }
+
+  tinyexec@1.3.1:
+    resolution:
+      {
+        integrity: sha512-GCvB3aoys96IuDFBMcTB46JOR6mdMtAToqwiW8JlWhsoh1mhHi/xn9ss/Dg7N555GiJyEt2qzoG/NHCwM6h1EA==,
+      }
+    engines: { node: '>=18' }
 
   tinyglobby@0.2.17:
     resolution:
@@ -1152,6 +1188,14 @@ packages:
         optional: true
       yaml:
         optional: true
+
+  yaml@2.9.1:
+    resolution:
+      {
+        integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==,
+      }
+    engines: { node: '>= 14.6' }
+    hasBin: true
 
 snapshots:
   '@jridgewell/gen-mapping@0.3.13':
@@ -1340,12 +1384,12 @@ snapshots:
       '@tailwindcss/oxide-win32-arm64-msvc': 4.3.3
       '@tailwindcss/oxide-win32-x64-msvc': 4.3.3
 
-  '@tailwindcss/vite@4.3.3(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0))':
+  '@tailwindcss/vite@4.3.3(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1))':
     dependencies:
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
-      vite: 8.3.0(@types/node@24.13.6)(jiti@2.7.0)
+      vite: 8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1)
 
   '@types/node@24.13.6':
     dependencies:
@@ -1359,10 +1403,10 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0))':
+  '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.0(@types/node@24.13.6)(jiti@2.7.0)
+      vite: 8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1)
 
   clsx@2.1.1: {}
 
@@ -1385,6 +1429,8 @@ snapshots:
     optional: true
 
   graceful-fs@4.2.11: {}
+
+  husky@9.1.7: {}
 
   jiti@2.7.0: {}
 
@@ -1486,6 +1532,14 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
+  lint-staged@17.5.1:
+    dependencies:
+      picomatch: 4.0.7
+      string-argv: 0.3.2
+      tinyexec: 1.3.1
+    optionalDependencies:
+      yaml: 2.9.1
+
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -1578,11 +1632,15 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
+  string-argv@0.3.2: {}
+
   tailwind-merge@3.7.0: {}
 
   tailwindcss@4.3.3: {}
 
   tapable@2.3.3: {}
+
+  tinyexec@1.3.1: {}
 
   tinyglobby@0.2.17:
     dependencies:
@@ -1593,7 +1651,7 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0):
+  vite@8.3.0(@types/node@24.13.6)(jiti@2.7.0)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -1604,3 +1662,7 @@ snapshots:
       '@types/node': 24.13.6
       fsevents: 2.3.3
       jiti: 2.7.0
+      yaml: 2.9.1
+
+  yaml@2.9.1:
+    optional: true
