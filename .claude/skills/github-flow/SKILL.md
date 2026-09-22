@@ -128,7 +128,11 @@ PR **링크**와 바꾼 것 3줄 요약. merge 는 하지 않습니다.
 
 먼저 이유를 설명하고 허락을 받으세요. (`.claude/hooks/guard-git.sh` 가 일부는 막아둡니다)
 
-- `git push --force`, `git reset --hard`, `git rebase`
+- force push 전부 — `--force`, `--force-with-lease`, `-f`, `git push origin +main`
+- `git push --mirror` (원격 브랜치 전멸), `--delete`, `--prune`
+- `git reset --hard`, `git clean -f`, `git checkout .`, `git stash drop`
+- `git rebase`, `git filter-branch`, `git reflog expire`, `git gc --prune`
+- `git remote set-url`, `rm -rf .git`
 - `main` 또는 `dev` 에 직접 커밋·푸시
 - `dev → main` PR 을 사람 지시 없이 만들기 / merge 하기
 - 브랜치 삭제, PR merge / close

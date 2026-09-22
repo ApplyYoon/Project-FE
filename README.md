@@ -123,13 +123,34 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 팀원 승인 → GitHub 웹에서 Merge
 ```
 
-### 안전장치
+### 안전장치 (3겹)
+
+| 층                 | 언제                       | 뚫리는 경우         |
+| ------------------ | -------------------------- | ------------------- |
+| Claude Code 훅     | Claude 가 명령을 실행할 때 | 터미널에 직접 칠 때 |
+| husky (git 훅)     | 누가 치든 커밋·푸시할 때   | `--no-verify`       |
+| GitHub 브랜치 보호 | 서버에서                   | 없음 (진짜 방어선)  |
+
+`pnpm install` 을 하면 husky 가 자동으로 깔립니다. 그 뒤로는:
+
+- `main` / `dev` 에 커밋·푸시하면 **터미널에서도** 막힙니다
+- 커밋 메시지가 `타입: 설명` 형식이 아니면 커밋이 안 됩니다
+- 강제 푸시(`--force` / `-f` / `+main` / `--mirror`)와 브랜치 삭제 푸시가 막힙니다
+- 커밋할 때 바뀐 파일만 Prettier·oxlint 가 자동으로 돕니다
+
+그리고 Claude 가 실행하는 명령은 아래까지 추가로 막습니다.
 
 실수를 막으려고 아래는 **자동으로 차단**됩니다. (`.claude/hooks/`)
 
 - `main` / `dev` 브랜치에 직접 커밋·푸시
-- `git push --force`, `git reset --hard`, 브랜치 삭제
-- 파일을 수정하면 Prettier 가 **자동으로 코드 모양을 정리**합니다
+- 원격을 망가뜨리는 것 — `push --force` / `-f` / `+main` / `--mirror` / `--delete` / `--prune`
+- 내 작업을 지우는 것 — `reset --hard`, `clean -f`, `checkout .`, `stash drop`
+- 기록을 다시 쓰는 것 — `filter-branch`, `reflog expire`, `gc --prune`
+- 저장소를 건드리는 것 — `remote set-url`, `rm -rf .git`
+
+그리고 파일을 수정하면 Prettier 가 **자동으로 코드 모양을 정리**합니다.
+평소 쓰는 명령(`git push -u`, `git stash pop`, `git checkout -- 파일`)은 그대로 됩니다.
+전체 목록은 [docs/AI-GUIDE.md](./docs/AI-GUIDE.md) 참고.
 
 ---
 

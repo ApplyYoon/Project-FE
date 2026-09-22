@@ -154,6 +154,35 @@ git pull origin dev   # 또는  /sync
 
 `git push --force` 로 해결하려 하지 마세요. 팀원 작업이 사라집니다.
 
+### 커밋했는데 "커밋 메시지 형식이 규칙과 다릅니다" 라고 막혀요
+
+`타입: 설명` 형식이 아니어서 그렇습니다.
+
+```
+feat: 로그인 폼 추가      ✅
+로그인 폼 추가            ❌ 타입 없음
+feat 로그인 폼 추가       ❌ 콜론(:) 없음
+feat: 로그인 폼 추가.     ❌ 끝에 마침표
+```
+
+타입은 `feat` `fix` `refactor` `style` `docs` `chore` `test` 중 하나입니다.
+`/save` 를 쓰면 메시지를 알아서 써줍니다.
+
+### 커밋·푸시가 "main 브랜치에는 직접..." 이라고 막혀요
+
+브랜치를 안 만들고 작업한 것입니다. 아직 커밋 전이면 그대로 브랜치만 만들면 됩니다.
+
+```bash
+git switch -c feat/작업이름
+```
+
+### husky 훅이 안 도는 것 같아요
+
+```bash
+pnpm install          # husky 는 install 할 때 설치됩니다
+git config core.hooksPath    # .husky/_ 가 나와야 정상
+```
+
 ### `fatal: not a git repository`
 
 프로젝트 폴더 밖에서 명령을 쳤습니다. `cd Project-FE` 로 들어가세요.
