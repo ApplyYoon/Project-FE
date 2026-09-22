@@ -128,8 +128,14 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 실수를 막으려고 아래는 **자동으로 차단**됩니다. (`.claude/hooks/`)
 
 - `main` / `dev` 브랜치에 직접 커밋·푸시
-- `git push --force`, `git reset --hard`, 브랜치 삭제
-- 파일을 수정하면 Prettier 가 **자동으로 코드 모양을 정리**합니다
+- 원격을 망가뜨리는 것 — `push --force` / `-f` / `+main` / `--mirror` / `--delete` / `--prune`
+- 내 작업을 지우는 것 — `reset --hard`, `clean -f`, `checkout .`, `stash drop`
+- 기록을 다시 쓰는 것 — `filter-branch`, `reflog expire`, `gc --prune`
+- 저장소를 건드리는 것 — `remote set-url`, `rm -rf .git`
+
+그리고 파일을 수정하면 Prettier 가 **자동으로 코드 모양을 정리**합니다.
+평소 쓰는 명령(`git push -u`, `git stash pop`, `git checkout -- 파일`)은 그대로 됩니다.
+전체 목록은 [docs/AI-GUIDE.md](./docs/AI-GUIDE.md) 참고.
 
 ---
 

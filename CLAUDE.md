@@ -230,7 +230,13 @@ Refs: #12
 - 파일·폴더 삭제, 의존성 제거
 - 저장소 설정 변경(공개 범위, 협업자 등)
 
-앞의 몇 가지는 훅이 자동으로 차단합니다. 차단당하면 **우회하지 말고** 사용자에게 이유를 설명하세요.
+이 중 대부분은 `.claude/hooks/guard-git.sh` 가 **실제로 차단**합니다.
+force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
+`reset --hard`, `clean -f`, `checkout .`, `stash drop`, `filter-branch`,
+`reflog expire`, `gc --prune`, `remote set-url`, `rm -rf .git` 등입니다.
+
+**차단당하면 우회하지 마세요.** 다른 명령으로 같은 결과를 내려는 시도도 금지입니다.
+왜 막혔는지 사용자에게 설명하고, 훅이 알려주는 안전한 대안을 제시하세요.
 
 ### 6-5. 작업 흐름 (요청 하나 = 이 순서)
 
