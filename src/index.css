@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4 는 설정을 CSS 안에서 합니다. (tailwind.config.js 없음)
+ * 아래 @theme 에 색/폰트를 등록하면 bg-brand, text-brand-dark 처럼 바로 쓸 수 있어요.
+ */
+@theme {
+  --color-brand: #4f46e5;
+  --color-brand-dark: #4338ca;
+  --color-brand-light: #eef2ff;
+
+  --font-sans:
+    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-white text-slate-900 antialiased;
+  }
+
+  /* 키보드로 이동했을 때 포커스가 잘 보이도록 */
+  :focus-visible {
+    @apply outline-brand outline-2 outline-offset-2;
+  }
+}
