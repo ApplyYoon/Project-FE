@@ -1,0 +1,19 @@
+. "$(dirname -- "$0")/common.sh"
+
+BRANCH="$(git symbolic-ref --short -q HEAD)"
+
+# 1) 보호 브랜치에는 직접 커밋할 수 없습니다.
+if is_protected_branch "$BRANCH"; then
+  say "🛑 '$BRANCH' 브랜치에는 직접 커밋할 수 없습니다.
+
+  브랜치 전략:  작업 브랜치  →  dev  →  main
+
+  먼저 작업 브랜치를 만드세요.
+    git switch dev && git pull origin dev && git switch -c feat/작업이름
+
+  Claude Code 를 쓴다면:  /start <만들고 싶은 것>"
+  exit 1
+fi
+
+# 2) 커밋할 파일들을 Prettier 로 정리하고 린트합니다. (staged 된 것만)
+pnpm exec lint-staged
