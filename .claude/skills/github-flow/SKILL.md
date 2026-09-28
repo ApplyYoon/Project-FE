@@ -11,20 +11,20 @@ description: git·GitHub 작업 전체 흐름입니다. 브랜치 만들기(이�
 
 ```
 feat/login-form ─┐
-fix/header-bug  ─┼─▶  dev  ─▶  main
-chore/prettier  ─┘   (개발 통합)   (최종본)
+fix/header-bug  ─┼─▶  develop  ─▶  main
+chore/prettier  ─┘   (개발 통합)       (최종본)
 ```
 
 | 브랜치        | 무엇                          | 직접 커밋 |
 | ------------- | ----------------------------- | --------- |
 | `main`        | 최종본. 안정적으로 도는 코드  | ❌ 금지   |
-| `dev`         | 개발 통합. 작업물이 모이는 곳 | ❌ 금지   |
+| `develop`     | 개발 통합. 작업물이 모이는 곳 | ❌ 금지   |
 | `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        |
 
-- 작업 브랜치는 **항상 `dev` 에서** 땁니다. (`main` 이 아닙니다)
-- 작업이 끝나면 **`dev` 로 PR** 을 올립니다.
-- `dev → main` PR 은 **기능이 어느 정도 모였을 때 사람이** 엽니다. AI 가 먼저 만들지 않습니다.
-- `main` 과 `dev` 는 훅이 직접 커밋·푸시를 **자동으로 차단**합니다.
+- 작업 브랜치는 **항상 `develop` 에서** 땁니다. (`main` 이 아닙니다)
+- 작업이 끝나면 **`develop` 으로 PR** 을 올립니다.
+- `develop → main` PR 은 **기능이 어느 정도 모였을 때 사람이** 엽니다. AI 가 먼저 만들지 않습니다.
+- `main` 과 `develop` 은 훅이 직접 커밋·푸시를 **자동으로 차단**합니다.
 
 ---
 
@@ -41,16 +41,16 @@ git symbolic-ref --short -q HEAD && git status --short
 ```
 
 - 남의 작업물로 보이는 수정이 섞여 있으면 **멈추고 물어봅니다.**
-- 지금 `main` 이나 `dev` 위에 있다면 **코드를 고치기 전에** 3번으로 갑니다.
+- 지금 `main` 이나 `develop` 위에 있다면 **코드를 고치기 전에** 3번으로 갑니다.
 
 ### 2. 이슈 (있으면 좋고, 없어도 됨)
 
 관련 이슈가 있으면 번호를 기억합니다. 없으면 만들지 물어봅니다.
 
-### 3. 브랜치 — **`dev` 에서 따고, 이름은 반드시 물어본다**
+### 3. 브랜치 — **`develop` 에서 따고, 이름은 반드시 물어본다**
 
 코드를 고치기 **전에** 브랜치를 만듭니다. 절대 예외 없습니다.
-기준은 `main` 이 아니라 **`dev`** 입니다.
+기준은 `main` 이 아니라 **`develop`** 입니다.
 
 이름 후보 2~3개를 만들어 `AskUserQuestion` 으로 고르게 하세요. 혼자 정하지 마세요.
 
@@ -63,10 +63,10 @@ git symbolic-ref --short -q HEAD && git status --short
 소문자·하이픈만. 한글·공백·대문자 금지.
 
 ```bash
-git switch dev && git pull origin dev && git switch -c feat/12-login-form
+git switch develop && git pull origin develop && git switch -c feat/12-login-form
 ```
 
-`dev` 가 없다는 에러가 나면: `git fetch origin && git switch -c dev origin/dev`
+`develop` 이 없다는 에러가 나면: `git fetch origin && git switch -c develop origin/develop`
 
 ### 4. 작업
 
@@ -106,10 +106,10 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 git push -u origin <브랜치명>
 ```
 
-### 8. PR — **base 는 `dev`**
+### 8. PR — **base 는 `develop`**
 
 ```bash
-gh pr create --base dev --title "feat: ..." --body "..."
+gh pr create --base develop --title "feat: ..." --body "..."
 ```
 
 - 제목: 커밋 제목과 같은 형식
@@ -133,8 +133,8 @@ PR **링크**와 바꾼 것 3줄 요약. merge 는 하지 않습니다.
 - `git reset --hard`, `git clean -f`, `git checkout .`, `git stash drop`
 - `git rebase`, `git filter-branch`, `git reflog expire`, `git gc --prune`
 - `git remote set-url`, `rm -rf .git`
-- `main` 또는 `dev` 에 직접 커밋·푸시
-- `dev → main` PR 을 사람 지시 없이 만들기 / merge 하기
+- `main` 또는 `develop` 에 직접 커밋·푸시
+- `develop → main` PR 을 사람 지시 없이 만들기 / merge 하기
 - 브랜치 삭제, PR merge / close
 - 올라간 커밋 수정 (`commit --amend`)
 - 저장소 설정 변경, 협업자 추가/삭제

@@ -131,23 +131,23 @@ pnpm run build       # 빌드 성공
 
 ```
 feat/login-form ─┐
-fix/header-bug  ─┼─▶  dev  ─▶  main
-chore/prettier  ─┘   (개발 통합)   (최종본)
+fix/header-bug  ─┼─▶  develop  ─▶  main
+chore/prettier  ─┘   (개발 통합)       (최종본)
 ```
 
 | 브랜치        | 무엇                          | 직접 커밋 |
 | ------------- | ----------------------------- | --------- |
 | `main`        | 최종본. 안정적으로 도는 코드  | ❌ 금지   |
-| `dev`         | 개발 통합. 작업물이 모이는 곳 | ❌ 금지   |
+| `develop`     | 개발 통합. 작업물이 모이는 곳 | ❌ 금지   |
 | `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        |
 
-- 작업 브랜치는 **항상 `dev` 에서** 딴다. (`main` 이 아니다)
-- 작업이 끝나면 **`dev` 로 PR** 을 올린다.
-- `dev → main` PR 은 **사람이** 연다. AI 가 먼저 만들지 않는다.
+- 작업 브랜치는 **항상 `develop` 에서** 딴다. (`main` 이 아니다)
+- 작업이 끝나면 **`develop` 으로 PR** 을 올린다.
+- `develop → main` PR 은 **사람이** 연다. AI 가 먼저 만들지 않는다.
 
 ### 6-1. 브랜치를 먼저 만든다 — 이름은 **물어본다**
 
-**`main` 과 `dev` 에 직접 커밋하는 것은 절대 금지입니다.**
+**`main` 과 `develop` 에 직접 커밋하는 것은 절대 금지입니다.**
 (`.claude/hooks/guard-git.sh` 가 실제로 막습니다. 차단당하면 우회하지 말고 규칙을 따르세요.)
 작업 요청을 받으면 코드를 건드리기 **전에** 브랜치부터 만듭니다.
 
@@ -172,10 +172,10 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 한국어 → 영어 사전과 후보 만드는 요령: `.claude/commands/start.md`
 
 ```bash
-git switch dev && git pull origin dev && git switch -c feat/12-login-form
+git switch develop && git pull origin develop && git switch -c feat/12-login-form
 ```
 
-`dev` 가 없다는 에러가 나면: `git fetch origin && git switch -c dev origin/dev`
+`develop` 이 없다는 에러가 나면: `git fetch origin && git switch -c develop origin/develop`
 
 ### 6-2. 커밋 메시지는 **당신이 쓴다**
 
@@ -210,7 +210,7 @@ Refs: #12
 
 ### 6-3. Pull Request
 
-- **base 브랜치는 `dev`** — `gh pr create --base dev ...`
+- **base 브랜치는 `develop`** — `gh pr create --base develop ...`
 - 제목은 커밋과 같은 형식: `feat: 로그인 폼 추가`
 - 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 를 **실제 내용으로** 채웁니다. 빈칸 금지.
 - **체크리스트는 당신이 직접 검증해서 채웁니다.** 사용자에게 확인했냐고 묻지 마세요.
@@ -224,8 +224,8 @@ Refs: #12
 
 - `git push --force`, `git reset --hard`, `git rebase`
 - 브랜치 삭제, PR merge / close
-- `main` / `dev` 로의 직접 push
-- `dev → main` PR 생성·merge (사람이 합니다)
+- `main` / `develop` 으로의 직접 push
+- `develop → main` PR 생성·merge (사람이 합니다)
 - 이미 올라간 커밋 수정 (`commit --amend`)
 - 파일·폴더 삭제, 의존성 제거
 - 저장소 설정 변경(공개 범위, 협업자 등)
@@ -236,7 +236,7 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 `reflog expire`, `gc --prune`, `remote set-url`, `rm -rf .git` 등입니다.
 
 여기에 더해 `.husky/` 의 git 훅이 커밋·푸시 시점에 한 번 더 검사합니다.
-(main·dev 직접 커밋/푸시, 커밋 메시지 형식, 강제 푸시, 브랜치 삭제 푸시)
+(main·develop 직접 커밋/푸시, 커밋 메시지 형식, 강제 푸시, 브랜치 삭제 푸시)
 
 **차단당하면 우회하지 마세요.** 다른 명령으로 같은 결과를 내려는 시도도 금지입니다.
 특히 `--no-verify` 로 husky 를 건너뛰는 것은 **절대 금지**입니다.
@@ -245,12 +245,12 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 ### 6-5. 작업 흐름 (요청 하나 = 이 순서)
 
 1. **확인** — `git status` 로 현재 브랜치와 수정 파일 확인. 남의 작업이 섞여 있으면 멈추고 묻는다.
-2. **브랜치** — 이름 후보를 제시해 고르게 하고, 최신 **`dev`** 에서 새 브랜치를 판다.
+2. **브랜치** — 이름 후보를 제시해 고르게 하고, 최신 **`develop`** 에서 새 브랜치를 판다.
 3. **작업** — 작은 단위로. 반응형 규칙을 지킨다.
 4. **검증** — `typecheck` → `lint` → `format` → `build` 전부 통과.
 5. **커밋** — 컨벤션대로 직접 작성. 여러 일을 했으면 커밋을 나눈다.
 6. **푸시** — `git push -u origin <브랜치명>`
-7. **PR** — **base 는 `dev`.** 템플릿을 채우고 체크리스트를 검증해서 표시. 이슈 연결, 리뷰어 지정.
+7. **PR** — **base 는 `develop`.** 템플릿을 채우고 체크리스트를 검증해서 표시. 이슈 연결, 리뷰어 지정.
 8. **보고** — **PR 링크 + 바꾼 것 3줄 요약.**
 
 **merge 는 사람이 합니다. AI는 merge 하지 않습니다.**
@@ -260,7 +260,7 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 똑같습니다.**
 
 - 브랜치 이름은 물어보고, 커밋 메시지는 컨벤션대로 직접 씁니다.
-- MCP 로 파일을 직접 고쳐 `main`·`dev` 에 바로 올리는 기능은 쓰지 마세요.
+- MCP 로 파일을 직접 고쳐 `main`·`develop` 에 바로 올리는 기능은 쓰지 마세요.
   항상 로컬 브랜치 → 커밋 → 푸시 → PR 순서를 따릅니다.
 
 ---

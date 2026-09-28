@@ -97,29 +97,29 @@ pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run build
 
 ```
 feat/login-form ─┐
-fix/header-bug  ─┼─▶  dev  ─▶  main
-chore/prettier  ─┘   (개발 통합)   (최종본)
+fix/header-bug  ─┼─▶  develop  ─▶  main
+chore/prettier  ─┘   (개발 통합)       (최종본)
 ```
 
-| 브랜치        | 무엇                          | 직접 커밋 | PR 대상 |
-| ------------- | ----------------------------- | --------- | ------- |
-| `main`        | 최종본. 안정적으로 도는 코드  | ❌        | —       |
-| `dev`         | 개발 통합. 작업물이 모이는 곳 | ❌        | `main`  |
-| `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        | `dev`   |
+| 브랜치        | 무엇                          | 직접 커밋 | PR 대상   |
+| ------------- | ----------------------------- | --------- | --------- |
+| `main`        | 최종본. 안정적으로 도는 코드  | ❌        | —         |
+| `develop`     | 개발 통합. 작업물이 모이는 곳 | ❌        | `main`    |
+| `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        | `develop` |
 
-- 작업 브랜치는 **항상 `dev` 에서** 땁니다. PR 의 **base 도 `dev`** 입니다.
-- `dev → main` 은 기능이 어느 정도 모였을 때 **선생님/팀장이** 엽니다.
-- `main` 과 `dev` 는 직접 커밋·푸시가 **자동 차단**됩니다.
+- 작업 브랜치는 **항상 `develop` 에서** 땁니다. PR 의 **base 도 `develop`** 입니다.
+- `develop → main` 은 기능이 어느 정도 모였을 때 **선생님/팀장이** 엽니다.
+- `main` 과 `develop` 은 직접 커밋·푸시가 **자동 차단**됩니다.
 
 ### 하루 작업 흐름
 
 ```
-/sync                      아침에 최신 dev 받기
-/start 할 일 목록 만들기    → dev 에서 브랜치 생성 (이름 후보를 줍니다)
+/sync                      아침에 최신 develop 받기
+/start 할 일 목록 만들기    → develop 에서 브랜치 생성 (이름 후보를 줍니다)
   ... Claude에게 시키면서 작업 ...
 /run                       브라우저에서 확인 (모바일도!)
 /save                      저장 (커밋 메시지 자동)
-/pr                        dev 로 PR 올리기 → 링크가 나옴
+/pr                        develop 으로 PR 올리기 → 링크가 나옴
 팀원 승인 → GitHub 웹에서 Merge
 ```
 
@@ -133,7 +133,7 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 
 `pnpm install` 을 하면 husky 가 자동으로 깔립니다. 그 뒤로는:
 
-- `main` / `dev` 에 커밋·푸시하면 **터미널에서도** 막힙니다
+- `main` / `develop` 에 커밋·푸시하면 **터미널에서도** 막힙니다
 - 커밋 메시지가 `타입: 설명` 형식이 아니면 커밋이 안 됩니다
 - 강제 푸시(`--force` / `-f` / `+main` / `--mirror`)와 브랜치 삭제 푸시가 막힙니다
 - 커밋할 때 바뀐 파일만 Prettier·oxlint 가 자동으로 돕니다
@@ -142,7 +142,7 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 
 실수를 막으려고 아래는 **자동으로 차단**됩니다. (`.claude/hooks/`)
 
-- `main` / `dev` 브랜치에 직접 커밋·푸시
+- `main` / `develop` 브랜치에 직접 커밋·푸시
 - 원격을 망가뜨리는 것 — `push --force` / `-f` / `+main` / `--mirror` / `--delete` / `--prune`
 - 내 작업을 지우는 것 — `reset --hard`, `clean -f`, `checkout .`, `stash drop`
 - 기록을 다시 쓰는 것 — `filter-branch`, `reflog expire`, `gc --prune`
