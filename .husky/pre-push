@@ -7,8 +7,8 @@ ZERO="0000000000000000000000000000000000000000"
 if is_protected_branch "$BRANCH"; then
   say "🛑 '$BRANCH' 브랜치는 직접 푸시할 수 없습니다.
 
-  브랜치 전략:  작업 브랜치  →  dev  →  main
-  dev 와 main 으로는 PR 로만 들어갑니다."
+  브랜치 전략:  작업 브랜치  →  develop  →  main
+  develop 과 main 으로는 PR 로만 들어갑니다."
   exit 1
 fi
 
@@ -37,7 +37,7 @@ while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
   팀원이 그 사이 올린 작업이 사라집니다. 되돌릴 수 없습니다.
 
   대부분은 최신 코드를 안 받아와서 생기는 문제입니다.
-    git pull origin dev      (또는  /sync)"
+    git pull origin develop      (또는  /sync)"
     exit 1
   fi
 done

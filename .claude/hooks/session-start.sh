@@ -7,16 +7,19 @@ BRANCH="$(git -C "$ROOT" symbolic-ref --short -q HEAD 2>/dev/null)"
 CHANGED="$(git -C "$ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
 
 CONTEXT="[프로젝트 상태] 현재 브랜치: ${BRANCH} / 수정된 파일: ${CHANGED}개
-[브랜치 전략] 작업 브랜치(feat/fix/...) → dev → main. 작업은 항상 dev 에서 딴 브랜치에서 합니다."
+[브랜치 전략] 작업 브랜치(feat/fix/...) → develop → main. 작업은 항상 develop 에서 딴 브랜치에서 합니다."
 
 case "$BRANCH" in
   main|master)
     CONTEXT="${CONTEXT}
 ⚠️ main 은 보호 브랜치입니다. 코드를 고치기 전에 사용자에게 브랜치 이름 후보를 제시하고,
-   dev 에서 새 작업 브랜치를 만드세요. (git switch dev && git pull origin dev && git switch -c feat/...)" ;;
+   develop 에서 새 작업 브랜치를 만드세요. (git switch develop && git pull origin develop && git switch -c feat/...)" ;;
+  develop)
+    CONTEXT="${CONTEXT}
+⚠️ develop 도 보호 브랜치입니다. 여기서 직접 커밋하지 말고 작업 브랜치를 먼저 만드세요. (git switch -c feat/...)" ;;
   dev)
     CONTEXT="${CONTEXT}
-⚠️ dev 도 보호 브랜치입니다. 여기서 직접 커밋하지 말고 작업 브랜치를 먼저 만드세요. (git switch -c feat/...)" ;;
+⚠️ dev 는 develop 으로 이름이 바뀐 예전 브랜치입니다. develop 으로 옮긴 뒤 작업 브랜치를 만드세요. (git switch develop && git pull origin develop && git switch -c feat/...)" ;;
 esac
 
 jq -n --arg c "$CONTEXT" '{

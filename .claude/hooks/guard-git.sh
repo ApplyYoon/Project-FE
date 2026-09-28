@@ -53,7 +53,7 @@ check 'git[[:space:]]+push[^|;&]*--force' \
 (--force-with-lease 도 같은 이유로 막았습니다.)
 
 대부분은 "내가 pull 을 안 해서" 생긴 문제입니다. 이렇게 해보세요:
-  /sync          (또는  git pull origin dev)
+  /sync          (또는  git pull origin develop)
 그래도 안 되면 선생님/팀장에게 물어보세요.'
 
 check 'git[[:space:]]+push[^|;&]*[[:space:]]-[a-z]*f[a-z]*([[:space:]]|$)' \
@@ -161,7 +161,7 @@ check '(^|[[:space:]])rm[[:space:]]+(-[a-z]+[[:space:]]+)*[^|;&]*\.git([[:space:
 .git 안에 모든 커밋 기록이 들어 있습니다. 지우면 전부 사라집니다.'
 
 # ─────────────────────────────────────────────────────────────
-# E. 보호 브랜치 — 작업 브랜치 → dev → main
+# E. 보호 브랜치 — 작업 브랜치 → develop → main
 # ─────────────────────────────────────────────────────────────
 
 is_commit_or_push() {
@@ -171,18 +171,26 @@ is_commit_or_push() {
 case "$BRANCH" in
   main|master)
     is_commit_or_push && deny "지금 '$BRANCH' 브랜치입니다. main 에는 직접 커밋/푸시하지 않습니다.
-main 으로는 dev 에서 PR 로만 들어갑니다.
+main 으로는 develop 에서 PR 로만 들어갑니다.
 
-작업하려면 dev 에서 새 브랜치를 만드세요:
-  git switch dev && git pull origin dev && git switch -c feat/작업이름
+작업하려면 develop 에서 새 브랜치를 만드세요:
+  git switch develop && git pull origin develop && git switch -c feat/작업이름
 (브랜치 이름이 고민되면 사용자에게 후보를 제시하고 고르게 하세요.)"
     ;;
-  dev)
-    is_commit_or_push && deny "지금 'dev' 브랜치입니다. dev 에도 직접 커밋/푸시하지 않습니다.
-dev 로는 작업 브랜치에서 PR 로만 들어갑니다.
+  develop)
+    is_commit_or_push && deny "지금 'develop' 브랜치입니다. develop 에도 직접 커밋/푸시하지 않습니다.
+develop 으로는 작업 브랜치에서 PR 로만 들어갑니다.
 
 먼저 작업 브랜치를 만드세요:
   git switch -c feat/작업이름
+(브랜치 이름이 고민되면 사용자에게 후보를 제시하고 고르게 하세요.)"
+    ;;
+  dev)
+    # dev 는 develop 의 예전 이름입니다. 옛 브랜치가 남아 있는 컴퓨터를 위해 같이 막습니다.
+    is_commit_or_push && deny "지금 'dev' 브랜치입니다. dev 는 develop 으로 이름이 바뀐 예전 브랜치입니다.
+
+최신 develop 에서 작업 브랜치를 새로 만드세요:
+  git switch develop && git pull origin develop && git switch -c feat/작업이름
 (브랜치 이름이 고민되면 사용자에게 후보를 제시하고 고르게 하세요.)"
     ;;
 esac
