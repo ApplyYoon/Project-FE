@@ -8,20 +8,20 @@
 
 ```
 feat/login-form ─┐
-fix/header-bug  ─┼─▶  dev  ─▶  main
-chore/prettier  ─┘   (개발 통합)   (최종본)
+fix/header-bug  ─┼─▶  develop  ─▶  main
+chore/prettier  ─┘   (개발 통합)       (최종본)
 ```
 
-| 브랜치        | 무엇                          | 직접 커밋 | PR 대상 |
-| ------------- | ----------------------------- | --------- | ------- |
-| `main`        | 최종본. 안정적으로 도는 코드  | ❌        | —       |
-| `dev`         | 개발 통합. 작업물이 모이는 곳 | ❌        | `main`  |
-| `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        | `dev`   |
+| 브랜치        | 무엇                          | 직접 커밋 | PR 대상   |
+| ------------- | ----------------------------- | --------- | --------- |
+| `main`        | 최종본. 안정적으로 도는 코드  | ❌        | —         |
+| `develop`     | 개발 통합. 작업물이 모이는 곳 | ❌        | `main`    |
+| `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        | `develop` |
 
-- 작업 브랜치는 **항상 `dev` 에서** 땁니다.
-- PR 의 **base 는 `dev`** 입니다. (`main` 아님)
-- `dev → main` 은 기능이 어느 정도 모였을 때 **사람이** 엽니다.
-- `main` 과 `dev` 는 직접 커밋·푸시가 **자동 차단**됩니다.
+- 작업 브랜치는 **항상 `develop` 에서** 땁니다.
+- PR 의 **base 는 `develop`** 입니다. (`main` 아님)
+- `develop → main` 은 기능이 어느 정도 모였을 때 **사람이** 엽니다.
+- `main` 과 `develop` 은 직접 커밋·푸시가 **자동 차단**됩니다.
 
 ---
 
@@ -45,11 +45,11 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 ❌ 한글, 공백, 대문자, 언더바(`_`)
 
 ```bash
-git switch dev && git pull origin dev && git switch -c feat/12-login-form
+git switch develop && git pull origin develop && git switch -c feat/12-login-form
 ```
 
 > Claude Code 를 쓰면 `/start <하고 싶은 일>` 만 치면
-> **`dev` 에서 따고 이름 후보까지 제시해 줍니다.**
+> **`develop` 에서 따고 이름 후보까지 제시해 줍니다.**
 
 ---
 
@@ -108,7 +108,7 @@ chore: prettier 설정에 tailwind 플러그인 추가
 - 제목: 커밋과 같은 형식 — `feat: 로그인 폼 추가`
 - 본문: 템플릿을 **실제 내용으로** 채우기 (빈칸 금지)
 - 이슈 연결: 본문에 `Closes #12`
-- **base 브랜치는 `dev`** — `gh pr create --base dev ...`
+- **base 브랜치는 `develop`** — `gh pr create --base develop ...`
 - 리뷰어 **1명 이상** 지정, 승인 전 merge 금지
 - 크기: 파일 10개 / 300줄 이내 목표
 - 올리기 전에 `/check` 4종 검사를 통과시킬 것

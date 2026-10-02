@@ -6,10 +6,10 @@ BRANCH="$(git symbolic-ref --short -q HEAD)"
 if is_protected_branch "$BRANCH"; then
   say "🛑 '$BRANCH' 브랜치에는 직접 커밋할 수 없습니다.
 
-  브랜치 전략:  작업 브랜치  →  dev  →  main
+  브랜치 전략:  작업 브랜치  →  develop  →  main
 
   먼저 작업 브랜치를 만드세요.
-    git switch dev && git pull origin dev && git switch -c feat/작업이름
+    git switch develop && git pull origin develop && git switch -c feat/작업이름
 
   Claude Code 를 쓴다면:  /start <만들고 싶은 것>"
   exit 1

@@ -6,7 +6,7 @@
 
 ## 1. 절대 규칙 3가지
 
-1. **`main` 과 `dev` 에서 직접 작업하지 않는다.** 항상 `dev` 에서 새 브랜치를 판다.
+1. **`main` 과 `develop` 에서 직접 작업하지 않는다.** 항상 `develop` 에서 새 브랜치를 판다.
 2. **검사 4종을 통과하지 않은 코드는 커밋하지 않는다.**
 3. **다른 사람 승인 없이 merge 하지 않는다.**
 
@@ -16,36 +16,36 @@
 
 ```
 feat/login-form ─┐
-fix/header-bug  ─┼─▶  dev  ─▶  main
-chore/prettier  ─┘   (개발 통합)   (최종본)
+fix/header-bug  ─┼─▶  develop  ─▶  main
+chore/prettier  ─┘   (개발 통합)       (최종본)
 ```
 
-| 브랜치        | 무엇                          | 직접 커밋 | PR 대상 |
-| ------------- | ----------------------------- | --------- | ------- |
-| `main`        | 최종본                        | ❌        | —       |
-| `dev`         | 개발 통합. 작업물이 모이는 곳 | ❌        | `main`  |
-| `feat/...` 등 | 실제 작업                     | ✅        | `dev`   |
+| 브랜치        | 무엇                          | 직접 커밋 | PR 대상   |
+| ------------- | ----------------------------- | --------- | --------- |
+| `main`        | 최종본                        | ❌        | —         |
+| `develop`     | 개발 통합. 작업물이 모이는 곳 | ❌        | `main`    |
+| `feat/...` 등 | 실제 작업                     | ✅        | `develop` |
 
-`dev → main` 은 기능이 어느 정도 모였을 때 **선생님/팀장이** 엽니다.
+`develop → main` 은 기능이 어느 정도 모였을 때 **선생님/팀장이** 엽니다.
 
 ---
 
 ## 3. 작업 흐름
 
 ```
-/sync                        최신 dev 받기
+/sync                        최신 develop 받기
   ↓
-/start <만들고 싶은 것>       dev 에서 브랜치 생성 (이름 골라서)
+/start <만들고 싶은 것>       develop 에서 브랜치 생성 (이름 골라서)
   ↓
    ... 작업 ...               모바일 화면도 같이 확인!
   ↓
 /save                        검사 + 커밋 (메시지 자동)
   ↓
-/pr                          푸시 + PR 생성 (base: dev, 체크리스트 자동)
+/pr                          푸시 + PR 생성 (base: develop, 체크리스트 자동)
   ↓
-팀원 승인 → GitHub 웹에서 Merge (→ dev)
+팀원 승인 → GitHub 웹에서 Merge (→ develop)
   ↓
-/sync                        합쳐진 dev 다시 받기
+/sync                        합쳐진 develop 다시 받기
 ```
 
 Claude Code 없이 직접 한다면 👉 [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)

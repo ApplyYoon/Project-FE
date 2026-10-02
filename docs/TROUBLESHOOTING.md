@@ -149,7 +149,7 @@ constructor(status: number) { this.status = status }
 **뜻**: GitHub에 내가 모르는 커밋이 있습니다.
 
 ```bash
-git pull origin dev   # 또는  /sync
+git pull origin develop   # 또는  /sync
 ```
 
 `git push --force` 로 해결하려 하지 마세요. 팀원 작업이 사라집니다.
