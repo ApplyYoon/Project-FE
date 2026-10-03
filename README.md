@@ -120,7 +120,7 @@ chore/prettier  ─┘   (개발 통합)       (최종본)
 /run                       브라우저에서 확인 (모바일도!)
 /save                      저장 (커밋 메시지 자동)
 /pr                        develop 으로 PR 올리기 → 링크가 나옴
-팀원 승인 → GitHub 웹에서 Merge
+확인 끝나면 GitHub 웹에서 직접 Merge (리뷰는 선택)
 ```
 
 ### 안전장치 (3겹)
