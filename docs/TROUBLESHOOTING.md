@@ -187,6 +187,17 @@ git config core.hooksPath    # .husky/_ 가 나와야 정상
 
 프로젝트 폴더 밖에서 명령을 쳤습니다. `cd Project-FE` 로 들어가세요.
 
+### `/mcp` 에서 github 가 `does not support dynamic client registration` 으로 실패해요
+
+**뜻**: GitHub MCP 에 보낼 로그인 토큰을 못 구했습니다.
+GitHub 는 Authenticate 버튼 로그인을 지원하지 않아서, 이 프로젝트는 `gh` 에 로그인된 토큰을 꺼내 씁니다.
+
+```bash
+gh auth status   # 로그인 안 돼 있으면 → gh auth login
+```
+
+로그인 후 Claude Code 를 껐다 켜세요. 그래도 안 되면 `claude` 를 프로젝트 폴더 맨 위에서 켰는지 확인하세요.
+
 ---
 
 ## 기타
