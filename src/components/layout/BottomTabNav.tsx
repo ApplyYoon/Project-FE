@@ -1,0 +1,35 @@
+import { navItems } from '@/components/layout/navItems'
+import { cn } from '@/lib/cn'
+import { NavLink } from 'react-router-dom'
+
+/**
+ * 모바일 화면 아래에 고정되는 탭 메뉴입니다.
+ * PC(sm 이상)에서는 숨기고, 대신 헤더 메뉴를 보여줍니다.
+ */
+export function BottomTabNav() {
+  return (
+    <nav
+      aria-label="하단 메뉴"
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white sm:hidden"
+    >
+      {/* 탭 5개를 같은 너비로 나눕니다. */}
+      <ul className="grid grid-cols-5">
+        {navItems.map((item) => (
+          <li key={item.to}>
+            <NavLink to={item.to} className={tabLinkClass}>
+              {item.label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
+/* 지금 있는 탭이면 브랜드 색으로 표시합니다. */
+function tabLinkClass({ isActive }: { isActive: boolean }) {
+  return cn(
+    'flex h-14 items-center justify-center text-sm font-medium transition-colors',
+    isActive ? 'text-brand bg-brand-light' : 'text-slate-500 hover:bg-slate-100',
+  )
+}
