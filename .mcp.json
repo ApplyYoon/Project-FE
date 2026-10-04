@@ -2,7 +2,8 @@
   "mcpServers": {
     "github": {
       "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/"
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headersHelper": "node .claude/scripts/github-mcp-headers.mjs"
     },
     "vercel": {
       "type": "http",

@@ -112,6 +112,7 @@ MCP 는 Claude 가 GitHub·Vercel 같은 서비스를 **직접 다루게** 해�
 
 이 저장소에는 `.mcp.json` 이 들어 있어서 따로 설치할 필요가 없습니다.
 `claude` 실행 시 "사용할까요?" 에 **예**를 누르면 됩니다.
+단, `github` 는 터미널에서 `gh auth login` 으로 GitHub 에 로그인돼 있어야 연결됩니다. (`/setup` 이 안내해 줍니다)
 
 | 이름     | 주소                                 | 뭘 할 수 있나                  |
 | -------- | ------------------------------------ | ------------------------------ |
@@ -125,7 +126,10 @@ MCP 는 Claude 가 GitHub·Vercel 같은 서비스를 **직접 다루게** 해�
 ```
 
 - 목록에 없으면 → Claude Code 를 껐다 켜고 다시 `/mcp`
-- 로그인이 안 됐으면 → 해당 서버를 골라 **Authenticate** → 브라우저에서 승인
+- `github` 가 연결 실패면 → 터미널에서 `gh auth status` 확인, 로그인이 안 돼 있으면 `gh auth login`
+  (`github` 는 Authenticate 버튼으로는 로그인되지 않습니다. GitHub 가 그 방식을 지원하지 않아서
+  `.claude/scripts/github-mcp-headers.mjs` 가 gh 의 토큰을 대신 꺼내 씁니다)
+- `vercel` 로그인이 안 됐으면 → `vercel` 을 골라 **Authenticate** → 브라우저에서 승인
 
 ### ⚠️ MCP 보안
 
