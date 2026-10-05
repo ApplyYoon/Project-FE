@@ -14,22 +14,34 @@ const subjectColorStyles: Record<SubjectColor, string> = {
   purple: 'bg-purple-50 text-purple-600',
 }
 
-/** 오늘 날짜를 계획 데이터와 같은 'YYYY-MM-DD' 모양으로 만듭니다. */
-function getTodayKey(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
+/** Date 를 계획 데이터와 같은 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString 은 한국 시간이 아니라서 쓰지 않습니다)*/
+function toDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/** 'YYYY-MM-DD' 날짜에서 days 일 만큼 이동한 날짜를 돌려줍니다. (-1 = 어제, 1 = 내일) */
+function moveDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (월은 0부터 시작)
+  return toDateKey(new Date(year, month - 1, day + days))
 }
 
 export function PlannerPage() {
-  // 가짜 데이터 중에서 날짜가 오늘인 계획만 골라 처음 상태로 씁니다.
-  const [plans, setPlans] = useState<StudyPlan[]>(
-    mockPlans.filter((plan) => plan.date === getTodayKey()),
-  )
+  const todayKey = toDateKey(new Date())
+
+  // 모든 날짜의 계획을 들고 있고, 화면에는 고른 날짜의 계획만 보여 줍니다.
+  const [allPlans, setAllPlans] = useState<StudyPlan[]>(mockPlans)
+  const [selectedDate, setSelectedDate] = useState(todayKey)
+
+  const plans = allPlans.filter((plan) => plan.date === selectedDate)
+  const isToday = selectedDate === todayKey
 
   // 'ko-KR' 로 바꾸면 "10월 5일 일요일" 처럼 한국어 날짜가 됩니다.
-  const todayLabel = new Date().toLocaleDateString('ko-KR', {
+  // 'YYYY-MM-DD' 문자열은 영국 시간으로 읽히므로, 년·월·일을 쪼개서 우리 시간대로 만듭니다.
+  const [year, month, day] = selectedDate.split('-').map(Number)
+  const dateLabel = new Date(year, month - 1, day).toLocaleDateString('ko-KR', {
     month: 'long',
     day: 'numeric',
     weekday: 'long',
@@ -37,7 +49,7 @@ export function PlannerPage() {
 
   // 체크박스를 누르면 그 계획의 done 만 뒤집습니다. (나머지는 그대로)
   function handleToggleDone(planId: string) {
-    setPlans((prev) =>
+    setAllPlans((prev) =>
       prev.map((plan) => (plan.id === planId ? { ...plan, done: !plan.done } : plan)),
     )
   }
@@ -47,19 +59,51 @@ export function PlannerPage() {
     const isConfirmed = window.confirm(`"${target.content}" 계획을 정말 지울까요?`)
     if (!isConfirmed) return
     // filter: 지울 계획만 빼고 나머지로 새 배열을 만듭니다.
-    setPlans((prev) => prev.filter((plan) => plan.id !== target.id))
+    setAllPlans((prev) => prev.filter((plan) => plan.id !== target.id))
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <p className="text-sm text-slate-500">{todayLabel}</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">공부 계획</h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">공부 계획</h1>
+
+        {/* 날짜 이동: ◀ 어제 / 날짜 / 내일 ▶ / 오늘로 돌아가기 */}
+        <div className="mt-3 flex items-center gap-1">
+          <Button
+            variant="secondary"
+            onClick={() => setSelectedDate(moveDateKey(selectedDate, -1))}
+            aria-label="어제로 이동"
+            className="w-10 shrink-0 px-0"
+          >
+            ◀
+          </Button>
+          <p className="min-w-0 flex-1 text-center text-sm font-semibold whitespace-nowrap text-slate-900 sm:text-base">
+            {dateLabel}
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => setSelectedDate(moveDateKey(selectedDate, 1))}
+            aria-label="내일로 이동"
+            className="w-10 shrink-0 px-0"
+          >
+            ▶
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setSelectedDate(todayKey)}
+            disabled={isToday}
+            className="text-brand shrink-0 px-3"
+          >
+            오늘
+          </Button>
+        </div>
       </div>
 
-      <Card title="오늘 계획">
+      <Card title={isToday ? '오늘 계획' : `${month}월 ${day}일 계획`}>
         {plans.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-500">오늘 계획을 세워 보세요</p>
+          <p className="py-6 text-center text-sm text-slate-500">
+            {isToday ? '오늘' : '이 날'} 계획을 세워 보세요
+          </p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {plans.map((plan) => {
