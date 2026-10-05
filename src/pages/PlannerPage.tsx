@@ -14,8 +14,26 @@ const subjectColorStyles: Record<SubjectColor, string> = {
   purple: 'bg-purple-50 text-purple-600',
 }
 
+/** 오늘 날짜를 계획 데이터와 같은 'YYYY-MM-DD' 모양으로 만듭니다. */
+function getTodayKey(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
 export function PlannerPage() {
-  const [plans, setPlans] = useState<StudyPlan[]>(mockPlans)
+  // 가짜 데이터 중에서 날짜가 오늘인 계획만 골라 처음 상태로 씁니다.
+  const [plans, setPlans] = useState<StudyPlan[]>(
+    mockPlans.filter((plan) => plan.date === getTodayKey()),
+  )
+
+  // 'ko-KR' 로 바꾸면 "10월 5일 일요일" 처럼 한국어 날짜가 됩니다.
+  const todayLabel = new Date().toLocaleDateString('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  })
 
   // 체크박스를 누르면 그 계획의 done 만 뒤집습니다. (나머지는 그대로)
   function handleToggleDone(planId: string) {
@@ -34,7 +52,10 @@ export function PlannerPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">공부 계획</h1>
+      <div>
+        <p className="text-sm text-slate-500">{todayLabel}</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">공부 계획</h1>
+      </div>
 
       <Card title="오늘 계획">
         {plans.length === 0 ? (
