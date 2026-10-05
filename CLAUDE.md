@@ -97,6 +97,10 @@ src/
 <button className="sm:hidden">                       {/* 모바일 전용 */}
 ```
 
+**화면을 만들기 전에 시안부터 봅니다.** [docs/design/README.md](./docs/design/README.md) 에서 그 화면을 찾아
+데스크톱·모바일 그림(`docs/design/screens/*.png`)을 **둘 다 Read 로 열어** 보고 만드세요.
+시안은 모양 참고용이고 이 문서의 규칙이 우선입니다. 시안이 없는 화면은 README 의 "시안이 없는 화면" 표를 따릅니다.
+
 화면을 만들거나 고친 뒤에는 **항상** 아래를 확인하고 보고하세요.
 
 - [ ] 375px 에서 가로 스크롤이 안 생긴다 (고정 너비 대신 `w-full max-w-*`)
@@ -278,15 +282,16 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 
 ## 8. 참고 문서
 
-| 문서                                                   | 내용                      |
-| ------------------------------------------------------ | ------------------------- |
-| [README.md](./README.md)                               | 설치·실행 방법, 명령어    |
-| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약            |
-| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표      |
-| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트 |
-| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문           |
-| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법    |
-| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러            |
+| 문서                                                   | 내용                             |
+| ------------------------------------------------------ | -------------------------------- |
+| [README.md](./README.md)                               | 설치·실행 방법, 명령어           |
+| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약                   |
+| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표             |
+| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트        |
+| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문                  |
+| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법           |
+| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                   |
+| [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림) |
 
 스킬(`.claude/skills/`): `github-flow` · `new-page` · `new-component` · `responsive-ui`
 명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/check` `/sync` `/run` `/fix`
