@@ -3,8 +3,9 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
 import { mockPlans, mockSubjects } from '@/lib/mock'
+import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, Subject, SubjectColor } from '@/types'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 /* 과목 색 → 태그 색. (#11 SubjectBadge 가 생기면 그걸로 바꾸면 됩니다) */
 const subjectColorStyles: Record<SubjectColor, string> = {
@@ -14,6 +15,16 @@ const subjectColorStyles: Record<SubjectColor, string> = {
   blue: 'bg-blue-50 text-blue-600',
   purple: 'bg-purple-50 text-purple-600',
 }
+
+/* 색 고르기 버튼에 칠할 색. 시안과 같은 순서로 보여줍니다. */
+const colorSwatchStyles: Record<SubjectColor, string> = {
+  blue: 'bg-blue-500',
+  green: 'bg-green-500',
+  red: 'bg-red-500',
+  purple: 'bg-purple-500',
+  orange: 'bg-orange-500',
+}
+const subjectColorOrder: SubjectColor[] = ['blue', 'green', 'red', 'purple', 'orange']
 
 /** Date 를 계획 데이터와 같은 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString 은 한국 시간이 아니라서 쓰지 않습니다)*/
 function toDateKey(date: Date): string {
@@ -124,12 +135,121 @@ function PlanAddForm({ subjects, onAdd }: PlanAddFormProps) {
   )
 }
 
+interface SubjectManagerProps {
+  /** 지금까지 등록된 과목 목록 */
+  subjects: Subject[]
+  /** 입력 검사를 통과했을 때, 새 과목 이름과 색을 부모에게 넘깁니다. */
+  onAdd: (name: string, color: SubjectColor) => void
+  /** 과목의 삭제 버튼(×)을 눌렀을 때 호출됩니다. */
+  onDelete: (subject: Subject) => void
+}
+
+/** 과목을 추가·삭제하는 카드입니다. */
+function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
+  const [name, setName] = useState('')
+  const [color, setColor] = useState<SubjectColor>(subjectColorOrder[0])
+  const [nameError, setNameError] = useState('')
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const trimmedName = name.trim()
+
+    if (trimmedName === '') {
+      setNameError('과목 이름을 입력해 주세요.')
+      return
+    }
+
+    onAdd(trimmedName, color)
+    setName('')
+    setNameError('')
+  }
+
+  return (
+    <Card title="내 과목">
+      <div className="flex flex-col gap-4">
+        {subjects.length === 0 ? (
+          <p className="text-sm text-slate-500">아직 등록한 과목이 없어요.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {subjects.map((subject) => (
+              <span
+                key={subject.id}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold',
+                  subjectColorStyles[subject.color],
+                )}
+              >
+                {subject.name}
+                <button
+                  type="button"
+                  onClick={() => onDelete(subject)}
+                  aria-label={`${subject.name} 삭제`}
+                  className="cursor-pointer text-sm leading-none opacity-70 hover:opacity-100"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+          <Input
+            name="subjectName"
+            label="새 과목 이름"
+            placeholder="예: 한국사"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value)
+              setNameError('')
+            }}
+            error={nameError}
+          />
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-slate-700">색</span>
+            <div role="group" aria-label="과목 색" className="flex flex-wrap gap-2">
+              {subjectColorOrder.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setColor(item)}
+                  aria-label={`${item} 색`}
+                  aria-pressed={color === item}
+                  className={cn(
+                    'h-10 w-10 cursor-pointer rounded-full',
+                    colorSwatchStyles[item],
+                    color === item && 'ring-2 ring-slate-900 ring-offset-2',
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+
+          <Button type="submit" className="w-full">
+            과목 추가
+          </Button>
+        </form>
+
+        <p className="text-sm text-slate-500">과목 색은 계획·타이머·기록에서 같이 쓰여요.</p>
+      </div>
+    </Card>
+  )
+}
+
 export function PlannerPage() {
   const todayKey = toDateKey(new Date())
 
   // 모든 날짜의 계획을 들고 있고, 화면에는 고른 날짜의 계획만 보여 줍니다.
   const [allPlans, setAllPlans] = useState<StudyPlan[]>(mockPlans)
   const [selectedDate, setSelectedDate] = useState(todayKey)
+
+  // 새로고침해도 과목 목록이 유지되도록 localStorage 에서 불러옵니다. (처음 한 번은 예시 과목으로 시작)
+  const [subjects, setSubjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+
+  useEffect(() => {
+    saveData('subjects', subjects)
+  }, [subjects])
 
   const plans = allPlans.filter((plan) => plan.date === selectedDate)
   const isToday = selectedDate === todayKey
@@ -171,6 +291,24 @@ export function PlannerPage() {
     }
     // 기존 계획들 뒤에 새 계획을 붙인 새 배열을 만듭니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
     setAllPlans((prev) => [...prev, newPlan])
+  }
+
+  // 새 과목을 목록 맨 뒤에 추가합니다.
+  function handleAddSubject(name: string, color: SubjectColor) {
+    const newSubject: Subject = { id: `subject-${Date.now()}`, name, color }
+    setSubjects((prev) => [...prev, newSubject])
+  }
+
+  // 그 과목으로 등록된 계획이 있으면(날짜 상관없이) 몇 개인지 알려주고 한 번 더 확인합니다.
+  function handleDeleteSubject(target: Subject) {
+    const relatedCount = allPlans.filter((plan) => plan.subjectId === target.id).length
+    const message =
+      relatedCount > 0
+        ? `"${target.name}" 과목으로 등록된 계획이 ${relatedCount}개 있어요. 그래도 삭제할까요?`
+        : `"${target.name}" 과목을 삭제할까요?`
+
+    if (!window.confirm(message)) return
+    setSubjects((prev) => prev.filter((subject) => subject.id !== target.id))
   }
 
   return (
@@ -220,7 +358,7 @@ export function PlannerPage() {
           ) : (
             <ul className="divide-y divide-slate-100">
               {plans.map((plan) => {
-                const subject = mockSubjects.find((item) => item.id === plan.subjectId)
+                const subject = subjects.find((item) => item.id === plan.subjectId)
 
                 return (
                   <li key={plan.id} className="flex items-center gap-2 py-1">
@@ -276,8 +414,10 @@ export function PlannerPage() {
           )}
         </Card>
 
-        <PlanAddForm subjects={mockSubjects} onAdd={handleAdd} />
+        <PlanAddForm subjects={subjects} onAdd={handleAdd} />
       </div>
+
+      <SubjectManager subjects={subjects} onAdd={handleAddSubject} onDelete={handleDeleteSubject} />
     </div>
   )
 }
