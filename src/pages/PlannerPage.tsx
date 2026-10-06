@@ -1,9 +1,10 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
 import { mockPlans, mockSubjects } from '@/lib/mock'
-import type { StudyPlan, SubjectColor } from '@/types'
-import { useState } from 'react'
+import type { StudyPlan, Subject, SubjectColor } from '@/types'
+import { useState, type FormEvent } from 'react'
 
 /* 과목 색 → 태그 색. (#11 SubjectBadge 가 생기면 그걸로 바꾸면 됩니다) */
 const subjectColorStyles: Record<SubjectColor, string> = {
@@ -26,6 +27,101 @@ function moveDateKey(dateKey: string, days: number): string {
   const [year, month, day] = dateKey.split('-').map(Number)
   // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (월은 0부터 시작)
   return toDateKey(new Date(year, month - 1, day + days))
+}
+
+interface PlanAddFormProps {
+  /** 고를 수 있는 과목 목록 */
+  subjects: Subject[]
+  /** 입력 검사를 통과했을 때, 새 계획에 들어갈 값을 부모에게 넘깁니다. */
+  onAdd: (subjectId: string, content: string, targetMinutes: number) => void
+}
+
+/** 새 계획을 입력하는 폼입니다. (과목 · 내용 · 목표 시간) */
+function PlanAddForm({ subjects, onAdd }: PlanAddFormProps) {
+  // 첫 과목을 미리 골라 둡니다. 과목이 하나도 없으면 빈 값입니다.
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
+  const [content, setContent] = useState('')
+  // input 에서 꺼낸 값은 항상 글자(string)라서, 글자로 들고 있다가 검사할 때 숫자로 바꿉니다.
+  const [minutes, setMinutes] = useState('')
+  const [contentError, setContentError] = useState('')
+  const [minutesError, setMinutesError] = useState('')
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    // 폼의 기본 동작(페이지 새로고침)을 막습니다.
+    event.preventDefault()
+
+    // 띄어쓰기만 입력한 것도 빈 내용으로 봅니다.
+    const trimmedContent = content.trim()
+    const targetMinutes = Number(minutes)
+
+    const nextContentError = trimmedContent === '' ? '할 일을 입력해 주세요.' : ''
+    // 칸이 비어 있으면 Number('') 가 0 이 되고, 숫자가 아니면 NaN 이 됩니다. 둘 다 "> 0" 이 거짓입니다.
+    const nextMinutesError = targetMinutes > 0 ? '' : '목표 시간(분)을 0보다 크게 입력해 주세요.'
+
+    setContentError(nextContentError)
+    setMinutesError(nextMinutesError)
+
+    // 하나라도 틀렸으면 추가하지 않고 안내 문구만 보여 줍니다.
+    if (nextContentError || nextMinutesError) return
+
+    onAdd(subjectId, trimmedContent, targetMinutes)
+
+    // 추가했으면 입력칸을 비웁니다. (고른 과목은 그대로 둡니다)
+    setContent('')
+    setMinutes('')
+  }
+
+  return (
+    <Card title="계획 추가">
+      {/* noValidate: 브라우저 기본 경고창 대신 아래 Input 의 안내 문구를 보여 주기 위해 끕니다. */}
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <div role="group" aria-label="과목" className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-slate-700">과목</span>
+          <div className="flex flex-wrap gap-2">
+            {subjects.map((subject) => (
+              <Button
+                key={subject.id}
+                variant={subject.id === subjectId ? 'primary' : 'secondary'}
+                aria-pressed={subject.id === subjectId}
+                onClick={() => setSubjectId(subject.id)}
+              >
+                {subject.name}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <Input
+          name="planContent"
+          label="할 일"
+          placeholder="예: 수학 문제집 4단원"
+          value={content}
+          onChange={(event) => {
+            setContent(event.target.value)
+            setContentError('')
+          }}
+          error={contentError}
+        />
+
+        <Input
+          name="planMinutes"
+          label="목표 시간(분)"
+          type="number"
+          placeholder="예: 60"
+          value={minutes}
+          onChange={(event) => {
+            setMinutes(event.target.value)
+            setMinutesError('')
+          }}
+          error={minutesError}
+        />
+
+        <Button type="submit" className="w-full">
+          추가하기
+        </Button>
+      </form>
+    </Card>
+  )
 }
 
 export function PlannerPage() {
@@ -60,6 +156,21 @@ export function PlannerPage() {
     if (!isConfirmed) return
     // filter: 지울 계획만 빼고 나머지로 새 배열을 만듭니다.
     setAllPlans((prev) => prev.filter((plan) => plan.id !== target.id))
+  }
+
+  // 폼에서 받은 값으로 새 계획을 만들어 목록 맨 뒤에 붙입니다. 지금 보고 있는 날짜의 계획이 됩니다.
+  function handleAdd(subjectId: string, content: string, targetMinutes: number) {
+    const newPlan: StudyPlan = {
+      // 추가한 시각(밀리초)을 붙여서 다른 계획과 겹치지 않는 id 를 만듭니다.
+      id: `plan-${Date.now()}`,
+      date: selectedDate,
+      subjectId,
+      content,
+      targetMinutes,
+      done: false,
+    }
+    // 기존 계획들 뒤에 새 계획을 붙인 새 배열을 만듭니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
+    setAllPlans((prev) => [...prev, newPlan])
   }
 
   return (
@@ -99,66 +210,74 @@ export function PlannerPage() {
         </div>
       </div>
 
-      <Card title={isToday ? '오늘 계획' : `${month}월 ${day}일 계획`}>
-        {plans.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-500">
-            {isToday ? '오늘' : '이 날'} 계획을 세워 보세요
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {plans.map((plan) => {
-              const subject = mockSubjects.find((item) => item.id === plan.subjectId)
+      {/* 모바일은 세로로 쌓고, PC(lg)에서는 시안처럼 왼쪽 목록 · 오른쪽 추가 폼으로 나눕니다. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <Card title={isToday ? '오늘 계획' : `${month}월 ${day}일 계획`}>
+          {plans.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              {isToday ? '오늘' : '이 날'} 계획을 세워 보세요
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {plans.map((plan) => {
+                const subject = mockSubjects.find((item) => item.id === plan.subjectId)
 
-              return (
-                <li key={plan.id} className="flex items-center gap-2 py-1">
-                  {/* label 로 감싸서 체크박스 주변 40px 전체를 눌러도 체크됩니다. */}
-                  <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={plan.done}
-                      onChange={() => handleToggleDone(plan.id)}
-                      aria-label={`${plan.content} 완료`}
-                      className="accent-brand h-5 w-5 cursor-pointer"
-                    />
-                  </label>
+                return (
+                  <li key={plan.id} className="flex items-center gap-2 py-1">
+                    {/* label 로 감싸서 체크박스 주변 40px 전체를 눌러도 체크됩니다. */}
+                    <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={plan.done}
+                        onChange={() => handleToggleDone(plan.id)}
+                        aria-label={`${plan.content} 완료`}
+                        className="accent-brand h-5 w-5 cursor-pointer"
+                      />
+                    </label>
 
-                  {subject && (
+                    {subject && (
+                      <span
+                        className={cn(
+                          'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
+                          subjectColorStyles[subject.color],
+                        )}
+                      >
+                        {subject.name}
+                      </span>
+                    )}
+
+                    {/* min-w-0 + break-words: 긴 내용이 가로 스크롤을 만들지 않게 합니다. */}
                     <span
                       className={cn(
-                        'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
-                        subjectColorStyles[subject.color],
+                        'min-w-0 flex-1 text-sm break-words text-slate-900',
+                        plan.done && 'text-slate-400 line-through',
                       )}
                     >
-                      {subject.name}
+                      {plan.content}
                     </span>
-                  )}
 
-                  {/* min-w-0 + break-words: 긴 내용이 가로 스크롤을 만들지 않게 합니다. */}
-                  <span
-                    className={cn(
-                      'min-w-0 flex-1 text-sm break-words text-slate-900',
-                      plan.done && 'text-slate-400 line-through',
-                    )}
-                  >
-                    {plan.content}
-                  </span>
+                    {/* 아주 큰 숫자가 와도 줄을 넘지 않게 break-all 로 줄바꿈을 허용합니다. */}
+                    <span className="min-w-0 text-sm break-all text-slate-500">
+                      {plan.targetMinutes}분
+                    </span>
 
-                  <span className="shrink-0 text-sm text-slate-500">{plan.targetMinutes}분</span>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleDelete(plan)}
+                      aria-label={`${plan.content} 삭제`}
+                      className="shrink-0 px-3 text-slate-500 hover:text-red-600"
+                    >
+                      삭제
+                    </Button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Card>
 
-                  <Button
-                    variant="ghost"
-                    onClick={() => handleDelete(plan)}
-                    aria-label={`${plan.content} 삭제`}
-                    className="shrink-0 px-3 text-slate-500 hover:text-red-600"
-                  >
-                    삭제
-                  </Button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </Card>
+        <PlanAddForm subjects={mockSubjects} onAdd={handleAdd} />
+      </div>
     </div>
   )
 }
