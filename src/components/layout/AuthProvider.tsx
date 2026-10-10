@@ -1,44 +1,14 @@
 import { AuthContext, type AuthContextValue } from '@/hooks/useAuth'
-import { loadData, saveData } from '@/lib/storage'
+import {
+  AUTH_STORAGE_KEY,
+  UNAUTHORIZED_EVENT,
+  loadAuth,
+  loggedOutState,
+  type AuthState,
+} from '@/lib/authStorage'
+import { saveData } from '@/lib/storage'
 import type { AuthUser } from '@/types'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-
-// 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-auth' 가 됩니다)
-const STORAGE_KEY = 'auth'
-
-/** 저장해 두는 로그인 정보입니다. 둘 다 null 이면 로그인 전입니다. */
-interface AuthState {
-  user: AuthUser | null
-  token: string | null
-}
-
-const loggedOutState: AuthState = { user: null, token: null }
-
-/** 저장소에서 꺼낸 값이 우리가 저장한 모양이 맞는지 확인합니다. (깨진 값을 로그인으로 착각하면 안 되기 때문입니다) */
-function isAuthState(value: unknown): value is AuthState {
-  if (typeof value !== 'object' || value === null) return false
-  const state = value as Record<string, unknown>
-
-  // 로그아웃 상태: 둘 다 null
-  if (state.user === null && state.token === null) return true
-
-  // 로그인 상태: 사용자(id·이름)와 토큰이 모두 있어야 합니다.
-  const user = state.user as Record<string, unknown> | null
-  return (
-    typeof user === 'object' &&
-    user !== null &&
-    typeof user.id === 'string' &&
-    typeof user.name === 'string' &&
-    typeof state.token === 'string' &&
-    state.token !== ''
-  )
-}
-
-/** 저장된 로그인 정보를 불러옵니다. 없거나 깨져 있으면 "로그인 전" 입니다. */
-function loadAuth(): AuthState {
-  const saved = loadData<unknown>(STORAGE_KEY, null)
-  return isAuthState(saved) ? saved : loggedOutState
-}
 
 interface AuthProviderProps {
   children: ReactNode
@@ -56,7 +26,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // 로그인·로그아웃으로 바뀔 때마다 저장합니다. 로그아웃하면 토큰도 null 로 덮어써서 남지 않습니다.
   useEffect(() => {
-    saveData(STORAGE_KEY, auth)
+    saveData(AUTH_STORAGE_KEY, auth)
   }, [auth])
 
   // useCallback: 렌더링될 때마다 함수가 새로 만들어지지 않게 해서, 받아 쓰는 쪽이 괜히 다시 그려지지 않게 합니다.
@@ -67,6 +37,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(() => {
     setAuth(loggedOutState)
   }, [])
+
+  // 서버가 "누구인지 모르겠다(401)" 고 하면 api.ts 가 알려 줍니다. 그러면 로그아웃해서,
+  // 문지기(RequireAuth)가 로그인 화면으로 보내게 합니다. (#198)
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, logout)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, logout)
+  }, [logout])
 
   // useMemo: 로그인 정보가 바뀔 때만 값을 새로 만듭니다.
   const value = useMemo<AuthContextValue>(
