@@ -433,7 +433,14 @@ export interface ManualItem {
  */
 export type AiMessageKind = 'regular' | 'event'
 
-/** 메시지함에 쌓이는 AI 메시지 하나 */
+/**
+ * 알림을 누가 만들었는지
+ * - ai: AI 가 쓴 메시지 (서버에서 옵니다)
+ * - app: 앱이 정해 둔 문장에 숫자를 끼워 만든 알림 (AI 를 부르지 않습니다)
+ */
+export type AiMessageSource = 'ai' | 'app'
+
+/** 알림 화면에 쌓이는 알림 하나 (AI 가 보낸 메시지와 앱이 만든 알림을 한 목록에 둡니다) */
 export interface AiMessage {
   /** 메시지를 구분하는 고유 값 */
   id: string
@@ -445,6 +452,8 @@ export interface AiMessage {
   kind: AiMessageKind
   /** 이벤트 알림일 때 말풍선 아래에 붙는 짧은 이름 (예: '계획 시간 지남') */
   eventLabel?: string
+  /** 누가 만든 알림인지. 없으면 AI 가 쓴 메시지('ai')로 봅니다 */
+  source?: AiMessageSource
   /** 메시지 내용 */
   text: string
   /** 읽었으면 true, 아직 안 읽었으면 false */
