@@ -1,4 +1,4 @@
-import type { AiMessage, Evaluation, StudyPlan, StudySession, Subject } from '@/types'
+import type { AiMessage, Evaluation, Insight, StudyPlan, StudySession, Subject } from '@/types'
 
 /**
  * 백엔드가 생기기 전까지 화면에 보여줄 가짜 데이터입니다.
@@ -144,6 +144,33 @@ export const mockEvaluations: Evaluation[] = [
     score: 55,
     mood: 'normal',
     summary: '절반은 해냈어요. 내일은 수학 시간을 조금 늘려 봐요.',
+  },
+]
+
+/**
+ * 인사이트 2개 (#73)
+ * 계산은 서버(AI)가 하고 FE 는 결과만 보여주므로, 서버가 생기기 전까지 예시로 둡니다.
+ */
+export const mockInsights: Insight[] = [
+  {
+    id: 'insight-1',
+    sentence: '스스로 밤형이라고 했지만, 오전 세션은 일시정지가 밤의 절반이야.',
+    // 비교하는 두 조건(오전/밤) 중 하나가 아직 5일 미만이라 "가설" 배지가 붙습니다.
+    evidenceDates: [dateDaysAgo(1), dateDaysAgo(2), dateDaysAgo(3), dateDaysAgo(4)],
+    isHypothesis: true,
+  },
+  {
+    id: 'insight-2',
+    sentence: '공부 시간을 매일 평균 1시간 20분 높게 예상해. 계획을 예상의 75%로 잡아보자.',
+    evidenceDates: [
+      dateDaysAgo(1),
+      dateDaysAgo(2),
+      dateDaysAgo(3),
+      dateDaysAgo(4),
+      dateDaysAgo(5),
+      dateDaysAgo(6),
+    ],
+    isHypothesis: false,
   },
 ]
 

@@ -101,6 +101,26 @@ export interface Evaluation {
   summary: string
 }
 
+/** 인사이트에 대한 내 반응 (#84 버튼 3개) */
+export type InsightResponse =
+  | 'surprised' // 몰랐는데 맞아
+  | 'alreadyKnew' // 이미 알던 거야
+  | 'wrong' // 틀렸어
+
+/** "나를 잘 아는" 인사이트 카드 (#73) */
+export interface Insight {
+  /** 인사이트를 구분하는 고유 값 */
+  id: string
+  /** 카드에 보여줄 한 문장 (예: "스스로 밤형이라고 했지만...") */
+  sentence: string
+  /** 이 결론의 근거가 된 날짜 목록 */
+  evidenceDates: string[]
+  /** 비교하는 두 조건이 각각 5일 이상 쌓이기 전이면 true ("가설" 배지를 붙입니다) */
+  isHypothesis: boolean
+  /** 내가 누른 반응 버튼 (#84, 아직 안 눌렀으면 없음) */
+  response?: InsightResponse
+}
+
 /**
  * AI 가 보낸 메시지의 종류
  * - regular: 정해진 빈도(예: 하루 3번)에 맞춰 보낸 메시지
