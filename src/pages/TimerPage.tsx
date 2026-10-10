@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
+import { Input } from '@/components/ui/Input'
+import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useAwayDetection } from '@/hooks/useAwayDetection'
 import { useFocusMode } from '@/hooks/useFocusMode'
@@ -12,6 +14,15 @@ import { playAlarm } from '@/lib/alarm'
 import { formatAwayDuration, formatClock } from '@/lib/away'
 import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
+import {
+  DEFAULT_TARGET_MINUTES,
+  MAX_TARGET_MINUTES,
+  MIN_TARGET_MINUTES,
+  TARGET_PRESETS,
+  formatCountdown,
+  getCountdownStatus,
+  normalizeTargetMinutes,
+} from '@/lib/countdown'
 import { toDateKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { mockSubjects } from '@/lib/mock'
@@ -28,13 +39,23 @@ import type { AwayRecord, PomodoroPhase, StudySession, Subject, SubjectColor } f
 // 1분 미만은 실수로 누른 것으로 보고 기록을 저장하지 않습니다.
 const MIN_SAVE_SECONDS = 60
 
-// normal: 일반(흐른 시간이 늘어남), pomodoro: 뽀모도로(남은 시간이 줄어듦)
-type TimerMode = 'normal' | 'pomodoro'
+// target: 목표 정하기(목표 시간에서 0 으로 줄어듦)
+// pomodoro: 뽀모도로(25분 공부 / 5분 휴식)
+// free: 목표 없이(흐른 시간이 늘어남)
+type TimerMode = 'target' | 'pomodoro' | 'free'
 
 const modeOptions: { mode: TimerMode; label: string }[] = [
-  { mode: 'normal', label: '일반' },
+  { mode: 'target', label: '목표 정하기' },
   { mode: 'pomodoro', label: '뽀모도로' },
+  { mode: 'free', label: '목표 없이' },
 ]
+
+/** 저장해 둔 모드를 읽습니다. 예전 값('normal')이나 모르는 값은 기본인 '목표 정하기' 로 봅니다. */
+function loadTimerMode(): TimerMode {
+  const saved = loadData<unknown>('timer-mode', 'target')
+  if (saved === 'pomodoro' || saved === 'free') return saved
+  return 'target'
+}
 
 // 초 단위 숫자를 '01:23:45' 형태로 바꿔줍니다.
 function formatTime(totalSeconds: number) {
@@ -80,21 +101,60 @@ export function TimerPage() {
 
   const selectedSubject = subjects.find((subject) => subject.id === selectedSubjectId)
 
-  // 일반 모드인지 뽀모도로 모드인지. 새로고침해도 유지되도록 저장합니다.
-  const [mode, setMode] = useState<TimerMode>(() =>
-    loadData<unknown>('timer-mode', 'normal') === 'pomodoro' ? 'pomodoro' : 'normal',
-  )
+  // 타이머 방식(목표 정하기·뽀모도로·목표 없이). 새로고침해도 유지되도록 저장합니다.
+  const [mode, setMode] = useState<TimerMode>(loadTimerMode)
 
   useEffect(() => {
     saveData('timer-mode', mode)
   }, [mode])
 
+  // 시작할 때 약속한 목표 시간(분). 이것도 바로 저장합니다.
+  // 휴대폰은 뒤에 있던 탭을 버려서 돌아올 때 새로고침될 수 있는데, 그래도 목표와 남은 시간이 이어져야 하기 때문입니다.
+  const [targetMinutes, setTargetMinutes] = useState(() =>
+    normalizeTargetMinutes(loadData<unknown>('timer-target', DEFAULT_TARGET_MINUTES)),
+  )
+
+  useEffect(() => {
+    saveData('timer-target', targetMinutes)
+  }, [targetMinutes])
+
+  const isTarget = mode === 'target'
+  // 목표 정하기는 스톱워치가 센 "흐른 시간"과 목표 시간으로 남은 시간을 계산합니다. (lib/countdown.ts)
+  const countdown = getCountdownStatus(seconds, targetMinutes)
+  // 목표를 채웠는지. 채운 뒤에도 타이머는 멈추지 않고 "더 한 시간"을 셉니다.
+  const isTargetDone = isTarget && countdown.isOver
+
   const isPomodoro = mode === 'pomodoro'
   // 뽀모도로는 스톱워치가 센 "흐른 시간"으로 지금이 공부인지 휴식인지 계산합니다.
   const pomodoro = getPomodoroStatus(seconds)
   const isBreak = isPomodoro && pomodoro.phase === 'break'
-  // 뽀모도로는 남은 시간이 줄어드는 모양으로, 일반은 흐른 시간이 늘어나는 모양으로 보여줍니다.
-  const displaySeconds = isPomodoro ? pomodoro.remainingSeconds : seconds
+
+  // 화면에 크게 보여줄 시간 글자입니다.
+  //  - 목표 없이: 흐른 시간이 늘어남              00:12:34
+  //  - 뽀모도로: 이번 구간의 남은 시간이 줄어듦    00:24:59
+  //  - 목표 정하기: 남은 시간이 줄어들고, 목표를 채우면 더 한 시간을 + 로 보여줌   37:48 → +03:12
+  let timeText = formatTime(seconds)
+  if (isPomodoro) timeText = formatTime(pomodoro.remainingSeconds)
+  if (isTarget) {
+    timeText = isTargetDone
+      ? `+${formatCountdown(countdown.overSeconds)}`
+      : formatCountdown(countdown.remainingSeconds)
+  }
+
+  // 목표를 방금 채웠을 때 띄우는 안내입니다.
+  const [isTargetNoticeOpen, setIsTargetNoticeOpen] = useState(false)
+  // 직전에 확인했을 때 목표를 채운 상태였는지. 이 값과 비교해서 "방금 채웠는지" 알아냅니다.
+  const wasTargetDone = useRef(isTargetDone)
+
+  useEffect(() => {
+    // 못 채움 → 채움 으로 바뀐 순간에만 한 번 알립니다.
+    // (새로고침했을 때 이미 채운 상태라면 처음 값이 true 라서 다시 울리지 않습니다.)
+    if (isTargetDone && !wasTargetDone.current) {
+      setIsTargetNoticeOpen(true)
+      playAlarm()
+    }
+    wasTargetDone.current = isTargetDone
+  }, [isTargetDone])
 
   // 구간이 막 끝났을 때 화면에 띄울 안내입니다. (방금 끝난 게 공부인지 휴식인지 기억해 둡니다)
   const [endedPhase, setEndedPhase] = useState<PomodoroPhase | null>(null)
@@ -156,9 +216,12 @@ export function TimerPage() {
 
   // 버튼 아래에 보여줄 안내 문구
   let helpMessage = '준비됐으면 시작을 눌러 주세요.'
+  if (isTarget) {
+    helpMessage = `시작하면 ${formatCountdown(targetMinutes * 60)} 에서 0 으로 줄어들어요.`
+  }
   if (!selectedSubject) helpMessage = '공부할 과목을 먼저 골라 주세요.'
   else if (isStudying)
-    helpMessage = '공부 중에는 과목과 모드를 바꿀 수 없어요. 바꾸려면 정지를 눌러 주세요.'
+    helpMessage = '공부 중에는 과목·방식·목표 시간을 바꿀 수 없어요. 바꾸려면 정지를 눌러 주세요.'
 
   function handleSelectSubject(subjectId: string) {
     // 공부 중에는 과목을 바꾸지 못하게 막습니다. (버튼도 disabled 지만 한 번 더 확인)
@@ -170,6 +233,12 @@ export function TimerPage() {
     // 공부 중에 모드를 바꾸면 시간이 뒤섞이므로 막습니다. (버튼도 disabled 지만 한 번 더 확인)
     if (isStudying) return
     setMode(nextMode)
+  }
+
+  function handleChangeTarget(nextMinutes: number) {
+    // 시작할 때 한 약속이라, 공부 중에는 목표 시간을 바꾸지 못합니다.
+    if (isStudying) return
+    setTargetMinutes(normalizeTargetMinutes(nextMinutes))
   }
 
   function handleStart() {
@@ -194,11 +263,14 @@ export function TimerPage() {
         pauseCount,
         // 순공시간에서 빠질 시간 = 일시정지해 있던 시간 + 뽀모도로 휴식 시간
         pausedMs: getPausedMs(endedAt) + breakSeconds * 1000,
+        // 목표 정하기로 쟀을 때만 약속한 시간을 같이 남깁니다. (나중에 "목표를 채웠는지"를 이 값으로 봅니다)
+        ...(isTarget ? { targetMinutes } : {}),
       })
     }
 
-    // 정지하면 구간 끝 안내와 딴짓 안내도 함께 지웁니다.
+    // 정지하면 구간 끝 안내·목표 달성 안내·딴짓 안내도 함께 지웁니다.
     setEndedPhase(null)
+    setIsTargetNoticeOpen(false)
     dismissAwayNotice()
     stop()
   }
@@ -238,7 +310,7 @@ export function TimerPage() {
       <FocusModeScreen
         subject={selectedSubject}
         planContent={todaySubjectPlans[0]?.content ?? null}
-        seconds={seconds}
+        timeText={timeText}
         isRunning={isRunning}
         studiedMinutes={todaySubjectMinutes}
         targetMinutes={todayTargetMinutes}
@@ -255,13 +327,13 @@ export function TimerPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">타이머</h1>
-        <p className="mt-2 text-slate-600">과목을 고르고 시작하면 공부 시간이 쌓여요.</p>
+        <p className="mt-2 text-slate-600">목표를 정하고 시작하면 남은 시간이 줄어들어요.</p>
       </div>
 
       <Card className="flex flex-col items-center gap-6 py-8 sm:py-10">
-        {/* 일반 ↔ 뽀모도로 전환. 공부 중에는 바꿀 수 없습니다. */}
-        <div className="flex w-full max-w-xs flex-col gap-2">
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+        {/* 타이머 방식 고르기. 공부 중에는 바꿀 수 없습니다. */}
+        <div className="flex w-full max-w-sm flex-col gap-2">
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
             {modeOptions.map((option) => {
               const isSelected = option.mode === mode
               return (
@@ -290,6 +362,11 @@ export function TimerPage() {
             </p>
           )}
         </div>
+
+        {/* 목표 시간 고르기. 시작하기 전에만 보입니다. (공부 중에는 약속한 시간이 숫자 아래에 보입니다) */}
+        {isTarget && !isStudying && (
+          <TargetPicker value={targetMinutes} onChange={handleChangeTarget} />
+        )}
 
         {subjects.length === 0 ? (
           <p className="text-sm text-slate-500">
@@ -343,7 +420,29 @@ export function TimerPage() {
               {isBreak ? '휴식 중' : '공부 중'}
             </span>
           )}
+          {isTargetDone && (
+            <span className="bg-brand-light text-brand inline-flex items-center rounded-full px-3 py-1 text-sm font-medium">
+              목표 달성
+            </span>
+          )}
         </div>
+
+        {/* 목표 시간을 채우면 나오는 안내. 소리·진동은 playAlarm 이 따로 냅니다. */}
+        {isTargetNoticeOpen && (
+          <div
+            role="status"
+            className="flex w-full items-center justify-between gap-3 rounded-lg bg-indigo-50 px-4 py-2 text-sm font-medium break-keep text-indigo-800"
+          >
+            <p>목표 {targetMinutes}분을 채웠어요! 더 하는 시간은 + 로 세요.</p>
+            <button
+              type="button"
+              onClick={() => setIsTargetNoticeOpen(false)}
+              className="h-10 shrink-0 cursor-pointer rounded-md px-3 hover:bg-indigo-100"
+            >
+              확인
+            </button>
+          </div>
+        )}
 
         {/* 뽀모도로에서 구간이 끝나면 나오는 안내. 소리·진동은 playAlarm 이 따로 냅니다. */}
         {isPomodoro && endedPhase && (
@@ -392,9 +491,24 @@ export function TimerPage() {
         )}
 
         {/* tabular-nums: 숫자가 바뀌어도 폭이 흔들리지 않게 고정 폭으로 보여줍니다. */}
-        <p className="font-mono text-5xl font-bold tracking-tight tabular-nums sm:text-6xl">
-          {formatTime(displaySeconds)}
+        <p
+          className={cn(
+            'font-mono text-5xl font-bold tracking-tight tabular-nums sm:text-6xl',
+            isTargetDone && 'text-brand',
+          )}
+        >
+          {timeText}
         </p>
+
+        {/* 목표 정하기로 공부 중일 때: 약속한 시간 중 얼마나 했는지 */}
+        {isTarget && isStudying && (
+          <div className="flex w-full max-w-xs flex-col items-center gap-2">
+            <p className="text-sm font-medium text-slate-700">
+              {targetMinutes}분 중 {Math.min(targetMinutes, Math.floor(seconds / 60))}분 했어요
+            </p>
+            <ProgressBar value={countdown.percent} />
+          </div>
+        )}
 
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
           {isRunning ? (
@@ -412,12 +526,18 @@ export function TimerPage() {
               시작
             </Button>
           )}
-          <Button variant="danger" size="lg" className="w-full sm:w-40" onClick={handleStop}>
-            정지
+          {/* 목표를 채운 뒤에는 "마치기" 가 됩니다. 누르면 기록이 저장됩니다. */}
+          <Button
+            variant={isTargetDone ? 'primary' : 'danger'}
+            size="lg"
+            className="w-full sm:w-40"
+            onClick={handleStop}
+          >
+            {isTargetDone ? '마치기' : '정지'}
           </Button>
         </div>
 
-        {/* 집중 모드는 허용한 사람만, 휴식 구간이 없는 일반 모드에서만 켤 수 있습니다. */}
+        {/* 집중 모드는 허용한 사람만, 휴식 구간이 없는 방식(목표 정하기·목표 없이)에서만 켤 수 있습니다. */}
         {canUseFocus && !isPomodoro && (
           <div className="flex w-full flex-col items-center gap-2">
             <Button
@@ -437,7 +557,8 @@ export function TimerPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-1 text-center text-sm text-slate-500">
+        {/* break-keep: 한글이 단어 중간에서 끊기지 않게 합니다. */}
+        <div className="flex flex-col gap-1 text-center text-sm break-keep text-slate-500">
           <p>{helpMessage}</p>
           <p>
             {isBreak
@@ -458,13 +579,112 @@ export function TimerPage() {
   )
 }
 
+/* ---------- 목표 시간 고르기 (#231) ---------- */
+
+interface TargetPickerProps {
+  /** 지금 고른 목표 시간 (분) */
+  value: number
+  /** 다른 시간을 골랐을 때 호출됩니다. */
+  onChange: (minutes: number) => void
+}
+
+/** 직접 입력한 글자가 쓸 수 있는 목표 시간(1 ~ 600 사이의 정수)인지 확인합니다. */
+function isValidTargetText(text: string) {
+  const minutes = Number(text)
+  return (
+    text.trim() !== '' &&
+    Number.isInteger(minutes) &&
+    minutes >= MIN_TARGET_MINUTES &&
+    minutes <= MAX_TARGET_MINUTES
+  )
+}
+
+/** 목표 시간을 버튼(25·50·80분)이나 직접 입력으로 고릅니다. */
+function TargetPicker({ value, onChange }: TargetPickerProps) {
+  // 버튼에 없는 값이면 "직접" 을 고른 상태로 시작합니다.
+  const [isCustom, setIsCustom] = useState(() => !TARGET_PRESETS.includes(value))
+  // input 에서 꺼낸 값은 항상 글자라서, 글자로 들고 있다가 숫자로 바꿔서 넘깁니다.
+  const [customText, setCustomText] = useState(String(value))
+
+  function handleSelectPreset(minutes: number) {
+    setIsCustom(false)
+    onChange(minutes)
+  }
+
+  function handleChangeCustom(text: string) {
+    setCustomText(text)
+    // 비어 있거나 범위를 벗어난 값은 넘기지 않습니다. (입력칸 아래 안내 문구만 보여줍니다)
+    if (isValidTargetText(text)) onChange(Number(text))
+  }
+
+  return (
+    <div className="flex w-full max-w-sm flex-col gap-2">
+      <p className="text-sm font-medium text-slate-700">목표 시간</p>
+      {/* 버튼 4개가 375px 에서도 한 줄에 들어갑니다. */}
+      <div role="group" aria-label="목표 시간" className="grid grid-cols-4 gap-2">
+        {TARGET_PRESETS.map((minutes) => {
+          const isSelected = !isCustom && minutes === value
+          return (
+            <button
+              key={minutes}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => handleSelectPreset(minutes)}
+              className={cn(
+                'h-10 cursor-pointer rounded-lg border px-1 text-sm font-medium transition-colors',
+                isSelected
+                  ? 'border-brand bg-brand-light text-brand'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              )}
+            >
+              {minutes}분
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          aria-pressed={isCustom}
+          onClick={() => setIsCustom(true)}
+          className={cn(
+            'h-10 cursor-pointer rounded-lg border px-1 text-sm font-medium transition-colors',
+            isCustom
+              ? 'border-brand bg-brand-light text-brand'
+              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+          )}
+        >
+          직접
+        </button>
+      </div>
+
+      {isCustom && (
+        <Input
+          name="targetMinutes"
+          label="목표 시간(분)"
+          type="number"
+          inputMode="numeric"
+          min={MIN_TARGET_MINUTES}
+          max={MAX_TARGET_MINUTES}
+          value={customText}
+          onChange={(event) => handleChangeCustom(event.target.value)}
+          error={
+            isValidTargetText(customText)
+              ? undefined
+              : `${MIN_TARGET_MINUTES} ~ ${MAX_TARGET_MINUTES} 사이의 숫자로 적어 주세요.`
+          }
+        />
+      )}
+    </div>
+  )
+}
+
 /* ---------- 집중 모드 화면 (#69) ---------- */
 
 interface FocusModeScreenProps {
   subject: Subject | undefined
   /** 고른 과목의 오늘 계획 내용. 계획이 없으면 null */
   planContent: string | null
-  seconds: number
+  /** 크게 보여줄 시간 글자. 타이머 화면과 같은 글자입니다 (예: '37:48', '+03:12', '00:12:34') */
+  timeText: string
   isRunning: boolean
   /** 오늘 이 과목으로 공부한 시간(분). 지금 재고 있는 시간 포함 */
   studiedMinutes: number
@@ -481,7 +701,7 @@ interface FocusModeScreenProps {
 function FocusModeScreen({
   subject,
   planContent,
-  seconds,
+  timeText,
   isRunning,
   studiedMinutes,
   targetMinutes,
@@ -511,7 +731,7 @@ function FocusModeScreen({
 
         {/* tabular-nums: 숫자가 바뀌어도 폭이 흔들리지 않게 고정 폭으로 보여줍니다. */}
         <p className="font-mono text-6xl font-bold tracking-tight tabular-nums sm:text-8xl">
-          {formatTime(seconds)}
+          {timeText}
         </p>
 
         {targetMinutes > 0 && (
