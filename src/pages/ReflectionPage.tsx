@@ -1,7 +1,9 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
+import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { mockReflectionPrescription } from '@/lib/mock'
 import type { ReflectionEntry } from '@/types'
 import { useState } from 'react'
@@ -41,6 +43,8 @@ export function ReflectionPage() {
     () => existingEntry?.answers ?? prescription.questions.map(() => ''),
   )
   const [savedMessage, setSavedMessage] = useState('')
+  // 위기 표현이 보일 때 띄우는 도움 연결 안내 (#95)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   function handleChangeAnswer(index: number, value: string) {
     setAnswers((prev) => prev.map((answer, i) => (i === index ? value : answer)))
@@ -48,15 +52,19 @@ export function ReflectionPage() {
   }
 
   function handleSave() {
-    // #95 안전 브레이크 함수가 아직 없어서, 위기 표현 확인 없이 바로 저장합니다.
-    // #95 가 만들어지면 여기서 먼저 내용을 확인하고, 감지되면 도움 연결 안내(#96)를 보여줘야 합니다.
     const entry: ReflectionEntry = {
       date: todayKey,
       prescriptionId: prescription.id,
       answers: answers.map((answer) => answer.trim()),
     }
+    // 쓴 글을 잃지 않도록 먼저 저장하고, 그다음에 위기 표현을 확인합니다. (#95)
     saveEntry(entry)
     setSavedMessage('저장했어요.')
+
+    // 성찰 일기에는 기분 칸이 없어서, 체크인의 기분 기록만 함께 봅니다.
+    if (shouldShowCrisisHelp({ texts: entry.answers, diaryMoods: [] })) {
+      setIsHelpOpen(true)
+    }
   }
 
   return (
@@ -120,6 +128,8 @@ export function ReflectionPage() {
           )}
         </>
       )}
+
+      <CrisisHelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   )
 }
