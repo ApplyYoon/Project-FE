@@ -60,6 +60,8 @@ const RECORD_KEYS = [
   'suggestions',
   // 처음의 다짐 (내 목소리 녹음과 글 한마디) (#241)
   'voice-pledge',
+  // 주마다 고른 "이번 주 목표" 와 쉬기로 한 주 (#247)
+  'weekly-goals',
   // 목표 조정 제안을 거절한 날짜, 수락한 날짜
   'goal-adjust-declined',
   'goal-adjust-accepted',

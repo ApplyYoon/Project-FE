@@ -42,6 +42,7 @@ import {
 } from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
+import { getTargetRecommendation, type TargetRecommendation } from '@/lib/targetRecommend'
 import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode, type TimerMode } from '@/lib/timerDisplay'
 import { loadVoicePledge } from '@/lib/voicePledge'
@@ -125,6 +126,14 @@ export function TimerPage() {
   // 계획을 시작하지 못했을 때 보여줄 안내 (이미 다른 공부를 재는 중일 때 등)
   const [planNotice, setPlanNotice] = useState<string | null>(null)
 
+  // 계획에서 시작하려는데 추천 목표가 있을 때, "몇 분으로 할지" 묻는 중인 계획과 추천입니다. 안 묻는 중이면 null (#246)
+  const [planOffer, setPlanOffer] = useState<{
+    plan: StudyPlan
+    recommendation: TargetRecommendation
+  } | null>(null)
+  // 목표 시간 버튼(MinutesPicker)을 새로 그리게 하는 번호입니다. 추천을 받아들여 목표가 바뀌면 1 올립니다.
+  const [pickerVersion, setPickerVersion] = useState(0)
+
   // 타이머 방식(목표 정하기·뽀모도로·목표 없이). 새로고침해도 유지되도록 저장합니다.
   const [mode, setMode] = useState<TimerMode>(loadTimerMode)
 
@@ -145,6 +154,11 @@ export function TimerPage() {
   const isTarget = mode === 'target'
   // 고른 목표 시간이 어느 정도 길이인지 알려 주는 한 줄. 버튼에 없는 값이면 null (lib/countdown.ts)
   const targetHint = getTargetHint(targetMinutes)
+  // 고른 과목의 최근 기록으로 알맞은 목표 시간을 추천합니다. 추천할 것이 없으면 null (lib/targetRecommend.ts · #246)
+  const targetRecommendation =
+    selectedSubjectId === null
+      ? null
+      : getTargetRecommendation(allSessions, selectedSubjectId, targetMinutes)
   // 목표 정하기는 스톱워치가 센 "흐른 시간"과 목표 시간으로 남은 시간을 계산합니다. (lib/countdown.ts)
   const countdown = getCountdownStatus(seconds, targetMinutes)
   // 목표를 채웠는지. 채운 뒤에도 타이머는 멈추지 않고 "더 한 시간"을 셉니다.
@@ -309,6 +323,32 @@ export function TimerPage() {
     setTargetMinutes(normalizeTargetMinutes(nextMinutes))
   }
 
+  /** "추천 ○분으로 하기" 를 눌렀을 때. 목표 시간만 바꾸고, 시작은 사용자가 직접 누릅니다. */
+  function handleAcceptRecommendation(minutes: number) {
+    handleChangeTarget(minutes)
+    // MinutesPicker 는 "버튼에 없는 값(직접 입력)인지" 를 처음 그려질 때만 정합니다.
+    // 번호(key)를 바꿔 새로 그리게 해야 35분 같은 값이 "직접" 칸에 제대로 보입니다.
+    setPickerVersion((prev) => prev + 1)
+  }
+
+  /**
+   * 이 계획을 시작할 때 권할 목표 시간을 구합니다. 권할 것이 없으면 null 입니다.
+   * 노는 계획, 과목이 지워진 계획, 하다 만 계획(남은 시간만큼만 이어 하는 경우)에는 권하지 않습니다.
+   */
+  function getPlanRecommendation(plan: StudyPlan): TargetRecommendation | null {
+    if (plan.kind === 'play') return null
+    if (!subjects.some((subject) => subject.id === plan.subjectId)) return null
+    if (getPlanProgress(plan, allSessions).actualMinutes > 0) return null
+    return getTargetRecommendation(allSessions, plan.subjectId, plan.targetMinutes)
+  }
+
+  /** "몇 분으로 할까?" 에 답했을 때. minutes 가 null 이면 계획의 목표 그대로 시작합니다. */
+  function handleAnswerPlanOffer(minutes: number | null) {
+    if (planOffer === null) return
+    setPlanOffer(null)
+    beginPlan(planOffer.plan, minutes ?? undefined)
+  }
+
   function handleStart() {
     // 다시 시작하면 "딴짓 감지" 안내는 할 일을 마친 것이라 지웁니다.
     dismissAwayNotice()
@@ -324,14 +364,23 @@ export function TimerPage() {
       )
       return
     }
+
+    // 계획의 목표와 다른 추천이 있으면, 바로 시작하지 않고 몇 분으로 할지 먼저 묻습니다. (#246)
+    const recommendation = getPlanRecommendation(plan)
+    if (recommendation !== null) {
+      setPlanOffer({ plan, recommendation })
+      return
+    }
     beginPlan(plan)
   }
 
   /**
    * 그 계획으로 타이머를 시작합니다. 지금 재는 중인지는 여기서 확인하지 않습니다. (부르는 쪽에서 먼저 정리합니다)
    * 노는 계획은 과목이 없어서 과목 없이 시작합니다. (#238)
+   *
+   * overrideMinutes 를 넣으면 이번 타이머의 목표만 그 값으로 합니다. 계획의 목표 시간은 바뀌지 않습니다. (#246)
    */
-  function beginPlan(plan: StudyPlan) {
+  function beginPlan(plan: StudyPlan, overrideMinutes?: number) {
     const isPlayPlan = plan.kind === 'play'
     if (!isPlayPlan && !subjects.some((subject) => subject.id === plan.subjectId)) {
       setPlanNotice('이 계획의 과목이 지워졌어요. 아래에서 과목을 골라 시작해 주세요.')
@@ -343,11 +392,10 @@ export function TimerPage() {
     setMode('target')
     setSelectedSubjectId(isPlayPlan ? null : plan.subjectId)
     // 전에 하다 만 계획이면 남은 시간만큼만, 처음이면 계획한 시간 그대로 약속합니다.
-    setTargetMinutes(
-      normalizeTargetMinutes(
-        progress.remainingMinutes > 0 ? progress.remainingMinutes : plan.targetMinutes,
-      ),
-    )
+    // 추천을 받아들였으면(overrideMinutes) 그 값으로 약속합니다.
+    const planMinutes =
+      progress.remainingMinutes > 0 ? progress.remainingMinutes : plan.targetMinutes
+    setTargetMinutes(normalizeTargetMinutes(overrideMinutes ?? planMinutes))
     setActivePlanId(plan.id)
     handleStart()
   }
@@ -614,6 +662,8 @@ export function TimerPage() {
         {isTarget && !isStudying && (
           <div className="flex w-full max-w-sm flex-col gap-1.5">
             <MinutesPicker
+              // key 가 바뀌면 React 가 이 조각을 새로 만듭니다. (handleAcceptRecommendation 참고)
+              key={pickerVersion}
               label="목표 시간"
               presets={TARGET_PRESETS}
               value={targetMinutes}
@@ -627,6 +677,22 @@ export function TimerPage() {
               <p aria-live="polite" className="text-sm break-keep text-slate-500">
                 {targetHint}
               </p>
+            )}
+
+            {/* 최근 기록으로 권하는 목표 시간 (#246). 권하기만 하고, 누르지 않으면 아무 일도 일어나지 않습니다. */}
+            {targetRecommendation !== null && (
+              <div className="bg-brand-light mt-1 flex flex-col items-start gap-2 rounded-lg p-3">
+                <p className="text-sm font-medium break-keep text-slate-800">
+                  {targetRecommendation.reason}
+                </p>
+                <Button
+                  variant="secondary"
+                  className="bg-white hover:bg-slate-50"
+                  onClick={() => handleAcceptRecommendation(targetRecommendation.minutes)}
+                >
+                  추천 {targetRecommendation.minutes}분으로 하기
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -866,6 +932,42 @@ export function TimerPage() {
       </Card>
 
       <WeeklySubjectRatio subjects={subjects} sessions={sessions} />
+
+      {/* 계획에서 시작할 때 추천 목표가 있으면 몇 분으로 할지 묻습니다. 닫으면(✕) 시작하지 않습니다. (#246) */}
+      <Modal
+        isOpen={planOffer !== null}
+        onClose={() => setPlanOffer(null)}
+        title="이번엔 몇 분으로 할까?"
+      >
+        {planOffer !== null && (
+          <>
+            <p className="text-sm font-medium break-keep text-slate-800">
+              {planOffer.recommendation.reason}
+            </p>
+            <p className="mt-1 text-sm break-keep text-slate-500">
+              어느 쪽을 골라도 계획은 {planOffer.plan.targetMinutes}분 그대로예요. 이번 타이머의
+              목표만 달라져요.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => handleAnswerPlanOffer(planOffer.recommendation.minutes)}
+              >
+                {planOffer.recommendation.minutes}분으로 시작
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                className="w-full"
+                onClick={() => handleAnswerPlanOffer(null)}
+              >
+                {planOffer.plan.targetMinutes}분 그대로 시작
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* 목표 전에 정지를 누르면 뜨는 확인 창. 떠 있는 동안에도 타이머는 계속 흐릅니다. */}
       <StopConfirmModal
