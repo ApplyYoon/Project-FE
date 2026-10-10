@@ -321,6 +321,13 @@ function SchoolField({ school, onChange }: SchoolFieldProps) {
 /** 만 14세 미만이라고 답했을 때 보이는 안내 화면입니다. 입력한 정보는 저장하지 않습니다. */
 function UnderFourteenView() {
   const navigate = useNavigate()
+  const { logout } = useAuth()
+
+  function handleLeave() {
+    // 가입하지 못했으니 로그인도 풀어 둡니다. 그대로 두면 가입을 안 한 채로 앱에 들어갈 수 있기 때문입니다.
+    logout()
+    navigate('/login')
+  }
 
   return (
     <PlainLayout>
@@ -342,12 +349,7 @@ function UnderFourteenView() {
           준비되면 다시 만나요.
         </p>
         <p className="text-sm break-keep text-slate-500">입력한 가입 정보는 저장하지 않았어요.</p>
-        <Button
-          variant="secondary"
-          size="lg"
-          className="mt-4 w-full"
-          onClick={() => navigate('/login')}
-        >
+        <Button variant="secondary" size="lg" className="mt-4 w-full" onClick={handleLeave}>
           로그인 화면으로
         </Button>
       </div>
