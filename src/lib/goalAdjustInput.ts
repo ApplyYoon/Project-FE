@@ -71,7 +71,8 @@ export function countConsecutiveMissDays(
     if (!hasPlan) break
 
     const { achievementRate } = getDaySummary(date, plans, sessions)
-    if (achievementRate >= 100) break
+    // null 은 달성률을 계산할 수 없는 날(목표 시간이 0)이라, 계획이 없던 날처럼 여기서 멈춥니다.
+    if (achievementRate === null || achievementRate >= 100) break
 
     missDays += 1
   }

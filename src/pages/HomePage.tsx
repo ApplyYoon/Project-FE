@@ -193,7 +193,7 @@ export function HomePage() {
         <TodayCard plans={todayPlans} subjects={subjects} sessions={allSessions} />
 
         <Card title="어제 한 줄">
-          {hasYesterdayRecord && hasYesterdayPlan ? (
+          {hasYesterdayRecord && hasYesterdayPlan && yesterdaySummary.achievementRate !== null ? (
             <p className="text-base font-semibold text-slate-900">
               어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획의{' '}
               {yesterdaySummary.achievementRate}%야.

@@ -116,7 +116,8 @@ function toDayMetrics(dates: string[], plans: StudyPlan[], sessions: StudySessio
     const summary = getDaySummary(date, plans, sessions)
     const hasRecord = summary.studyMinutes > 0 || plans.some((plan) => plan.date === date)
     return hasRecord
-      ? [{ studyMinutes: summary.studyMinutes, achievementRate: summary.achievementRate }]
+      ? // 계획 없이 공부만 한 날(달성률 null)은 지금까지처럼 0 으로 넣습니다.
+        [{ studyMinutes: summary.studyMinutes, achievementRate: summary.achievementRate ?? 0 }]
       : []
   })
 }
