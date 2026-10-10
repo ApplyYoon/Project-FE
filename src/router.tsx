@@ -5,6 +5,7 @@ import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
 import { CheckPage } from '@/pages/CheckPage'
+import { DiaryPage } from '@/pages/DiaryPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MessagesPage } from '@/pages/MessagesPage'
@@ -12,9 +13,11 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
+import { ReflectionPage } from '@/pages/ReflectionPage'
 import { ReportPage } from '@/pages/ReportPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SignupPage } from '@/pages/SignupPage'
+import { SuggestionsPage } from '@/pages/SuggestionsPage'
 import { TimerPage } from '@/pages/TimerPage'
 import { createBrowserRouter } from 'react-router-dom'
 
@@ -40,9 +43,12 @@ export const router = createBrowserRouter([
       { path: 'planner', element: <PlannerPage /> },
       { path: 'timer', element: <TimerPage /> },
       { path: 'check', element: <CheckPage /> },
+      { path: 'diary', element: <DiaryPage /> },
+      { path: 'diary/reflection', element: <ReflectionPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'report', element: <ReportPage /> },
+      { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'messages', element: <MessagesPage /> },
       { path: 'login', element: <LoginPage /> },

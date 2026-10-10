@@ -1,4 +1,13 @@
-import type { AiMessage, Evaluation, Insight, StudyPlan, StudySession, Subject } from '@/types'
+import type {
+  AiMessage,
+  Evaluation,
+  Insight,
+  ReflectionPrescription,
+  StudyPlan,
+  StudySession,
+  Subject,
+  Suggestion,
+} from '@/types'
 
 /**
  * 백엔드가 생기기 전까지 화면에 보여줄 가짜 데이터입니다.
@@ -19,15 +28,6 @@ const MINUTE = 60 * 1000 // 1분 = 60,000 밀리초
 function dateDaysAgo(daysAgo: number): string {
   const date = new Date()
   date.setDate(date.getDate() - daysAgo)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
-/** n일 뒤 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function dateDaysFromNow(daysFromNow: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() + daysFromNow)
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${date.getFullYear()}-${month}-${day}`
@@ -164,6 +164,53 @@ export const mockEvaluations: Evaluation[] = [
 ]
 
 /**
+ * 성찰 일기 처방 예시 (#70)
+ * AI 가 패턴을 보고 내려주는 처방이라, 서버가 생기기 전까지 예시로 둡니다.
+ * startDate 를 2일 전으로 둬서, 오늘 열면 "3일째 / 5일"이 됩니다.
+ */
+export const mockReflectionPrescription: ReflectionPrescription = {
+  id: 'reflection-1',
+  startDate: dateDaysAgo(2),
+  days: 5,
+  reason: "최근 '하기 싫음'이 3번 나와서, 5일 동안 짧게 돌아보기로 했어.",
+  questions: ['오늘 계획을 못 지킨 진짜 이유는?', '내일 하나만 바꾼다면?', '오늘 잘한 한 가지는?'],
+}
+
+/**
+ * 폰·SNS 때문에 계획을 못 채운 사람에게 맞춘 개선안 3개 (쉬움·보통·강함)
+ * 원인별 분기(#91)가 생기기 전까지는 이 세트 하나만 보여줍니다.
+ */
+export const mockSuggestions: Suggestion[] = [
+  {
+    id: 'suggestion-1',
+    cause: 'phone',
+    level: 'easy',
+    ifText: '공부를 시작하면',
+    thenText: '알림을 모두 끈다',
+    reason: '버튼 하나라 부담이 제일 적어.',
+    status: 'suggested',
+  },
+  {
+    id: 'suggestion-2',
+    cause: 'phone',
+    level: 'normal',
+    ifText: '학원에서 돌아오면',
+    thenText: '폰을 가방에 넣고 시작한다',
+    reason: '학원 다음이 제일 약한 시간이었어.',
+    status: 'suggested',
+  },
+  {
+    id: 'suggestion-3',
+    cause: 'phone',
+    level: 'hard',
+    ifText: '계획된 공부 시간이 되면',
+    thenText: '집중 모드를 켠다',
+    reason: '나가려면 10초 기다리고 이유를 적어야 해.',
+    status: 'suggested',
+  },
+]
+
+/**
  * 인사이트 2개 (#73)
  * 계산은 서버(AI)가 하고 FE 는 결과만 보여주므로, 서버가 생기기 전까지 예시로 둡니다.
  */
@@ -189,13 +236,6 @@ export const mockInsights: Insight[] = [
     isHypothesis: false,
   },
 ]
-
-/**
- * 목표 시험 날짜 예시 (#71 예상 성장 곡선의 D-day)
- * 온보딩(#58)이 아직 없어서 임시로 둡니다. 온보딩이 생기면
- * OnboardingAnswers.targetExamDate 를 실제로 받아서 써야 합니다.
- */
-export const mockTargetExamDate = dateDaysFromNow(39)
 
 /** 지금으로부터 n분 전 시각을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function minutesAgo(minutes: number): number {

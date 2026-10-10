@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -26,6 +26,9 @@ import {
   requestNotificationPermission,
 } from '@/lib/notifications'
 import { loadData, removeData, saveData } from '@/lib/storage'
+
+// 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
+const DIARY_ENABLED_KEY = 'diary-enabled'
 
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
@@ -105,6 +108,13 @@ export function SettingsPage() {
     const permission = await requestNotificationPermission()
     setNotificationPermission(permission)
   }
+
+  // 일기 기능을 켰는지. 켜면 기록 화면에 일기 메뉴가 보입니다. (기본은 꺼짐 — #63 "원할 때만 켜는 기능")
+  const [isDiaryEnabled, setIsDiaryEnabled] = useState(() => loadData(DIARY_ENABLED_KEY, false))
+
+  useEffect(() => {
+    saveData(DIARY_ENABLED_KEY, isDiaryEnabled)
+  }, [isDiaryEnabled])
 
   function handleChangeMessageSettings(next: MessageSettings) {
     setMessageSettings(next)
@@ -283,6 +293,33 @@ export function SettingsPage() {
                 value={messageSettings}
                 onChange={handleChangeMessageSettings}
               />
+            </div>
+          </Card>
+
+          <Card title="일기 쓰기">
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-slate-500">
+                원할 때만 쓰는 자유 일기예요. 켜면 기록 화면에 일기 메뉴가 보여요.
+              </p>
+
+              <div className="flex gap-3">
+                <Button
+                  variant={isDiaryEnabled ? 'primary' : 'secondary'}
+                  aria-pressed={isDiaryEnabled}
+                  className="h-11 flex-1"
+                  onClick={() => setIsDiaryEnabled(true)}
+                >
+                  켜기
+                </Button>
+                <Button
+                  variant={!isDiaryEnabled ? 'primary' : 'secondary'}
+                  aria-pressed={!isDiaryEnabled}
+                  className="h-11 flex-1"
+                  onClick={() => setIsDiaryEnabled(false)}
+                >
+                  끄기
+                </Button>
+              </div>
             </div>
           </Card>
 

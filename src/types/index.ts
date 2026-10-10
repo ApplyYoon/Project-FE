@@ -83,6 +83,34 @@ export interface AwayRecord {
 /** 뽀모도로의 구간 — study: 공부, break: 휴식 */
 export type PomodoroPhase = 'study' | 'break'
 
+/** 개선안의 강도 — easy: 쉬움, normal: 보통, hard: 강함 */
+export type SuggestionLevel = 'easy' | 'normal' | 'hard'
+
+/** 개선안의 진행 상태 */
+export type SuggestionStatus = 'suggested' | 'active' | 'done' | 'dropped'
+
+/** AI 가 실패 원인에 맞춰 고른 개선안 한 장. "만약 ~하면 → ~한다" 문장입니다. */
+export interface Suggestion {
+  /** 개선안을 구분하는 고유 값 */
+  id: string
+  /** 어떤 실패 원인에 맞춘 것인지 */
+  cause: MissReason
+  /** 강도 — 쉬움·보통·강함 */
+  level: SuggestionLevel
+  /** "만약 ~하면" 에 들어갈 문장 */
+  ifText: string
+  /** "~한다" 에 들어갈 문장 */
+  thenText: string
+  /** 왜 추천하는지 한 줄 */
+  reason: string
+  /** 지금 상태 */
+  status: SuggestionStatus
+  /** 도전을 시작한 날짜 ('YYYY-MM-DD'). 아직 안 골랐으면 없음 */
+  startDate?: string
+  /** 실험 기간 (7~14일). 아직 안 골랐으면 없음 */
+  days?: number
+}
+
 /** AI 의 태도 — kind: 친절, normal: 보통, cynical: 냉소 */
 export type AiMood = 'kind' | 'normal' | 'cynical'
 
@@ -96,6 +124,40 @@ export interface Evaluation {
   mood: AiMood
   /** AI 가 남긴 한마디 요약 */
   summary: string
+}
+
+/** 자유롭게 쓰는 일기 (하루에 하나, #63) */
+export interface DiaryEntry {
+  /** 쓴 날짜 (예: '2026-09-28') */
+  date: string
+  /** 오늘 기분 (1 ~ 5, 체크인과 같은 척도) */
+  mood: number
+  /** 일기 내용 (원문은 본인만 봅니다) */
+  content: string
+}
+
+/** AI 가 내준 성찰 일기 처방 (#70) */
+export interface ReflectionPrescription {
+  /** 처방을 구분하는 고유 값 */
+  id: string
+  /** 처방이 시작된 날짜 */
+  startDate: string
+  /** 처방 기간(일). 예: 5 */
+  days: number
+  /** 왜 처방했는지 (예: "최근 '하기 싫음'이 3번 나와서...") */
+  reason: string
+  /** 기간 동안 매일 똑같이 묻는 질문 목록 */
+  questions: string[]
+}
+
+/** 성찰 일기 하루 답 (questions 와 같은 순서로 answers 를 저장합니다) */
+export interface ReflectionEntry {
+  /** 쓴 날짜 */
+  date: string
+  /** 어떤 처방에 대한 답인지 (ReflectionPrescription 의 id) */
+  prescriptionId: string
+  /** 질문별 답 (원문은 본인만 봅니다) */
+  answers: string[]
 }
 
 /** 어제 계획을 못 채운 이유 (#26 에서 버튼으로 고릅니다) */
@@ -295,4 +357,23 @@ export interface AiMessage {
   text: string
   /** 읽었으면 true, 아직 안 읽었으면 false */
   read: boolean
+}
+
+/**
+ * 주간 회고 하나 (#82). 한 주(월~일)에 하나만 저장됩니다.
+ * 건너뛴 주도 skipped: true 로 저장해서, 같은 주에 다시 묻지 않습니다.
+ */
+export interface WeeklyReview {
+  /** 그 주의 월요일 날짜 (예: '2026-10-05'). 어느 주의 회고인지 구분합니다. */
+  weekStart: string
+  /** ① 이번 주 가장 잘한 것 (최대 100자) */
+  best: string
+  /** ② 가장 아쉬운 것 (최대 100자) */
+  regret: string
+  /** ③ 다음 주에 바꿀 한 가지 (최대 100자) */
+  change: string
+  /** 건너뛰었으면 true. 이때 세 답은 빈 글자입니다. */
+  skipped: boolean
+  /** 저장한 시각 (Date.now() 값) */
+  savedAt: number
 }
