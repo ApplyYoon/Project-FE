@@ -1,11 +1,14 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { mockSessions } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
 import type { StudySession } from '@/types'
+import { useNavigate } from 'react-router-dom'
 
 export function RecordsPage() {
+  const navigate = useNavigate()
   // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 가짜 데이터를 씁니다.
   const [sessions] = useState<StudySession[]>(() => loadData('sessions', mockSessions))
 
@@ -15,6 +18,13 @@ export function RecordsPage() {
       {/* 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StreakCard sessions={sessions} />
+
+        <Card title="주간 리포트">
+          <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
+          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/report')}>
+            주간 리포트 보기
+          </Button>
+        </Card>
       </div>
     </div>
   )
