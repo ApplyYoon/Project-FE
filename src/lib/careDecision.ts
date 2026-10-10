@@ -5,18 +5,11 @@
  *
  * React 를 쓰지 않는 순수 함수라서 같은 입력이면 항상 같은 결과가 나옵니다.
  *
- * ⚠️ 아래 입력 타입들은 #66(이행 판정), #92(효과 판정)가 아직 없어서 임시로 여기서 정의합니다.
- *    그 이슈들이 끝나면 그쪽 타입을 가져다 쓰도록 바꾸세요.
+ * 입력 중 이행 판정(#66)과 효과 판정(#92)은 각 파일의 타입을 그대로 가져다 씁니다.
+ * ⚠️ 미달 원인(MissCause)만 아직 임시로 여기서 정의합니다. (미달 원인 이름이 팀 안에서 정리되면 맞추세요)
  */
-
-/** 개선안을 얼마나 지켰는지 (#66): 잘 함 / 부분 / 못 함 */
-export type Fulfillment = 'done' | 'partial' | 'missed'
-
-/**
- * 개선안의 효과가 있었는지 (#92, 직전 2주와 비교).
- * unknown 은 비교할 기록이 아직 부족해서 판단할 수 없는 경우입니다.
- */
-export type EffectResult = 'effective' | 'ineffective' | 'unknown'
+import type { ExperimentResult } from '@/lib/experimentJudge'
+import type { SuggestionGrade } from '@/lib/suggestionRate'
 
 /**
  * 어제 계획을 못 채운 주요 원인 (#26). 미달 원인 버튼 7개(MissReasonPicker)의 값과 같습니다.
@@ -25,10 +18,16 @@ export type EffectResult = 'effective' | 'ineffective' | 'unknown'
 export type MissCause = 'tired' | 'event' | 'phone' | 'overplan' | 'lazy' | 'sick' | 'etc'
 
 export interface CareDecisionInput {
-  /** 개선안 이행 판정 (#66) */
-  fulfillment: Fulfillment
-  /** 개선안 효과 판정 (#92) */
-  effect: EffectResult
+  /**
+   * 개선안 이행 판정 (#66): good 잘 시행 / partial 부분 시행 / poor 못 시행
+   * (getSuggestionRate 는 기록이 없으면 null 을 돌려주는데, 그럴 때는 이 함수를 부르지 말고 호출하는 쪽에서 먼저 처리하세요)
+   */
+  fulfillment: SuggestionGrade
+  /**
+   * 개선안 효과 판정 (#92, 직전 2주와 비교): effective 효과 있음 / noEffect 효과 없음 / unclear 애매
+   * unclear 는 기록이 5일 미만이거나 신호가 엇갈려서 단정할 수 없는 경우입니다. (기획서: 애매하면 1주 연장)
+   */
+  effect: ExperimentResult
   /** 주요 미달 원인 (#26). 고르지 않았으면 null */
   mainMissCause: MissCause | null
   /** 최근 연속으로 계획을 못 채운 일수 */
@@ -42,7 +41,7 @@ export interface CareDecisionInput {
  *  - recovery-first: 회복 모드 우선. 채찍 금지
  *  - carrot-raise: 당근 + 목표 10% 상향
  *  - carrot-change-strategy: 당근(노력 인정) + 전략 교체
- *  - carrot-keep: 당근만. 목표·전략은 그대로 (효과를 아직 판단할 수 없을 때)
+ *  - carrot-keep: 당근만. 목표·전략은 그대로 (효과가 애매해서 1주 더 지켜볼 때)
  *  - keep-easier: 같은 전략 유지 + 난이도 한 단계 낮춤
  *  - goal-down: 목표 하향 (회복 모드)
  *  - whip: 채찍 (한도 안에서 한 단계씩. 한도는 #28 이 지킵니다)
@@ -78,17 +77,17 @@ const WHIP_CAUSES: MissCause[] = ['phone', 'lazy']
  *      예) 기분 저하, 오늘은 잘 했음         → recovery-first  (잘 한 날도 회복 모드가 먼저)
  *      예) 2일 연속 미달 → 아직 3일이 아니므로 아래 표로 갑니다
  *
- * 1) 잘 시행(done)
- *      효과 있음  → carrot-raise            예) done + effective   → 당근, 목표 10% 상향
- *      효과 없음  → carrot-change-strategy  예) done + ineffective → 당근(노력 인정), 전략 교체
- *      효과 모름  → carrot-keep             예) done + unknown     → 당근만. 근거 없이 목표를 올리지 않습니다
+ * 1) 잘 시행(good)
+ *      효과 있음  → carrot-raise            예) good + effective → 당근, 목표 10% 상향
+ *      효과 없음  → carrot-change-strategy  예) good + noEffect  → 당근(노력 인정), 전략 교체
+ *      효과 애매  → carrot-keep             예) good + unclear   → 당근만. 근거 없이 목표를 올리지 않고 1주 더 지켜봅니다
  *
  * 2) 부분 시행(partial) → keep-easier       예) partial → 같은 전략 유지, 난이도 한 단계 낮춤
  *
- * 3) 못 시행(missed)
- *      원인이 계획 과다·피곤·아픔·행사 → goal-down   예) missed + tired   → 목표 하향
- *      원인이 폰·하기 싫음              → whip        예) missed + phone → 채찍
- *      원인이 기타이거나 안 골랐음      → goal-down   예) missed + etc   → 목표 하향 (아래 참고)
+ * 3) 못 시행(poor)
+ *      원인이 계획 과다·피곤·아픔·행사 → goal-down   예) poor + tired   → 목표 하향
+ *      원인이 폰·하기 싫음              → whip        예) poor + phone → 채찍
+ *      원인이 기타이거나 안 골랐음      → goal-down   예) poor + etc   → 목표 하향 (아래 참고)
  *
  * 원인을 모를 때(기타·미선택)는 채찍 대신 목표 하향을 고릅니다. 이유 없이 다그치는 쪽이
  * 더 위험하다고 보고 정한 규칙입니다. (이슈에 정해진 값이 없어서 팀에서 바꿀 수 있습니다)
@@ -107,20 +106,20 @@ export function decideCareAction(input: CareDecisionInput): CareDecision {
   }
 
   // 1) 잘 시행
-  if (fulfillment === 'done') {
+  if (fulfillment === 'good') {
     if (effect === 'effective') {
       return {
         action: 'carrot-raise',
         reason: '잘 지켰고 효과도 있었어요. 목표를 10% 올려 볼게요.',
       }
     }
-    if (effect === 'ineffective') {
+    if (effect === 'noEffect') {
       return {
         action: 'carrot-change-strategy',
         reason: '잘 지켰는데 효과가 없었어요. 노력한 건 맞으니, 방법을 바꿔 볼게요.',
       }
     }
-    return { action: 'carrot-keep', reason: '잘 지켰어요. 효과는 기록이 더 쌓이면 알려 줄게요.' }
+    return { action: 'carrot-keep', reason: '잘 지켰어요. 효과는 아직 애매해서 1주 더 지켜볼게요.' }
   }
 
   // 2) 부분 시행
