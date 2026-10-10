@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
+import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import {
   getCareLimits,
@@ -23,6 +25,7 @@ import {
   isNotificationSupported,
   requestNotificationPermission,
 } from '@/lib/notifications'
+import { loadData, removeData, saveData } from '@/lib/storage'
 
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
@@ -79,6 +82,24 @@ export function SettingsPage() {
   const [message, setMessage] = useState<DeleteMessage | null>(null)
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermission>(getNotificationPermission)
+
+  // 전화 받을 시간 ('HH:MM'). 아직 안 정했으면 빈 글자입니다. 올바른 시간만 불러옵니다.
+  const [callTime, setCallTime] = useState(() => {
+    const saved = loadData<unknown>(CALL_TIME_STORAGE_KEY, '')
+    return typeof saved === 'string' && parseCallTime(saved) !== null ? saved : ''
+  })
+  // 아이폰인데 홈 화면에 추가하지 않았는지. 이 경우에만 안내를 보여줍니다.
+  const [showIosGuide] = useState(isIosWithoutInstall)
+
+  function handleChangeCallTime(nextTime: string) {
+    setCallTime(nextTime)
+    // 시간을 고르면 바로 저장합니다. 시간을 지우면(빈 글자) 저장해 둔 것도 지워서 전화가 울리지 않게 합니다.
+    if (nextTime === '') {
+      removeData(CALL_TIME_STORAGE_KEY)
+    } else {
+      saveData(CALL_TIME_STORAGE_KEY, nextTime)
+    }
+  }
 
   async function handleRequestNotification() {
     const permission = await requestNotificationPermission()
@@ -234,7 +255,36 @@ export function SettingsPage() {
 
         <div className="flex flex-col gap-6">
           <Card title="전화와 메시지">
-            <MessageSettingsFields value={messageSettings} onChange={handleChangeMessageSettings} />
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <Input
+                  id="call-time"
+                  type="time"
+                  label="전화 받을 시간"
+                  value={callTime}
+                  onChange={(event) => handleChangeCallTime(event.target.value)}
+                  className="h-12 text-base"
+                />
+                <p className="text-sm break-keep text-slate-500">
+                  {callTime === ''
+                    ? '시간을 고르면 매일 그 시간에 AI 선생님이 전화를 걸어요.'
+                    : `매일 ${callTime} 에 전화가 와요.`}{' '}
+                  앱이 열려 있을 때만 울려요. 알림은 아래 &quot;AI 메시지 알림&quot;에서 켤 수
+                  있어요.
+                </p>
+                {showIosGuide && (
+                  <p className="rounded-lg bg-slate-50 p-3 text-sm break-keep text-slate-600">
+                    아이폰은 Safari 의 공유 버튼 → &apos;홈 화면에 추가&apos;로 설치한 뒤에만 알림을
+                    받을 수 있어요.
+                  </p>
+                )}
+              </div>
+
+              <MessageSettingsFields
+                value={messageSettings}
+                onChange={handleChangeMessageSettings}
+              />
+            </div>
           </Card>
 
           <Card title="AI 메시지 알림">
