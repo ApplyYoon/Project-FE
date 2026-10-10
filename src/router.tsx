@@ -23,6 +23,7 @@ import { ReportPage } from '@/pages/ReportPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SignupPage } from '@/pages/SignupPage'
 import { SuggestionsPage } from '@/pages/SuggestionsPage'
+import { SupportPage } from '@/pages/SupportPage'
 import { TimerPage } from '@/pages/TimerPage'
 import { createBrowserRouter } from 'react-router-dom'
 
@@ -104,4 +105,7 @@ export const router = createBrowserRouter([
   },
   // 가입 화면은 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
   { path: '/signup', element: <SignupPage /> },
+  // 도움 연결 안내는 헤더·하단 탭 없이 화면 전체를 쓰고, 힘든 순간에 로그인 때문에 막히면 안 돼서
+  // RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
+  { path: '/support', element: <SupportPage /> },
 ])
