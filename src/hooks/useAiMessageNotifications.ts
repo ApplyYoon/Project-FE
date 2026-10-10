@@ -1,7 +1,7 @@
 import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
 import { getCareLimits } from '@/lib/careLimits'
 import { toDateKey } from '@/lib/date'
-import { loadSavedWritings } from '@/lib/diarySafety'
+import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { getMessageSettings } from '@/lib/messageSettings'
 import {
   canSendAiMessageNotification,
@@ -32,9 +32,8 @@ interface SentToday {
  * 알림을 보내기 전에 아래 설정을 모두 지킵니다.
  * - 연락 금지 시간, 하루 메시지 수 (#60 메시지 설정)
  * - 관리 강도 최대 한도 (#59)
- * - 안전 브레이크 (#95): 체크인·일기·성찰 일기에 저장된 기분과 글로 판정합니다.
- *
- * ⚠️ 시험 목록(#80)은 아직 없어서 안전 브레이크에 빈 배열로 넘깁니다.
+ * - 안전 브레이크 (#95): 체크인·일기·성찰 일기에 저장된 기분과 글, 그리고 시험 날짜(#80)로 판정합니다.
+ *   시험 직전 3일·직후 2일에는 채찍 메시지(3~4단계) 알림이 멈춥니다.
  */
 export function useAiMessageNotifications(): void {
   useEffect(() => {
@@ -51,7 +50,7 @@ export function useAiMessageNotifications(): void {
       now: new Date(),
       recentTexts: texts,
       recentMoods: moods,
-      exams: [],
+      exams: loadExamDates(),
       quietHours: toQuietHours(settings),
     })
 

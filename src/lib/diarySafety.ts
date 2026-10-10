@@ -4,7 +4,8 @@
  * 안전 브레이크(getSafetyBrakeResult)에 "방금 쓴 글" 과 "최근 기분 기록" 을 넘겨서 showHelp 를 확인합니다.
  * 최근 기분 기록은 매일 체크인(#24)에 저장된 기분과, 호출하는 쪽이 넘겨 주는 일기 기분을 합쳐서 씁니다.
  */
-import { getSafetyBrakeResult, type MoodRecordInput } from '@/lib/safetyBrake'
+import { loadExams } from '@/lib/exams'
+import { getSafetyBrakeResult, type ExamDateInput, type MoodRecordInput } from '@/lib/safetyBrake'
 import { loadData } from '@/lib/storage'
 import type { CheckIn, DiaryEntry, ReflectionEntry } from '@/types'
 
@@ -50,6 +51,14 @@ export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[]
 }
 
 /**
+ * 저장해 둔 시험(#80)에서 날짜만 꺼냅니다. 안전 브레이크가 "시험 직전 3일·직후 2일" 을 판단하는 데 씁니다.
+ * (시험 기간이면 recoveryMode 가 켜져서 채찍 메시지가 멈춥니다)
+ */
+export function loadExamDates(): ExamDateInput[] {
+  return loadExams().map((exam) => ({ date: exam.date }))
+}
+
+/**
  * 방금 쓴 글에 위기 표현이 있거나 기분이 오래 낮으면 true 를 돌려줍니다.
  *
  *   const needsHelp = shouldShowCrisisHelp({ texts: [content], diaryMoods: [{ date, mood }] })
@@ -65,7 +74,8 @@ export function shouldShowCrisisHelp(input: {
     now: new Date(),
     recentTexts: input.texts,
     recentMoods: [...loadCheckInMoods(), ...input.diaryMoods],
-    exams: [], // 시험 목록(#80)이 생기면 넣으세요
+    // 도움 안내(showHelp)는 위기 표현·기분 저하로만 정해지고 시험 기간에는 영향받지 않아서 시험은 넘기지 않습니다.
+    exams: [],
   })
   return brake.showHelp
 }
