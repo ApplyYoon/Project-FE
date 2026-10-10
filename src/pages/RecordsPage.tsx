@@ -64,6 +64,7 @@ export function RecordsPage() {
   const navigate = useNavigate()
   // 설정 화면에서 켠 사람에게만 일기 메뉴를 보여줍니다. (#63)
   const isDiaryEnabled = loadData('diary-enabled', false)
+
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
