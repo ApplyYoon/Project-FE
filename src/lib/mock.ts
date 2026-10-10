@@ -180,6 +180,7 @@ export const mockReflectionPrescription: ReflectionPrescription = {
 /**
  * 폰·SNS 때문에 계획을 못 채운 사람에게 맞춘 개선안 3개 (쉬움·보통·강함)
  * 원인별 분기(#91)가 생기기 전까지는 이 세트 하나만 보여줍니다.
+ * 누구에게나 똑같이 보여주는 예시라서, reason 에 "내 기록을 분석한 것 같은" 말은 쓰지 않습니다.
  */
 export const mockSuggestions: Suggestion[] = [
   {
@@ -197,7 +198,7 @@ export const mockSuggestions: Suggestion[] = [
     level: 'normal',
     ifText: '학원에서 돌아오면',
     thenText: '폰을 가방에 넣고 시작한다',
-    reason: '학원 다음이 제일 약한 시간이었어.',
+    reason: '집에 오자마자가 제일 흔들리기 쉬운 시간이야.',
     status: 'suggested',
   },
   {

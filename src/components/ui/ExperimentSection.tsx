@@ -82,7 +82,7 @@ interface ExperimentSectionProps {
  *
  * - 진행 중: "14일 중 5일째" 진행 막대와 지금까지 이행률. "바꾸기" 버튼은 없습니다. (기간 중에는 바꾸지 않습니다)
  * - 끝난 뒤: 실험 전 2주와 실험 중을 비교한 표와 판정(#92), 그리고 판정에 따른 버튼
- *     효과 있음 → 나 사용설명서에 올리기 / 효과 없음 → 다른 방법 고르기 / 애매 → 1주 더 해보기
+ *     효과 있음 → 나 사용설명서에 올리기 / 효과 없음 → 다른 방법 고르기 / 애매 → 1주 더 해보기 또는 그만하기
  *
  * <ExperimentSection plans={allPlans} sessions={sessions} />
  */
@@ -117,6 +117,12 @@ export function ExperimentSection({ plans, sessions, className }: ExperimentSect
       text: `1주 더 해보기로 했어요. 결과는 ${EXTEND_DAYS}일 뒤에 다시 알려줄게요.`,
       hasManualLink: false,
     })
+  }
+
+  /** 애매한데 더 하고 싶지 않을 때: 실험을 그만둡니다. 자리가 비어서 새 개선안을 고를 수 있습니다. */
+  function handleStop(suggestion: DatedSuggestion) {
+    finishChallenge(suggestion.id, 'dropped')
+    setNotice({ text: '실험을 그만뒀어요. 새 개선안을 고를 수 있어요.', hasManualLink: false })
   }
 
   return (
@@ -239,13 +245,24 @@ export function ExperimentSection({ plans, sessions, className }: ExperimentSect
                 </Button>
               )}
               {summary.result === 'unclear' && (
-                <Button
-                  variant="secondary"
-                  className="mt-4 h-11 w-full"
-                  onClick={() => handleExtend(suggestion)}
-                >
-                  1주 더 해보기
-                </Button>
+                // 기록이 모자라면 계속 "애매" 가 나올 수 있어서, 더 하지 않고 그만두는 길도 둡니다.
+                // (그만두지 못하면 도전 자리가 영영 비지 않아서 새 개선안을 못 고릅니다)
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="secondary"
+                    className="h-11 w-full"
+                    onClick={() => handleExtend(suggestion)}
+                  >
+                    1주 더 해보기
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="h-11 w-full"
+                    onClick={() => handleStop(suggestion)}
+                  >
+                    그만하기
+                  </Button>
+                </div>
               )}
             </Card>
           )

@@ -19,8 +19,7 @@ import {
   getStudyMinutesBeforeExam,
   parseScore,
 } from '@/lib/exams'
-import { mockSubjects } from '@/lib/mock'
-import { loadData } from '@/lib/storage'
+import { loadSubjects } from '@/lib/subjects'
 import type { Exam, ExamReflection, ExamSubjectScore, StudySession, Subject } from '@/types'
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -311,7 +310,7 @@ export function ExamResultPage() {
   const { exams, updateExam } = useExams()
   const { sessions } = useStudySessions()
   // 과목은 계획 화면에서 저장한 목록을 읽기만 합니다. (처음 한 번은 예시 과목)
-  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects] = useState<Subject[]>(loadSubjects)
 
   const exam = exams.find((item) => item.id === examId)
 

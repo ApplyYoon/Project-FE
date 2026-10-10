@@ -1,4 +1,4 @@
-import { loadData, saveData } from '@/lib/storage'
+import { loadList, saveData } from '@/lib/storage'
 import type { SuggestionCheck } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -15,7 +15,9 @@ const STORAGE_KEY = 'suggestion-checks'
  * 이행률을 낼 때는 checks 를 그 개선안 것만 골라서 lib/suggestionRate.ts 의 getSuggestionRate 에 넘기면 됩니다.
  */
 export function useSuggestionChecks() {
-  const [checks, setChecks] = useState<SuggestionCheck[]>(() => loadData(STORAGE_KEY, []))
+  const [checks, setChecks] = useState<SuggestionCheck[]>(() =>
+    loadList<SuggestionCheck>(STORAGE_KEY),
+  )
 
   useEffect(() => {
     saveData(STORAGE_KEY, checks)

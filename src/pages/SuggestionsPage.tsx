@@ -1,9 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
+import { getExperimentProgress, splitActiveExperiments } from '@/lib/experimentResult'
 import type { Suggestion, SuggestionLevel } from '@/types'
 
 /** 실험 기간으로 고를 수 있는 일수. 기본값은 14일입니다. */
@@ -64,6 +67,11 @@ export function SuggestionsPage() {
   const [showLimitNotice, setShowLimitNotice] = useState(false)
 
   const activeSuggestions = suggestions.filter((suggestion) => suggestion.status === 'active')
+  // 도전 중인 것 가운데 실험 기간이 끝난 것. 결과를 확인해야 자리가 비어서 새 개선안을 고를 수 있습니다.
+  const { ongoing, finished } = splitActiveExperiments(suggestions)
+  const finishedIds = finished.map((suggestion) => suggestion.id)
+  // 날마다 "어제 지켰어?" 에 답한 기록. 도전 중 카드의 이행률을 계산하는 데 씁니다.
+  const { checks } = useSuggestionChecks()
   const candidateSuggestions = suggestions.filter((suggestion) => suggestion.status === 'suggested')
   const selected = suggestions.find((suggestion) => suggestion.id === selectedId)
 
@@ -107,13 +115,39 @@ export function SuggestionsPage() {
             const totalDays = suggestion.days ?? 0
             const elapsed = Math.min(daysElapsed(suggestion.startDate ?? todayKey()), totalDays)
             const percent = totalDays > 0 ? (elapsed / totalDays) * 100 : 0
+            // 진행 중인 실험이면 지금까지의 이행률을 구합니다. (홈의 실험 카드와 같은 계산)
+            const dated = ongoing.find((item) => item.id === suggestion.id)
+            const rate = dated ? getExperimentProgress(dated, checks).rate : null
+
+            // 기간이 끝난 실험은 "N일째" 대신, 결과를 확인하러 가는 길을 보여줍니다.
+            if (finishedIds.includes(suggestion.id)) {
+              return (
+                <Card key={suggestion.id}>
+                  <SuggestionSentence suggestion={suggestion} />
+                  <p className="mt-3 text-sm font-medium break-keep text-slate-700">
+                    {totalDays}일 실험이 끝났어요. 결과를 확인하면 새 개선안을 고를 수 있어요.
+                  </p>
+                  {/* 결과 카드는 홈의 "실험" 에 있습니다. h-10 으로 누르는 높이를 40px 로 둡니다. */}
+                  <Link
+                    to="/"
+                    className="text-brand mt-1 inline-flex h-10 items-center text-sm font-medium underline underline-offset-4"
+                  >
+                    홈에서 결과 확인하기
+                  </Link>
+                </Card>
+              )
+            }
 
             return (
               <Card key={suggestion.id}>
                 <SuggestionSentence suggestion={suggestion} />
-                <p className="mt-3 text-sm text-slate-500">
-                  {totalDays}일 중 {elapsed}일째
-                </p>
+                <div className="mt-3 flex items-center justify-between gap-2 text-sm text-slate-500">
+                  <p>
+                    {totalDays}일 중 {elapsed}일째
+                  </p>
+                  {/* 이행률 = 지난 날 중 지켰다고 답한 날의 비율. 아직 셀 날이 없으면(첫날) 보여주지 않습니다. */}
+                  {rate !== null && <p className="shrink-0">이행률 {rate}%</p>}
+                </div>
                 <ProgressBar value={percent} className="mt-2" />
                 <p className="mt-3 text-sm text-slate-500">
                   실험 중에는 바꿀 수 없어요. 끝까지 해야 효과를 알 수 있어요.
@@ -126,6 +160,10 @@ export function SuggestionsPage() {
 
       <div>
         <h2 className="text-lg font-semibold text-slate-900">새로 도전할 개선안</h2>
+        {/* 아직 내 기록으로 개선안을 만들어 주는 기능이 없어서, 지금은 누구에게나 같은 예시를 보여줍니다. */}
+        <p className="mt-1 text-sm break-keep text-slate-500">
+          아직은 누구에게나 같은 예시예요. 기록이 쌓이면 나에게 맞는 개선안으로 바뀔 거예요.
+        </p>
 
         {showLimitNotice && (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">

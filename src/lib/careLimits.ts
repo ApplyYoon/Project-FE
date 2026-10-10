@@ -43,13 +43,42 @@ function todayKey(): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/** 값이 관리 강도(0 ~ 4 의 정수)가 맞는지 확인합니다. */
+function isCareLevel(value: unknown): value is CareLevel {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 4
+}
+
+/**
+ * 저장소에서 꺼낸 값을 한도 모양으로 맞춥니다. 모양이 틀린 칸은 기본값으로 채웁니다.
+ * (저장된 값이 깨져 있으면 설정 · 홈 · 타이머 화면이 통째로 멈추기 때문에, 칸마다 확인합니다)
+ */
+function toCareLimits(saved: unknown): CareLimits {
+  if (typeof saved !== 'object' || saved === null) return defaultLimits
+  const value = saved as Record<string, unknown>
+
+  const harshness = value.maxHarshness
+  const isValidHarshness =
+    typeof harshness === 'number' && Number.isInteger(harshness) && harshness >= 1 && harshness <= 5
+
+  return {
+    maxCareLevel: isCareLevel(value.maxCareLevel) ? value.maxCareLevel : defaultLimits.maxCareLevel,
+    maxHarshness: isValidHarshness ? harshness : defaultLimits.maxHarshness,
+    // 허용 여부는 true 라고 분명히 저장된 것만 허용으로 봅니다.
+    allowOffHoursCall: value.allowOffHoursCall === true,
+    allowFocusMode: value.allowFocusMode === true,
+    pendingMaxCareLevel: isCareLevel(value.pendingMaxCareLevel) ? value.pendingMaxCareLevel : null,
+    pendingEffectiveDate:
+      typeof value.pendingEffectiveDate === 'string' ? value.pendingEffectiveDate : null,
+  }
+}
+
 /**
  * 지금 적용되는 한도를 돌려줍니다.
  * 예약해 둔 한도 상향의 적용 날짜가 지났으면, 지금 적용하고 저장한 뒤 돌려줍니다.
  * (지금은 한도를 올려도 바로 적용돼서 새로 예약되는 일은 없습니다. 예전에 저장된 예약을 위한 코드입니다)
  */
 export function getCareLimits(): CareLimits {
-  const saved = loadData(STORAGE_KEY, defaultLimits)
+  const saved = toCareLimits(loadData<unknown>(STORAGE_KEY, null))
 
   const canApplyPending =
     saved.pendingMaxCareLevel !== null &&

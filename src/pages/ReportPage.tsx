@@ -12,7 +12,7 @@ import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
 import { getInsightsToShow } from '@/lib/insights'
-import { loadData } from '@/lib/storage'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
 import type { StudyPlan, StudySession, WeeklyReview } from '@/types'
 import { useState, type FormEvent } from 'react'
@@ -81,10 +81,17 @@ function formatMinutes(totalMinutes: number): string {
 }
 
 /** 자정부터 몇 분 지났는지(0~1439)를 "19:25" 처럼 보여줍니다. 기록이 없으면 '-' 입니다. */
+// 하루는 1440분입니다.
+const MINUTES_PER_DAY = 24 * 60
+// 이 시각(새벽 4시) 전에 시작한 공부는 전날 밤의 연장으로 봅니다.
+const LATE_NIGHT_END_MINUTES = 4 * 60
+
 function formatStartTime(minutesFromMidnight: number | null): string {
   if (minutesFromMidnight === null) return '-'
-  const hour = Math.floor(minutesFromMidnight / 60)
-  const minute = minutesFromMidnight % 60
+  // 자정을 넘긴 값(예: 24:30)은 하루(1440분)를 빼서 00:30 으로 보여줍니다.
+  const minutesOfDay = minutesFromMidnight % MINUTES_PER_DAY
+  const hour = Math.floor(minutesOfDay / 60)
+  const minute = minutesOfDay % 60
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
@@ -114,13 +121,17 @@ function getRangeStats(
     const dateKey = moveDateKey(startKey, i)
     const summary = getDaySummary(dateKey, plans, sessions)
     studyMinutes += summary.studyMinutes
+    // 노는 계획은 공부 목표가 아니라서 뺍니다. (#238)
     targetMinutes += plans
-      .filter((plan) => plan.date === dateKey)
+      .filter((plan) => plan.date === dateKey && plan.kind !== 'play')
       .reduce((sum, plan) => sum + plan.targetMinutes, 0)
 
     if (summary.firstStartAt !== null) {
       const start = new Date(summary.firstStartAt)
-      startMinutesList.push(start.getHours() * 60 + start.getMinutes())
+      const minutes = start.getHours() * 60 + start.getMinutes()
+      // 새벽 4시 전에 시작한 것은 "전날 밤 늦게" 로 봅니다. (24시간을 더해서 25시, 26시처럼 셉니다)
+      // 그냥 평균 내면 23:00 과 00:30 의 평균이 낮 11:45 로 나오기 때문입니다.
+      startMinutesList.push(minutes < LATE_NIGHT_END_MINUTES ? minutes + MINUTES_PER_DAY : minutes)
     }
   }
 
@@ -192,7 +203,11 @@ export function ReportPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <Link to="/records" className="text-sm text-slate-500 hover:text-slate-700">
+        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
+        <Link
+          to="/records"
+          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
+        >
           ‹ 기록
         </Link>
 
@@ -203,7 +218,7 @@ export function ReportPage() {
             aria-pressed={view === 'weekly'}
             onClick={() => setView('weekly')}
             className={cn(
-              'h-9 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
+              'h-10 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
               view === 'weekly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
             )}
           >
@@ -214,7 +229,7 @@ export function ReportPage() {
             aria-pressed={view === 'monthly'}
             onClick={() => setView('monthly')}
             className={cn(
-              'h-9 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
+              'h-10 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
               view === 'monthly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
             )}
           >
@@ -407,8 +422,11 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
             </Card>
           </div>
 
+          {/* 발견은 지금까지의 기록으로 만든 것이라, 지난 주를 볼 때는 제목만 맞게 바꿉니다. */}
           <section>
-            <h2 className="text-lg font-bold text-slate-900">이번 주 발견</h2>
+            <h2 className="text-lg font-bold text-slate-900">
+              {weeksAgo === 0 ? '이번 주 발견' : '지금까지의 발견'}
+            </h2>
             {insights.length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">
                 아직 데이터가 모자라요. 기록이 쌓이면 발견이 생겨요.
@@ -492,11 +510,16 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
 
   // 예상 성장 곡선(#71). "지금까지 전체" 기준이라 보고 있는 4주 구간과 상관없이 항상 같은 값입니다.
   // D-day 와 시험 이름은 온보딩(#58)에서 받습니다. 온보딩을 아직 안 했으면 둘 다 빈 글자입니다.
-  const onboardingAnswers = loadData<Record<string, string>>('onboarding-answers', {})
+  const onboardingAnswers = loadOnboardingAnswers() ?? {}
   const examDateKey = onboardingAnswers.targetExamDate || null
   const examLabel = onboardingAnswers.targetExam || '시험일'
+  // 시험 날짜가 이미 지났으면 "시험까지" 를 그릴 수 없습니다. (그래프의 오늘이 시험 날보다 오른쪽으로 나가서 깨집니다)
+  // 'YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다.
+  const isExamPassed = examDateKey !== null && examDateKey < todayKey
   const growthCurve =
-    examDateKey === null ? null : getGrowthCurve(allPlans, sessions, todayKey, examDateKey)
+    examDateKey === null || isExamPassed
+      ? null
+      : getGrowthCurve(allPlans, sessions, todayKey, examDateKey)
 
   return (
     <>
@@ -603,6 +626,10 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
             <Link to="/onboarding" className="text-brand font-semibold hover:underline">
               온보딩 하러 가기
             </Link>
+          </p>
+        ) : isExamPassed ? (
+          <p className="mt-3 text-sm break-keep text-slate-500">
+            {examLabel} 날짜가 지났어요. 다음 시험 날짜가 정해지면 다시 보여드릴게요.
           </p>
         ) : !growthCurve?.hasEnoughData ? (
           <p className="mt-3 text-sm text-slate-500">기록이 더 쌓이면 보여드릴게요.</p>

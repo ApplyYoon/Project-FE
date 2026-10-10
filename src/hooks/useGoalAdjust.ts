@@ -6,6 +6,8 @@ import { useState } from 'react'
 
 // 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-goal-adjust-declined' 가 됩니다)
 const STORAGE_KEY = 'goal-adjust-declined'
+// 목표 조정을 수락한 날짜를 넣어 두는 이름입니다. "모든 기록 지우기" 로 같이 지워집니다. (lib/myData.ts)
+const ACCEPTED_KEY = 'goal-adjust-accepted'
 
 interface UseGoalAdjustOptions {
   /** 분기 함수(#91) 가 정한 오늘의 대응. 아직 모르면 null */
@@ -38,11 +40,17 @@ export function useGoalAdjust({
   const [declinedDate, setDeclinedDate] = useState<string | null>(() =>
     loadData<string | null>(STORAGE_KEY, null),
   )
+  // 수락한 날짜. 오늘 이미 수락했으면 화면을 다시 열어도 또 묻지 않습니다.
+  // (기억하지 않으면 목표를 올린 뒤 다시 들어올 때마다 "또 올릴까요?" 가 떠서 목표가 계속 올라갑니다)
+  const [acceptedDate, setAcceptedDate] = useState<string | null>(() =>
+    loadData<string | null>(ACCEPTED_KEY, null),
+  )
   // 이번 화면에서 이미 답했는지 (수락했으면 목표가 바뀌어 같은 제안이 또 나오는 것을 막습니다)
   const [isAnswered, setIsAnswered] = useState(false)
+  const isAcceptedToday = acceptedDate === toDateKey(new Date())
 
   const proposal: GoalAdjustProposal | null =
-    action === null || isAnswered || isDeclineSnoozed(declinedDate)
+    action === null || isAnswered || isAcceptedToday || isDeclineSnoozed(declinedDate)
       ? null
       : proposeGoalAdjust(action, currentMinutes, recentAverageMinutes)
 
@@ -50,6 +58,9 @@ export function useGoalAdjust({
   function accept() {
     if (proposal === null) return
     onAccept(proposal.toMinutes)
+    const today = toDateKey(new Date())
+    saveData(ACCEPTED_KEY, today)
+    setAcceptedDate(today)
     setIsAnswered(true)
   }
 

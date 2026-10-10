@@ -4,8 +4,10 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
-import { mockReflectionPrescription } from '@/lib/mock'
-import type { ReflectionEntry } from '@/types'
+import { loadStudySessions } from '@/lib/dailyRecords'
+import { getReflectionPrescription } from '@/lib/reflectionPrescription'
+import { loadRecord } from '@/lib/storage'
+import type { DiaryEntry, ReflectionEntry } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -30,18 +32,20 @@ function countDays(fromKey: string, toKey: string): number {
 export function ReflectionPage() {
   const navigate = useNavigate()
   const todayKey = toDateKey(new Date())
-  // AI 가 실제로 처방을 내리는 서버가 아직 없어서, 지금은 예시 처방 하나로 동작합니다. (#70)
-  const prescription = mockReflectionPrescription
+  // 지금 내려진 처방. 없으면 null 입니다. (서버가 생기기 전까지 진짜 사용자에게는 처방이 없습니다. lib/reflectionPrescription.ts)
+  const [prescription] = useState(() => getReflectionPrescription(loadStudySessions()))
 
-  const dayIndex = countDays(prescription.startDate, todayKey)
-  const isWithinPrescription = dayIndex >= 1 && dayIndex <= prescription.days
+  // 처방이 없으면 0일째로 두고, 아래에서 "기간이 아니에요" 를 보여줍니다.
+  const dayIndex = prescription === null ? 0 : countDays(prescription.startDate, todayKey)
+  const isWithinPrescription =
+    prescription !== null && dayIndex >= 1 && dayIndex <= prescription.days
 
   const { getEntry, saveEntry } = useReflectionEntries()
   const existingEntry = getEntry(todayKey)
 
   // 오늘 이미 썼으면 그 답을 불러와서 고칠 수 있게 하고, 처음이면 질문 수만큼 빈 칸으로 시작합니다.
   const [answers, setAnswers] = useState<string[]>(
-    () => existingEntry?.answers ?? prescription.questions.map(() => ''),
+    () => existingEntry?.answers ?? (prescription?.questions ?? []).map(() => ''),
   )
   const [savedMessage, setSavedMessage] = useState('')
 
@@ -51,6 +55,9 @@ export function ReflectionPage() {
   }
 
   function handleSave() {
+    // 처방이 없으면 저장할 것이 없습니다. (저장 버튼도 보이지 않습니다)
+    if (prescription === null) return
+
     const entry: ReflectionEntry = {
       date: todayKey,
       prescriptionId: prescription.id,
@@ -60,9 +67,14 @@ export function ReflectionPage() {
     saveEntry(entry)
     setSavedMessage('저장했어요.')
 
-    // 성찰 일기에는 기분 칸이 없어서, 체크인의 기분 기록만 함께 봅니다.
+    // 성찰 일기에는 기분 칸이 없어서, 일기에 적어 둔 기분과 체크인의 기분을 함께 봅니다.
+    // (일기 화면과 같은 기록으로 판정해야, 어느 화면에서 쓰든 결과가 같습니다)
+    const diaryMoods = Object.values(loadRecord<DiaryEntry>('diary')).map((diary) => ({
+      date: diary.date,
+      mood: diary.mood,
+    }))
     // 감지되면 도움 연결 안내 화면으로 보냅니다. (글은 이미 저장했습니다)
-    if (shouldShowCrisisHelp({ texts: entry.answers, diaryMoods: [] })) {
+    if (shouldShowCrisisHelp({ texts: entry.answers, diaryMoods })) {
       navigate(SUPPORT_PATH)
     }
   }
@@ -70,12 +82,18 @@ export function ReflectionPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link to="/diary" className="text-sm text-slate-500 hover:text-slate-700">
+        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
+        <Link
+          to="/diary"
+          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
+        >
           ‹ 일기
         </Link>
         <p className="text-brand mt-2 text-sm font-semibold">AI 선생님이 처방한 성찰 일기</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-          오늘의 성찰 · {dayIndex}일째 / {prescription.days}일
+          {isWithinPrescription
+            ? `오늘의 성찰 · ${dayIndex}일째 / ${prescription.days}일`
+            : '오늘의 성찰'}
         </h1>
       </div>
 

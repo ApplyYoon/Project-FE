@@ -6,9 +6,11 @@ import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
-import { mockReflectionPrescription } from '@/lib/mock'
+import { loadStudySessions } from '@/lib/dailyRecords'
+import { getReflectionPrescription } from '@/lib/reflectionPrescription'
+import { loadData, removeData, saveData } from '@/lib/storage'
 import type { DiaryEntry } from '@/types'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 /** 오늘 기분 버튼. 체크인(#24)과 같은 5단계를 씁니다. */
@@ -56,6 +58,27 @@ interface TimelineItem {
   previewText: string
 }
 
+// 저장 버튼을 누르기 전에 쓰던 글을 임시로 넣어 두는 이름입니다.
+// 쓰는 도중에 전화 화면으로 넘어가거나 새로고침해도 글이 사라지지 않습니다. 저장하면 지웁니다.
+// "일기만 지우기" 로 같이 지워집니다. (lib/myData.ts 의 DIARY_KEYS)
+const DRAFT_KEY = 'diary-draft'
+
+/** 쓰던 글. date 가 오늘이 아니면 지난 날의 것이라 쓰지 않습니다. */
+interface DiaryDraft {
+  date: string
+  mood: number
+  content: string
+}
+
+/** 오늘 쓰던 글이 있으면 불러옵니다. 없거나 모양이 틀리거나 지난 날의 것이면 null 입니다. */
+function loadTodayDraft(todayKey: string): DiaryDraft | null {
+  const saved = loadData<Partial<DiaryDraft> | null>(DRAFT_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return null
+  if (saved.date !== todayKey) return null
+  if (typeof saved.mood !== 'number' || typeof saved.content !== 'string') return null
+  return { date: saved.date, mood: saved.mood, content: saved.content }
+}
+
 export function DiaryPage() {
   const navigate = useNavigate()
   const todayKey = toDateKey(new Date())
@@ -64,15 +87,30 @@ export function DiaryPage() {
 
   // 오늘 이미 썼으면 그 내용을 불러와서 고칠 수 있게 합니다.
   const existingEntry = getEntry(todayKey)
-  const [mood, setMood] = useState(existingEntry?.mood ?? DEFAULT_MOOD)
-  const [content, setContent] = useState(existingEntry?.content ?? '')
+  // 저장 버튼을 누르기 전에 쓰던 글이 있으면 그것부터 보여줍니다. (전화가 와서 화면이 넘어갔다 돌아온 경우 등)
+  const [draft] = useState(() => loadTodayDraft(todayKey))
+  const [mood, setMood] = useState(draft?.mood ?? existingEntry?.mood ?? DEFAULT_MOOD)
+  const [content, setContent] = useState(draft?.content ?? existingEntry?.content ?? '')
   const [savedMessage, setSavedMessage] = useState('')
 
-  // 성찰 일기 처방(#70). AI 가 실제로 내려주는 서버가 아직 없어서 지금은 예시 처방 하나로 동작합니다.
-  const prescription = mockReflectionPrescription
-  const prescriptionDayIndex = countDays(prescription.startDate, todayKey)
+  // 기분이나 글이 바뀔 때마다 임시로 저장합니다. 저장된 일기와 똑같으면 임시 저장은 필요 없어서 지웁니다.
+  useEffect(() => {
+    const isSameAsSaved =
+      existingEntry !== undefined &&
+      existingEntry.mood === mood &&
+      existingEntry.content === content
+    const isUntouched = existingEntry === undefined && content === '' && mood === DEFAULT_MOOD
+    if (isSameAsSaved || isUntouched) removeData(DRAFT_KEY)
+    else saveData<DiaryDraft>(DRAFT_KEY, { date: todayKey, mood, content })
+  }, [existingEntry, mood, content, todayKey])
+
+  // 성찰 일기 처방(#70). 지금 내려진 처방이 없으면 null 이고, 처방 카드는 보이지 않습니다.
+  // (서버가 생기기 전까지 진짜 사용자에게는 처방이 없습니다. lib/reflectionPrescription.ts)
+  const [prescription] = useState(() => getReflectionPrescription(loadStudySessions()))
+  const prescriptionDayIndex =
+    prescription === null ? 0 : countDays(prescription.startDate, todayKey)
   const isPrescriptionActive =
-    prescriptionDayIndex >= 1 && prescriptionDayIndex <= prescription.days
+    prescription !== null && prescriptionDayIndex >= 1 && prescriptionDayIndex <= prescription.days
 
   // "지난 일기" 목록에는 오늘 것만 빼고, 일반 일기와 성찰 일기를 날짜 기준으로 합쳐서 보여줍니다.
   // (오늘 것은 위 "오늘 일기" 칸에 있으니까요)
@@ -119,7 +157,11 @@ export function DiaryPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link to="/records" className="text-sm text-slate-500 hover:text-slate-700">
+        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
+        <Link
+          to="/records"
+          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
+        >
           ‹ 기록
         </Link>
         <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">일기</h1>
@@ -137,7 +179,7 @@ export function DiaryPage() {
             </p>
             <Link
               to="/diary/reflection"
-              className="text-brand text-sm font-semibold hover:underline"
+              className="text-brand inline-flex h-10 items-center text-sm font-semibold hover:underline"
             >
               오늘 성찰 쓰기
             </Link>

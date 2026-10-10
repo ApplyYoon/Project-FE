@@ -92,14 +92,23 @@ export function isStudySession(value: unknown): value is StudySession {
 }
 
 /**
- * 타이머가 저장해 둔 공부 기록을 불러옵니다. 저장된 게 없으면 빈 목록입니다. (예시 기록으로 채우지 않습니다)
+ * 타이머가 저장해 둔 기록을 전부(공부 + 놀기) 불러옵니다. 저장된 게 없으면 빈 목록입니다.
  * 모양이 틀린 기록은 걸러냅니다.
+ * 계획별 실제 시간(`32 / 50분`)처럼 노는 기록도 필요한 곳에서만 씁니다.
+ */
+export function loadAllSessions(): StudySession[] {
+  const saved = loadData<unknown>('sessions', [])
+  return Array.isArray(saved) ? saved.filter(isStudySession) : []
+}
+
+/**
+ * 타이머가 저장해 둔 공부 기록을 불러옵니다. 저장된 게 없으면 빈 목록입니다. (예시 기록으로 채우지 않습니다)
+ * 노는 기록(kind 가 'play')은 공부가 아니라서 뺍니다. 순공 · 달성률 · 인사이트 계산에는 이 함수를 씁니다. (#238)
  *
  *   const sessions = loadStudySessions()
  */
 export function loadStudySessions(): StudySession[] {
-  const saved = loadData<unknown>('sessions', [])
-  return Array.isArray(saved) ? saved.filter(isStudySession) : []
+  return loadAllSessions().filter((session) => session.kind !== 'play')
 }
 
 /**

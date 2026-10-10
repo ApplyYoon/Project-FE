@@ -1,4 +1,4 @@
-import { loadData, saveData } from '@/lib/storage'
+import { loadRecord, saveData } from '@/lib/storage'
 import type { ReflectionEntry } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -16,7 +16,9 @@ const STORAGE_KEY = 'reflection-entries'
  *   const todayEntry = getEntry('2026-09-28')
  */
 export function useReflectionEntries() {
-  const [entriesByDate, setEntriesByDate] = useState<EntriesByDate>(() => loadData(STORAGE_KEY, {}))
+  const [entriesByDate, setEntriesByDate] = useState<EntriesByDate>(() =>
+    loadRecord<ReflectionEntry>(STORAGE_KEY),
+  )
 
   useEffect(() => {
     saveData(STORAGE_KEY, entriesByDate)

@@ -1,4 +1,4 @@
-import { getStudyMs } from '@/lib/studyTime'
+import { getSessionMs } from '@/lib/studyTime'
 import type { StudyPlan, StudySession } from '@/types'
 
 const MS_PER_MINUTE = 60 * 1000
@@ -16,13 +16,14 @@ export interface PlanProgress {
 }
 
 /**
- * 계획 하나에 연결된 공부 기록(planId 가 그 계획인 기록)의 순공시간을 모두 더합니다. (밀리초)
- * 순공시간은 일시정지한 시간을 뺀 값입니다. (lib/studyTime.ts)
+ * 계획 하나에 연결된 기록(planId 가 그 계획인 기록)의 실제 길이를 모두 더합니다. (밀리초)
+ * 실제 길이는 일시정지한 시간을 뺀 값입니다. (lib/studyTime.ts 의 getSessionMs)
+ * 노는 계획의 실제 시간도 이 함수로 구합니다. 그래서 sessions 에는 노는 기록까지 들어 있어야 합니다.
  */
 export function getPlanStudyMs(planId: string, sessions: StudySession[]): number {
   let totalMs = 0
   for (const session of sessions) {
-    if (session.planId === planId) totalMs += getStudyMs(session)
+    if (session.planId === planId) totalMs += getSessionMs(session)
   }
   return totalMs
 }
@@ -110,4 +111,38 @@ export function getDayProgress(plans: StudyPlan[], sessions: StudySession[]): Da
     percent:
       targetMinutes > 0 ? Math.min(100, Math.floor((actualMinutes * 100) / targetMinutes)) : 0,
   }
+}
+
+/** 하루치 노는 계획이 얼마나 진행됐는지 (계획 화면의 "노는 계획 60분 · 실제 95분" 한 줄에 씁니다) */
+export interface PlayProgress {
+  /** 노는 계획의 수 */
+  count: number
+  /** 노는 계획들의 계획한 시간의 합 (분) */
+  targetMinutes: number
+  /** 노는 계획들로 실제 논 시간의 합 (분) */
+  actualMinutes: number
+}
+
+/**
+ * 하루치 계획(plans)에서 노는 계획(kind 가 'play')만 모아 "계획 / 실제" 를 계산합니다. (#238)
+ * 노는 시간은 순공에 넣지 않지만, 계획보다 얼마나 더 놀았는지는 숫자로 보여줍니다.
+ * sessions 에는 노는 기록까지 들어 있어야 합니다. (useStudySessions 의 allSessions)
+ *
+ * ■ 예시
+ *   게임 60분(95분 놂) · 영상 30분(안 놂) · 수학 60분(공부 계획)
+ *   -> { count: 2, targetMinutes: 90, actualMinutes: 95 }
+ *   노는 계획이 없는 날
+ *   -> { count: 0, targetMinutes: 0, actualMinutes: 0 }
+ */
+export function getPlayProgress(plans: StudyPlan[], sessions: StudySession[]): PlayProgress {
+  const playPlans = plans.filter((plan) => plan.kind === 'play')
+
+  let targetMinutes = 0
+  let actualMinutes = 0
+  for (const plan of playPlans) {
+    targetMinutes += plan.targetMinutes
+    actualMinutes += getPlanProgress(plan, sessions).actualMinutes
+  }
+
+  return { count: playPlans.length, targetMinutes, actualMinutes }
 }

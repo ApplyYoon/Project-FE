@@ -1,6 +1,6 @@
 import { toDateKey } from '@/lib/date'
 import { loadRoutines, takeRoutinePlans } from '@/lib/routines'
-import { loadData, saveData } from '@/lib/storage'
+import { loadRecord, saveData } from '@/lib/storage'
 import type { Routine, StudyPlan } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -15,7 +15,8 @@ const STORAGE_KEY = 'plans'
  * 앱을 어느 화면으로 열든(홈·타이머·계획) 오늘의 루틴 계획이 보이도록, 계획을 처음 읽는 이곳에서 채웁니다.
  */
 function loadPlansWithTodayRoutines(): PlansByDate {
-  const saved = loadData<PlansByDate>(STORAGE_KEY, {})
+  // loadRecord: 저장된 값이 깨져 있으면(객체가 아니면) 빈 객체로 시작합니다.
+  const saved: PlansByDate = loadRecord<StudyPlan[]>(STORAGE_KEY)
   const todayKey = toDateKey(new Date())
   const newPlans = takeRoutinePlans(todayKey, todayKey, loadRoutines())
   if (newPlans.length === 0) return saved
@@ -30,7 +31,7 @@ function loadPlansWithTodayRoutines(): PlansByDate {
  * 공부 계획을 날짜별로 들고 있고, 바뀔 때마다 localStorage 에 저장합니다.
  * 새로고침해도 계획이 남아 있고, 처음 들어온 사람은 빈 목록으로 시작합니다.
  *
- *   const { allPlans, getPlans, addPlan, toggleDone, completePlan, deletePlan } = usePlans()
+ *   const { allPlans, getPlans, addPlan, toggleDone, changeStartTime, completePlan, deletePlan } = usePlans()
  *   const todayPlans = getPlans('2026-09-28')
  */
 export function usePlans() {
@@ -100,6 +101,22 @@ export function usePlans() {
     })
   }
 
+  /** 그 계획의 시작 시각을 바꿉니다. 빈 글자('')를 주면 시작 시각을 지워서 "시간 미정" 이 됩니다. (#237) */
+  function changeStartTime(planId: string, startTime: string) {
+    setPlansByDate((prev) => {
+      const next: PlansByDate = {}
+      for (const [date, plans] of Object.entries(prev)) {
+        next[date] = plans.map((plan) =>
+          // undefined 로 두면 저장할 때 startTime 칸이 빠집니다.
+          plan.id === planId
+            ? { ...plan, startTime: startTime === '' ? undefined : startTime }
+            : plan,
+        )
+      }
+      return next
+    })
+  }
+
   /** 그 계획을 지웁니다. 그날 계획이 하나도 안 남으면 날짜 칸도 같이 지웁니다. */
   function deletePlan(planId: string) {
     setPlansByDate((prev) => {
@@ -124,6 +141,7 @@ export function usePlans() {
     addPlans,
     fillRoutines,
     toggleDone,
+    changeStartTime,
     completePlan,
     deletePlan,
     replaceDayPlans,

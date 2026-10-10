@@ -3,25 +3,30 @@ import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { ExperimentSection } from '@/components/ui/ExperimentSection'
 import { InsightCard } from '@/components/ui/InsightCard'
+import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
 import { DEFAULT_TARGET_MINUTES, normalizeTargetMinutes } from '@/lib/countdown'
-import { groupSessionsByDate, loadStudySessions } from '@/lib/dailyRecords'
+import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
 import { formatDday } from '@/lib/exams'
 import { getFirstMe, type FirstMe } from '@/lib/firstMe'
+import { loadInitialPlan } from '@/lib/initialPlan'
 import { getInsightsToShow } from '@/lib/insights'
 import { getCareLimits } from '@/lib/careLimits'
-import { mockSubjects } from '@/lib/mock'
+import { loadSubjects } from '@/lib/subjects'
 import { getDayProgress, getPlanProgress } from '@/lib/planProgress'
 import { loadData } from '@/lib/storage'
+import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
-import type { StudyPlan, StudySession, Subject } from '@/types'
+import { loadWeeklyReviews } from '@/lib/weeklyReview'
+import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -71,10 +76,12 @@ function calculateTree(): TreeState {
     totalStudyMinutes,
     todayStudyMinutes: today?.totalMinutes ?? 0,
     careLevel: getTodayCareLevel(),
-    // TODO(#82 #73 #87): 회고·인사이트·나 사용설명서가 아직 없어서 0 입니다. 생기면 실제 개수로 바꾸세요.
-    reflectionCount: 0,
+    // 잎 = 건너뛰지 않고 쓴 주간 회고의 수 (#82)
+    reflectionCount: loadWeeklyReviews().filter((review) => !review.skipped).length,
+    // TODO(#73): 진짜 인사이트가 아직 없어서 0 입니다. (지금 인사이트는 개발용 예시뿐입니다)
     insightCount: 0,
-    manualItemCount: 0,
+    // 열매 = "나 사용설명서" 에 올라간 효과가 확인된 방법의 수 (#87, #93)
+    manualItemCount: loadManualItems().length,
   })
 }
 
@@ -101,12 +108,16 @@ export function HomePage() {
   const { allPlans, getPlans } = usePlans()
   // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
   const [sessions] = useState<StudySession[]>(loadStudySessions)
+  // 노는 기록까지 들어 있는 전체 기록입니다. 계획별 실제 시간(`12 / 50분`)은 노는 계획에도 보여야 해서 따로 읽습니다. (#238)
+  const [allSessions] = useState<StudySession[]>(loadAllSessions)
   // 계획 화면에서 저장한 과목 목록입니다. 과목 태그의 이름과 색을 찾는 데 씁니다.
-  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects] = useState<Subject[]>(loadSubjects)
   // 온보딩에서 내가 적은 시험 날짜와 공부하는 이유입니다. (lib/firstMe.ts)
   const [firstMe] = useState(() =>
     getFirstMe(loadData<unknown>('onboarding-answers', null), new Date()),
   )
+  // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
+  const [initialPlan] = useState(loadInitialPlan)
   // 인사이트는 가상 데이터를 넣었을 때만 예시로 보여줍니다. (lib/insights.ts)
   const { insights, isExample: isExampleInsight } = getInsightsToShow(sessions)
 
@@ -115,7 +126,12 @@ export function HomePage() {
 
   // 오늘 계획과, 그중 아직 안 끝난 것입니다. 안 끝난 것의 맨 앞이 "지금 할 일" 입니다.
   const todayPlans = getPlans(todayKey)
-  const undonePlans = todayPlans.filter((plan) => !plan.done)
+  // 시작 시각이 된 계획 → 시각을 안 정한 계획 → 아직 시각이 안 된 계획 순서로 줄 세웁니다. (lib/timeline.ts)
+  const now = new Date()
+  const undonePlans = sortPlansForNow(
+    todayPlans.filter((plan) => !plan.done),
+    now.getHours() * 60 + now.getMinutes(),
+  )
 
   // 첫 기록 날짜 = 계획과 공부 기록을 통틀어 가장 이른 날짜. 기록이 하나도 없으면 null 입니다.
   const recordDates = [
@@ -128,6 +144,10 @@ export function HomePage() {
 
   const yesterdaySummary = getDaySummary(yesterdayKey, allPlans, sessions)
   const hasYesterdayRecord = yesterdaySummary.studyMinutes > 0
+  // 어제 공부 계획이 있었는지. (노는 계획과 0분짜리 계획은 세지 않습니다)
+  const hasYesterdayPlan = allPlans.some(
+    (plan) => plan.date === yesterdayKey && plan.kind !== 'play' && plan.targetMinutes > 0,
+  )
 
   return (
     <div className="flex flex-col gap-8">
@@ -156,9 +176,9 @@ export function HomePage() {
           hasPlansToday={todayPlans.length > 0}
           allPlans={allPlans}
           subjects={subjects}
-          sessions={sessions}
+          sessions={allSessions}
         />
-        <FirstMeCard firstMe={firstMe} />
+        <FirstMeCard firstMe={firstMe} initialPlan={initialPlan} />
       </section>
 
       {/* 지금 관리 모드와 그 이유 (#94) */}
@@ -169,13 +189,18 @@ export function HomePage() {
       />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
-        <TodayCard plans={todayPlans} subjects={subjects} sessions={sessions} />
+        <TodayCard plans={todayPlans} subjects={subjects} sessions={allSessions} />
 
         <Card title="어제 한 줄">
-          {hasYesterdayRecord ? (
+          {hasYesterdayRecord && hasYesterdayPlan ? (
             <p className="text-base font-semibold text-slate-900">
               어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획의{' '}
               {yesterdaySummary.achievementRate}%야.
+            </p>
+          ) : hasYesterdayRecord ? (
+            // 계획 없이 공부한 날은 "계획의 0%" 라고 하면 못한 것처럼 들려서, 다르게 말합니다.
+            <p className="text-base font-semibold text-slate-900">
+              어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획 없이도 해냈네.
             </p>
           ) : (
             <p className="text-base font-semibold text-slate-900">오늘부터 시작해 볼까?</p>
@@ -255,6 +280,7 @@ interface NowCardProps {
   /** 모든 날짜의 계획. 타이머가 재고 있는 계획을 id 로 찾는 데 씁니다 */
   allPlans: StudyPlan[]
   subjects: Subject[]
+  /** 계획별 실제 시간을 구할 기록. 노는 기록까지 들어 있어야 합니다 */
   sessions: StudySession[]
 }
 
@@ -294,6 +320,7 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
               className="shrink-0"
             />
           )}
+          {timerPlan?.kind === 'play' && <PlayBadge className="shrink-0" />}
           <p className="min-w-0 text-lg font-semibold break-words text-slate-900">
             {timerPlan ? timerPlan.content : '계획 없이 공부'}
           </p>
@@ -325,6 +352,8 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
           {subject && (
             <SubjectBadge name={subject.name} color={subject.color} className="shrink-0" />
           )}
+          {/* 노는 계획은 과목 대신 회색 "놀기" 태그를 보여줍니다. (#238) */}
+          {nextPlan.kind === 'play' && <PlayBadge className="shrink-0" />}
           <p className="min-w-0 text-lg font-semibold break-words text-slate-900">
             {nextPlan.content}
           </p>
@@ -371,13 +400,15 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
 
 interface FirstMeCardProps {
   firstMe: FirstMe
+  /** 온보딩 마지막에 세운 처음 계획. 안 세웠으면 null */
+  initialPlan: InitialPlan | null
 }
 
 /**
  * "처음의 나" 카드. 온보딩에서 내가 직접 적은 시험 날짜와 공부하는 이유를 다시 보여줍니다. (#243)
  * 처음의 마음은 시간이 지나면 흐려지기 때문에, 가장 잘 보이는 홈 위쪽에 둡니다.
  */
-function FirstMeCard({ firstMe }: FirstMeCardProps) {
+function FirstMeCard({ firstMe, initialPlan }: FirstMeCardProps) {
   const hasReason = firstMe.reason !== ''
   const isEmpty = firstMe.daysUntilExam === null && !hasReason
 
@@ -398,17 +429,25 @@ function FirstMeCard({ firstMe }: FirstMeCardProps) {
         </div>
       )}
 
+      {/* 처음에 한 약속. 지금과 비교하는 숫자는 "이번 주 팩트"(#245)에서 보여줍니다. (#240) */}
+      {initialPlan && (
+        <p className="mt-3 text-sm text-slate-600">
+          처음 계획: 하루 {formatMinutes(initialPlan.dailyMinutes)} · 주 {initialPlan.daysPerWeek}일
+        </p>
+      )}
+
       {isEmpty && (
         <>
           <p className="mt-2 text-sm text-slate-600">
             시험 날짜와 공부하는 이유를 알려주면, 힘들 때 여기서 다시 보여줄게요.
           </p>
-          {/* 설문을 이미 끝낸 사람은 /onboarding 이 홈으로 돌려보내서, 아직 안 한 사람에게만 보여줍니다. */}
-          {!firstMe.hasAnswers && (
-            <Link to="/onboarding" className={cn(textLinkClass, 'mt-1')}>
-              내 정보 더 알려주기
-            </Link>
-          )}
+          {/* 처음 설문을 안 한 사람은 처음 설문으로, 한 사람은 남은 질문을 이어서 답하는 화면으로 보냅니다. (#239) */}
+          <Link
+            to={firstMe.hasAnswers ? '/onboarding/more' : '/onboarding'}
+            className={cn(textLinkClass, 'mt-1')}
+          >
+            내 정보 더 알려주기
+          </Link>
         </>
       )}
     </Card>
@@ -469,6 +508,7 @@ function TodayCard({ plans, subjects, sessions }: TodayCardProps) {
                   {subject && (
                     <SubjectBadge name={subject.name} color={subject.color} className="shrink-0" />
                   )}
+                  {plan.kind === 'play' && <PlayBadge className="shrink-0" />}
                   <p
                     className={cn(
                       'min-w-0 flex-1 text-sm break-words text-slate-900',

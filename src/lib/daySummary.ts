@@ -51,6 +51,8 @@ function toDateKey(date: Date): string {
  *    pauseCount 가 없거나(옛 기록) 0 이상의 정수가 아닌 이상한 값이면 그 세션은 0번으로 칩니다.
  * 9. 일시정지해 있던 시간(pausedMs)은 순공에서 뺍니다. 뽀모도로의 휴식 시간도 pausedMs 에 들어 있습니다.
  *    pausedMs 가 없는 옛 기록은 0 으로 보고, 음수이거나 (끝 − 시작)보다 큰 이상한 값도 0 으로 칩니다.
+ * 10. 노는 계획과 노는 기록(kind 가 'play')은 공부가 아니라서 어떤 지표에도 넣지 않습니다. (#238)
+ *    순공시간 · 달성률의 목표 시간 · 첫 시작 시각 · 평균 세션 길이 · 일시정지 횟수 모두에서 빠집니다.
  *
  * ■ 예시 (입력 → 결과)
  *
@@ -97,9 +99,11 @@ export function getDaySummary(
   plans: StudyPlan[],
   sessions: StudySession[],
 ): DaySummary {
-  // 그날의 계획과 그날 시작한 세션만 골라냅니다.
-  const dayPlans = plans.filter((plan) => plan.date === date)
-  const daySessions = sessions.filter((session) => toDateKey(new Date(session.startedAt)) === date)
+  // 그날의 계획과 그날 시작한 세션만 골라냅니다. 노는 계획·노는 기록은 뺍니다. (규칙 10)
+  const dayPlans = plans.filter((plan) => plan.date === date && plan.kind !== 'play')
+  const daySessions = sessions.filter(
+    (session) => toDateKey(new Date(session.startedAt)) === date && session.kind !== 'play',
+  )
 
   // 세션 길이를 모두 더하고, 가장 이른 시작 시각을 찾습니다.
   let totalMs = 0
