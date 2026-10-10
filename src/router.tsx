@@ -1,5 +1,6 @@
 import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
+import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
 import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
 import { CallActivePage } from '@/pages/CallActivePage'
@@ -43,9 +44,12 @@ export const router = createBrowserRouter([
     path: '/',
     errorElement: <ErrorPage />,
     // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다. (login 은 PUBLIC_PATHS 에 있어서 열려 있습니다)
+    // 로그인한 사람은 RequireDailyCheckIn 이 한 번 더 확인합니다. 그날 처음이면 기분 1탭 체크인부터 합니다. (#242)
     element: (
       <RequireAuth>
-        <Layout />
+        <RequireDailyCheckIn>
+          <Layout />
+        </RequireDailyCheckIn>
       </RequireAuth>
     ),
     children: [

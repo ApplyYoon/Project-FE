@@ -10,21 +10,13 @@ import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
 import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
+import { MOOD_OPTIONS } from '@/lib/quickCheckIn'
 import { getStudyMs } from '@/lib/studyTime'
 import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
 /** 컨디션 버튼에 쓰는 숫자 (1 최악 ~ 5 최고) */
 const CONDITION_OPTIONS = [1, 2, 3, 4, 5]
-
-/** 기분 버튼. 이모지 + 한국어 설명으로 보여줍니다. */
-const MOOD_OPTIONS = [
-  { value: 1, emoji: '😞', label: '많이 처짐' },
-  { value: 2, emoji: '🙁', label: '처짐' },
-  { value: 3, emoji: '😐', label: '보통' },
-  { value: 4, emoji: '🙂', label: '좋음' },
-  { value: 5, emoji: '😄', label: '아주 좋음' },
-]
 
 /** 오늘 예상 순공시간 버튼. 분 단위로 저장합니다. */
 const EXPECTED_MINUTES_OPTIONS = [
@@ -196,15 +188,17 @@ export function CheckPage() {
     <div className="flex flex-col gap-6">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">매일 체크인</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">자세히 체크인</h1>
           {isCheckedInToday && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-600">
               ✓ 오늘 체크인 완료
             </span>
           )}
         </div>
-        <p className="mt-2 text-slate-600">
-          버튼만 누르면 30초 안에 끝나요. 전화를 못 받은 날은 여기서 해요.
+        {/* 기분은 앱을 열 때 1탭으로 이미 받았습니다. (#242) 이 화면은 더 적고 싶은 날에만 씁니다. */}
+        <p className="mt-2 break-keep text-slate-600">
+          오늘 기분은 앱을 열 때 이미 골랐어요. 컨디션·예상 시간·약속까지 적고 싶은 날에만 하면
+          돼요.
         </p>
       </div>
 
