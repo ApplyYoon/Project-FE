@@ -1,6 +1,7 @@
 import { BackToRecordsLink } from '@/components/layout/BackToRecordsLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
+import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
 import { RecordsSubNav } from '@/components/layout/RecordsSubNav'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
@@ -33,6 +34,8 @@ export function Layout() {
       <Header />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
+        {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
+        <IosInstallGuide />
         {/* 기록 아래 화면에는 맨 위에 하위 탭 막대(기록·리포트·사용설명서)나 "‹ 기록" 돌아가기 링크를 둡니다. (#101) */}
         {isRecordsTabPath(pathname) && <RecordsSubNav />}
         {isRecordsCardPath(pathname) && <BackToRecordsLink />}
