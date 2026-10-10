@@ -1,9 +1,11 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
+import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
 import {
   getDaysUntil,
@@ -98,7 +100,7 @@ function StepInput({ step, value, onChange }: StepInputProps) {
     )
   }
 
-  // 시각 (step.type === 'time'). messageSettings 단계는 OnboardingPage 가 따로 그려서 여기로 오지 않습니다.
+  // 시각 (step.type === 'time'). careLimits·messageSettings 단계는 OnboardingPage 가 따로 그려서 여기로 오지 않습니다.
   return (
     <Input
       type="time"
@@ -131,6 +133,9 @@ export function OnboardingPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   // "관리 설정" 단계의 메시지 설정. 글자 하나가 아니라서 answers 와 따로 들고 있다가 "완료" 때 저장합니다.
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
+  // "관리 설정" 단계의 관리 강도 한도·독설 수위. 이것도 따로 들고 있다가 "완료" 때 저장합니다.
+  const [maxCareLevel, setMaxCareLevel] = useState(() => getCareLimits().maxCareLevel)
+  const [maxHarshness, setMaxHarshness] = useState(() => getCareLimits().maxHarshness)
 
   // 이미 마친 사람은 홈으로 보냅니다. (Navigate: 화면을 그리는 대신 주소를 바꿔 주는 부품)
   if (isFinished) return <Navigate to="/" replace />
@@ -160,6 +165,8 @@ export function OnboardingPage() {
     if (isLastStep) {
       saveData(STORAGE_KEY, answers)
       saveMessageSettings(messageSettings)
+      // 처음 정하는 한도라서 "높이면 내일부터" 규칙 없이 바로 적용합니다.
+      setInitialCareLimits(maxCareLevel, maxHarshness)
       navigate('/onboarding/done')
       return
     }
@@ -203,9 +210,22 @@ export function OnboardingPage() {
           )}
         </div>
 
-        {step.type === 'messageSettings' ? (
+        {step.type === 'careLimits' && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-slate-700">관리 강도 최대 한도</span>
+              <CareLevelPicker value={maxCareLevel} onChange={setMaxCareLevel} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-slate-700">독설 허용 수위</span>
+              <HarshnessPicker value={maxHarshness} onChange={setMaxHarshness} />
+            </div>
+          </div>
+        )}
+        {step.type === 'messageSettings' && (
           <MessageSettingsFields value={messageSettings} onChange={setMessageSettings} />
-        ) : (
+        )}
+        {step.type !== 'careLimits' && step.type !== 'messageSettings' && (
           // key: 질문이 바뀔 때 입력칸을 새로 만들어서 이전 질문의 상태가 섞이지 않게 합니다.
           <StepInput key={step.key} step={step} value={value} onChange={handleChangeAnswer} />
         )}

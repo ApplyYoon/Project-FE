@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
+import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
-import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
@@ -23,7 +23,6 @@ import {
   type MessageSettings,
 } from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
-import type { CareLevel } from '@/lib/careLevel'
 import {
   getNotificationPermission,
   isNotificationSupported,
@@ -53,23 +52,6 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
 interface DeleteMessage {
   text: string
   isSuccess: boolean
-}
-
-/** 관리 강도 단계별 이름과 한 줄 설명. (홈의 "지금 관리 모드" 배너와 같은 문구를 씁니다: lib/careLevelInfo.ts) */
-const careLevelOptions: { level: CareLevel; label: string; description: string }[] =
-  careLevelInfos.map((info) => ({
-    level: info.level,
-    label: `${info.level} ${info.name}`,
-    description: info.description,
-  }))
-
-/** 독설 허용 수위(1~5)별 한 줄 설명 */
-const harshnessDescriptions: Record<number, string> = {
-  1: '부드럽게만 말해줘',
-  2: '담백하게 짚어줘',
-  3: '따끔하게 말해도 돼',
-  4: '세게 말해도 돼',
-  5: '제일 세게 말해도 돼',
 }
 
 /** 'YYYY-MM-DD' 를 'M월 D일' 로 바꿔줍니다. */
@@ -161,38 +143,11 @@ export function SettingsPage() {
               </p>
             )}
 
-            <div
-              role="radiogroup"
-              aria-label="관리 강도 최대 한도"
-              className="mt-4 flex flex-col gap-2"
-            >
-              {careLevelOptions.map((option) => {
-                const isSelected = option.level === limits.maxCareLevel
-                return (
-                  <label
-                    key={option.level}
-                    className={cn(
-                      'flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3',
-                      isSelected
-                        ? 'border-brand bg-brand-light'
-                        : 'border-slate-200 hover:bg-slate-50',
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="maxCareLevel"
-                      checked={isSelected}
-                      onChange={() => setLimits(setMaxCareLevel(option.level))}
-                      className="accent-brand mt-1 h-5 w-5 shrink-0 cursor-pointer"
-                    />
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-900">{option.label}</span>
-                      <span className="text-sm text-slate-500">{option.description}</span>
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
+            <CareLevelPicker
+              value={limits.maxCareLevel}
+              onChange={(level) => setLimits(setMaxCareLevel(level))}
+              className="mt-4"
+            />
           </Card>
 
           <Card title="독설 허용 수위">
@@ -200,31 +155,11 @@ export function SettingsPage() {
               지적은 행동에만 해요. 외모·성적·능력 비하와 남과 비교는 절대 안 해요.
             </p>
 
-            <div className="mt-4 grid grid-cols-5 gap-2">
-              {[1, 2, 3, 4, 5].map((value) => {
-                const isSelected = value === limits.maxHarshness
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => setLimits(setMaxHarshness(value))}
-                    className={cn(
-                      'h-10 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
-                      isSelected
-                        ? 'border-brand bg-brand-light text-brand'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-                    )}
-                  >
-                    {value}
-                  </button>
-                )
-              })}
-            </div>
-
-            <p className="mt-2 text-sm text-slate-500">
-              {limits.maxHarshness} · {harshnessDescriptions[limits.maxHarshness]}
-            </p>
+            <HarshnessPicker
+              value={limits.maxHarshness}
+              onChange={(value) => setLimits(setMaxHarshness(value))}
+              className="mt-4"
+            />
           </Card>
 
           <Card title="잠금과 독촉">

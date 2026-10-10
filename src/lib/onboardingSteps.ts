@@ -9,7 +9,7 @@
  *   2. key 는 #78 의 OnboardingAnswers 필드 이름과 똑같이 씁니다. 답이 그 이름으로 저장됩니다.
  *   3. 아래 모양(choice, text, date, time)으로 안 되는 질문이면
  *      (예: 여러 개 고르기) 위에 Step 모양을 하나 더 만들고, OnboardingPage 의 StepInput 에도 한 줄 더하세요.
- *      답이 글자 하나가 아닌 단계(messageSettings)는 OnboardingPage 가 StepInput 대신 따로 그립니다.
+ *      답이 글자 하나가 아닌 단계(careLimits, messageSettings)는 OnboardingPage 가 StepInput 대신 따로 그립니다.
  */
 
 /** 모든 단계가 같이 가지는 정보 */
@@ -57,7 +57,16 @@ interface MessageSettingsStep extends BaseStep {
   type: 'messageSettings'
 }
 
-export type OnboardingStep = ChoiceStep | TextStep | DateStep | TimeStep | MessageSettingsStep
+/**
+ * 관리 강도 최대 한도·독설 허용 수위를 고르는 단계 (#59). 설정 화면과 같은 화면 조각(CareLimitPickers)을 씁니다.
+ * 답은 온보딩 답이 아니라 관리 한도(lib/careLimits)로 "완료" 때 저장되고, 바로 적용됩니다.
+ */
+interface CareLimitsStep extends BaseStep {
+  type: 'careLimits'
+}
+
+export type OnboardingStep =
+  ChoiceStep | TextStep | DateStep | TimeStep | CareLimitsStep | MessageSettingsStep
 
 /** 질문 목록. 위에서부터 차례로 보입니다. */
 export const onboardingSteps: OnboardingStep[] = [
@@ -148,6 +157,13 @@ export const onboardingSteps: OnboardingStep[] = [
 
   /* ---------- 관리 설정 ---------- */
   {
+    key: 'careLimits',
+    group: '관리 설정',
+    type: 'careLimits',
+    title: 'AI 가 얼마나 세게 챙겨도 돼?',
+    description: '정한 한도는 절대 넘지 않아요. 나중에 설정에서 언제든 바꿀 수 있어요.',
+  },
+  {
     key: 'messageSettings',
     group: '관리 설정',
     type: 'messageSettings',
@@ -189,8 +205,9 @@ export function isAnswerValid(
   value: string,
   now: Date = new Date(),
 ): boolean {
-  // 메시지 설정은 처음 값(하루 3번, 23:00 ~ 07:00)이 들어 있어서 그대로 넘어가도 됩니다.
-  if (step.type === 'messageSettings') return true
+  // 관리 한도·메시지 설정은 처음 값이 들어 있어서 그대로 넘어가도 됩니다.
+  // (관리 한도 2단계·독설 3, 메시지 하루 3번·23:00 ~ 07:00)
+  if (step.type === 'careLimits' || step.type === 'messageSettings') return true
   if (value.trim() === '') return step.optional === true
   if (step.type === 'date') return getDaysUntil(value, now) >= 0
   return true
