@@ -25,6 +25,7 @@ import {
   TARGET_PRESETS,
   formatCountdown,
   getCountdownStatus,
+  getTargetHint,
   normalizeTargetMinutes,
 } from '@/lib/countdown'
 import { DAY_START_HOUR, getTodayKey, toDayDate, toDayKey } from '@/lib/date'
@@ -140,6 +141,8 @@ export function TimerPage() {
   }, [targetMinutes])
 
   const isTarget = mode === 'target'
+  // 고른 목표 시간이 어느 정도 길이인지 알려 주는 한 줄. 버튼에 없는 값이면 null (lib/countdown.ts)
+  const targetHint = getTargetHint(targetMinutes)
   // 목표 정하기는 스톱워치가 센 "흐른 시간"과 목표 시간으로 남은 시간을 계산합니다. (lib/countdown.ts)
   const countdown = getCountdownStatus(seconds, targetMinutes)
   // 목표를 채웠는지. 채운 뒤에도 타이머는 멈추지 않고 "더 한 시간"을 셉니다.
@@ -607,15 +610,23 @@ export function TimerPage() {
         {/* 목표 시간 고르기. 시작하기 전에만 보입니다. (공부 중에는 약속한 시간이 숫자 아래에 보입니다) */}
         {/* 계획에서 시작하면 목표 시간이 계획에서 오기 때문에, 과목을 직접 고르는 쪽 아래에 둡니다. */}
         {isTarget && !isStudying && (
-          <MinutesPicker
-            label="목표 시간"
-            presets={TARGET_PRESETS}
-            value={targetMinutes}
-            onChange={handleChangeTarget}
-            min={MIN_TARGET_MINUTES}
-            max={MAX_TARGET_MINUTES}
-            className="max-w-sm"
-          />
+          <div className="flex w-full max-w-sm flex-col gap-1.5">
+            <MinutesPicker
+              label="목표 시간"
+              presets={TARGET_PRESETS}
+              value={targetMinutes}
+              onChange={handleChangeTarget}
+              min={MIN_TARGET_MINUTES}
+              max={MAX_TARGET_MINUTES}
+            />
+            {/* 고른 시간이 어느 정도 길이인지 한 줄로 알려 줍니다. 직접 적은 값에는 설명이 없습니다. */}
+            {/* aria-live: 버튼을 바꿔 설명이 바뀌면 스크린리더가 읽어 줍니다. */}
+            {targetHint !== null && (
+              <p aria-live="polite" className="text-sm break-keep text-slate-500">
+                {targetHint}
+              </p>
+            )}
+          </div>
         )}
 
         <div className="flex flex-wrap items-center justify-center gap-2">
