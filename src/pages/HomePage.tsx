@@ -14,6 +14,7 @@ import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/d
 import { getDaySummary } from '@/lib/daySummary'
 import { formatDday } from '@/lib/exams'
 import { getFirstMe, type FirstMe } from '@/lib/firstMe'
+import { loadInitialPlan } from '@/lib/initialPlan'
 import { getInsightsToShow } from '@/lib/insights'
 import { getCareLimits } from '@/lib/careLimits'
 import { mockSubjects } from '@/lib/mock'
@@ -23,7 +24,7 @@ import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
-import type { StudyPlan, StudySession, Subject } from '@/types'
+import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -111,6 +112,8 @@ export function HomePage() {
   const [firstMe] = useState(() =>
     getFirstMe(loadData<unknown>('onboarding-answers', null), new Date()),
   )
+  // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
+  const [initialPlan] = useState(loadInitialPlan)
   // 인사이트는 가상 데이터를 넣었을 때만 예시로 보여줍니다. (lib/insights.ts)
   const { insights, isExample: isExampleInsight } = getInsightsToShow(sessions)
 
@@ -167,7 +170,7 @@ export function HomePage() {
           subjects={subjects}
           sessions={allSessions}
         />
-        <FirstMeCard firstMe={firstMe} />
+        <FirstMeCard firstMe={firstMe} initialPlan={initialPlan} />
       </section>
 
       {/* 지금 관리 모드와 그 이유 (#94) */}
@@ -384,13 +387,15 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
 
 interface FirstMeCardProps {
   firstMe: FirstMe
+  /** 온보딩 마지막에 세운 처음 계획. 안 세웠으면 null */
+  initialPlan: InitialPlan | null
 }
 
 /**
  * "처음의 나" 카드. 온보딩에서 내가 직접 적은 시험 날짜와 공부하는 이유를 다시 보여줍니다. (#243)
  * 처음의 마음은 시간이 지나면 흐려지기 때문에, 가장 잘 보이는 홈 위쪽에 둡니다.
  */
-function FirstMeCard({ firstMe }: FirstMeCardProps) {
+function FirstMeCard({ firstMe, initialPlan }: FirstMeCardProps) {
   const hasReason = firstMe.reason !== ''
   const isEmpty = firstMe.daysUntilExam === null && !hasReason
 
@@ -409,6 +414,13 @@ function FirstMeCard({ firstMe }: FirstMeCardProps) {
           <p className="text-base font-semibold break-words text-slate-900">“{firstMe.reason}”</p>
           <p className="mt-1 text-sm text-slate-500">처음에 내가 적은 공부하는 이유</p>
         </div>
+      )}
+
+      {/* 처음에 한 약속. 지금과 비교하는 숫자는 "이번 주 팩트"(#245)에서 보여줍니다. (#240) */}
+      {initialPlan && (
+        <p className="mt-3 text-sm text-slate-600">
+          처음 계획: 하루 {formatMinutes(initialPlan.dailyMinutes)} · 주 {initialPlan.daysPerWeek}일
+        </p>
       )}
 
       {isEmpty && (

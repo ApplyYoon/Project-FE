@@ -16,6 +16,7 @@ import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
+import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
 import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
@@ -103,6 +104,15 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <OnboardingPage mode="more" />
+      </RequireAuth>
+    ),
+  },
+  // 처음 계획 세우기. 온보딩 질문이 끝난 뒤 "준비 끝" 앞에 나옵니다. (#240)
+  {
+    path: '/onboarding/plan',
+    element: (
+      <RequireAuth>
+        <OnboardingPlanPage />
       </RequireAuth>
     ),
   },

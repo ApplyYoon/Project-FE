@@ -163,7 +163,7 @@ interface OnboardingPageProps {
  * 질문 목록은 lib/onboardingSteps.ts 한 곳에서 관리합니다.
  *
  * ■ 처음 설문 (mode 가 'first')
- *   꼭 필요한 질문만 묻습니다. 마지막에 "완료" 를 누르면 답을 저장하고 "준비 끝!" 화면(/onboarding/done)으로 갑니다.
+ *   꼭 필요한 질문만 묻습니다. 마지막에 "완료" 를 누르면 답을 저장하고 처음 계획 세우기(/onboarding/plan)로 갑니다.
  *   관리 강도 한도와 메시지 설정은 묻지 않고 기본값으로 시작합니다. (설정에서 언제든 바꿉니다) (#239)
  *   위쪽의 "나중에 하기" 를 누르면 답을 저장하지 않고 홈으로 갑니다. (지금까지 고른 답은 사라집니다)
  *   이미 설문을 마친 사람(저장된 답이 있는 사람)이 오면 바로 홈으로 돌려보냅니다.
@@ -243,7 +243,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
       const limits = getCareLimits()
       setInitialCareLimits(limits.maxCareLevel, limits.maxHarshness)
       saveMessageSettings(getMessageSettings())
-      navigate('/onboarding/done')
+      // 질문이 끝나면 처음 계획을 세우러 갑니다. 거기서 "준비 끝" 화면으로 이어집니다. (#240)
+      navigate('/onboarding/plan')
       return
     }
     setStepIndex((index) => index + 1)

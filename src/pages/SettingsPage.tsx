@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
+import { loadInitialPlan } from '@/lib/initialPlan'
 import { getUnansweredSteps } from '@/lib/onboardingSteps'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
@@ -81,6 +82,8 @@ export function SettingsPage() {
     setConfirmCareLevel(null)
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
+  // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
+  const [initialPlan] = useState(loadInitialPlan)
   // 온보딩 답. "내 정보 더 알려주기" 에서 남은 질문 수를 세는 데 씁니다. (#239)
   const [onboardingAnswers] = useState(() =>
     loadData<Record<string, string> | null>('onboarding-answers', null),
@@ -148,6 +151,8 @@ export function SettingsPage() {
   // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스. h-10 으로 누르는 높이를 40px 로 둡니다.
   const moreLinkClass =
     'bg-brand hover:bg-brand-dark mt-3 inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium text-white transition-colors'
+  const secondaryLinkClass =
+    'mt-3 inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50'
 
   return (
     <div className="flex flex-col gap-6">
@@ -187,6 +192,31 @@ export function SettingsPage() {
                 질문에 다 답했어요. 알려준 만큼 더 잘 맞춰 줄게요.
               </p>
             )}
+
+            {/* 처음 계획: 온보딩 마지막에 한 약속. 여기서 누를 때만 다시 세울 수 있습니다. (#240) */}
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <h4 className="text-sm font-semibold text-slate-900">처음 계획</h4>
+              {initialPlan === null ? (
+                <>
+                  <p className="mt-1 text-sm break-keep text-slate-500">
+                    아직 처음 계획을 세우지 않았어요.
+                  </p>
+                  <Link to="/onboarding/plan" className={secondaryLinkClass}>
+                    처음 계획 세우기
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm break-keep text-slate-500">
+                    하루 {initialPlan.dailyMinutes / 60}시간 · 주 {initialPlan.daysPerWeek}일 ·{' '}
+                    {initialPlan.createdDate} 에 세움
+                  </p>
+                  <Link to="/onboarding/plan?redo=1" className={secondaryLinkClass}>
+                    다시 세우기
+                  </Link>
+                </>
+              )}
+            </div>
           </Card>
 
           <Card title="관리 강도 최대 한도">
