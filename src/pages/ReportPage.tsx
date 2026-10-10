@@ -11,10 +11,12 @@ import { cn } from '@/lib/cn'
 import { loadStudySessions } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
+import { getFacts } from '@/lib/facts'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
 import { loadInitialPlan } from '@/lib/initialPlan'
 import { getInsightsToShow } from '@/lib/insights'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { getWeeklyGoalProgress, getWeeklyGoalTitle, loadPastWeeklyGoals } from '@/lib/weeklyGoal'
 import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
 import type { StudyPlan, StudySession, WeeklyReview } from '@/types'
 import { useState, type FormEvent } from 'react'
@@ -26,6 +28,8 @@ const MIN_DAYS_FOR_MONTHLY = 42
 
 // 며칠 동안 기록이 쌓여야 첫 리포트를 보여줄지 (#85)
 const FIRST_REPORT_DAYS = 14
+// "지난 목표" 에 보여줄 주의 수 (#247)
+const PAST_GOAL_COUNT = 8
 
 /** Date 를 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString() 은 영국 시간 기준이라 쓰지 않습니다) */
 function toDateKey(date: Date): string {
@@ -294,6 +298,8 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
   const [weeksAgo, setWeeksAgo] = useState(0)
   // 온보딩에서 세운 처음 계획. 팩트 카드의 "처음 계획 · 하루 평균" 줄에 씁니다. 안 세웠으면 null (#240)
   const [initialPlan] = useState(loadInitialPlan)
+  // 이미 끝난 주들에 골랐던 "이번 주 목표" (#247). 이번 주 목표는 아직 진행 중이라 홈에서만 보여줍니다.
+  const [pastGoals] = useState(() => loadPastWeeklyGoals(getMondayKey(0)).slice(0, PAST_GOAL_COUNT))
 
   const mondayKey = getMondayKey(weeksAgo)
   const previousMondayKey = getMondayKey(weeksAgo + 1)
@@ -359,6 +365,49 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
         mondayKey={mondayKey}
         isPastWeek={weeksAgo > 0}
       />
+
+      {/* 지난 목표와 결과 (#247). 달성했는지는 그 주의 팩트 숫자로 정해집니다. 스스로 "지켰다" 고 답하지 않습니다. */}
+      {pastGoals.length > 0 && (
+        <Card title="지난 목표">
+          <ul className="flex flex-col divide-y divide-slate-100">
+            {pastGoals.map((goal) => {
+              // 그 주 월요일 ~ 일요일의 팩트로 결과를 판정합니다.
+              const weekFacts = getFacts(
+                allPlans,
+                sessions,
+                goal.mondayKey,
+                moveDateKey(goal.mondayKey, 6),
+              )
+              const progress = getWeeklyGoalProgress(goal, weekFacts)
+              const unit = goal.kind === 'startDelay' ? '분' : '%'
+              return (
+                <li
+                  key={goal.mondayKey}
+                  className="flex items-center justify-between gap-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">{formatMonthDay(goal.mondayKey)} 주</p>
+                    <p className="font-medium break-keep text-slate-900">
+                      {getWeeklyGoalTitle(goal)}
+                    </p>
+                  </div>
+                  {/* 미달은 빨간색으로 겁주지 않고 회색으로 둡니다. */}
+                  <p
+                    className={cn(
+                      'shrink-0 font-semibold',
+                      progress.status === 'achieved' ? 'text-emerald-600' : 'text-slate-500',
+                    )}
+                  >
+                    {progress.status === 'unknown'
+                      ? '기록 없음'
+                      : `${progress.current}${unit} · ${progress.status === 'achieved' ? '달성' : '미달'}`}
+                  </p>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
+      )}
 
       {isBeforeFirstReport ? (
         <Card>
