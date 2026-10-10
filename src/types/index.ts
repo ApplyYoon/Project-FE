@@ -65,6 +65,9 @@ export interface StudySession {
 /** 관리 강도 — 0 회복, 1 당근, 2 넛지, 3 심리적 채찍, 4 강제적 채찍 */
 export type CareLevel = 0 | 1 | 2 | 3 | 4
 
+/** 뽀모도로의 구간 — study: 공부, break: 휴식 */
+export type PomodoroPhase = 'study' | 'break'
+
 /** AI 의 태도 — kind: 친절, normal: 보통, cynical: 냉소 */
 export type AiMood = 'kind' | 'normal' | 'cynical'
 
