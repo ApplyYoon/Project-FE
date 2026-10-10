@@ -1,9 +1,11 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { usePlans } from '@/hooks/usePlans'
 import { getDaySummary } from '@/lib/daySummary'
-import { mockInsights, mockSessions } from '@/lib/mock'
+import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
+import { mockInsights, mockSessions, mockTargetExamDate } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
 import type { StudyPlan, StudySession } from '@/types'
 import { useState } from 'react'
@@ -143,6 +145,10 @@ export function ReportPage() {
   // 계획도 공부 기록도 하나 없는 주는 "기록 없음" 안내로 바꿉니다.
   const hasRecord = thisWeek.targetMinutes > 0 || thisWeek.studyMinutes > 0
 
+  // 예상 성장 곡선(#71). 보고 있는 주와 상관없이 항상 "지금까지 전체"를 기준으로 계산합니다.
+  // D-day 는 온보딩(#58)이 생기기 전까지 예시 날짜(mockTargetExamDate)를 씁니다.
+  const growthCurve = getGrowthCurve(allPlans, sessions, toDateKey(new Date()), mockTargetExamDate)
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -240,6 +246,29 @@ export function ReportPage() {
           </section>
         </>
       )}
+
+      {/* 원래 월간 리포트(#86)에 들어갈 내용인데, #86 이 아직 없어서 주간 리포트에 임시로 둡니다. */}
+      <section>
+        <h2 className="text-lg font-bold text-slate-900">예상 성장 곡선</h2>
+        {!growthCurve.hasEnoughData ? (
+          <p className="mt-3 text-sm text-slate-500">기록이 더 쌓이면 보여드릴게요.</p>
+        ) : (
+          <Card className="mt-3">
+            <GrowthCurveChart curve={growthCurve} examLabel="시험일" />
+            <p className="mt-4 text-base font-semibold text-slate-900">
+              지금 페이스면 시험일까지 누적 {formatMinutes(growthCurve.currentPaceTotalMinutes)},
+              하루 {EXTRA_MINUTES_PER_DAY}분 더하면{' '}
+              {formatMinutes(growthCurve.withExtraTotalMinutes)}야.
+            </p>
+            {growthCurve.hasFourWeekComparison && (
+              <p className="mt-1 text-sm text-slate-500">
+                4주 전보다 하루 평균 {Math.abs(growthCurve.dailyMinutesChangeFromFourWeeksAgo)}분{' '}
+                {growthCurve.dailyMinutesChangeFromFourWeeksAgo >= 0 ? '늘었어.' : '줄었어.'}
+              </p>
+            )}
+          </Card>
+        )}
+      </section>
 
       {/* 지난 실험 결과(#93) · 도전 중인 실험(#65)이 아직 없어서 자리만 만들어 둡니다. */}
       <section>
