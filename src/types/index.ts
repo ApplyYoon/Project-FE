@@ -64,6 +64,22 @@ export interface StudySession {
   pauseCount: number
 }
 
+/** 공부 중에 다른 탭·앱으로 나갔다 돌아온 기록 (딴짓 한 번) */
+export interface AwayRecord {
+  /** 기록을 구분하는 고유 값 */
+  id: string
+  /** 나간 날짜 (예: '2026-09-28'). 하루 단위로 모아서 셀 때 씁니다. */
+  date: string
+  /** 공부하던 과목 (Subject 의 id). 알 수 없으면 null */
+  subjectId: string | null
+  /** 나간 시각 (Date.now() 값) */
+  leftAt: number
+  /** 돌아온 시각 (Date.now() 값) */
+  returnedAt: number
+  /** 나가 있던 시간 (밀리초). returnedAt - leftAt 과 같습니다. */
+  awayMs: number
+}
+
 /** 뽀모도로의 구간 — study: 공부, break: 휴식 */
 export type PomodoroPhase = 'study' | 'break'
 
@@ -254,4 +270,29 @@ export interface ManualItem {
   confirmedDate: string
   /** 근거 (예: '폰을 다른 방에 두면 효과 있음 (2주 실험: 순공 +35분)') */
   evidence: string
+}
+
+/**
+ * AI 가 보낸 메시지의 종류
+ * - regular: 정해진 빈도(예: 하루 3번)에 맞춰 보낸 메시지
+ * - event: 무슨 일이 생겨서 바로 보낸 메시지 (예: 계획 시간 지남, 목표 달성)
+ */
+export type AiMessageKind = 'regular' | 'event'
+
+/** 메시지함에 쌓이는 AI 메시지 하나 */
+export interface AiMessage {
+  /** 메시지를 구분하는 고유 값 */
+  id: string
+  /** 보낸 시각 (Date.now() 값) */
+  sentAt: number
+  /** 보낼 때의 관리 강도 (0 회복 ~ 4 강제적 채찍). 말풍선 색이 이 값에 따라 바뀝니다. */
+  careLevel: CareLevel
+  /** 정기 메시지인지, 이벤트 알림인지 */
+  kind: AiMessageKind
+  /** 이벤트 알림일 때 말풍선 아래에 붙는 짧은 이름 (예: '계획 시간 지남') */
+  eventLabel?: string
+  /** 메시지 내용 */
+  text: string
+  /** 읽었으면 true, 아직 안 읽었으면 false */
+  read: boolean
 }
