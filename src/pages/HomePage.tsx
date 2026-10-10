@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -10,7 +11,8 @@ import { groupSessionsByDate, isStudySession } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
 import { mockInsights, mockSessions } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
-import { getTodayCareLevel } from '@/lib/todayCare'
+import { getCareLimits } from '@/lib/careLimits'
+import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
 import type { StudySession } from '@/types'
 import { useState } from 'react'
@@ -81,6 +83,9 @@ export function HomePage() {
   const [name, setName] = useState('')
   const [isDetailOpen, toggleDetail] = useToggle()
   const [tree] = useState(calculateTree)
+  // 오늘의 관리 강도와, 내가 정한 최대 한도입니다. 화면이 처음 그려질 때 한 번만 읽습니다. (#94)
+  const [careLevel] = useState(getTodayCareLevel)
+  const [maxCareLevel] = useState(() => getCareLimits().maxCareLevel)
 
   const { allPlans } = usePlans()
   // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 가짜 데이터를 씁니다. (#20 이 아직 머지 전입니다)
@@ -110,6 +115,13 @@ export function HomePage() {
           여러분의 페이지를 만들어 보세요.
         </p>
       </section>
+
+      {/* 지금 관리 모드와 그 이유. 시안처럼 홈 맨 위에 둡니다. (#94) */}
+      <CareModeBanner
+        level={careLevel}
+        reason={getTodayCareReason(careLevel)}
+        maxLevel={maxCareLevel}
+      />
 
       {/* 아직 실제 홈 화면이 만들어지기 전이라 나무 카드만 먼저 둡니다. PC 에서는 시안처럼 절반 너비입니다. (#68) */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -178,7 +190,7 @@ export function HomePage() {
         ) : (
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {mockInsights.slice(0, 2).map((insight) => (
-              <InsightCard key={insight.id} insight={insight} />
+              <InsightCard key={insight.id} insight={insight} sessions={sessions} />
             ))}
           </div>
         )}

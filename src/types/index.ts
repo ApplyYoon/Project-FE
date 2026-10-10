@@ -111,6 +111,19 @@ export interface Suggestion {
   days?: number
 }
 
+/**
+ * 도전 중인 개선안을 그날 지켰는지 적은 기록 (#65)
+ * 개선안 하나 · 날짜 하나마다 하나씩 남습니다. (개선안은 동시에 2개까지 도전할 수 있어서 개선안마다 따로 적습니다)
+ */
+export interface SuggestionCheck {
+  /** 어떤 개선안인지 (Suggestion 의 id) */
+  suggestionId: string
+  /** 지켰는지 확인한 날짜 (예: '2026-09-28'). 체크인한 날이 아니라 "지켰는지 묻는 날(어제)" 입니다. */
+  date: string
+  /** 지켰으면 true, 못 지켰으면 false */
+  kept: boolean
+}
+
 /** 하루가 끝난 뒤 AI 가 내린 평가 (날짜마다 하나) */
 export interface Evaluation {
   /** 평가한 날짜 (예: '2026-09-28') */

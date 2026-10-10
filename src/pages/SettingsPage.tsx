@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -6,6 +7,8 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
+import { careLevelInfos } from '@/lib/careLevelInfo'
+import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
 import {
   getCareLimits,
   setAllowFocusMode,
@@ -51,14 +54,13 @@ interface DeleteMessage {
   isSuccess: boolean
 }
 
-/** 관리 강도 단계별 이름과 한 줄 설명. (#28 의 단계 표와 같은 문구) */
-const careLevelOptions: { level: CareLevel; label: string; description: string }[] = [
-  { level: 0, label: '0 회복', description: '위로만. "오늘은 10분만"' },
-  { level: 1, label: '1 당근', description: '구체적 칭찬, 나무 성장' },
-  { level: 2, label: '2 넛지', description: '담백한 알림. "계획 시간 10분 지났어"' },
-  { level: 3, label: '3 심리적 채찍', description: '팩폭 말투, 독촉 메시지, 나무 시듦' },
-  { level: 4, label: '4 강제적 채찍', description: '공부 시간에 집중 모드 잠금' },
-]
+/** 관리 강도 단계별 이름과 한 줄 설명. (홈의 "지금 관리 모드" 배너와 같은 문구를 씁니다: lib/careLevelInfo.ts) */
+const careLevelOptions: { level: CareLevel; label: string; description: string }[] =
+  careLevelInfos.map((info) => ({
+    level: info.level,
+    label: `${info.level} ${info.name}`,
+    description: info.description,
+  }))
 
 /** 독설 허용 수위(1~5)별 한 줄 설명 */
 const harshnessDescriptions: Record<number, string> = {
@@ -386,6 +388,32 @@ export function SettingsPage() {
                 </p>
               )}
             </div>
+          </Card>
+
+          {/* 언제든 들어갈 수 있는 도움 연결. 누르면 바로 전화가 걸립니다. (#96) */}
+          <Card title="힘들 때 도움받기" className="bg-slate-50">
+            <p className="text-sm text-slate-500">혼자 버티기 힘들 때는 바로 이야기해 주세요.</p>
+            <ul className="mt-3 flex flex-col gap-2">
+              {helpLines.map((line) => (
+                <li key={line.number}>
+                  {/* min-h-12 = 48px: 손가락으로 누르기 쉬운 높이 */}
+                  <a
+                    href={`tel:${line.number}`}
+                    aria-label={`${line.name} ${line.number} 전화 걸기`}
+                    className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 hover:bg-slate-100"
+                  >
+                    <span className="font-semibold text-slate-900">{line.name}</span>
+                    <span className="text-brand text-xl font-bold">{line.number}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <Link
+              to={SUPPORT_PATH}
+              className="text-brand mt-3 inline-flex h-11 items-center text-sm font-medium underline"
+            >
+              도움 안내 화면 보기
+            </Link>
           </Card>
         </div>
       </div>

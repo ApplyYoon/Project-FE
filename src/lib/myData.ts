@@ -33,8 +33,12 @@ const RECORD_KEYS = [
   // 집중 모드 중인지, 집중 모드를 해제한 시각과 이유 기록 (#69)
   'focus-mode',
   'focus-unlocks',
-  // 시험 목록과 예상 점수 (#80)
+  // 시험 목록과 예상·실제 점수, 회고 (#80, #81)
   'exams',
+  // 인사이트 카드에 누른 반응 (#84)
+  'insight-responses',
+  // 개선안을 날마다 지켰는지 적은 기록 (#65)
+  'suggestion-checks',
   ...DIARY_KEYS,
 ]
 

@@ -1,15 +1,15 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useDiaryEntries } from '@/hooks/useDiaryEntries'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
+import { SUPPORT_PATH } from '@/lib/helpLines'
 import { mockReflectionPrescription } from '@/lib/mock'
 import type { DiaryEntry } from '@/types'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 /** 오늘 기분 버튼. 체크인(#24)과 같은 5단계를 씁니다. */
 const MOOD_OPTIONS = [
@@ -57,6 +57,7 @@ interface TimelineItem {
 }
 
 export function DiaryPage() {
+  const navigate = useNavigate()
   const todayKey = toDateKey(new Date())
   const { allEntries, getEntry, saveEntry } = useDiaryEntries()
   const { allEntries: allReflectionEntries } = useReflectionEntries()
@@ -66,8 +67,6 @@ export function DiaryPage() {
   const [mood, setMood] = useState(existingEntry?.mood ?? DEFAULT_MOOD)
   const [content, setContent] = useState(existingEntry?.content ?? '')
   const [savedMessage, setSavedMessage] = useState('')
-  // 위기 표현·기분 저하가 보일 때 띄우는 도움 연결 안내 (#95)
-  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   // 성찰 일기 처방(#70). AI 가 실제로 내려주는 서버가 아직 없어서 지금은 예시 처방 하나로 동작합니다.
   const prescription = mockReflectionPrescription
@@ -111,8 +110,9 @@ export function DiaryPage() {
       ...allEntries.filter((past) => past.date !== todayKey),
       { date: todayKey, mood },
     ].map((item) => ({ date: item.date, mood: item.mood }))
+    // 감지되면 도움 연결 안내 화면으로 보냅니다. (글은 이미 저장했습니다)
     if (shouldShowCrisisHelp({ texts: [entry.content], diaryMoods })) {
-      setIsHelpOpen(true)
+      navigate(SUPPORT_PATH)
     }
   }
 
@@ -249,8 +249,6 @@ export function DiaryPage() {
           )}
         </Card>
       </div>
-
-      <CrisisHelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   )
 }
