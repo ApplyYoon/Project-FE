@@ -53,3 +53,22 @@ export function saveData<T>(key: string, value: T): void {
     console.warn(`[storage] '${key}' 값을 저장하지 못했습니다.`)
   }
 }
+
+/**
+ * 저장해 둔 값을 지웁니다.
+ * 지운 뒤에 다시 읽어서, 정말 사라졌을 때만 true 를 돌려줍니다. (저장소를 쓸 수 없으면 false)
+ * 원래 저장된 게 없던 키도 "사라진 상태" 라서 true 입니다.
+ *
+ * 사용 예:
+ *   const isGone = removeData('plans')
+ */
+export function removeData(key: string): boolean {
+  try {
+    localStorage.removeItem(makeKey(key))
+    // 지웠다고 믿지 않고 다시 확인합니다. 값이 없으면 null 이 나옵니다.
+    return localStorage.getItem(makeKey(key)) === null
+  } catch {
+    console.warn(`[storage] '${key}' 값을 지우지 못했습니다.`)
+    return false
+  }
+}
