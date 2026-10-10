@@ -6,6 +6,7 @@ import { InsightCard } from '@/components/ui/InsightCard'
 import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
@@ -24,6 +25,7 @@ import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
+import { loadWeeklyReviews } from '@/lib/weeklyReview'
 import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -74,10 +76,12 @@ function calculateTree(): TreeState {
     totalStudyMinutes,
     todayStudyMinutes: today?.totalMinutes ?? 0,
     careLevel: getTodayCareLevel(),
-    // TODO(#82 #73 #87): 회고·인사이트·나 사용설명서가 아직 없어서 0 입니다. 생기면 실제 개수로 바꾸세요.
-    reflectionCount: 0,
+    // 잎 = 건너뛰지 않고 쓴 주간 회고의 수 (#82)
+    reflectionCount: loadWeeklyReviews().filter((review) => !review.skipped).length,
+    // TODO(#73): 진짜 인사이트가 아직 없어서 0 입니다. (지금 인사이트는 개발용 예시뿐입니다)
     insightCount: 0,
-    manualItemCount: 0,
+    // 열매 = "나 사용설명서" 에 올라간 효과가 확인된 방법의 수 (#87, #93)
+    manualItemCount: loadManualItems().length,
   })
 }
 

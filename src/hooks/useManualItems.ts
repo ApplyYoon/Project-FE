@@ -21,8 +21,8 @@ function isManualItem(value: unknown): value is ManualItem {
   )
 }
 
-/** 저장소에서 사용설명서 항목들을 불러옵니다. 깨진 항목은 버립니다. */
-function loadManualItems(): ManualItem[] {
+/** 저장소에서 사용설명서 항목들을 불러옵니다. 깨진 항목은 버립니다. (홈의 나무 열매 개수에도 씁니다) */
+export function loadManualItems(): ManualItem[] {
   const saved = loadData<unknown>(STORAGE_KEY, [])
   return Array.isArray(saved) ? saved.filter(isManualItem) : []
 }
