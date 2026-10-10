@@ -118,7 +118,21 @@ export function ExamsPage() {
     const subjectScores: ExamSubjectScore[] = []
     for (const subject of subjects) {
       const text = form.scores[subject.id] ?? ''
-      if (text.trim() === '') continue
+      // 고치는 중이면 이 과목에 전에 적어 둔 점수를 찾습니다. (처음 추가할 때는 없습니다)
+      const oldScore = exams
+        .find((exam) => exam.id === editingId)
+        ?.subjectScores.find((score) => score.subjectId === subject.id)
+
+      if (text.trim() === '') {
+        // 예상 점수 칸을 비우면 그 과목의 점수가 통째로 빠집니다.
+        // 실제 점수까지 말없이 사라지지 않게, 실제 점수가 있는 과목은 비우지 못하게 막고 알려 줍니다.
+        if (oldScore?.actualScore !== undefined) {
+          return setErrorMessage(
+            `${subject.name}은(는) 실제 점수가 있어서 예상 점수를 비울 수 없어요.`,
+          )
+        }
+        continue
+      }
 
       const expectedScore = parseScore(text)
       if (expectedScore === null) {
@@ -126,9 +140,6 @@ export function ExamsPage() {
       }
 
       // 고치는 중이면 이미 입력된 실제 점수(#81)는 그대로 지켜 줍니다.
-      const oldScore = exams
-        .find((exam) => exam.id === editingId)
-        ?.subjectScores.find((score) => score.subjectId === subject.id)
       subjectScores.push({
         subjectId: subject.id,
         expectedScore,
