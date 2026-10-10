@@ -52,6 +52,8 @@ export interface StudySession {
   startedAt: number
   /** 공부를 끝낸 시각 (Date.now() 값) */
   endedAt: number
+  /** 공부하는 동안 일시정지를 누른 횟수 */
+  pauseCount: number
 }
 
 /** AI 의 태도 — kind: 친절, normal: 보통, cynical: 냉소 */
