@@ -149,10 +149,16 @@ export function CheckPage() {
       .reduce((sum, session) => sum + getStudyMs(session) / 60000, 0),
   )
 
-  const achievementRate = targetMinutes === 0 ? 0 : (actualMinutes / targetMinutes) * 100
+  // 달성률은 소수점을 버립니다. (99.5% 를 100% 로 보여주면서 "다 못 채웠어?" 를 묻는 일이 없게)
+  // lib/daySummary.ts 의 규칙 5 와 같습니다.
+  const achievementRate =
+    targetMinutes === 0 ? 0 : Math.min(100, Math.floor((actualMinutes * 100) / targetMinutes))
 
   // 계획이 있었는데 다 못 채운 날에만 "왜 못 했어?" 를 묻습니다. (계획이 없던 날은 못 채운 게 아닙니다)
   const needsMissReason = targetMinutes > 0 && achievementRate < 100
+
+  // 방금 저장했는지. 버튼 위에 "저장했어요" 를 보여주는 데 씁니다.
+  const [isSaved, setIsSaved] = useState(false)
 
   function handleSubmit() {
     const checkIn: CheckIn = {
@@ -183,6 +189,7 @@ export function CheckPage() {
         saveCheck({ suggestionId: suggestion.id, date: yesterdayKey, kept })
       }
     }
+    setIsSaved(true)
   }
 
   return (
@@ -209,7 +216,7 @@ export function CheckPage() {
           </div>
           <div>
             <p className="text-sm text-slate-500">계획 달성률</p>
-            <p className="text-xl font-bold text-slate-900">{Math.round(achievementRate)}%</p>
+            <p className="text-xl font-bold text-slate-900">{achievementRate}%</p>
           </div>
         </div>
 
@@ -357,6 +364,13 @@ export function CheckPage() {
             내가 답한 대로만 기록해요. 정말 켰는지는 확인하지 않아요.
           </p>
         </Card>
+      )}
+
+      {/* 저장한 직후에 버튼 바로 위에 알려 줍니다. (모바일은 맨 위의 "체크인 완료" 표시가 화면 밖이라 안 보입니다) */}
+      {isSaved && (
+        <p role="status" className="text-center text-sm font-medium text-emerald-700">
+          저장했어요. 내용을 고치고 다시 저장할 수도 있어요.
+        </p>
       )}
 
       <Button
