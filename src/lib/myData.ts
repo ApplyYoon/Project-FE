@@ -30,8 +30,10 @@ const RECORD_KEYS = [
   // 딴짓(탭 이탈) 기록과, 나갔다가 아직 돌아오지 않은 임시 기록 (#22)
   'away-records',
   'away-pending',
-  // 시험 목록과 예상 점수 (#80)
+  // 시험 목록과 예상·실제 점수, 회고 (#80, #81)
   'exams',
+  // 인사이트 카드에 누른 반응 (#84)
+  'insight-responses',
   // 개선안을 날마다 지켰는지 적은 기록 (#65)
   'suggestion-checks',
   ...DIARY_KEYS,
