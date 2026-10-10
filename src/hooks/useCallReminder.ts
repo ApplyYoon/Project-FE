@@ -4,6 +4,10 @@ import {
   shouldRingNow,
   showCallNotification,
 } from '@/lib/callReminder'
+import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
+import { getMessageSettings } from '@/lib/messageSettings'
+import { toQuietHours } from '@/lib/notifications'
+import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, saveData } from '@/lib/storage'
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -38,6 +42,19 @@ export function useCallReminder() {
       const savedTime = loadData<unknown>(CALL_TIME_STORAGE_KEY, null)
       const lastRingAt = loadData<unknown>(LAST_RING_STORAGE_KEY, null)
       if (!shouldRingNow(new Date(), savedTime, lastRingAt)) return
+
+      // 연락 금지 시간이거나 위기 표현이 감지된 상태면 전화를 걸지 않습니다. (#60, #95)
+      // 설정 화면에 "이 시간에는 메시지도 전화도 안 와요" 라고 약속했기 때문입니다.
+      // AI 메시지 알림(useAiMessageNotifications)과 같은 방법으로 판정합니다.
+      const { texts, moods } = loadSavedWritings()
+      const brake = getSafetyBrakeResult({
+        now: new Date(),
+        recentTexts: texts,
+        recentMoods: moods,
+        exams: loadExamDates(),
+        quietHours: toQuietHours(getMessageSettings()),
+      })
+      if (brake.quiet || brake.stopWhip) return
 
       // 먼저 "울렸다" 고 기록해서, 아래에서 에러가 나도 같은 전화가 계속 반복되지 않게 합니다.
       saveData(LAST_RING_STORAGE_KEY, Date.now())
