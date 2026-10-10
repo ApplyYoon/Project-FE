@@ -2,8 +2,13 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
 
-/** 어제 계획을 다 못 채운 이유. etc 는 '기타' 입니다. */
-export type MissReasonKey = 'tired' | 'event' | 'phone' | 'overplan' | 'lazy' | 'sick' | 'etc'
+/**
+ * 어제 계획을 다 못 채운 이유. etc 는 '기타' 입니다.
+ *
+ * 이름은 #78 의 공통 타입 MissReason 과 똑같이 맞춰 두었습니다. (CheckIn.missReason 에 그대로 저장하려고)
+ * #78 이 머지되면 이 줄을 `import type { MissReason } from '@/types'` 로 바꾸면 됩니다.
+ */
+export type MissReasonKey = 'tired' | 'event' | 'phone' | 'tooMuch' | 'unwilling' | 'sick' | 'etc'
 
 /** 고른 이유. '기타' 를 골랐을 때만 note 에 한 줄을 적습니다. */
 export interface MissReasonValue {
@@ -20,8 +25,8 @@ const reasonOptions: { key: MissReasonKey; label: string }[] = [
   { key: 'tired', label: '피곤·수면' },
   { key: 'event', label: '약속·행사' },
   { key: 'phone', label: '폰·SNS' },
-  { key: 'overplan', label: '계획 과다' },
-  { key: 'lazy', label: '하기 싫음' },
+  { key: 'tooMuch', label: '계획 과다' },
+  { key: 'unwilling', label: '하기 싫음' },
   { key: 'sick', label: '아픔' },
   { key: 'etc', label: '기타' },
 ]
