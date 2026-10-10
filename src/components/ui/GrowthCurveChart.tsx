@@ -56,6 +56,13 @@ export function GrowthCurveChart({ curve, examLabel, className }: GrowthCurveCha
   const paceEnd = curve.currentPace[1]
   const extraEnd = curve.withExtra[1]
 
+  // x축 글자("오늘", 시험 이름)는 그래프 밖에 보통 글자로 둡니다.
+  // SVG 안에 넣으면 휴대폰에서 그래프와 같이 줄어들어서 글자가 절반 크기가 됩니다.
+  // "오늘" 글자를 놓을 자리: 그래프 왼쪽 끝에서 몇 % 인지
+  const todayPercent = (xFor(paceToday.date) / VIEW_WIDTH) * 100
+  // 오늘이 시험 날에 가까우면(오른쪽 20% 안) 두 글자가 겹쳐서, "오늘 · 시험 이름" 하나로 합칩니다.
+  const isTodayNearExam = todayPercent > 80
+
   return (
     <div className={className}>
       <svg
@@ -97,7 +104,7 @@ export function GrowthCurveChart({ curve, examLabel, className }: GrowthCurveCha
           className="fill-brand"
         />
 
-        {/* x축 기준선 + 글자 */}
+        {/* x축 기준선 (글자는 그래프 아래에 따로 둡니다) */}
         <line
           x1={PADDING_X}
           y1={VIEW_HEIGHT - PADDING_BOTTOM}
@@ -106,23 +113,21 @@ export function GrowthCurveChart({ curve, examLabel, className }: GrowthCurveCha
           className="stroke-slate-200"
           strokeWidth={1}
         />
-        <text
-          x={xFor(paceToday.date)}
-          y={VIEW_HEIGHT - 8}
-          textAnchor="middle"
-          className="fill-slate-500 text-[13px]"
-        >
-          오늘
-        </text>
-        <text
-          x={xFor(examDateKey)}
-          y={VIEW_HEIGHT - 8}
-          textAnchor="end"
-          className="fill-slate-500 text-[13px]"
-        >
-          {examLabel}
-        </text>
       </svg>
+
+      {/* x축 글자. relative + absolute 로 "오늘" 을 그래프의 오늘 자리 아래에 맞춥니다. */}
+      <div className="relative h-5 text-xs text-slate-500">
+        {!isTodayNearExam && (
+          // 놓을 자리(left)가 날짜에 따라 바뀌는 숫자라 Tailwind 클래스로 만들 수 없어서 style 을 씁니다.
+          <span className="absolute -translate-x-1/2" style={{ left: `${todayPercent}%` }}>
+            오늘
+          </span>
+        )}
+        {/* max-w-[60%] + truncate: 시험 이름이 길어도 "오늘" 글자를 덮지 않게 합니다. */}
+        <span className="absolute right-0 max-w-[60%] truncate">
+          {isTodayNearExam ? `오늘 · ${examLabel}` : examLabel}
+        </span>
+      </div>
 
       {/* 범례 */}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
