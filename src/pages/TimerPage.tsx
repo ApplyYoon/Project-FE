@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { Input } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useAwayDetection } from '@/hooks/useAwayDetection'
@@ -26,6 +27,7 @@ import {
 } from '@/lib/countdown'
 import { toDateKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
+import { missReasonOptions } from '@/lib/missReasons'
 import { mockSubjects } from '@/lib/mock'
 import { getPlanProgress } from '@/lib/planProgress'
 import {
@@ -38,6 +40,7 @@ import { loadData, saveData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
 import type {
   AwayRecord,
+  MissReason,
   PomodoroPhase,
   StudyPlan,
   StudySession,
@@ -118,6 +121,10 @@ export function TimerPage() {
   useEffect(() => {
     saveData('timer-plan', activePlanId)
   }, [activePlanId])
+
+  // 목표 시간 전에 정지를 눌렀을 때 뜨는 확인 창의 단계입니다. (#233)
+  //  closed: 닫힘 / confirm: "계속할까요?" 를 묻는 중 / reason: 그만하는 이유를 고르는 중
+  const [stopStep, setStopStep] = useState<'closed' | 'confirm' | 'reason'>('closed')
 
   // 계획을 시작하지 못했을 때 보여줄 안내 (이미 다른 공부를 재는 중일 때 등)
   const [planNotice, setPlanNotice] = useState<string | null>(null)
@@ -318,7 +325,22 @@ export function TimerPage() {
     // [planIdFromUrl]: 주소의 계획이 바뀔 때만 실행합니다. 나머지 값은 그 순간의 값을 쓰면 됩니다.
   }, [planIdFromUrl])
 
-  function handleStop() {
+  /** 정지 버튼을 눌렀을 때. 목표 시간이 남았으면 바로 끝내지 않고 한 번 더 묻습니다. */
+  function handleStopClick() {
+    // 묻는 경우: 목표 정하기로 재는 중이고, 아직 목표를 못 채웠고, 1분 넘게 한 경우
+    // (목표를 채웠거나 목표 없이 재는 중이면 바로 저장하고, 1분 미만이면 지금처럼 저장 없이 끝냅니다)
+    if (isTarget && !isTargetDone && seconds >= MIN_SAVE_SECONDS) {
+      setStopStep('confirm')
+      return
+    }
+    finishSession()
+  }
+
+  /**
+   * 기록을 저장하고 타이머를 처음 상태로 돌립니다.
+   * stopReason 은 목표 전에 그만둘 때 고른 이유입니다. 안 골랐으면(건너뛰기) 넘기지 않습니다.
+   */
+  function finishSession(stopReason?: MissReason) {
     const endedAt = Date.now()
     // 뽀모도로의 휴식 구간은 공부한 시간이 아니라서 뺍니다. (일반 모드에는 휴식 구간이 없어서 0 입니다)
     const breakSeconds = isPomodoro ? getPomodoroBreakSeconds(seconds) : 0
@@ -338,6 +360,8 @@ export function TimerPage() {
         ...(isTarget ? { targetMinutes } : {}),
         // 계획에서 시작했으면 어느 계획인지 남깁니다. (계획별 실제 시간을 이 값으로 모읍니다)
         ...(activePlan ? { planId: activePlan.id } : {}),
+        // 목표 전에 그만두면서 이유를 골랐으면 같이 남깁니다. (다음 날 체크인에서 다시 묻지 않기 위해서입니다)
+        ...(stopReason ? { stopReason } : {}),
       }
       addSession(newSession)
 
@@ -353,6 +377,7 @@ export function TimerPage() {
     setIsTargetNoticeOpen(false)
     setActivePlanId(null)
     setPlanNotice(null)
+    setStopStep('closed')
     dismissAwayNotice()
     stop()
   }
@@ -673,7 +698,7 @@ export function TimerPage() {
             variant={isTargetDone ? 'primary' : 'danger'}
             size="lg"
             className="w-full sm:w-40"
-            onClick={handleStop}
+            onClick={handleStopClick}
           >
             {isTargetDone ? '마치기' : '정지'}
           </Button>
@@ -717,7 +742,113 @@ export function TimerPage() {
       </Card>
 
       <WeeklySubjectRatio subjects={subjects} sessions={sessions} />
+
+      {/* 목표 전에 정지를 누르면 뜨는 확인 창. 떠 있는 동안에도 타이머는 계속 흐릅니다. */}
+      <StopConfirmModal
+        step={stopStep}
+        targetMinutes={targetMinutes}
+        doneMinutes={Math.floor(seconds / 60)}
+        remainingMinutes={Math.ceil(countdown.remainingSeconds / 60)}
+        percent={countdown.percent}
+        onContinue={() => setStopStep('closed')}
+        onQuit={() => setStopStep('reason')}
+        onFinish={finishSession}
+      />
     </div>
+  )
+}
+
+/* ---------- 그만하기 전에 한 번 더 (#233) ---------- */
+
+interface StopConfirmModalProps {
+  /** closed: 닫힘 / confirm: 계속할지 묻는 중 / reason: 그만하는 이유를 고르는 중 */
+  step: 'closed' | 'confirm' | 'reason'
+  /** 약속한 목표 시간 (분) */
+  targetMinutes: number
+  /** 지금까지 한 시간 (분) */
+  doneMinutes: number
+  /** 목표까지 남은 시간 (분) */
+  remainingMinutes: number
+  /** 목표 대비 진행률 (0 ~ 100) */
+  percent: number
+  /** "계속하기" 를 눌렀거나 창을 닫았을 때. 타이머는 그대로 이어집니다. */
+  onContinue: () => void
+  /** "그만하기" 를 눌렀을 때. 이유를 고르는 단계로 넘어갑니다. */
+  onQuit: () => void
+  /** 이유를 골랐거나(reason) 건너뛰었을 때(reason 없음). 기록을 저장하고 끝냅니다. */
+  onFinish: (reason?: MissReason) => void
+}
+
+/**
+ * 목표 시간이 남았는데 정지를 눌렀을 때 뜨는 확인 창입니다.
+ * 그만두는 것을 막지는 않습니다. 남은 시간을 숫자로 보여주고 스스로 고르게 합니다.
+ * 그만둔다면 이유를 버튼 한 번으로 받습니다. (다음 날 기억으로 묻는 것보다 그 순간에 묻는 편이 정확합니다)
+ */
+function StopConfirmModal({
+  step,
+  targetMinutes,
+  doneMinutes,
+  remainingMinutes,
+  percent,
+  onContinue,
+  onQuit,
+  onFinish,
+}: StopConfirmModalProps) {
+  if (step === 'reason') {
+    return (
+      // 창을 닫으면(✕·바깥·ESC) 그만두지 않고 계속하는 것으로 봅니다.
+      <Modal isOpen onClose={onContinue} title="그만하는 이유를 골라 주세요">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm break-keep text-slate-600">
+            하나만 누르면 저장하고 끝나요. 건너뛰어도 돼요.
+          </p>
+          {/* 글자 수가 제각각인 버튼이라 flex-wrap 으로 넘치면 다음 줄로 보냅니다. */}
+          <div role="group" aria-label="그만하는 이유" className="flex flex-wrap gap-2">
+            {missReasonOptions.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => onFinish(option.key)}
+                className="h-10 cursor-pointer rounded-full border border-slate-200 bg-white px-4 text-sm font-medium whitespace-nowrap text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm break-keep text-slate-500">
+            {doneMinutes}분은 그대로 기록돼요. 이유는 다음 계획을 맞추는 데만 써요.
+          </p>
+          <Button variant="ghost" className="w-full" onClick={() => onFinish()}>
+            건너뛰기
+          </Button>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal
+      isOpen={step === 'confirm'}
+      onClose={onContinue}
+      title={`${targetMinutes}분 중 ${doneMinutes}분 했어요`}
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-base break-keep text-slate-700">
+          <strong className="text-slate-900">{remainingMinutes}분</strong> 남았어요. 지금 멈추면{' '}
+          {percent}% 예요.
+        </p>
+        <ProgressBar value={percent} />
+        <div className="flex flex-col gap-2">
+          {/* 계속하기를 더 눈에 띄게 둡니다. 그만하기도 한 번이면 누를 수 있습니다. */}
+          <Button size="lg" className="w-full" onClick={onContinue}>
+            계속하기
+          </Button>
+          <Button variant="secondary" size="lg" className="w-full" onClick={onQuit}>
+            그만하기
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
