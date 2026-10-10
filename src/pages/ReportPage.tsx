@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
 import { usePlans } from '@/hooks/usePlans'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import { loadStudySessions } from '@/lib/dailyRecords'
 import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
@@ -202,7 +203,11 @@ function countRecordDays(plans: StudyPlan[], sessions: StudySession[], todayKey:
 }
 
 export function ReportPage() {
-  const [view, setView] = useState<'weekly' | 'monthly'>('weekly')
+  // 주간·월간 탭은 주소에 둡니다. (/report = 주간, /report?view=monthly = 월간)
+  // 새로고침해도 보던 탭이 그대로이고, 뒤로 가기로 앞에 보던 탭에 돌아갑니다.
+  const [viewParam, setView] = useQueryParam('view', 'weekly')
+  // 주소는 누구나 고칠 수 있어서, 'monthly' 가 아닌 값은 모두 주간으로 봅니다.
+  const view = viewParam === 'monthly' ? 'monthly' : 'weekly'
 
   const { allPlans } = usePlans()
   // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
@@ -296,8 +301,11 @@ interface ReportSectionProps {
 
 /** 주간 리포트 (#72) */
 function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
-  // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ...
-  const [weeksAgo, setWeeksAgo] = useState(0)
+  // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ... 주소에 둡니다. (/report?weeksAgo=1)
+  // replace: ‹ › 를 여러 번 눌러도 뒤로 가기 한 번이면 리포트 화면을 떠납니다.
+  const [weeksAgoParam, setWeeksAgoParam] = useQueryParam('weeksAgo', '0', { replace: true })
+  // 주소의 값이 0 이상의 정수가 아니면 이번 주(0)로 봅니다.
+  const weeksAgo = /^\d{1,3}$/.test(weeksAgoParam) ? Number(weeksAgoParam) : 0
   // 온보딩에서 세운 처음 계획. 팩트 카드의 "처음 계획 · 하루 평균" 줄에 씁니다. 안 세웠으면 null (#240)
   const [initialPlan] = useState(loadInitialPlan)
   // 이미 끝난 주들에 골랐던 "이번 주 목표" (#247). 이번 주 목표는 아직 진행 중이라 홈에서만 보여줍니다.
@@ -343,7 +351,7 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
             variant="secondary"
             aria-label="지난 주로 이동"
             className="w-10 shrink-0 px-0"
-            onClick={() => setWeeksAgo((prev) => prev + 1)}
+            onClick={() => setWeeksAgoParam(String(weeksAgo + 1))}
           >
             ‹
           </Button>
@@ -352,7 +360,7 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
             aria-label="다음 주로 이동"
             disabled={weeksAgo === 0}
             className="w-10 shrink-0 px-0"
-            onClick={() => setWeeksAgo((prev) => Math.max(0, prev - 1))}
+            onClick={() => setWeeksAgoParam(String(Math.max(0, weeksAgo - 1)))}
           >
             ›
           </Button>

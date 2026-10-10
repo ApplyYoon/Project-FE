@@ -52,3 +52,30 @@ export function moveDateKey(dateKey: string, days: number): string {
   // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (월은 0부터 시작)
   return toDateKey(new Date(year, month - 1, day + days))
 }
+
+/**
+ * 글자가 'YYYY-MM-DD' 모양의 "진짜 있는 날짜" 인지 확인합니다.
+ * 주소(?date=...)처럼 누구나 고칠 수 있는 곳에서 받은 날짜를 쓰기 전에 확인하는 데 씁니다.
+ *
+ *   isDateKey('2026-10-11') -> true
+ *   isDateKey('2026-13-01') -> false  (13월은 없음)
+ *   isDateKey('2026-02-30') -> false  (2월 30일은 없음)
+ *   isDateKey('내일')       -> false
+ */
+export function isDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  // 없는 날짜를 넣으면 Date 가 다음 달로 넘겨 버립니다. 다시 글자로 바꿨을 때 같아야 진짜 날짜입니다.
+  return toDateKey(new Date(year, month - 1, day)) === value
+}
+
+/**
+ * 글자가 'YYYY-MM' 모양의 달인지 확인합니다. (예: '2026-10')
+ *
+ *   isMonthKey('2026-10') -> true
+ *   isMonthKey('2026-13') -> false
+ *   isMonthKey('2026-1')  -> false  (두 자리로 적어야 합니다)
+ */
+export function isMonthKey(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
+}

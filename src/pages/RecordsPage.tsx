@@ -1,3 +1,4 @@
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
@@ -22,7 +23,7 @@ import {
   sessionMinutes,
   toDateKey,
 } from '@/lib/dailyRecords'
-import { getTodayKey, toDayDate } from '@/lib/date'
+import { getTodayKey, isDateKey, isMonthKey, toDayDate } from '@/lib/date'
 import { loadSubjects } from '@/lib/subjects'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
@@ -516,13 +517,23 @@ interface StudyCalendarProps {
 function StudyCalendar({ days, subjects }: StudyCalendarProps) {
   const todayKey = getTodayKey()
 
-  // 지금 보고 있는 달. month 는 0(1월) ~ 11(12월) 입니다. (Date 의 규칙과 같습니다)
-  const [view, setView] = useState(() => {
-    const today = toDayDate(Date.now())
-    return { year: today.getFullYear(), month: today.getMonth() }
+  // 고른 날짜와 보고 있는 달은 주소에 둡니다. (/records?date=2026-10-01 , /records?month=2026-09)
+  // 새로고침해도 보던 날이 그대로이고, 주소를 보내면 같은 날의 기록이 열립니다.
+  // replace: 날짜를 여러 번 눌러도 뒤로 가기 한 번이면 기록 화면을 떠납니다.
+  const [dateParam, setDateParam] = useQueryParam('date', todayKey, { replace: true })
+  // 주소는 누구나 고칠 수 있어서, 진짜 날짜가 아니면 오늘로 봅니다.
+  const pickedDate = isDateKey(dateParam) ? dateParam : todayKey
+
+  // 보고 있는 달 'YYYY-MM'. 주소에 없으면 고른 날짜가 들어 있는 달입니다. ('2026-10-01' 의 앞 7글자 = '2026-10')
+  const [monthParam, setMonthParam] = useQueryParam('month', pickedDate.slice(0, 7), {
+    replace: true,
   })
-  // 누른 날짜 'YYYY-MM-DD'. 처음에는 오늘을 골라 둡니다.
-  const [selectedDate, setSelectedDate] = useState<string | null>(todayKey)
+  const monthKey = isMonthKey(monthParam) ? monthParam : pickedDate.slice(0, 7)
+  // month 는 0(1월) ~ 11(12월) 입니다. (Date 의 규칙과 같습니다)
+  const view = { year: Number(monthKey.slice(0, 4)), month: Number(monthKey.slice(5, 7)) - 1 }
+
+  // 고른 날짜가 지금 보고 있는 달에 있을 때만 "고른 날" 로 보여줍니다. 다른 달로 넘기면 아무 날도 고르지 않은 모양이 됩니다.
+  const selectedDate = pickedDate.startsWith(monthKey) ? pickedDate : null
 
   // 날짜로 그날 기록을 바로 찾을 수 있게 Map 으로 바꿔 둡니다.
   const recordByDate = new Map(days.map((day) => [day.date, day]))
@@ -546,12 +557,12 @@ function StudyCalendar({ days, subjects }: StudyCalendarProps) {
   function handleMoveMonth(step: number) {
     // new Date 가 13월·0월 같은 값을 알아서 다음 해·이전 해로 넘겨줍니다.
     const next = new Date(view.year, view.month + step, 1)
-    setView({ year: next.getFullYear(), month: next.getMonth() })
-    setSelectedDate(null)
+    // 'YYYY-MM' 모양으로 주소에 적습니다. 고른 날짜는 그대로 두지만, 다른 달이라 화면에서는 고르지 않은 모양이 됩니다.
+    setMonthParam(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`)
   }
 
   function handleSelectDate(date: string) {
-    setSelectedDate(date)
+    setDateParam(date)
   }
 
   const selectedRecord = selectedDate ? recordByDate.get(selectedDate) : undefined
