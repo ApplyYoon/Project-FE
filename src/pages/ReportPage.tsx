@@ -1,3 +1,4 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ExperimentSection } from '@/components/ui/ExperimentSection'
@@ -5,9 +6,11 @@ import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
 import { usePlans } from '@/hooks/usePlans'
 import { useQueryParam } from '@/hooks/useQueryParam'
+import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
 import { loadStudySessions } from '@/lib/dailyRecords'
 import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
@@ -18,9 +21,17 @@ import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
 import { loadInitialPlan } from '@/lib/initialPlan'
 import { getInsightsToShow } from '@/lib/insights'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import {
+  MIN_SAMPLES_FOR_COACH,
+  getCoachSummary,
+  weeklyCoachQuery,
+  type WeeklyCoachRequest,
+} from '@/lib/weeklyCoach'
+import { getWeeklyFacts } from '@/lib/weeklyFacts'
 import { getWeeklyGoalProgress, getWeeklyGoalTitle, loadPastWeeklyGoals } from '@/lib/weeklyGoal'
 import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
 import type { StudyPlan, StudySession, WeeklyReview } from '@/types'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -376,6 +387,9 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
         isPastWeek={weeksAgo > 0}
       />
 
+      {/* 위의 숫자를 말로 풀어 주는 코치 한 문단 (#249). 서버가 없으면 숫자를 끼운 기본 문장이 나옵니다. */}
+      <WeeklyCoachCard plans={allPlans} sessions={sessions} mondayKey={mondayKey} />
+
       {/* 지난 목표와 결과 (#247). 달성했는지는 그 주의 팩트 숫자로 정해집니다. 스스로 "지켰다" 고 답하지 않습니다. */}
       {pastGoals.length > 0 && (
         <Card title="지난 목표">
@@ -543,6 +557,125 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
 }
 
 /** 월간 리포트 (#86). 4주를 한 달로 봅니다 (예: 9/8~10/5 · 4주). */
+interface WeeklyCoachCardProps {
+  plans: StudyPlan[]
+  sessions: StudySession[]
+  /** 보여줄 주의 월요일 ('YYYY-MM-DD') */
+  mondayKey: string
+}
+
+/**
+ * 주간 리포트의 "코치 한마디" 카드입니다. (#249 · 규칙은 lib/weeklyCoach.ts)
+ *
+ * 숫자는 코드가 계산하고(lib/facts.ts), 그 숫자를 말로 푸는 일만 AI 에게 맡깁니다.
+ *   기록이 모자란 주  -> "기록이 더 쌓이면 이야기해 줄게"
+ *   서버가 문단을 줌  -> AI 가 쓴 문단 ("AI 가 쓴 글" 표시)
+ *   서버가 없거나 실패 -> 숫자를 끼워 만든 기본 문장
+ * 문단 아래의 "근거 숫자 보기" 에서 문단에 쓰인 숫자를 그대로 확인할 수 있습니다.
+ */
+function WeeklyCoachCard({ plans, sessions, mondayKey }: WeeklyCoachCardProps) {
+  // 설정에서 정한 관리 강도 한도와 독설 허용 수위. 서버가 이 한도 안에서 말투를 정합니다. 처음 그릴 때 한 번만 읽습니다.
+  const [limits] = useState(getCareLimits)
+  const { thisWeek, lastWeek } = getWeeklyFacts(plans, sessions, mondayKey, getTodayKey())
+  const summary = getCoachSummary(thisWeek, lastWeek)
+
+  if (summary === null) {
+    return (
+      <Card title="코치 한마디">
+        <p className="text-sm break-keep text-slate-600">
+          기록이 더 쌓이면 이야기해 줄게. 목표를 정한 타이머가 한 주에 {MIN_SAMPLES_FOR_COACH}번은
+          있어야 해. (이 주는 {thisWeek.completionRate.sampleCount}번)
+        </p>
+      </Card>
+    )
+  }
+
+  // 서버에는 계산된 숫자와 내가 정한 한도만 보냅니다. 계획 내용·일기 같은 원문은 보내지 않습니다.
+  const request: WeeklyCoachRequest = {
+    mondayKey,
+    numbers: summary.evidence,
+    maxCareLevel: limits.maxCareLevel,
+    maxHarshness: limits.maxHarshness,
+  }
+
+  return (
+    <Card title="코치 한마디">
+      {/* 서버에 물어보는 동안에는 스켈레톤을 보여줍니다. resetKeys: 다른 주로 넘기면 새로 받아옵니다. */}
+      <AsyncBoundary pendingFallback={<CoachSkeleton />} resetKeys={[mondayKey]}>
+        <CoachParagraph request={request} fallbackSentences={summary.sentences} />
+      </AsyncBoundary>
+
+      {/* details/summary: 눌러서 접고 펼 수 있는 HTML 기본 부품입니다. 처음에는 접혀 있습니다. */}
+      <details className="group mt-4 rounded-lg bg-slate-50 px-3">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
+          근거 숫자 보기
+          <span aria-hidden className="text-slate-500 transition-transform group-open:rotate-180">
+            ▾
+          </span>
+        </summary>
+        <ul className="flex flex-col divide-y divide-slate-200 pb-2 text-sm">
+          {summary.evidence.map((item) => (
+            <li key={item.label} className="flex items-center justify-between gap-3 py-2">
+              <span className="min-w-0 break-keep text-slate-600">{item.label}</span>
+              <span className="shrink-0 text-right">
+                <strong className="font-semibold text-slate-900">{item.value}</strong>
+                <span className="ml-2 text-xs text-slate-500">{item.basis}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </Card>
+  )
+}
+
+interface CoachParagraphProps {
+  /** 서버에 보낼 값 */
+  request: WeeklyCoachRequest
+  /** 서버가 문단을 주지 못했을 때 보여줄 기본 문장들 */
+  fallbackSentences: string[]
+}
+
+/**
+ * 코치 문단을 보여줍니다. useSuspenseQuery 가 서버 답을 기다리는 동안에는 바깥의 AsyncBoundary 가 스켈레톤을 보여줍니다.
+ * 서버가 없거나 실패하면 data 가 null 로 와서(에러가 아닙니다) 기본 문장을 보여줍니다.
+ */
+function CoachParagraph({ request, fallbackSentences }: CoachParagraphProps) {
+  const { data: aiParagraph } = useSuspenseQuery(weeklyCoachQuery(request))
+  const isAiWritten = aiParagraph !== null
+
+  return (
+    <div>
+      {/* 누가 쓴 글인지 꼭 밝힙니다. AI 가 쓴 글은 틀릴 수 있어서, 아래 근거 숫자와 맞춰 볼 수 있어야 합니다. */}
+      <span
+        className={cn(
+          'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
+          isAiWritten ? 'bg-brand-light text-brand' : 'bg-slate-100 text-slate-600',
+        )}
+      >
+        {isAiWritten ? 'AI 가 쓴 글' : '숫자로 만든 기본 문장'}
+      </span>
+      <p className="mt-2 text-base leading-relaxed break-keep text-slate-800">
+        {aiParagraph ?? fallbackSentences.join(' ')}
+      </p>
+    </div>
+  )
+}
+
+/** 코치 문단을 받아오는 동안 보여주는 자리 표시입니다. 문단 세 줄쯤의 높이로 그립니다. */
+function CoachSkeleton() {
+  return (
+    // role="status": "쓰는 중" 이라는 것을 스크린리더에도 알려 줍니다.
+    <div role="status" className="flex flex-col gap-2">
+      <span className="sr-only">코치가 한마디를 쓰는 중이에요</span>
+      <Skeleton className="h-5 w-24" />
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-2/3" />
+    </div>
+  )
+}
+
 function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
   // 0 = 가장 최근 4주, 1 = 그 전 4주 ...
   const [monthWeeksAgo, setMonthWeeksAgo] = useState(0)
