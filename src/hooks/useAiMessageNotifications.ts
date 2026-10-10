@@ -5,6 +5,7 @@ import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { getMessageSettings } from '@/lib/messageSettings'
 import {
   canSendAiMessageNotification,
+  getNotificationPermission,
   showAiMessageNotification,
   toQuietHours,
 } from '@/lib/notifications'
@@ -37,6 +38,10 @@ interface SentToday {
  */
 export function useAiMessageNotifications(): void {
   useEffect(() => {
+    // 알림 권한이 없으면 아무것도 하지 않습니다.
+    // (예전에는 권한이 없어도 "이미 알린 메시지" 로 적어 두어서, 나중에 알림을 켜도 그 메시지는 영영 알림이 안 왔습니다)
+    if (getNotificationPermission() !== 'granted') return
+
     const messages = loadAiMessages()
     if (countUnreadAiMessages(messages) === 0) return
 
