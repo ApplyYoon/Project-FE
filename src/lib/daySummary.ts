@@ -5,8 +5,11 @@ import type { StudyPlan, StudySession } from '@/types'
 export interface DaySummary {
   /** 순공시간 (분). 그날 시작한 세션의 순공(끝 − 시작 − 일시정지한 시간)을 모두 더한 값 */
   studyMinutes: number
-  /** 계획 달성률 (0 ~ 100 정수). 순공시간 ÷ 그날 계획 목표 시간의 합계 */
-  achievementRate: number
+  /**
+   * 계획 달성률 (0 ~ 100 정수). 순공시간 ÷ 그날 계획 목표 시간의 합계.
+   * 계획이 없는 날(목표 시간 합계가 0)은 계산할 수 없어서 null 입니다. (0% 는 "계획은 있는데 공부를 안 한 날" 입니다)
+   */
+  achievementRate: number | null
   /** 그날 가장 먼저 공부를 시작한 시각 (Date.now() 값). 공부 기록이 없으면 null */
   firstStartAt: number | null
   /** 세션 하나의 평균 순공시간 (분). 공부 기록이 없으면 0 */
@@ -44,8 +47,9 @@ function toDateKey(date: Date): string {
  * 5. 달성률 = 순공시간 ÷ 계획 목표 시간 합계 × 100, 소수점은 버립니다.
  *    100 을 넘으면 100 으로 맞춥니다. 반올림하지 않는 이유는, 99.6% 가 100% 로 보이면
  *    "다 못 채운 날" 인데도 못 채웠다고 안 물어보게 되기 때문입니다.
- * 6. 계획 목표 시간 합계가 0 (계획이 없거나 전부 0분) 이면 나눌 수 없으므로 달성률은 0 입니다.
- *    공부를 했어도 0 입니다.
+ * 6. 계획 목표 시간 합계가 0 (계획이 없거나 전부 0분) 이면 나눌 수 없으므로 달성률은 null(계산 불가) 입니다.
+ *    공부를 했어도 null 입니다. 0 으로 두면 "계획을 하나도 못 채운 날" 과 구분이 안 되기 때문입니다.
+ *    (BE 의 AchievementRate.percentOf 도 이때 null 을 돌려줍니다. Project-BE docs/API.md 5장)
  * 7. 끝 시각이 시작 시각보다 빠른 잘못된 세션은 길이를 0분으로 칩니다.
  * 8. 일시정지 횟수(pauseCount)는 그날 시작한 세션들의 pauseCount 를 모두 더합니다. (규칙 2 처럼 시작한 날에 셉니다)
  *    pauseCount 가 없거나(옛 기록) 0 이상의 정수가 아닌 이상한 값이면 그 세션은 0번으로 칩니다.
@@ -58,14 +62,14 @@ function toDateKey(date: Date): string {
  *
  *   예1) 계획도 기록도 없는 날
  *        plans = [], sessions = []
- *        -> { studyMinutes: 0, achievementRate: 0, firstStartAt: null, averageSessionMinutes: 0, pauseCount: 0 }
+ *        -> { studyMinutes: 0, achievementRate: null, firstStartAt: null, averageSessionMinutes: 0, pauseCount: 0 }
  *
  *   예2) 계획만 있고 공부는 안 한 날 (수학 60분 계획, 기록 없음)
  *        -> { studyMinutes: 0, achievementRate: 0, firstStartAt: null, averageSessionMinutes: 0, pauseCount: 0 }
  *
  *   예3) 계획 목표가 0분인데 공부한 날 (0 으로 나누기)
  *        수학 0분 계획, 10:00~10:30 공부 (일시정지 안 누름)
- *        -> { studyMinutes: 30, achievementRate: 0, firstStartAt: (10:00), averageSessionMinutes: 30, pauseCount: 0 }
+ *        -> { studyMinutes: 30, achievementRate: null, firstStartAt: (10:00), averageSessionMinutes: 30, pauseCount: 0 }
  *
  *   예4) 계획 240분 (수학 120 + 영어 120), 공부 두 번 (10:00~11:00 일시정지 1번, 14:00~16:10 일시정지 2번)
  *        순공 60 + 130 = 190분, 190 ÷ 240 = 79.1...%, 일시정지 1 + 2 = 3번
@@ -127,9 +131,9 @@ export function getDaySummary(
   const averageSessionMinutes =
     daySessions.length === 0 ? 0 : Math.round(totalMs / daySessions.length / MS_PER_MINUTE)
 
-  // 계획 목표 시간 합계가 0 이하면 나눌 수 없으니 달성률은 0 으로 둡니다. (규칙 6)
+  // 계획 목표 시간 합계가 0 이하면 나눌 수 없으니 달성률은 null(계산 불가)로 둡니다. (규칙 6)
   const targetMinutes = dayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
-  let achievementRate = 0
+  let achievementRate: number | null = null
   if (targetMinutes > 0) {
     // 100 을 먼저 곱한 뒤 나눕니다. (29 ÷ 100 × 100 이 28.999… 로 나오는 계산 오차를 피하기 위해서입니다)
     achievementRate = Math.min(100, Math.floor((studyMinutes * 100) / targetMinutes))

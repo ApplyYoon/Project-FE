@@ -112,7 +112,10 @@ function makeHeadline(yesterday: string, plans: StudyPlan[], sessions: StudySess
   const { studyMinutes, achievementRate } = getDaySummary(yesterday, plans, sessions)
 
   if (!hasPlan && studyMinutes === 0) return '어제는 계획도 공부 기록도 없어요'
-  if (!hasPlan) return `어제 순공 ${formatMinutes(studyMinutes)} (세워 둔 계획은 없었어요)`
+  // 계획이 없거나, 있어도 목표 시간이 0 이라 달성률을 계산할 수 없는 날(null)입니다.
+  if (!hasPlan || achievementRate === null) {
+    return `어제 순공 ${formatMinutes(studyMinutes)} (세워 둔 계획은 없었어요)`
+  }
   return `어제 순공 ${formatMinutes(studyMinutes)}, 계획의 ${achievementRate}%`
 }
 
