@@ -1,16 +1,13 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { getPasswordAuthErrorMessage, signupWithPassword } from '@/lib/authApi'
 import { cn } from '@/lib/cn'
-import {
-  getSchoolQueryError,
-  searchHighSchools,
-  type School,
-  type SchoolSearchResult,
-} from '@/lib/schoolSearch'
+import { getSchoolQueryError, schoolSearchQuery, type School } from '@/lib/schoolSearch'
 import {
   EMAIL_MAX_LENGTH,
   NAME_MAX_LENGTH,
@@ -33,6 +30,7 @@ import {
 import { saveData } from '@/lib/storage'
 import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument } from '@/lib/terms'
 import { testUser } from '@/lib/testLogin'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -200,36 +198,22 @@ interface SchoolFieldProps {
  * 고등학교를 검색해서 하나 고르는 칸입니다. (검색은 lib/schoolSearch.ts)
  *   아직 안 골랐으면 -> 검색어 칸 + "검색" 버튼 + 결과 목록
  *   골랐으면         -> 고른 학교 + "바꾸기" 버튼
+ *
+ * 결과를 받아오는 일은 아래의 SchoolResults 가 합니다. 이 컴포넌트는 "무엇을 찾을지" 만 정합니다.
  */
 function SchoolField({ school, onChange }: SchoolFieldProps) {
+  // 입력 칸에 적고 있는 글자
   const [query, setQuery] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
-  // 마지막 검색 결과. 아직 검색하지 않았으면 null
-  const [result, setResult] = useState<SchoolSearchResult | null>(null)
-  // 검색어가 너무 짧거나 검색에 실패했을 때 보여줄 안내. 없으면 null
-  const [searchError, setSearchError] = useState<string | null>(null)
+  // "검색" 을 눌러 확정한 검색어. 이 값이 정해지면 SchoolResults 가 그 검색어로 받아옵니다. 아직 검색 전이면 null
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null)
+  // 검색어가 너무 짧을 때 보여줄 안내. 없으면 null
+  const [queryError, setQueryError] = useState<string | null>(null)
 
-  async function handleSearch() {
-    // 찾는 중에 또 누르면 응답이 뒤섞일 수 있어서, 끝날 때까지 기다립니다.
-    if (isSearching) return
-
-    const queryError = getSchoolQueryError(query)
-    if (queryError !== null) {
-      setSearchError(queryError)
-      setResult(null)
-      return
-    }
-
-    setIsSearching(true)
-    setSearchError(null)
-    try {
-      setResult(await searchHighSchools(query))
-    } catch {
-      setResult(null)
-      setSearchError('학교를 검색하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.')
-    } finally {
-      setIsSearching(false)
-    }
+  function handleSearch() {
+    const error = getSchoolQueryError(query)
+    setQueryError(error)
+    // 검색어가 규칙에 맞을 때만 확정합니다. 안 맞으면 결과 자리를 비웁니다.
+    setSubmittedQuery(error === null ? query : null)
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -276,14 +260,8 @@ function SchoolField({ school, onChange }: SchoolFieldProps) {
           onKeyDown={handleKeyDown}
           className="h-12 text-base"
         />
-        <Button
-          variant="secondary"
-          size="lg"
-          className="shrink-0 px-4"
-          onClick={handleSearch}
-          disabled={isSearching}
-        >
-          {isSearching ? '찾는 중…' : '검색'}
+        <Button variant="secondary" size="lg" className="shrink-0 px-4" onClick={handleSearch}>
+          검색
         </Button>
       </div>
       <p className="text-sm break-keep text-slate-500">
@@ -291,48 +269,93 @@ function SchoolField({ school, onChange }: SchoolFieldProps) {
       </p>
 
       {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}
-      {searchError !== null && (
+      {queryError !== null && (
         <p role="alert" className="text-sm break-keep text-red-600">
-          {searchError}
+          {queryError}
         </p>
       )}
 
-      {result !== null && (
-        // aria-live: 검색 결과가 나오면 스크린리더가 알려 줍니다.
-        <div aria-live="polite" className="flex flex-col gap-2">
-          {result.schools.length === 0 ? (
-            <p className="text-sm break-keep text-slate-600">
-              찾은 고등학교가 없어요. 줄임말 대신 학교 이름의 일부를 적어 보세요. (예: 디미고 →
-              디지털미디어)
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {result.schools.map((item) => (
-                <li key={item.code}>
-                  {/* min-h-14 = 56px. 주소가 두 줄이 되어도 버튼이 같이 커집니다. */}
-                  <button
-                    type="button"
-                    onClick={() => onChange(item)}
-                    className="hover:border-brand flex min-h-14 w-full cursor-pointer flex-col items-start justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-left"
-                  >
-                    <span className="font-medium break-keep text-slate-900">{item.name}</span>
-                    <span className="text-sm break-keep text-slate-500">
-                      {item.address || item.region}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {/* 인증키 없이는 5곳까지만 받을 수 있어서, 더 있으면 알려 줍니다. */}
-          {result.totalCount > result.schools.length && (
-            <p className="text-sm break-keep text-slate-500">
-              {result.totalCount}곳 중 {result.schools.length}곳만 보여요. 이름을 더 자세히 적으면
-              찾기 쉬워요.
-            </p>
-          )}
-        </div>
+      {/*
+        받아오는 동안에는 스켈레톤, 실패하면 안내와 "다시 시도" 를 AsyncBoundary 가 대신 보여줍니다.
+        resetKeys: 실패한 뒤 다른 검색어로 찾으면 실패 안내를 지우고 새로 받아옵니다.
+      */}
+      {submittedQuery !== null && (
+        <AsyncBoundary
+          pendingFallback={<SchoolResultsSkeleton />}
+          errorMessage="학교를 검색하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
+          resetKeys={[submittedQuery]}
+        >
+          <SchoolResults query={submittedQuery} onSelect={onChange} />
+        </AsyncBoundary>
       )}
+    </div>
+  )
+}
+
+interface SchoolResultsProps {
+  /** 찾을 검색어 */
+  query: string
+  /** 목록에서 학교를 눌렀을 때 */
+  onSelect: (school: School) => void
+}
+
+/**
+ * 검색어로 학교를 받아와서 목록으로 보여줍니다.
+ *
+ * useSuspenseQuery 는 받아오는 동안 이 컴포넌트를 "잠깐 멈춰" 둡니다. 그동안 바깥의 AsyncBoundary 가 스켈레톤을 보여주고,
+ * 실패하면 안내를 보여줍니다. 그래서 여기서는 로딩 중·실패를 if 로 나누지 않고, data 가 "있을 때" 만 그리면 됩니다.
+ * 같은 검색어를 다시 찾으면 보관해 둔 결과를 바로 씁니다. (lib/schoolSearch.ts 의 schoolSearchQuery)
+ */
+function SchoolResults({ query, onSelect }: SchoolResultsProps) {
+  const { data: result } = useSuspenseQuery(schoolSearchQuery(query))
+
+  return (
+    // aria-live: 검색 결과가 나오면 스크린리더가 알려 줍니다.
+    <div aria-live="polite" className="flex flex-col gap-2">
+      {result.schools.length === 0 ? (
+        <p className="text-sm break-keep text-slate-600">
+          찾은 고등학교가 없어요. 줄임말 대신 학교 이름의 일부를 적어 보세요. (예: 디미고 →
+          디지털미디어)
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {result.schools.map((item) => (
+            <li key={item.code}>
+              {/* min-h-14 = 56px. 주소가 두 줄이 되어도 버튼이 같이 커집니다. */}
+              <button
+                type="button"
+                onClick={() => onSelect(item)}
+                className="hover:border-brand flex min-h-14 w-full cursor-pointer flex-col items-start justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-left"
+              >
+                <span className="font-medium break-keep text-slate-900">{item.name}</span>
+                <span className="text-sm break-keep text-slate-500">
+                  {item.address || item.region}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* 인증키 없이는 5곳까지만 받을 수 있어서, 더 있으면 알려 줍니다. */}
+      {result.totalCount > result.schools.length && (
+        <p className="text-sm break-keep text-slate-500">
+          {result.totalCount}곳 중 {result.schools.length}곳만 보여요. 이름을 더 자세히 적으면 찾기
+          쉬워요.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** 학교 목록을 받아오는 동안 보여주는 자리 표시입니다. 진짜 목록의 한 줄(56px)과 같은 높이로 3줄을 그립니다. */
+function SchoolResultsSkeleton() {
+  return (
+    // role="status": "찾는 중" 이라는 것을 스크린리더에도 알려 줍니다. (회색 상자는 읽지 않습니다)
+    <div role="status" className="flex flex-col gap-2">
+      <span className="sr-only">학교를 찾는 중이에요</span>
+      <Skeleton className="h-14 w-full rounded-xl" />
+      <Skeleton className="h-14 w-full rounded-xl" />
+      <Skeleton className="h-14 w-full rounded-xl" />
     </div>
   )
 }
