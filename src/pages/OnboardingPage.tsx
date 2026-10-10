@@ -15,12 +15,49 @@ import {
   toggleMultiAnswer,
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
-import { loadData, saveData } from '@/lib/storage'
-import { useState, type FormEvent } from 'react'
+import { loadData, removeData, saveData } from '@/lib/storage'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 // 설문을 끝내고 답을 저장하는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-onboarding-answers' 가 됩니다)
 const STORAGE_KEY = 'onboarding-answers'
+
+// 설문을 끝내기 전에, 고르던 답과 보고 있던 질문 번호를 임시로 넣어 두는 이름입니다.
+// 새로고침하거나 다른 화면에 다녀와도 하던 질문부터 이어서 할 수 있습니다. 설문을 끝내면 지웁니다.
+const DRAFT_KEY = 'onboarding-draft'
+
+/** 설문 도중에 임시로 저장해 두는 값 */
+interface OnboardingDraft {
+  /** 보고 있던 질문이 몇 번째인지 (0 부터) */
+  stepIndex: number
+  /** 그때까지 고른 답 */
+  answers: Record<string, string>
+}
+
+/**
+ * 임시로 저장해 둔 값을 불러옵니다. 없거나 모양이 틀리면 "처음부터" 입니다.
+ * stepCount 는 질문 수입니다. 저장된 번호가 질문 수를 넘지 않게 맞춥니다. (질문 목록이 바뀌었을 수 있습니다)
+ */
+function loadDraft(stepCount: number): OnboardingDraft {
+  const empty: OnboardingDraft = { stepIndex: 0, answers: {} }
+  const saved = loadData<unknown>(DRAFT_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return empty
+
+  const draft = saved as Record<string, unknown>
+  if (typeof draft.answers !== 'object' || draft.answers === null) return empty
+
+  // 답은 글자인 것만 남깁니다.
+  const answers: Record<string, string> = {}
+  for (const [key, value] of Object.entries(draft.answers)) {
+    if (typeof value === 'string') answers[key] = value
+  }
+
+  const savedIndex = typeof draft.stepIndex === 'number' ? Math.floor(draft.stepIndex) : 0
+  const stepIndex = Number.isFinite(savedIndex)
+    ? Math.min(Math.max(0, savedIndex), stepCount - 1)
+    : 0
+  return { stepIndex, answers }
+}
 
 interface StepInputProps {
   step: OnboardingStep
@@ -165,7 +202,7 @@ interface OnboardingPageProps {
  * ■ 처음 설문 (mode 가 'first')
  *   꼭 필요한 질문만 묻습니다. 마지막에 "완료" 를 누르면 답을 저장하고 처음 계획 세우기(/onboarding/plan)로 갑니다.
  *   관리 강도 한도와 메시지 설정은 묻지 않고 기본값으로 시작합니다. (설정에서 언제든 바꿉니다) (#239)
- *   위쪽의 "나중에 하기" 를 누르면 답을 저장하지 않고 홈으로 갑니다. (지금까지 고른 답은 사라집니다)
+ *   위쪽의 "나중에 하기" 를 누르면 홈으로 갑니다. 고르던 답은 임시로 저장되어 있어서, 다시 오면 하던 질문부터 이어집니다.
  *   이미 설문을 마친 사람(저장된 답이 있는 사람)이 오면 바로 홈으로 돌려보냅니다.
  *
  * ■ 내 정보 더 알려주기 (mode 가 'more')
@@ -182,12 +219,23 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   // 이번에 물어볼 질문들. 화면이 처음 그려질 때 한 번만 정합니다.
   // (답할 때마다 목록이 줄어들면 "3 / 12" 같은 번호가 흔들리기 때문입니다)
   const [steps] = useState(() => (isMore ? getUnansweredSteps(savedAnswers ?? {}) : firstSteps))
-  const [stepIndex, setStepIndex] = useState(0)
+  // 처음 설문은 전에 하다 만 곳이 있으면 거기서부터 이어서 합니다. (새로고침해도 답이 남습니다)
+  const [draft] = useState(() =>
+    isMore ? { stepIndex: 0, answers: {} } : loadDraft(firstSteps.length),
+  )
+  const [stepIndex, setStepIndex] = useState(draft.stepIndex)
   // 지금 화면에서 고른 답. 예) { grade: '고2', targetExam: '수능' }
   // "이전" 으로 돌아가도 여기에 남아 있어서 고른 답이 그대로 보입니다.
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<Record<string, string>>(draft.answers)
   // (더 알려주기에서만) 지금까지 저장된 답. 질문 하나를 넘길 때마다 여기에 더해서 저장합니다.
   const [storedAnswers, setStoredAnswers] = useState<Record<string, string>>(savedAnswers ?? {})
+
+  // 처음 설문을 하는 동안에는 답을 고르거나 질문을 넘길 때마다 임시로 저장합니다.
+  // (이미 설문을 마친 사람은 아래에서 홈으로 보내므로 저장하지 않습니다)
+  const shouldSaveDraft = !isMore && savedAnswers === null
+  useEffect(() => {
+    if (shouldSaveDraft) saveData(DRAFT_KEY, { stepIndex, answers })
+  }, [shouldSaveDraft, stepIndex, answers])
 
   // 처음 설문: 이미 마친 사람은 홈으로 보냅니다. (Navigate: 화면을 그리는 대신 주소를 바꿔 주는 부품)
   if (!isMore && savedAnswers !== null) return <Navigate to="/" replace />
@@ -238,6 +286,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
 
     if (isLastStep) {
       saveData(STORAGE_KEY, answers)
+      // 설문을 끝냈으니 임시로 저장해 둔 답은 지웁니다.
+      removeData(DRAFT_KEY)
       // 관리 강도 한도 · 독설 수위 · 메시지 설정은 묻지 않고 기본값으로 시작합니다. (#239)
       // getCareLimits · getMessageSettings 는 저장된 게 없으면 기본값을 돌려줍니다.
       const limits = getCareLimits()
