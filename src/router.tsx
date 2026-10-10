@@ -9,6 +9,7 @@ import { CheckPage } from '@/pages/CheckPage'
 import { DiaryPage } from '@/pages/DiaryPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
+import { ManualPage } from '@/pages/ManualPage'
 import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'report', element: <ReportPage /> },
+      { path: 'manual', element: <ManualPage /> },
       { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'messages', element: <MessagesPage /> },
