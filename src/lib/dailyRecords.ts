@@ -1,8 +1,16 @@
+import { getDaySummary } from '@/lib/daySummary'
 import type { StudySession } from '@/types'
 
 /**
  * 공부 기록(세션)을 날짜별로 묶는 함수들입니다. React 없이 돌아가는 순수 함수라서 `lib/` 에 둡니다.
  * "기록" 화면의 날짜별 목록에서 씁니다.
+ *
+ * ■ 시간 계산 규칙 (하루 요약 getDaySummary 와 같은 규칙입니다. 같은 날이 화면마다 다르게 보이면 안 되기 때문입니다)
+ *   - 기록 길이(밀리초)를 먼저 모두 더하고, 마지막에 한 번만 분으로 반올림합니다.
+ *     기록마다 반올림하지 않습니다. (30초짜리 10개 = 5분. 하나씩 반올림하면 10분이 됩니다)
+ *   - 끝이 시작보다 빠른 잘못된 기록은 0분으로 칩니다.
+ *   - 날짜는 공부를 "시작한" 날로 정합니다.
+ *   - 그래서 과목별 시간을 더한 값이 하루 합계와 1~2분 다를 수 있습니다. (각각 한 번씩 반올림하기 때문입니다)
  */
 
 /** 한 과목의 하루 기록 */
@@ -49,9 +57,21 @@ export function formatMinutes(totalMinutes: number): string {
   return `${hours}시간 ${minutes}분`
 }
 
-/** 공부 기록 하나의 시간(분). 반올림해서 정수로 쓰고, 끝이 시작보다 빠른 이상한 기록은 0분으로 봅니다. */
+/**
+ * 공부 기록 하나의 시간(분). 목록의 한 줄에 "50분" 처럼 보여줄 때만 씁니다.
+ * 합계를 낼 때는 이 값을 더하지 말고 sumMinutes 를 쓰세요. (기록마다 반올림하면 합계가 어긋납니다)
+ */
 export function sessionMinutes(session: StudySession): number {
   return Math.max(0, Math.round((session.endedAt - session.startedAt) / 60000))
+}
+
+/** 기록들의 시간을 밀리초로 모두 더한 뒤, 마지막에 한 번만 분으로 반올림합니다. 이상한 기록(끝이 시작보다 빠름)은 0 으로 칩니다. */
+function sumMinutes(sessions: StudySession[]): number {
+  const totalMs = sessions.reduce(
+    (sum, session) => sum + Math.max(0, session.endedAt - session.startedAt),
+    0,
+  )
+  return Math.round(totalMs / 60000)
 }
 
 /**
@@ -95,9 +115,7 @@ export function groupSessionsByDate(sessions: StudySession[]): DailyRecord[] {
 
     for (const [subjectId, subjectSessions] of bySubject) {
       const sorted = [...subjectSessions].sort((a, b) => a.startedAt - b.startedAt)
-      // 기록마다 먼저 분으로 바꿔서 더합니다. 그래야 과목별 합계를 더한 값이 하루 합계와 항상 같습니다.
-      const minutes = sorted.reduce((sum, session) => sum + sessionMinutes(session), 0)
-      subjects.push({ subjectId, minutes, sessions: sorted })
+      subjects.push({ subjectId, minutes: sumMinutes(sorted), sessions: sorted })
     }
 
     // 많이 공부한 과목이 앞에. 시간이 같으면 먼저 시작한 과목이 앞에.
@@ -105,11 +123,12 @@ export function groupSessionsByDate(sessions: StudySession[]): DailyRecord[] {
       (a, b) => b.minutes - a.minutes || a.sessions[0].startedAt - b.sessions[0].startedAt,
     )
 
-    days.push({
-      date,
-      totalMinutes: subjects.reduce((sum, subject) => sum + subject.minutes, 0),
-      subjects,
-    })
+    // 하루 합계는 하루 요약 함수(getDaySummary)가 계산합니다. 통화 요약·리포트와 같은 값이 나오도록
+    // 같은 함수를 그대로 씁니다. (계획은 필요 없어서 빈 목록을 넘깁니다)
+    const daySessions = subjects.flatMap((subject) => subject.sessions)
+    const { studyMinutes } = getDaySummary(date, [], daySessions)
+
+    days.push({ date, totalMinutes: studyMinutes, subjects })
   }
 
   // 'YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다. 큰 쪽(최근)이 앞에 오게 정렬합니다.
