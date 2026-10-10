@@ -1,8 +1,24 @@
 import { navItems } from '@/components/layout/navItems'
+import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
 import { cn } from '@/lib/cn'
-import { NavLink } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 
-export function Header() {
+interface HeaderProps {
+  /** true 면 메뉴를 숨깁니다. (온보딩처럼 탭 없이 뜨는 화면에서 씁니다) */
+  hideNav?: boolean
+  /** 메뉴를 숨겼을 때 오른쪽에 대신 보여줄 것. 예) "나중에 하기" 링크 */
+  action?: ReactNode
+}
+
+export function Header({ hideNav = false, action }: HeaderProps) {
+  // 주소가 바뀔 때마다 헤더가 다시 그려지면서 안 읽은 메시지 수를 새로 셉니다.
+  const { pathname } = useLocation()
+  // 메시지함을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
+  const unreadCount = pathname === '/messages' ? 0 : countUnreadAiMessages(loadAiMessages())
+  // 화면을 읽어 주는 프로그램이 "메시지함, 안 읽은 메시지 3개" 처럼 개수까지 읽어 줍니다.
+  const bellLabel = unreadCount > 0 ? `메시지함, 안 읽은 메시지 ${unreadCount}개` : '메시지함'
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
@@ -10,16 +26,53 @@ export function Header() {
           Project FE
         </NavLink>
 
-        {/* 데스크톱(sm 이상)에서만 보이는 가로 메뉴. 모바일은 하단 탭(BottomTabNav)을 씁니다. */}
-        <nav className="hidden gap-1 sm:flex">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>
-              {item.label}
+        {/* 메뉴를 숨기는 화면(온보딩 등)에서는 종 아이콘도 숨기고 action 만 보여줍니다. */}
+        {hideNav ? (
+          action
+        ) : (
+          <div className="flex items-center gap-2">
+            {/* 데스크톱(sm 이상)에서만 보이는 가로 메뉴. 모바일은 하단 탭(BottomTabNav)을 씁니다. */}
+            <nav className="hidden gap-1 sm:flex">
+              {navItems.map((item) => (
+                <NavLink key={item.to} to={item.to} className={navLinkClass}>
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+
+            {/* 메시지함 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
+            <NavLink to="/messages" aria-label={bellLabel} className={bellLinkClass}>
+              <BellIcon />
+              {unreadCount > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
+                />
+              )}
             </NavLink>
-          ))}
-        </nav>
+          </div>
+        )}
       </div>
     </header>
+  )
+}
+
+/* 종 모양 아이콘 (라이브러리 없이 SVG 를 직접 그립니다) */
+function BellIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+    >
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
   )
 }
 
@@ -27,6 +80,14 @@ export function Header() {
 function navLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
     'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+    isActive ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100',
+  )
+}
+
+/* 종 버튼도 메뉴와 같은 방법으로, /messages 에 있으면 선택된 모양(연보라 배경)이 됩니다. */
+function bellLinkClass({ isActive }: { isActive: boolean }) {
+  return cn(
+    'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors',
     isActive ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100',
   )
 }
