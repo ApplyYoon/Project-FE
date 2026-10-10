@@ -5,7 +5,7 @@ import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/r
 import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 /** 수신 화면이 넘겨준 인사말을 꺼냅니다. 없거나 모양이 다르면 null 입니다. */
 function readGreeting(state: unknown): string | null {
@@ -200,6 +200,10 @@ export function CallActivePage() {
   // 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
   const careLevel = getTodayCareLevel()
   const theme = careThemes[careLevel]
+  // 수신 화면에서 "받기" 를 눌러서 온 것인지. (받기를 누르면 인사말을 같이 넘겨줍니다)
+  // 주소를 직접 쳐서 들어온 경우에는 통화를 시작하지 않고 수신 화면으로 돌려보냅니다.
+  // 받기를 거치지 않으면 원하지 않는 통화가 걸리고(비용), 아이폰에서는 AI 목소리가 안 나올 수 있기 때문입니다.
+  const cameFromAnswer = readGreeting(location.state) !== null
   // 수신 화면에서 보여준 인사말을 그대로 이어서 씁니다. (없으면 새로 고릅니다)
   // useState 안에서 한 번만 정합니다. (그냥 호출하면 1초마다 화면이 다시 그려질 때 인사말이 바뀝니다)
   const [greeting] = useState(
@@ -222,6 +226,9 @@ export function CallActivePage() {
   // 화면이 열리면 AI 와 음성 연결을 시작하고, 화면을 떠나면(끊기·뒤로가기) 연결과 마이크를 정리합니다.
   // attempt 가 바뀌면(다시 시도) 이전 연결을 정리하고 새로 연결합니다.
   useEffect(() => {
+    // 받기를 누르지 않고 들어왔으면 연결하지 않습니다. (아래에서 수신 화면으로 돌려보냅니다)
+    if (!cameFromAnswer) return
+
     let isCancelled = false
     let hasDisconnected = false
     let call: RealtimeCall | null = null
@@ -305,7 +312,8 @@ export function CallActivePage() {
 
   function handleHangUp() {
     // 화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다.
-    navigate('/call/result')
+    // replace: 이 화면을 방문 기록에서 지웁니다. 결과 화면에서 뒤로가기를 눌러도 통화가 다시 걸리지 않습니다.
+    navigate('/call/result', { replace: true })
   }
 
   // 다시 시도: "연결 중"으로 돌려놓고 attempt 를 올리면 위 useEffect 가 새로 연결합니다.
@@ -314,8 +322,12 @@ export function CallActivePage() {
     setAttempt((prev) => prev + 1)
   }
 
-  // 연결에 실패했거나 끊겼으면(연습 화면 보기 중이 아니면) 안내 화면을 보여줍니다.
+  // 받기를 누르지 않고 들어왔으면 수신 화면으로 보냅니다.
   // 이 줄은 모든 훅(useState·useEffect)보다 아래에 있어야 합니다.
+  if (!cameFromAnswer) return <Navigate to="/call" replace />
+
+  // 연결에 실패했거나 끊겼으면(연습 화면 보기 중이 아니면) 안내 화면을 보여줍니다.
+  // 이 줄도 모든 훅(useState·useEffect)보다 아래에 있어야 합니다.
   if ((connection === 'error' || connection === 'dropped') && !isPreview) {
     return (
       <CallFailedView
@@ -323,7 +335,10 @@ export function CallActivePage() {
         message={errorMessage}
         onRetry={handleRetry}
         // 끊긴 경우는 평가 화면으로, 처음부터 안 된 경우는 말 대신 체크인 화면으로 보냅니다.
-        onLeave={() => navigate(connection === 'dropped' ? '/call/result' : '/check')}
+        // replace: 떠난 뒤 뒤로가기를 눌러도 이 화면으로 돌아와 전화가 다시 걸리지 않게 합니다.
+        onLeave={() =>
+          navigate(connection === 'dropped' ? '/call/result' : '/check', { replace: true })
+        }
         onPreview={import.meta.env.DEV ? () => setIsPreview(true) : undefined}
       />
     )
