@@ -17,6 +17,7 @@ const DIARY_KEYS = ['diary']
  * 일부러 넣지 않은 것(= 지우지 않고 남김)
  *   subjects    과목. 기록이 아니라 내가 정한 설정이라 남깁니다.
  *   timer-mode  스톱워치·뽀모도로 중 고른 공부 방식. 이것도 설정입니다.
+ *   onboarding-answers  온보딩 설문 답. 기록이 아니라 내 정보이고, 지우면 설문을 처음부터 다시 하게 되어서 남깁니다.
  *   auth        로그인 정보. 지우면 로그아웃되어 버립니다.
  */
 const RECORD_KEYS = ['plans', 'sessions', 'timer', 'timer-subject', ...DIARY_KEYS]
