@@ -82,6 +82,16 @@ export function HomePage() {
         </p>
       </section>
 
+      {/* 아직 실제 홈 화면(#94 #68 #102 등)은 만들어지기 전이라, 체크인으로 가는 버튼만 먼저 둡니다. (#24) */}
+      <Card title="오늘 체크인">
+        <p className="text-sm text-slate-600">
+          전화를 못 받은 날은 여기서 컨디션·기분·오늘 예상 공부시간을 체크인해 주세요.
+        </p>
+        <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/check')}>
+          매일 체크인하러 가기
+        </Button>
+      </Card>
+
       {/* 아직 실제 홈 화면(#94 #68 #102 등)은 만들어지기 전이라, 어제 한 줄·카운트다운(#85)만 먼저 둡니다. */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Card title="어제 한 줄">
