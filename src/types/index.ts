@@ -104,8 +104,6 @@ export interface CheckIn {
   missReason?: MissReason
   /** 오늘 예상 순공시간(분) */
   expectedMinutes: number
-  /** 도전 중인 개선안을 어제 지켰는지 (#65) */
-  keptSuggestion?: boolean
   /** 오늘의 약속 "만약 ~하면" (#79) */
   promiseIf?: string
   /** 오늘의 약속 "~한다" (#79) */
