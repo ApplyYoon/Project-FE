@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
 import {
@@ -10,6 +11,11 @@ import {
   setMaxCareLevel,
   setMaxHarshness,
 } from '@/lib/careLimits'
+import {
+  getMessageSettings,
+  saveMessageSettings,
+  type MessageSettings,
+} from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
 import type { CareLevel } from '@/lib/careLevel'
 
@@ -61,10 +67,17 @@ function formatDateLabel(dateKey: string) {
 export function SettingsPage() {
   // 처음 열 때 한 번 불러옵니다. (불러오면서 예약된 한도 상향이 있으면 날짜가 지났는지도 같이 확인합니다)
   const [limits, setLimits] = useState(() => getCareLimits())
+  const [messageSettings, setMessageSettings] = useState(getMessageSettings)
 
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
   const [message, setMessage] = useState<DeleteMessage | null>(null)
+
+  function handleChangeMessageSettings(next: MessageSettings) {
+    setMessageSettings(next)
+    // "저장" 버튼이 따로 없어서, 바꾸는 즉시 저장합니다.
+    saveMessageSettings(next)
+  }
 
   function handleConfirm() {
     if (pendingKind === null) return
@@ -208,6 +221,10 @@ export function SettingsPage() {
         </div>
 
         <div className="flex flex-col gap-6">
+          <Card title="전화와 메시지">
+            <MessageSettingsFields value={messageSettings} onChange={handleChangeMessageSettings} />
+          </Card>
+
           <Card title="내 데이터 관리">
             <div className="flex flex-col gap-4">
               <p className="text-sm text-slate-500">
