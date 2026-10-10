@@ -50,5 +50,38 @@ export function useSuggestions() {
     return true
   }
 
-  return { suggestions, activeCount, maxActiveCount: MAX_ACTIVE_COUNT, startChallenge }
+  /**
+   * 끝난 실험의 기간을 늘립니다. (결과가 "애매" 일 때 "1주 더 해보기", #93)
+   * 시작일은 그대로 두고 기간(days)만 extraDays 만큼 늘려서, 지금까지의 이행 기록과 이어서 셉니다.
+   */
+  function extendChallenge(id: string, extraDays: number) {
+    setSuggestions((prev) =>
+      prev.map((suggestion) =>
+        suggestion.id === id && suggestion.days !== undefined
+          ? { ...suggestion, days: suggestion.days + extraDays }
+          : suggestion,
+      ),
+    )
+  }
+
+  /**
+   * 도전을 마무리합니다. (#93)
+   *  - done: 효과를 확인하고 나 사용설명서에 올렸을 때
+   *  - dropped: 효과가 없어서 다른 방법을 고르러 갈 때
+   * 마무리한 개선안은 더 이상 "도전 중" 이 아니라서 진행 카드와 결과 카드에서 빠집니다.
+   */
+  function finishChallenge(id: string, status: 'done' | 'dropped') {
+    setSuggestions((prev) =>
+      prev.map((suggestion) => (suggestion.id === id ? { ...suggestion, status } : suggestion)),
+    )
+  }
+
+  return {
+    suggestions,
+    activeCount,
+    maxActiveCount: MAX_ACTIVE_COUNT,
+    startChallenge,
+    extendChallenge,
+    finishChallenge,
+  }
 }

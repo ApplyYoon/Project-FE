@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui/Card'
-import { mockManualItems } from '@/lib/mock'
+import { useManualItems } from '@/hooks/useManualItems'
 import type { ManualItem, ManualItemCategory } from '@/types'
 
 // 분류 이름. 화면에 보여주는 순서도 이 배열 순서를 따릅니다.
@@ -17,8 +17,8 @@ function formatMonthDay(dateKey: string): string {
 }
 
 export function ManualPage() {
-  // TODO(#93): 지금은 가짜 데이터입니다. 실험에서 효과가 확인된 항목을 저장하게 되면 그 값으로 바꾸세요.
-  const items = mockManualItems
+  // 실험(#93)에서 효과가 확인되어 "나 사용설명서에 올리기" 를 누른 항목들입니다.
+  const { items } = useManualItems()
 
   // 분류별로 묶습니다. 항목이 없는 분류는 카드를 만들지 않습니다.
   const groups = categories
