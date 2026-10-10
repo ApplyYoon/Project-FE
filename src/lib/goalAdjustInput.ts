@@ -2,15 +2,11 @@
  * 목표 조정 제안(#67)에 필요한 재료를 공부 기록(계획 + 타이머 기록)에서 계산하는 함수들입니다.
  * React 를 쓰지 않는 순수 함수라서 같은 입력이면 항상 같은 결과가 나옵니다.
  *
- * 지금 계산할 수 있는 재료는 "연속 미달 일수" 와 "최근 평균 공부 시간" 뿐입니다.
- * 개선안 이행(fulfillment)·효과(effect)·기분·미달 원인은 저장하는 곳이 아직 없어서
- * getTodayCareAction 이 null 을 받으면 "아직 판단할 수 없음" 으로 보고 대응을 정하지 않습니다.
+ * 여기서는 "연속 미달 일수" 와 "최근 평균 공부 시간" 을 계산합니다.
+ * 이행·효과 판정, 기분, 미달 원인까지 모아서 오늘의 대응을 정하는 일은 lib/careInputs.ts 가 합니다. (#205)
  */
-import { decideCareAction, type CareAction, type MissCause } from '@/lib/careDecision'
 import { toDateKey } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
-import type { ExperimentResult } from '@/lib/experimentJudge'
-import type { SuggestionGrade } from '@/lib/suggestionRate'
 import type { StudyPlan, StudySession } from '@/types'
 
 // 최근 평균을 낼 때 거슬러 올라가 볼 일수입니다. (오늘은 빼고 어제부터 셉니다)
@@ -81,34 +77,4 @@ export function countConsecutiveMissDays(
   }
 
   return missDays
-}
-
-export interface TodayCareInput {
-  /** 개선안 이행 판정. 아직 저장하는 곳이 없으면 null */
-  fulfillment: SuggestionGrade | null
-  /** 개선안 효과 판정. 아직 저장하는 곳이 없으면 null */
-  effect: ExperimentResult | null
-  /** 주요 미달 원인. 모르면 null */
-  mainMissCause: MissCause | null
-  /** 최근 기분이 낮은지. 기분을 저장하는 곳이 아직 없으면 false */
-  isMoodLow: boolean
-  plans: StudyPlan[]
-  sessions: StudySession[]
-}
-
-/**
- * 오늘의 대응(CareAction)을 정합니다. 이행·효과 판정을 모르면 null 을 돌려줍니다.
- * (decideCareAction 은 두 판정이 있어야 의미가 있어서, 없을 때는 부르지 않습니다)
- */
-export function getTodayCareAction(input: TodayCareInput): CareAction | null {
-  const { fulfillment, effect, mainMissCause, isMoodLow, plans, sessions } = input
-  if (fulfillment === null || effect === null) return null
-
-  return decideCareAction({
-    fulfillment,
-    effect,
-    mainMissCause,
-    consecutiveMissDays: countConsecutiveMissDays(plans, sessions),
-    isMoodLow,
-  }).action
 }
