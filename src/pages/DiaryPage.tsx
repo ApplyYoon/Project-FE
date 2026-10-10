@@ -1,9 +1,11 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useDiaryEntries } from '@/hooks/useDiaryEntries'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
+import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { mockReflectionPrescription } from '@/lib/mock'
 import type { DiaryEntry } from '@/types'
 import { useState } from 'react'
@@ -64,6 +66,8 @@ export function DiaryPage() {
   const [mood, setMood] = useState(existingEntry?.mood ?? DEFAULT_MOOD)
   const [content, setContent] = useState(existingEntry?.content ?? '')
   const [savedMessage, setSavedMessage] = useState('')
+  // 위기 표현·기분 저하가 보일 때 띄우는 도움 연결 안내 (#95)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   // 성찰 일기 처방(#70). AI 가 실제로 내려주는 서버가 아직 없어서 지금은 예시 처방 하나로 동작합니다.
   const prescription = mockReflectionPrescription
@@ -97,11 +101,19 @@ export function DiaryPage() {
   const pastEntries = [...itemsByDate.values()].sort((a, b) => b.date.localeCompare(a.date))
 
   function handleSave() {
-    // #95 안전 브레이크 함수가 아직 없어서, 위기 표현 확인 없이 바로 저장합니다.
-    // #95 가 만들어지면 여기서 먼저 내용을 확인하고, 감지되면 도움 연결 안내(#96)를 보여줘야 합니다.
     const entry: DiaryEntry = { date: todayKey, mood, content: content.trim() }
+    // 쓴 글을 잃지 않도록 먼저 저장하고, 그다음에 위기 표현·기분 저하를 확인합니다. (#95)
     saveEntry(entry)
     setSavedMessage('저장했어요.')
+
+    // 지난 일기의 기분에, 오늘 고른 기분을 더해서 기분 저하가 이어지는지 봅니다.
+    const diaryMoods = [
+      ...allEntries.filter((past) => past.date !== todayKey),
+      { date: todayKey, mood },
+    ].map((item) => ({ date: item.date, mood: item.mood }))
+    if (shouldShowCrisisHelp({ texts: [entry.content], diaryMoods })) {
+      setIsHelpOpen(true)
+    }
   }
 
   return (
@@ -237,6 +249,8 @@ export function DiaryPage() {
           )}
         </Card>
       </div>
+
+      <CrisisHelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   )
 }
