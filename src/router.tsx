@@ -1,5 +1,6 @@
 import { Layout } from '@/components/layout/Layout'
 import { AboutPage } from '@/pages/AboutPage'
+import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
 import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
@@ -33,6 +34,8 @@ export const router = createBrowserRouter([
       { path: 'records', element: <RecordsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'login', element: <LoginPage /> },
+      // SNS 로그인을 마치고 돌아오는 주소. 주소에 ?code=... 가 붙어서 옵니다.
+      { path: 'auth/callback', element: <AuthCallbackPage /> },
       { path: 'signup', element: <SignupPage /> },
       { path: 'onboarding', element: <OnboardingPage /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
