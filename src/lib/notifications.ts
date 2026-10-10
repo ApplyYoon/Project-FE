@@ -19,16 +19,18 @@ import type { AiMessage } from '@/types'
 const WHIP_CARE_LEVEL = 3
 
 /**
- * 메시지 설정의 연락 금지 시간('HH:MM')을 안전 브레이크가 받는 시(0~23)로 바꿉니다.
- *   예) { quietStart: '23:00', quietEnd: '07:00' } -> { startHour: 23, endHour: 7 }
- * 안전 브레이크는 "시" 단위만 받아서, 분은 버립니다. ('07:30' 은 7시로 계산되어 30분 일찍 풀립니다)
+ * 메시지 설정의 연락 금지 시간('HH:MM')을 안전 브레이크가 받는 모양(시 · 분)으로 바꿉니다.
+ *   예) { quietStart: '22:30', quietEnd: '07:00' } -> { startHour: 22, startMinute: 30, endHour: 7, endMinute: 0 }
  */
 export function toQuietHours(
   settings: Pick<MessageSettings, 'quietStart' | 'quietEnd'>,
 ): QuietHours {
+  // 'HH:MM' 에서 앞 두 글자가 시, 뒤 두 글자가 분입니다.
   return {
     startHour: Number(settings.quietStart.slice(0, 2)),
+    startMinute: Number(settings.quietStart.slice(3, 5)),
     endHour: Number(settings.quietEnd.slice(0, 2)),
+    endMinute: Number(settings.quietEnd.slice(3, 5)),
   }
 }
 

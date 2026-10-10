@@ -6,7 +6,8 @@ import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { loadStudySessions } from '@/lib/dailyRecords'
 import { getReflectionPrescription } from '@/lib/reflectionPrescription'
-import type { ReflectionEntry } from '@/types'
+import { loadRecord } from '@/lib/storage'
+import type { DiaryEntry, ReflectionEntry } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -66,9 +67,14 @@ export function ReflectionPage() {
     saveEntry(entry)
     setSavedMessage('저장했어요.')
 
-    // 성찰 일기에는 기분 칸이 없어서, 체크인의 기분 기록만 함께 봅니다.
+    // 성찰 일기에는 기분 칸이 없어서, 일기에 적어 둔 기분과 체크인의 기분을 함께 봅니다.
+    // (일기 화면과 같은 기록으로 판정해야, 어느 화면에서 쓰든 결과가 같습니다)
+    const diaryMoods = Object.values(loadRecord<DiaryEntry>('diary')).map((diary) => ({
+      date: diary.date,
+      mood: diary.mood,
+    }))
     // 감지되면 도움 연결 안내 화면으로 보냅니다. (글은 이미 저장했습니다)
-    if (shouldShowCrisisHelp({ texts: entry.answers, diaryMoods: [] })) {
+    if (shouldShowCrisisHelp({ texts: entry.answers, diaryMoods })) {
       navigate(SUPPORT_PATH)
     }
   }

@@ -15,6 +15,10 @@ export interface QuietHours {
   startHour: number
   /** 끝나는 시각 (시). 예: 7 */
   endHour: number
+  /** 시작 시각의 분. 예: 22:30 이면 30. 없으면 0(정각) 입니다 */
+  startMinute?: number
+  /** 끝나는 시각의 분. 예: 07:30 이면 30. 없으면 0(정각) 입니다 */
+  endMinute?: number
 }
 
 /** 시험 날짜만 받는 최소 모양. (Exam 타입은 #80 이 끝나면 생깁니다) */
@@ -136,17 +140,22 @@ function hasCrisisText(texts: string[]): boolean {
  *   예1) 지금 23시 30분, 23시~7시  -> true (자정을 넘는 범위 안)
  *   예2) 지금 8시,      23시~7시  -> false (범위 밖)
  *   예3) 지금 10시,     9시~18시  -> true (자정을 안 넘는 범위)
+ *   예4) 지금 22시 40분, 22:30~07:30 -> true (분까지 봅니다. 예전에는 22시~7시로만 봐서 22:10 도 금지였습니다)
+ *   예5) 지금 23시 20분, 23:00~23:45 -> true (같은 "시" 안의 범위도 됩니다)
+ *   예6) 시작과 끝이 같은 시각       -> false (금지 시간이 없는 것으로 봅니다)
  */
 export function isWithinQuietHours(now: Date, quietHours: QuietHours): boolean {
-  const hour = now.getHours()
-  const { startHour, endHour } = quietHours
+  // 시와 분을 "자정부터 몇 분째인지" 하나의 숫자로 바꿔서 비교합니다. (23:30 -> 1410)
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const startMinutes = quietHours.startHour * 60 + (quietHours.startMinute ?? 0)
+  const endMinutes = quietHours.endHour * 60 + (quietHours.endMinute ?? 0)
 
-  if (startHour < endHour) {
+  if (startMinutes < endMinutes) {
     // 자정을 넘지 않는 범위 (예: 9시 ~ 18시)
-    return hour >= startHour && hour < endHour
+    return nowMinutes >= startMinutes && nowMinutes < endMinutes
   }
-  // 자정을 넘는 범위 (예: 23시 ~ 7시). startHour === endHour(하루 종일/설정 없음)도 여기로 와서 false 가 됩니다.
-  return startHour !== endHour && (hour >= startHour || hour < endHour)
+  // 자정을 넘는 범위 (예: 23시 ~ 7시). 시작과 끝이 같으면(설정 없음) false 입니다.
+  return startMinutes !== endMinutes && (nowMinutes >= startMinutes || nowMinutes < endMinutes)
 }
 
 /**
@@ -175,7 +184,16 @@ function isNearExam(todayKey: string, exams: ExamDateInput[]): boolean {
  *   예3) 6일 중 하루라도 기분 3 이상  -> false
  */
 function hasLowMoodStreak(todayKey: string, moods: MoodRecordInput[]): boolean {
-  const moodByDate = new Map(moods.map((record) => [record.date, record.mood]))
+  // 같은 날에 기분 기록이 여러 개면(체크인과 일기) 가장 낮은 것을 그날의 기분으로 봅니다.
+  // (나중에 적은 것으로 덮어쓰면, 체크인에서 1점을 줬어도 일기의 3점 때문에 "괜찮은 날" 이 됩니다)
+  const moodByDate = new Map<string, number>()
+  for (const record of moods) {
+    const previous = moodByDate.get(record.date)
+    moodByDate.set(
+      record.date,
+      previous === undefined ? record.mood : Math.min(previous, record.mood),
+    )
+  }
 
   for (let i = 0; i < LOW_MOOD_STREAK_DAYS; i++) {
     const dateKey = moveDateKey(todayKey, -i)
