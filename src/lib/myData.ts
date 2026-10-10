@@ -7,8 +7,8 @@ import { removeData } from '@/lib/storage'
  * 안 그러면 "모든 기록 지우기" 를 눌러도 그 데이터가 남습니다.
  */
 
-/** 일기 데이터의 저장 키. 일기 기능(#63·#70)이 만들어지면 실제 키 이름으로 맞춰 주세요. */
-const DIARY_KEYS = ['diary']
+/** 일기 데이터의 저장 키. (일기 #63, 성찰 일기 #70) */
+const DIARY_KEYS = ['diary', 'reflection-entries']
 
 /**
  * 모든 기록의 저장 키 = 공부 계획 · 공부 기록 · 타이머 기록 · 딴짓 기록 · 일기

@@ -126,6 +126,40 @@ export interface Evaluation {
   summary: string
 }
 
+/** 자유롭게 쓰는 일기 (하루에 하나, #63) */
+export interface DiaryEntry {
+  /** 쓴 날짜 (예: '2026-09-28') */
+  date: string
+  /** 오늘 기분 (1 ~ 5, 체크인과 같은 척도) */
+  mood: number
+  /** 일기 내용 (원문은 본인만 봅니다) */
+  content: string
+}
+
+/** AI 가 내준 성찰 일기 처방 (#70) */
+export interface ReflectionPrescription {
+  /** 처방을 구분하는 고유 값 */
+  id: string
+  /** 처방이 시작된 날짜 */
+  startDate: string
+  /** 처방 기간(일). 예: 5 */
+  days: number
+  /** 왜 처방했는지 (예: "최근 '하기 싫음'이 3번 나와서...") */
+  reason: string
+  /** 기간 동안 매일 똑같이 묻는 질문 목록 */
+  questions: string[]
+}
+
+/** 성찰 일기 하루 답 (questions 와 같은 순서로 answers 를 저장합니다) */
+export interface ReflectionEntry {
+  /** 쓴 날짜 */
+  date: string
+  /** 어떤 처방에 대한 답인지 (ReflectionPrescription 의 id) */
+  prescriptionId: string
+  /** 질문별 답 (원문은 본인만 봅니다) */
+  answers: string[]
+}
+
 /** 어제 계획을 못 채운 이유 (#26 에서 버튼으로 고릅니다) */
 export type MissReason =
   | 'tired' // 피곤·수면

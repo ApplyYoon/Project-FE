@@ -62,6 +62,8 @@ function SubjectTag({ subject }: SubjectTagProps) {
 
 export function RecordsPage() {
   const navigate = useNavigate()
+  // 설정 화면에서 켠 사람에게만 일기 메뉴를 보여줍니다. (#63)
+  const isDiaryEnabled = loadData('diary-enabled', false)
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
@@ -79,6 +81,16 @@ export function RecordsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">기록·통계</h1>
+
+      {isDiaryEnabled && (
+        <Card title="일기">
+          <p className="text-sm text-slate-600">원할 때만 쓰는 자유 일기예요.</p>
+          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/diary')}>
+            일기 쓰러 가기
+          </Button>
+        </Card>
+      )}
+
       {/* 연속 공부일 · 최근 7일 막대그래프 · 주간 리포트 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       {/* items-start: 높이가 다른 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
