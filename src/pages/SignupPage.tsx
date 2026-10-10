@@ -2,12 +2,24 @@ import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/cn'
 import {
+  getSchoolQueryError,
+  searchHighSchools,
+  type School,
+  type SchoolSearchResult,
+} from '@/lib/schoolSearch'
+import {
+  EMAIL_MAX_LENGTH,
+  NAME_MAX_LENGTH,
+  NAME_MIN_LENGTH,
   NICKNAME_MAX_LENGTH,
   NICKNAME_MIN_LENGTH,
   SIGNUP_STORAGE_KEY,
   canSubmitSignup,
+  getEmailError,
+  getNameError,
   getNicknameError,
   isAllConsented,
   makeAllConsents,
@@ -15,12 +27,14 @@ import {
   type SignupInfo,
 } from '@/lib/signup'
 import { saveData } from '@/lib/storage'
-import { useState, type FormEvent } from 'react'
+import { testUser } from '@/lib/testLogin'
+import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 /*
  * ⚠️ 이 화면의 동의 문구(약관 전문, "쓰는 곳" 안내)는 임시입니다.
  *    동의 문구는 Tmax-IT-Hope-School/Project#8 검토 뒤에 확정되니, 그때 아래 글자를 바꾸세요.
+ *    (이름·이메일·학교를 받게 되면서 "무엇을 모으나요?" 의 내용이 바뀌었습니다. 이 부분도 같이 검토받아야 합니다)
  */
 
 type ConsentKey = keyof SignupConsents
@@ -65,7 +79,8 @@ const collectedItems = [
   '매일 체크인 — 컨디션, 기분, 못 한 이유, 예상 공부 시간',
   '일기·감정 — 위에서 [선택]에 동의한 경우에만',
   '쓰는 곳 — 나에게 맞는 계획과 피드백, 리포트를 만드는 데 써요',
-  '실명·전화번호·학교는 받지 않아요',
+  '가입 정보 — 이름, 닉네임, 이메일, 학교(고른 경우에만)',
+  '전화번호·주소는 받지 않아요',
   '설정 › 내 데이터에서 언제든 지울 수 있어요',
 ]
 
@@ -131,6 +146,154 @@ function ChoiceCard({ label, isSelected, onSelect }: ChoiceCardProps) {
   )
 }
 
+interface SchoolFieldProps {
+  /** 지금 골라 둔 학교. 아직 안 골랐으면 null */
+  school: School | null
+  /** 학교를 골랐을 때(School) 또는 고른 것을 취소했을 때(null) */
+  onChange: (school: School | null) => void
+}
+
+/**
+ * 고등학교를 검색해서 하나 고르는 칸입니다. (검색은 lib/schoolSearch.ts)
+ *   아직 안 골랐으면 -> 검색어 칸 + "검색" 버튼 + 결과 목록
+ *   골랐으면         -> 고른 학교 + "바꾸기" 버튼
+ */
+function SchoolField({ school, onChange }: SchoolFieldProps) {
+  const [query, setQuery] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
+  // 마지막 검색 결과. 아직 검색하지 않았으면 null
+  const [result, setResult] = useState<SchoolSearchResult | null>(null)
+  // 검색어가 너무 짧거나 검색에 실패했을 때 보여줄 안내. 없으면 null
+  const [searchError, setSearchError] = useState<string | null>(null)
+
+  async function handleSearch() {
+    // 찾는 중에 또 누르면 응답이 뒤섞일 수 있어서, 끝날 때까지 기다립니다.
+    if (isSearching) return
+
+    const queryError = getSchoolQueryError(query)
+    if (queryError !== null) {
+      setSearchError(queryError)
+      setResult(null)
+      return
+    }
+
+    setIsSearching(true)
+    setSearchError(null)
+    try {
+      setResult(await searchHighSchools(query))
+    } catch {
+      setResult(null)
+      setSearchError('학교를 검색하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.')
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return
+    // 이 칸은 가입 form 안에 있어서, 그냥 두면 Enter 가 "가입 제출" 이 됩니다. 검색으로 바꿉니다.
+    event.preventDefault()
+    // 한글은 글자를 조합하는 중에도 Enter 가 한 번 들어옵니다. 조합이 끝난 Enter 에만 검색합니다.
+    if (event.nativeEvent.isComposing) return
+    handleSearch()
+  }
+
+  if (school !== null) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <p className="text-sm font-medium text-slate-700">고등학교</p>
+        <div className="border-brand bg-brand-light flex items-center justify-between gap-3 rounded-xl border-2 px-4 py-3">
+          {/* min-w-0: 긴 학교 이름·주소가 "바꾸기" 버튼을 밀어내지 않고 줄바꿈되게 합니다. */}
+          <div className="min-w-0">
+            <p className="font-semibold break-keep text-slate-900">{school.name}</p>
+            <p className="text-sm break-keep text-slate-600">{school.address || school.region}</p>
+          </div>
+          <Button variant="secondary" className="shrink-0" onClick={() => onChange(null)}>
+            바꾸기
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* items-end: 라벨이 붙은 입력 칸과 버튼의 아래쪽을 맞춥니다. */}
+      <div className="flex items-end gap-2">
+        <Input
+          id="school"
+          label="고등학교 (선택)"
+          value={query}
+          placeholder="예) 디지털미디어"
+          // 검색어를 적는 칸이라 브라우저의 자동 완성(예전에 적은 값 추천)은 끕니다.
+          autoComplete="off"
+          // 휴대폰 키보드의 Enter 자리에 "검색" 이 보이게 합니다.
+          enterKeyHint="search"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={handleKeyDown}
+          className="h-12 text-base"
+        />
+        <Button
+          variant="secondary"
+          size="lg"
+          className="shrink-0 px-4"
+          onClick={handleSearch}
+          disabled={isSearching}
+        >
+          {isSearching ? '찾는 중…' : '검색'}
+        </Button>
+      </div>
+      <p className="text-sm break-keep text-slate-500">
+        학교 이름의 일부만 적고 검색해도 돼요. 졸업했거나 목록에 없으면 비워 두세요.
+      </p>
+
+      {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}
+      {searchError !== null && (
+        <p role="alert" className="text-sm break-keep text-red-600">
+          {searchError}
+        </p>
+      )}
+
+      {result !== null && (
+        // aria-live: 검색 결과가 나오면 스크린리더가 알려 줍니다.
+        <div aria-live="polite" className="flex flex-col gap-2">
+          {result.schools.length === 0 ? (
+            <p className="text-sm break-keep text-slate-600">
+              찾은 고등학교가 없어요. 줄임말 대신 학교 이름의 일부를 적어 보세요. (예: 디미고 →
+              디지털미디어)
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {result.schools.map((item) => (
+                <li key={item.code}>
+                  {/* min-h-14 = 56px. 주소가 두 줄이 되어도 버튼이 같이 커집니다. */}
+                  <button
+                    type="button"
+                    onClick={() => onChange(item)}
+                    className="hover:border-brand flex min-h-14 w-full cursor-pointer flex-col items-start justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-left"
+                  >
+                    <span className="font-medium break-keep text-slate-900">{item.name}</span>
+                    <span className="text-sm break-keep text-slate-500">
+                      {item.address || item.region}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* 인증키 없이는 5곳까지만 받을 수 있어서, 더 있으면 알려 줍니다. */}
+          {result.totalCount > result.schools.length && (
+            <p className="text-sm break-keep text-slate-500">
+              {result.totalCount}곳 중 {result.schools.length}곳만 보여요. 이름을 더 자세히 적으면
+              찾기 쉬워요.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 만 14세 미만이라고 답했을 때 보이는 안내 화면입니다. 입력한 정보는 저장하지 않습니다. */
 function UnderFourteenView() {
   const navigate = useNavigate()
@@ -169,8 +332,8 @@ function UnderFourteenView() {
 }
 
 /**
- * SNS 로그인을 처음 한 사람에게 가입 정보를 받는 화면입니다.
- *  1) 닉네임  2) 만 14세 이상인지 확인  3) 개인정보 수집·이용 동의
+ * 로그인을 처음 한 사람에게 가입 정보를 받는 화면입니다.
+ *  1) 이름·닉네임·이메일·고등학교(선택)  2) 만 14세 이상인지 확인  3) 개인정보 수집·이용 동의
  * 다 마치면 정보를 저장하고 온보딩(/onboarding)으로 갑니다.
  *
  * 만 14세 미만(아니요)을 고르면 가입 불가 안내 화면으로 바뀌고, 아무것도 저장하지 않습니다.
@@ -178,9 +341,16 @@ function UnderFourteenView() {
  */
 export function SignupPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
-  // 닉네임 칸을 한 번이라도 건드렸는지. 처음 열었을 때부터 빨간 글씨를 보여주지 않으려고 씁니다.
+  const [email, setEmail] = useState('')
+  // 고른 고등학교. 안 골라도 가입할 수 있어서 null 로 시작합니다.
+  const [school, setSchool] = useState<School | null>(null)
+  // 칸을 한 번이라도 건드렸는지. 처음 열었을 때부터 빨간 글씨를 보여주지 않으려고 씁니다.
+  const [isNameTouched, setIsNameTouched] = useState(false)
   const [isNicknameTouched, setIsNicknameTouched] = useState(false)
+  const [isEmailTouched, setIsEmailTouched] = useState(false)
   // 만 14세 이상인지. 아직 안 골랐으면 null, 네 = true, 아니요 = false
   const [isOver14, setIsOver14] = useState<boolean | null>(null)
   const [consents, setConsents] = useState<SignupConsents>(makeAllConsents(false))
@@ -190,8 +360,12 @@ export function SignupPage() {
   // 만 14세 미만이면 입력 화면 대신 안내 화면을 보여줍니다.
   if (isOver14 === false) return <UnderFourteenView />
 
+  // 테스트 로그인으로 들어온 사람인지. (lib/testLogin.ts)
+  const isTestUser = user?.id === testUser.id
+  const nameError = isNameTouched ? getNameError(name) : null
   const nicknameError = isNicknameTouched ? getNicknameError(nickname) : null
-  const canSubmit = canSubmitSignup(nickname, isOver14, consents)
+  const emailError = isEmailTouched ? getEmailError(email) : null
+  const canSubmit = canSubmitSignup({ name, nickname, email, isOver14, consents })
   const openedItem = consentItems.find((item) => item.key === openedKey)
 
   function handleChangeConsent(key: ConsentKey, isChecked: boolean) {
@@ -203,7 +377,14 @@ export function SignupPage() {
     event.preventDefault()
     if (!canSubmit) return
 
-    const info: SignupInfo = { nickname: nickname.trim(), consents, agreedAt: Date.now() }
+    const info: SignupInfo = {
+      name: name.trim(),
+      nickname: nickname.trim(),
+      email: email.trim(),
+      school,
+      consents,
+      agreedAt: Date.now(),
+    }
     saveData(SIGNUP_STORAGE_KEY, info)
     navigate('/onboarding')
   }
@@ -218,7 +399,31 @@ export function SignupPage() {
             반가워요! 가입 정보를 알려주세요
           </h1>
           {/* 어떤 SNS 로 로그인했는지는 아직 저장하지 않아서(#47 이후) 이름 없이 적습니다. */}
-          <p className="mt-2 text-slate-600">SNS 계정으로 로그인했어요.</p>
+          <p className="mt-2 break-keep text-slate-600">
+            {isTestUser
+              ? '테스트 계정으로 로그인했어요. 적은 정보는 이 브라우저에만 저장돼요.'
+              : 'SNS 계정으로 로그인했어요.'}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Input
+            id="name"
+            label="이름"
+            value={name}
+            maxLength={NAME_MAX_LENGTH}
+            placeholder="예) 김하늘"
+            // autoComplete: 브라우저가 저장해 둔 내 이름을 추천해 줍니다.
+            autoComplete="name"
+            error={nameError ?? undefined}
+            onChange={(event) => setName(event.target.value)}
+            // 다 적고 칸을 떠났을 때부터 검사합니다. (적는 중에 빨간 글씨가 뜨지 않게)
+            onBlur={() => setIsNameTouched(true)}
+            className="h-12 text-base"
+          />
+          <p className="text-sm text-slate-500">
+            실제 이름을 적어 주세요. ({NAME_MIN_LENGTH}~{NAME_MAX_LENGTH}자)
+          </p>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -228,6 +433,7 @@ export function SignupPage() {
             value={nickname}
             maxLength={NICKNAME_MAX_LENGTH}
             placeholder="예) 공부하는 고양이"
+            autoComplete="nickname"
             error={nicknameError ?? undefined}
             onChange={(event) => {
               setNickname(event.target.value)
@@ -237,10 +443,26 @@ export function SignupPage() {
             className="h-12 text-base"
           />
           <p className="text-sm text-slate-500">
-            앱에서 부르는 이름이에요. 실명은 받지 않아요. ({NICKNAME_MIN_LENGTH}~
-            {NICKNAME_MAX_LENGTH}자)
+            앱에서 부르는 이름이에요. ({NICKNAME_MIN_LENGTH}~{NICKNAME_MAX_LENGTH}자)
           </p>
         </div>
+
+        <Input
+          id="email"
+          // type="email": 휴대폰에서 @ 가 있는 키보드가 뜹니다.
+          type="email"
+          label="이메일"
+          value={email}
+          maxLength={EMAIL_MAX_LENGTH}
+          placeholder="예) study@example.com"
+          autoComplete="email"
+          error={emailError ?? undefined}
+          onChange={(event) => setEmail(event.target.value)}
+          onBlur={() => setIsEmailTouched(true)}
+          className="h-12 text-base"
+        />
+
+        <SchoolField school={school} onChange={setSchool} />
 
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 text-sm font-semibold text-slate-900">만 14세 이상인가요?</legend>
@@ -327,13 +549,13 @@ export function SignupPage() {
         </details>
 
         <div className="flex flex-col gap-2">
-          {/* 닉네임·나이·필수 동의 중 하나라도 빠졌으면 눌리지 않습니다. */}
+          {/* 이름·닉네임·이메일·나이·필수 동의 중 하나라도 빠졌으면 눌리지 않습니다. */}
           <Button type="submit" size="lg" className="w-full" disabled={!canSubmit}>
             다음 · 온보딩 시작
           </Button>
           {!canSubmit && (
             <p className="text-center text-sm break-keep text-slate-500">
-              닉네임, 만 14세 확인, 필수 동의를 마치면 눌러져요.
+              이름·닉네임·이메일, 만 14세 확인, 필수 동의를 마치면 눌러져요.
             </p>
           )}
         </div>
