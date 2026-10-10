@@ -11,6 +11,8 @@
  * ⚠️ OpenAI API 키(sk-...)는 절대 이 코드나 .env 에 넣지 않습니다.
  *    브라우저는 서버가 만들어 준 짧게 쓰고 버리는 임시 키만 씁니다.
  */
+import { createConnectionWatcher } from '@/lib/connectionWatch'
+import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 주소입니다. ⚠️ 임시 값입니다. BE 와 정한 실제 주소로 바꾸세요.
 // 서버는 { "value": "임시 키" } 모양으로 응답해야 합니다. (OpenAI 문서의 예시와 같은 모양)
@@ -19,8 +21,12 @@ const TOKEN_URL = '/realtime/token'
 // OpenAI 와 SDP 를 주고받는 주소입니다. (문서의 현재 주소. 버전이 바뀌면 문서를 다시 확인하세요)
 const OPENAI_CALLS_URL = 'https://api.openai.com/v1/realtime/calls'
 
-/** 연결이 실패한 이유. 화면에서 이유별로 다른 안내를 보여주려고 나눕니다. */
-export type RealtimeFailReason = 'token' | 'mic' | 'connect'
+/**
+ * 연결이 실패한 이유. 화면에서 이유별로 다른 안내를 보여주려고 나눕니다.
+ *  - token: 서버에서 임시 키를 못 받음 / mic: 마이크를 쓸 수 없음(거부 등) / no-mic: 마이크 자체가 없는 기기
+ *  - connect: AI 와 연결하지 못함
+ */
+export type RealtimeFailReason = 'token' | 'mic' | 'no-mic' | 'connect'
 
 export class RealtimeCallError extends Error {
   reason: RealtimeFailReason
@@ -95,18 +101,38 @@ async function fetchEphemeralKey(): Promise<string> {
 
 /** 마이크를 켭니다. 거부되면 'mic' 이유로 실패합니다. */
 async function openMicrophone(): Promise<MediaStream> {
+  // https 주소나 localhost 가 아니면 mediaDevices 자체가 없습니다.
+  if (!navigator.mediaDevices) {
+    throw new RealtimeCallError('no-mic', '이 주소에서는 마이크를 쓸 수 없어요')
+  }
+
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: true })
-  } catch {
+  } catch (error) {
+    // NotFoundError = 마이크가 아예 없는 기기
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
+      throw new RealtimeCallError('no-mic', '마이크를 찾을 수 없어요')
+    }
     throw new RealtimeCallError('mic', '마이크를 사용할 수 없어요')
   }
+}
+
+/** 통화를 시작할 때 넘길 수 있는 설정입니다. */
+export interface StartCallOptions {
+  /** 대화 글자(자막) 이벤트가 올 때마다 불립니다. (AI 말 · 내 말) */
+  onTranscript?: (event: TranscriptEvent) => void
+  /**
+   * 연결이 끊어졌을 때 한 번 불립니다. wasConnected 가 true 면 통화 중에 끊긴 것이고,
+   * false 면 처음부터 연결이 안 된 것입니다. (직접 close() 한 뒤에는 불리지 않습니다)
+   */
+  onDisconnect?: (wasConnected: boolean) => void
 }
 
 /**
  * AI 와 음성 통화를 시작합니다. 연결되면 AI 가 먼저 인사합니다.
  * 중간에 실패하면 이미 켠 마이크·연결을 모두 정리하고 RealtimeCallError 를 던집니다.
  */
-export async function startRealtimeCall(): Promise<RealtimeCall> {
+export async function startRealtimeCall(options: StartCallOptions = {}): Promise<RealtimeCall> {
   const ephemeralKey = await fetchEphemeralKey()
   const microphone = await openMicrophone()
 
@@ -116,7 +142,10 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
 
   // 연결을 끝낼 때 한 곳에서 전부 정리합니다. (여러 번 불러도 안전합니다)
   let dataChannel: RTCDataChannel | null = null
+  // 연결이 끊기는지 지켜봅니다. 우리가 직접 끝낼 때(close)는 지켜보기를 멈춰서 "끊겼다"고 알리지 않습니다.
+  const watcher = createConnectionWatcher((wasConnected) => options.onDisconnect?.(wasConnected))
   function close() {
+    watcher.stop()
     dataChannel?.close()
     microphone.getTracks().forEach((track) => track.stop())
     peerConnection.close()
@@ -124,6 +153,11 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
   }
 
   try {
+    // 연결 상태가 바뀔 때마다 지켜보는 쪽에 알려줍니다.
+    peerConnection.onconnectionstatechange = () => {
+      watcher.handleStateChange(peerConnection.connectionState)
+    }
+
     // AI 목소리가 들어오면 오디오 태그에 연결합니다.
     peerConnection.ontrack = (event) => {
       audioElement.srcObject = event.streams[0]
@@ -142,7 +176,25 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
     // 통로가 열리면 AI 에게 "말을 시작해"라고 알려서 첫 인사가 나오게 합니다.
     // (공식 문서에 인사 방법이 따로 없어서 response.create 이벤트를 쓴 것입니다. 실제 서버로 확인이 필요합니다)
     channel.addEventListener('open', () => {
+      // 내 말을 글자로 바꾸는 기능은 기본이 꺼져 있어서 켭니다. (공식 문서의 session.update 예시를 따랐습니다)
+      // BE 가 임시 키를 만들 때 같은 설정(audio.input.transcription)을 넣어 준다면 이 부분은 지워도 됩니다.
+      // ⚠️ 실제 서버로는 아직 확인하지 못했습니다.
+      channel.send(
+        JSON.stringify({
+          type: 'session.update',
+          session: {
+            type: 'realtime',
+            audio: { input: { transcription: { model: 'gpt-4o-transcribe', language: 'ko' } } },
+          },
+        }),
+      )
       channel.send(JSON.stringify({ type: 'response.create' }))
+    })
+
+    // 서버가 보내는 이벤트 중 대화 글자만 골라서 화면에 알려줍니다.
+    channel.addEventListener('message', (event: MessageEvent) => {
+      const transcriptEvent = parseTranscriptEvent(event.data)
+      if (transcriptEvent) options.onTranscript?.(transcriptEvent)
     })
 
     // 연결 정보(SDP)를 만들어 OpenAI 에 보내고, 받은 답을 적용합니다.
