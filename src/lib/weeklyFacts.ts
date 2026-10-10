@@ -2,7 +2,7 @@
  * "이번 주 팩트" 카드(#245)에 필요한 주 단위 계산입니다. React 없이 돌아가서 `lib/` 에 둡니다.
  * 숫자 자체는 lib/facts.ts 의 getFacts 가 계산하고, 여기서는 "어느 주를", "무엇과 비교할지" 만 정합니다.
  */
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { moveDateKey, toDateKey, toDayDate } from '@/lib/date'
 import { getFacts, type FactValue, type Facts } from '@/lib/facts'
 import type { StudyPlan, StudySession } from '@/types'
 
@@ -23,16 +23,20 @@ export interface WeeklyFacts {
 }
 
 /**
- * 그 날짜가 들어 있는 주의 월요일을 돌려줍니다. 한 주는 월요일에 시작합니다. (주간 리포트와 같은 규칙)
+ * 그 순간이 들어 있는 주의 월요일을 돌려줍니다. 한 주는 월요일에 시작합니다. (주간 리포트와 같은 규칙)
+ * 하루는 새벽 4시에 시작하므로(lib/date.ts), 월요일 새벽 2시는 아직 일요일 = 지난주입니다.
  *
- *   getMondayKey(new Date(2026, 9, 10))  -> '2026-10-05'   (10월 10일 토요일 → 그 주 월요일)
- *   getMondayKey(new Date(2026, 9, 11))  -> '2026-10-05'   (일요일은 그 주의 마지막 날)
- *   getMondayKey(new Date(2026, 9, 12))  -> '2026-10-12'   (월요일은 자기 자신)
+ *   getMondayKey(new Date(2026, 9, 10, 15))  -> '2026-10-05'   (10월 10일 토요일 15시 → 그 주 월요일)
+ *   getMondayKey(new Date(2026, 9, 11, 23))  -> '2026-10-05'   (일요일은 그 주의 마지막 날)
+ *   getMondayKey(new Date(2026, 9, 12, 9))   -> '2026-10-12'   (월요일 9시는 새 주)
+ *   getMondayKey(new Date(2026, 9, 12, 2))   -> '2026-10-05'   (월요일 새벽 2시는 아직 일요일)
  */
-export function getMondayKey(date: Date): string {
+export function getMondayKey(time: Date): string {
+  // toDayDate: 새벽 4시 기준으로 "그 순간이 속한 날" 을 구합니다.
+  const day = toDayDate(time)
   // getDay(): 일요일 0, 월요일 1 … 토요일 6. 월요일에서 며칠 지났는지 계산합니다. (일요일은 6일 지난 것으로 봅니다)
-  const daysFromMonday = (date.getDay() + 6) % 7
-  return moveDateKey(toDateKey(date), -daysFromMonday)
+  const daysFromMonday = (day.getDay() + 6) % 7
+  return moveDateKey(toDateKey(day), -daysFromMonday)
 }
 
 /**

@@ -4,7 +4,7 @@
  * 그날 앱을 처음 열면 기분 하나만 묻고(components/ui/DailyCheckInScreen.tsx), 그 답으로 오늘의 체크인을 만듭니다.
  * 컨디션·예상 시간·약속까지 적는 자세한 체크인은 /check 화면(pages/CheckPage.tsx)에 그대로 있습니다.
  */
-import { toDateKey } from '@/lib/date'
+import { toDayKey } from '@/lib/date'
 import { loadInitialPlan } from '@/lib/initialPlan'
 import { loadData, saveData } from '@/lib/storage'
 import type { CheckIn, StudyPlan } from '@/types'
@@ -69,9 +69,10 @@ export function makeQuickCheckIn(dateKey: string, mood: number, expectedMinutes:
 /**
  * 고른 기분으로 오늘의 체크인을 만들어 저장합니다. (1탭 체크인 화면에서 부릅니다)
  * 저장소를 바로 읽고 써서, 체크인 화면(/check)을 열면 방금 저장한 값이 그대로 보입니다.
+ * 날짜는 새벽 4시 기준입니다. (새벽 1시에 누르면 전날의 체크인으로 저장됩니다)
  */
 export function saveQuickCheckIn(mood: number, today: Date = new Date()): void {
-  const dateKey = toDateKey(today)
+  const dateKey = toDayKey(today)
 
   const todayPlans = loadByDate(PLANS_KEY)[dateKey]
   const plans = Array.isArray(todayPlans) ? (todayPlans as StudyPlan[]) : []
