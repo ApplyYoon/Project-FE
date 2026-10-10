@@ -11,6 +11,7 @@
  * ⚠️ OpenAI API 키(sk-...)는 절대 이 코드나 .env 에 넣지 않습니다.
  *    브라우저는 서버가 만들어 준 짧게 쓰고 버리는 임시 키만 씁니다.
  */
+import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 주소입니다. ⚠️ 임시 값입니다. BE 와 정한 실제 주소로 바꾸세요.
 // 서버는 { "value": "임시 키" } 모양으로 응답해야 합니다. (OpenAI 문서의 예시와 같은 모양)
@@ -102,11 +103,17 @@ async function openMicrophone(): Promise<MediaStream> {
   }
 }
 
+/** 통화를 시작할 때 넘길 수 있는 설정입니다. */
+export interface StartCallOptions {
+  /** 대화 글자(자막) 이벤트가 올 때마다 불립니다. (AI 말 · 내 말) */
+  onTranscript?: (event: TranscriptEvent) => void
+}
+
 /**
  * AI 와 음성 통화를 시작합니다. 연결되면 AI 가 먼저 인사합니다.
  * 중간에 실패하면 이미 켠 마이크·연결을 모두 정리하고 RealtimeCallError 를 던집니다.
  */
-export async function startRealtimeCall(): Promise<RealtimeCall> {
+export async function startRealtimeCall(options: StartCallOptions = {}): Promise<RealtimeCall> {
   const ephemeralKey = await fetchEphemeralKey()
   const microphone = await openMicrophone()
 
@@ -142,7 +149,25 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
     // 통로가 열리면 AI 에게 "말을 시작해"라고 알려서 첫 인사가 나오게 합니다.
     // (공식 문서에 인사 방법이 따로 없어서 response.create 이벤트를 쓴 것입니다. 실제 서버로 확인이 필요합니다)
     channel.addEventListener('open', () => {
+      // 내 말을 글자로 바꾸는 기능은 기본이 꺼져 있어서 켭니다. (공식 문서의 session.update 예시를 따랐습니다)
+      // BE 가 임시 키를 만들 때 같은 설정(audio.input.transcription)을 넣어 준다면 이 부분은 지워도 됩니다.
+      // ⚠️ 실제 서버로는 아직 확인하지 못했습니다.
+      channel.send(
+        JSON.stringify({
+          type: 'session.update',
+          session: {
+            type: 'realtime',
+            audio: { input: { transcription: { model: 'gpt-4o-transcribe', language: 'ko' } } },
+          },
+        }),
+      )
       channel.send(JSON.stringify({ type: 'response.create' }))
+    })
+
+    // 서버가 보내는 이벤트 중 대화 글자만 골라서 화면에 알려줍니다.
+    channel.addEventListener('message', (event: MessageEvent) => {
+      const transcriptEvent = parseTranscriptEvent(event.data)
+      if (transcriptEvent) options.onTranscript?.(transcriptEvent)
     })
 
     // 연결 정보(SDP)를 만들어 OpenAI 에 보내고, 받은 답을 적용합니다.
