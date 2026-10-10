@@ -1,7 +1,9 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { InsightCard } from '@/components/ui/InsightCard'
 import { Input } from '@/components/ui/Input'
 import { useToggle } from '@/hooks/useToggle'
+import { mockInsights } from '@/lib/mock'
 import { useState } from 'react'
 
 export function HomePage() {
@@ -16,6 +18,24 @@ export function HomePage() {
           이 페이지는 예시입니다. <code className="rounded bg-slate-100 px-1">src/pages</code> 에
           여러분의 페이지를 만들어 보세요.
         </p>
+      </section>
+
+      {/* 아직 실제 홈 화면(#85 #94 #68 등)은 만들어지기 전이라, 인사이트 카드만 먼저 둡니다. (#73) */}
+      <section>
+        <h2 className="text-lg font-bold text-slate-900">이번 주 발견</h2>
+        {mockInsights.length === 0 ? (
+          // #85(첫 리포트 카운트다운)가 아직 없어서, 데이터가 모자란 기간엔 안내 문구로 대신합니다.
+          // #85 가 만들어지면 이 자리를 카운트다운 카드로 바꿔야 합니다.
+          <p className="mt-3 text-sm text-slate-500">
+            아직 데이터가 모자라요. 기록이 쌓이면 발견이 생겨요.
+          </p>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {mockInsights.slice(0, 2).map((insight) => (
+              <InsightCard key={insight.id} insight={insight} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
