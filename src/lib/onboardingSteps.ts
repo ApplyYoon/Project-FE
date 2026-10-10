@@ -26,10 +26,30 @@ interface BaseStep {
   optional?: boolean
 }
 
+/**
+ * 보기 하나. 글자(string)로 적으면 보이는 글자와 저장되는 값이 같습니다. (예: '고2')
+ * 보이는 글자와 저장할 값이 다르면 { value, label } 로 적습니다. (예: 화면엔 '아침형', 저장은 'morning')
+ */
+export type ChoiceOption = string | { value: string; label: string }
+
+/** 보기 하나를 { value, label } 모양으로 맞춥니다. (화면은 이걸 받아서 그립니다) */
+export function toChoiceOption(option: ChoiceOption): { value: string; label: string } {
+  return typeof option === 'string' ? { value: option, label: option } : option
+}
+
 /** 보기 중 하나를 고르는 질문 */
 interface ChoiceStep extends BaseStep {
   type: 'choice'
-  options: string[]
+  options: ChoiceOption[]
+}
+
+/**
+ * 보기 중 여러 개를 고르는 질문. 답은 고른 값을 쉼표로 이은 글자 하나로 저장됩니다. (예: 'weekend,phone')
+ * 하나도 안 골랐으면 빈 글자입니다. 쉼표로 자르려면 parseMultiAnswer 를 씁니다.
+ */
+interface MultiChoiceStep extends BaseStep {
+  type: 'multiChoice'
+  options: { value: string; label: string }[]
 }
 
 /** 한 줄로 글자를 적는 질문 */
@@ -66,7 +86,36 @@ interface CareLimitsStep extends BaseStep {
 }
 
 export type OnboardingStep =
-  ChoiceStep | TextStep | DateStep | TimeStep | CareLimitsStep | MessageSettingsStep
+  | ChoiceStep
+  | MultiChoiceStep
+  | TextStep
+  | DateStep
+  | TimeStep
+  | CareLimitsStep
+  | MessageSettingsStep
+
+/** 쉼표로 이은 여러 개 고르기 답을 값 목록으로 자릅니다. 빈 글자면 빈 목록입니다.  'weekend,phone' -> ['weekend', 'phone'] */
+export function parseMultiAnswer(answer: string): string[] {
+  return answer === '' ? [] : answer.split(',')
+}
+
+/**
+ * 여러 개 고르기에서 값 하나를 켜거나 끕니다. 이미 골랐으면 빼고, 아니면 더합니다.
+ * 저장되는 순서는 보기 순서(optionValues)를 따라서, 어떤 순서로 눌러도 같은 답이 됩니다.
+ *
+ *   toggleMultiAnswer('weekend', 'phone', ['afterExam', 'weekend', 'phone'])  -> 'weekend,phone'
+ *   toggleMultiAnswer('weekend,phone', 'weekend', [...])                      -> 'phone'
+ */
+export function toggleMultiAnswer(
+  answer: string,
+  optionValue: string,
+  optionValues: string[],
+): string {
+  const picked = new Set(parseMultiAnswer(answer))
+  if (picked.has(optionValue)) picked.delete(optionValue)
+  else picked.add(optionValue)
+  return optionValues.filter((value) => picked.has(value)).join(',')
+}
 
 /** 질문 목록. 위에서부터 차례로 보입니다. */
 export const onboardingSteps: OnboardingStep[] = [
@@ -153,6 +202,95 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'choice',
     title: '주로 어디서 공부해?',
     options: ['집', '학교', '학원', '독서실·도서관', '카페', '기타'],
+  },
+
+  /* ---------- 과거 실패 경험 (#89) ---------- */
+  // 답은 PastFailureCause 값을 쉼표로 이은 글자입니다. (예: 'weekend,phone') 첫 가설과 첫 개선안에 씁니다.
+  {
+    key: 'pastFailureCauses',
+    group: '과거 실패 경험',
+    type: 'multiChoice',
+    optional: true,
+    title: '계획이 주로 언제 무너졌어?',
+    description: '해당되는 걸 모두 골라 주세요. 잘 모르겠으면 건너뛰어도 돼요.',
+    options: [
+      { value: 'afterExam', label: '시험 끝난 직후' },
+      { value: 'weekend', label: '주말' },
+      { value: 'lateAcademy', label: '학원 늦게 끝난 날' },
+      { value: 'phone', label: '폰 보다가' },
+      { value: 'tooMuchPlan', label: '계획이 많아서' },
+    ],
+  },
+
+  /* ---------- 자기 인식 (#89) ---------- */
+  // 나중에 기록으로 확인하거나 반박해서 "나보다 나를 더 잘 아네?" 를 만드는 재료입니다.
+  // 숫자 답(분)은 글자로 저장되고, 값은 OnboardingAnswers 의 단위(분)와 같습니다.
+  {
+    key: 'chronotype',
+    group: '자기 인식',
+    type: 'choice',
+    title: '나는 아침형이야, 밤형이야?',
+    description: '스스로 생각하는 대로 골라 주세요. 나중에 기록으로 확인해 볼게요.',
+    options: [
+      { value: 'morning', label: '아침형' },
+      { value: 'night', label: '밤형' },
+    ],
+  },
+  {
+    key: 'maxFocusMinutes',
+    group: '자기 인식',
+    type: 'choice',
+    title: '한 번 앉으면 얼마나 집중할 수 있어?',
+    options: [
+      { value: '30', label: '30분 안팎' },
+      { value: '50', label: '50분 안팎' },
+      { value: '90', label: '1시간 반 안팎' },
+      { value: '120', label: '2시간 이상' },
+    ],
+  },
+  {
+    key: 'biggestDistraction',
+    group: '자기 인식',
+    type: 'choice',
+    title: '공부할 때 가장 큰 방해 요소는?',
+    options: ['폰·SNS', '졸림', '잡생각', '친구·가족', '소음·주변 환경', '기타'],
+  },
+  {
+    key: 'dailyAvailableMinutes',
+    group: '자기 인식',
+    type: 'choice',
+    title: '하루에 공부할 수 있는 시간은?',
+    description: '학교·학원 시간을 뺀, 내가 쓸 수 있는 시간이에요.',
+    options: [
+      { value: '60', label: '1시간' },
+      { value: '120', label: '2시간' },
+      { value: '180', label: '3시간' },
+      { value: '240', label: '4시간' },
+      { value: '300', label: '5시간 이상' },
+    ],
+  },
+
+  /* ---------- 동기 (#89) ---------- */
+  // 글로 적는 질문은 비워도 됩니다. 적어 두면 당근 메시지에 씁니다.
+  {
+    key: 'motivationReason',
+    group: '동기',
+    type: 'text',
+    optional: true,
+    title: '공부하는 이유가 뭐야?',
+    description: '한 줄이면 충분해요. 아직 없으면 건너뛰어도 돼요.',
+    placeholder: '예) 하고 싶은 일을 하려고',
+    maxLength: 50,
+  },
+  {
+    key: 'goalReward',
+    group: '동기',
+    type: 'text',
+    optional: true,
+    title: '목표를 이루면 제일 하고 싶은 건?',
+    description: '한 줄이면 충분해요. 아직 없으면 건너뛰어도 돼요.',
+    placeholder: '예) 친구들이랑 여행 가기',
+    maxLength: 50,
   },
 
   /* ---------- 관리 설정 ---------- */

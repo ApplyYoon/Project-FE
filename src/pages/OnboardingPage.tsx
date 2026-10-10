@@ -11,6 +11,9 @@ import {
   getDaysUntil,
   isAnswerValid,
   onboardingSteps,
+  parseMultiAnswer,
+  toChoiceOption,
+  toggleMultiAnswer,
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
 import { loadData, saveData } from '@/lib/storage'
@@ -26,19 +29,21 @@ interface StepInputProps {
   onChange: (value: string) => void
 }
 
-/** 질문 모양(choice·text·date·time)에 맞는 답 입력칸을 그립니다. */
+/** 질문 모양(choice·multiChoice·text·date·time)에 맞는 답 입력칸을 그립니다. */
 function StepInput({ step, value, onChange }: StepInputProps) {
   // 보기 중 하나 고르기 (카드 모양 라디오 버튼)
   if (step.type === 'choice') {
     return (
       <div role="radiogroup" aria-label={step.title} className="flex flex-col gap-3">
-        {step.options.map((option) => {
-          const isSelected = option === value
+        {step.options.map((rawOption) => {
+          // 보이는 글자(label)와 저장할 값(value)이 다른 보기도 있어서, 둘로 나눠서 씁니다.
+          const option = toChoiceOption(rawOption)
+          const isSelected = option.value === value
           return (
             // h-14 = 56px. label 전체가 눌리는 영역이라 글자 쪽을 눌러도 선택됩니다.
             // border-2: 고른 카드의 테두리를 굵게 보이려고 처음부터 2px 로 둡니다. (1px 였다가 2px 가 되면 카드가 움직여 보입니다)
             <label
-              key={option}
+              key={option.value}
               className={cn(
                 'flex h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 font-medium',
                 isSelected
@@ -49,12 +54,46 @@ function StepInput({ step, value, onChange }: StepInputProps) {
               <input
                 type="radio"
                 name={step.key}
-                value={option}
+                value={option.value}
                 checked={isSelected}
-                onChange={() => onChange(option)}
+                onChange={() => onChange(option.value)}
                 className="accent-brand h-5 w-5 shrink-0"
               />
-              <span className="break-keep">{option}</span>
+              <span className="break-keep">{option.label}</span>
+            </label>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // 여러 개 고르기 (체크 박스 카드). 누를 때마다 켜고 끄고, 답은 고른 값을 쉼표로 이은 글자입니다.
+  if (step.type === 'multiChoice') {
+    const optionValues = step.options.map((option) => option.value)
+    const pickedValues = parseMultiAnswer(value)
+    return (
+      <div role="group" aria-label={step.title} className="flex flex-col gap-3">
+        {step.options.map((option) => {
+          const isSelected = pickedValues.includes(option.value)
+          return (
+            <label
+              key={option.value}
+              className={cn(
+                'flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-2 font-medium',
+                isSelected
+                  ? 'border-brand bg-brand-light text-brand'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              )}
+            >
+              <input
+                type="checkbox"
+                name={step.key}
+                value={option.value}
+                checked={isSelected}
+                onChange={() => onChange(toggleMultiAnswer(value, option.value, optionValues))}
+                className="accent-brand h-5 w-5 shrink-0"
+              />
+              <span className="break-keep">{option.label}</span>
             </label>
           )
         })}
