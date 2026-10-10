@@ -178,7 +178,7 @@ export function HomePage() {
         ) : (
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {mockInsights.slice(0, 2).map((insight) => (
-              <InsightCard key={insight.id} insight={insight} />
+              <InsightCard key={insight.id} insight={insight} sessions={sessions} />
             ))}
           </div>
         )}
