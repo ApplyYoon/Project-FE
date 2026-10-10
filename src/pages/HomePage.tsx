@@ -6,6 +6,7 @@ import { InsightCard } from '@/components/ui/InsightCard'
 import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
 import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
@@ -191,6 +192,18 @@ export function HomePage() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
         <TodayCard plans={todayPlans} subjects={subjects} sessions={allSessions} />
+
+        {/* 이번 주 팩트 (#245). 묻지 않고 계획과 타이머 기록에서 계산한 숫자입니다. */}
+        <WeeklyFactCard
+          plans={allPlans}
+          sessions={sessions}
+          initialPlan={initialPlan}
+          action={
+            <Link to="/report" className={cn(textLinkClass, 'shrink-0 whitespace-nowrap')}>
+              리포트에서 자세히
+            </Link>
+          }
+        />
 
         <Card title="어제 한 줄">
           {hasYesterdayRecord && hasYesterdayPlan && yesterdaySummary.achievementRate !== null ? (

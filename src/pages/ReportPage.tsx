@@ -5,6 +5,7 @@ import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
 import { usePlans } from '@/hooks/usePlans'
 import { cn } from '@/lib/cn'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -12,6 +13,7 @@ import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
+import { loadInitialPlan } from '@/lib/initialPlan'
 import { getInsightsToShow } from '@/lib/insights'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
@@ -292,6 +294,8 @@ interface ReportSectionProps {
 function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
   // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ...
   const [weeksAgo, setWeeksAgo] = useState(0)
+  // 온보딩에서 세운 처음 계획. 팩트 카드의 "처음 계획 · 하루 평균" 줄에 씁니다. 안 세웠으면 null (#240)
+  const [initialPlan] = useState(loadInitialPlan)
 
   const mondayKey = getMondayKey(weeksAgo)
   const previousMondayKey = getMondayKey(weeksAgo + 1)
@@ -348,6 +352,15 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
           </Button>
         </div>
       </div>
+
+      {/* 이 주의 팩트 숫자 (#245). 기록이 14일 안 됐어도 계획과 타이머에서 나온 숫자는 그대로 보여줍니다. */}
+      <WeeklyFactCard
+        plans={allPlans}
+        sessions={sessions}
+        initialPlan={initialPlan}
+        mondayKey={mondayKey}
+        isPastWeek={weeksAgo > 0}
+      />
 
       {isBeforeFirstReport ? (
         <Card>
