@@ -7,6 +7,7 @@ import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
 import { CheckPage } from '@/pages/CheckPage'
 import { DiaryPage } from '@/pages/DiaryPage'
+import { ExamResultPage } from '@/pages/ExamResultPage'
 import { ExamsPage } from '@/pages/ExamsPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
       { path: 'diary', element: <DiaryPage /> },
       { path: 'diary/reflection', element: <ReflectionPage /> },
       { path: 'exams', element: <ExamsPage /> },
+      { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'report', element: <ReportPage /> },
