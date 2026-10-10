@@ -1,3 +1,4 @@
+import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -10,7 +11,7 @@ import {
 } from '@/lib/onboardingSteps'
 import { loadData, saveData } from '@/lib/storage'
 import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 // 설문을 끝내고 답을 저장하는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-onboarding-answers' 가 됩니다)
 const STORAGE_KEY = 'onboarding-answers'
@@ -31,10 +32,11 @@ function StepInput({ step, value, onChange }: StepInputProps) {
           const isSelected = option === value
           return (
             // h-14 = 56px. label 전체가 눌리는 영역이라 글자 쪽을 눌러도 선택됩니다.
+            // border-2: 고른 카드의 테두리를 굵게 보이려고 처음부터 2px 로 둡니다. (1px 였다가 2px 가 되면 카드가 움직여 보입니다)
             <label
               key={option}
               className={cn(
-                'flex h-14 cursor-pointer items-center gap-3 rounded-xl border px-4 font-medium',
+                'flex h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 font-medium',
                 isSelected
                   ? 'border-brand bg-brand-light text-brand'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
@@ -111,7 +113,10 @@ function StepInput({ step, value, onChange }: StepInputProps) {
  * 질문 목록은 lib/onboardingSteps.ts 한 곳에서 관리합니다.
  *
  * 마지막 질문에서 "완료" 를 누르면 답을 저장하고 홈으로 갑니다.
+ * 위쪽의 "나중에 하기" 를 누르면 답을 저장하지 않고 홈으로 갑니다. (지금까지 고른 답은 사라집니다)
  * 이미 설문을 마친 사람(저장된 답이 있는 사람)이 오면 바로 홈으로 돌려보냅니다.
+ *
+ * 메뉴·하단 탭이 없는 틀(PlainLayout)로 감싸서 시안처럼 앱 이름만 위에 보입니다.
  */
 export function OnboardingPage() {
   const navigate = useNavigate()
@@ -156,50 +161,64 @@ export function OnboardingPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-brand font-semibold">{step.group}</span>
-          <span className="text-slate-500">
-            {stepIndex + 1} / {onboardingSteps.length}
-          </span>
-        </div>
-        <ProgressBar value={progress} />
-      </div>
-
-      <div>
-        <h1 className="text-xl font-bold tracking-tight break-keep sm:text-2xl">
-          {step.title}
-          {step.optional && (
-            <span className="ml-2 align-middle text-sm font-medium text-slate-400">(선택)</span>
-          )}
-        </h1>
-        {step.description && (
-          <p className="mt-2 text-sm break-keep text-slate-600 sm:text-base">{step.description}</p>
-        )}
-      </div>
-
-      {/* key: 질문이 바뀔 때 입력칸을 새로 만들어서 이전 질문의 상태가 섞이지 않게 합니다. */}
-      <StepInput key={step.key} step={step} value={value} onChange={handleChangeAnswer} />
-
-      <div className="flex gap-3">
-        <Button
-          type="button"
-          variant="secondary"
-          size="lg"
-          className="w-1/3"
-          disabled={isFirstStep}
-          onClick={handlePrev}
+    <PlainLayout
+      headerAction={
+        // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
+        <Link
+          to="/"
+          className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
         >
-          이전
-        </Button>
-        {/* 답이 없으면(선택 질문 제외) 눌리지 않습니다. */}
-        <Button type="submit" size="lg" className="flex-1" disabled={!isValid}>
-          {isLastStep ? '완료' : '다음'}
-        </Button>
-      </div>
+          나중에 하기
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-brand font-semibold">{step.group}</span>
+            <span className="text-slate-500">
+              {stepIndex + 1} / {onboardingSteps.length}
+            </span>
+          </div>
+          <ProgressBar value={progress} />
+        </div>
 
-      <p className="text-center text-sm text-slate-500">온보딩은 5분이면 끝나요</p>
-    </form>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+            {step.title}
+            {step.optional && (
+              <span className="ml-2 align-middle text-sm font-medium text-slate-400">(선택)</span>
+            )}
+          </h1>
+          {step.description && (
+            <p className="mt-2 text-sm break-keep text-slate-600 sm:text-base">
+              {step.description}
+            </p>
+          )}
+        </div>
+
+        {/* key: 질문이 바뀔 때 입력칸을 새로 만들어서 이전 질문의 상태가 섞이지 않게 합니다. */}
+        <StepInput key={step.key} step={step} value={value} onChange={handleChangeAnswer} />
+
+        <div className="flex gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="w-1/3"
+            disabled={isFirstStep}
+            onClick={handlePrev}
+          >
+            이전
+          </Button>
+          {/* 답이 없으면(선택 질문 제외) 눌리지 않습니다. */}
+          <Button type="submit" size="lg" className="flex-1" disabled={!isValid}>
+            {isLastStep ? '완료' : '다음'}
+          </Button>
+        </div>
+
+        <p className="text-center text-sm text-slate-500">온보딩은 5분이면 끝나요</p>
+      </form>
+    </PlainLayout>
   )
 }
