@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToggle } from '@/hooks/useToggle'
+import { unlockCallAudio } from '@/lib/realtimeCall'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -22,6 +23,9 @@ export function CallPage() {
   async function handleAccept() {
     if (isRequesting) return
     setIsRequesting(true)
+
+    // 아이폰 사파리는 버튼을 누른 바로 그 순간에만 소리 재생을 허락합니다. 아래 await 보다 먼저 불러야 합니다.
+    unlockCallAudio()
 
     try {
       // https 주소나 localhost 가 아니면 mediaDevices 자체가 없습니다.
