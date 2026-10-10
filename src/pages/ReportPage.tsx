@@ -5,7 +5,7 @@ import { InsightCard } from '@/components/ui/InsightCard'
 import { usePlans } from '@/hooks/usePlans'
 import { getDaySummary } from '@/lib/daySummary'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
-import { mockInsights, mockSessions, mockTargetExamDate } from '@/lib/mock'
+import { mockInsights, mockSessions } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
 import type { StudyPlan, StudySession } from '@/types'
 import { useState } from 'react'
@@ -146,8 +146,14 @@ export function ReportPage() {
   const hasRecord = thisWeek.targetMinutes > 0 || thisWeek.studyMinutes > 0
 
   // 예상 성장 곡선(#71). 보고 있는 주와 상관없이 항상 "지금까지 전체"를 기준으로 계산합니다.
-  // D-day 는 온보딩(#58)이 생기기 전까지 예시 날짜(mockTargetExamDate)를 씁니다.
-  const growthCurve = getGrowthCurve(allPlans, sessions, toDateKey(new Date()), mockTargetExamDate)
+  // D-day 와 시험 이름은 온보딩(#58)에서 받습니다. 온보딩을 아직 안 했으면 둘 다 빈 글자입니다.
+  const onboardingAnswers = loadData<Record<string, string>>('onboarding-answers', {})
+  const examDateKey = onboardingAnswers.targetExamDate || null
+  const examLabel = onboardingAnswers.targetExam || '시험일'
+  const growthCurve =
+    examDateKey === null
+      ? null
+      : getGrowthCurve(allPlans, sessions, toDateKey(new Date()), examDateKey)
 
   return (
     <div className="flex flex-col gap-8">
@@ -250,15 +256,22 @@ export function ReportPage() {
       {/* 원래 월간 리포트(#86)에 들어갈 내용인데, #86 이 아직 없어서 주간 리포트에 임시로 둡니다. */}
       <section>
         <h2 className="text-lg font-bold text-slate-900">예상 성장 곡선</h2>
-        {!growthCurve.hasEnoughData ? (
+        {examDateKey === null ? (
+          <p className="mt-3 text-sm text-slate-500">
+            온보딩에서 목표 시험 날짜를 정하면 보여드릴게요.{' '}
+            <Link to="/onboarding" className="text-brand font-semibold hover:underline">
+              온보딩 하러 가기
+            </Link>
+          </p>
+        ) : !growthCurve?.hasEnoughData ? (
           <p className="mt-3 text-sm text-slate-500">기록이 더 쌓이면 보여드릴게요.</p>
         ) : (
           <Card className="mt-3">
-            <GrowthCurveChart curve={growthCurve} examLabel="시험일" />
+            <GrowthCurveChart curve={growthCurve} examLabel={examLabel} />
             <p className="mt-4 text-base font-semibold text-slate-900">
-              지금 페이스면 시험일까지 누적 {formatMinutes(growthCurve.currentPaceTotalMinutes)},
-              하루 {EXTRA_MINUTES_PER_DAY}분 더하면{' '}
-              {formatMinutes(growthCurve.withExtraTotalMinutes)}야.
+              지금 페이스면 {examLabel}까지 누적{' '}
+              {formatMinutes(growthCurve.currentPaceTotalMinutes)}, 하루 {EXTRA_MINUTES_PER_DAY}분
+              더하면 {formatMinutes(growthCurve.withExtraTotalMinutes)}야.
             </p>
             {growthCurve.hasFourWeekComparison && (
               <p className="mt-1 text-sm text-slate-500">
