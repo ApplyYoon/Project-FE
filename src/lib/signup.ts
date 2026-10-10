@@ -2,6 +2,7 @@
  * 가입 정보 입력 규칙과 저장하는 모양입니다. (화면은 pages/SignupPage.tsx)
  * React 없이 돌아가는 계산만 모아 두어서, 화면 없이도 규칙이 맞는지 확인할 수 있습니다.
  */
+import { loadData } from '@/lib/storage'
 
 // 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-signup-info' 가 됩니다)
 export const SIGNUP_STORAGE_KEY = 'signup-info'
@@ -25,6 +26,14 @@ export interface SignupInfo {
   consents: SignupConsents
   /** 동의한 시각 (Date.now() 값) */
   agreedAt: number
+}
+
+/**
+ * 가입 정보를 저장해 둔 적이 있는지(= 가입 화면을 끝까지 마쳤는지) 알려줍니다.
+ * 로그인한 뒤 가입 화면으로 보낼지 홈으로 보낼지 정할 때 씁니다.
+ */
+export function hasSignupInfo(): boolean {
+  return loadData<unknown>(SIGNUP_STORAGE_KEY, null) !== null
 }
 
 /**

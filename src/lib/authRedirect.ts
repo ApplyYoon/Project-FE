@@ -37,3 +37,15 @@ export function getReturnPath(state: unknown): string | null {
 
   return from
 }
+
+/**
+ * 로그인을 막 마친 사람이 갈 주소를 정합니다.
+ *
+ *   getAfterLoginPath(false, '/records') -> '/signup'   (가입 정보를 아직 안 적은 사람은 가입부터)
+ *   getAfterLoginPath(true, '/records')  -> '/records'  (가려던 곳이 있으면 거기로)
+ *   getAfterLoginPath(true, null)        -> '/'         (없으면 홈)
+ */
+export function getAfterLoginPath(hasSignedUp: boolean, returnPath: string | null): string {
+  if (!hasSignedUp) return '/signup'
+  return returnPath ?? '/'
+}
