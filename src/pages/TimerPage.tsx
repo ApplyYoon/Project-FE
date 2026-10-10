@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
@@ -26,6 +27,7 @@ import {
 import { toDateKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { mockSubjects } from '@/lib/mock'
+import { getPlanProgress } from '@/lib/planProgress'
 import {
   BREAK_MINUTES,
   STUDY_MINUTES,
@@ -34,7 +36,14 @@ import {
 } from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
-import type { AwayRecord, PomodoroPhase, StudySession, Subject, SubjectColor } from '@/types'
+import type {
+  AwayRecord,
+  PomodoroPhase,
+  StudyPlan,
+  StudySession,
+  Subject,
+  SubjectColor,
+} from '@/types'
 
 // 1분 미만은 실수로 누른 것으로 보고 기록을 저장하지 않습니다.
 const MIN_SAVE_SECONDS = 60
@@ -100,6 +109,18 @@ export function TimerPage() {
   }, [selectedSubjectId])
 
   const selectedSubject = subjects.find((subject) => subject.id === selectedSubjectId)
+
+  // 지금 하고 있는 계획의 id. 계획 없이 공부하면 null 입니다. 새로고침해도 "하는 중인 계획" 이 이어지게 저장합니다.
+  const [activePlanId, setActivePlanId] = useState<string | null>(() =>
+    loadData<string | null>('timer-plan', null),
+  )
+
+  useEffect(() => {
+    saveData('timer-plan', activePlanId)
+  }, [activePlanId])
+
+  // 계획을 시작하지 못했을 때 보여줄 안내 (이미 다른 공부를 재는 중일 때 등)
+  const [planNotice, setPlanNotice] = useState<string | null>(null)
 
   // 타이머 방식(목표 정하기·뽀모도로·목표 없이). 새로고침해도 유지되도록 저장합니다.
   const [mode, setMode] = useState<TimerMode>(loadTimerMode)
@@ -200,11 +221,15 @@ export function TimerPage() {
   // 집중 모드를 켜지 못했을 때 보여줄 안내
   const [focusNotice, setFocusNotice] = useState<string | null>(null)
 
+  const { allPlans, getPlans, completePlan } = usePlans()
+  const todayPlans = getPlans(toDateKey(new Date()))
+  // 하는 중인 계획. 계획 없이 공부 중이거나 계획이 지워졌으면 undefined 입니다.
+  const activePlan = allPlans.find((plan) => plan.id === activePlanId)
+  // 타이머에서 바로 시작할 수 있는 계획 = 오늘 계획 중 아직 안 끝난 것
+  const startablePlans = todayPlans.filter((plan) => !plan.done)
+
   // 집중 화면에 보여줄 오늘 계획: 고른 과목의 오늘 계획 내용과 목표 시간
-  const { getPlans } = usePlans()
-  const todaySubjectPlans = getPlans(toDateKey(new Date())).filter(
-    (plan) => plan.subjectId === selectedSubjectId,
-  )
+  const todaySubjectPlans = todayPlans.filter((plan) => plan.subjectId === selectedSubjectId)
   const todayTargetMinutes = todaySubjectPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
   // 오늘 이 과목으로 이미 저장한 공부 + 지금 재고 있는 시간
   const todaySubjectMinutes =
@@ -227,6 +252,7 @@ export function TimerPage() {
     // 공부 중에는 과목을 바꾸지 못하게 막습니다. (버튼도 disabled 지만 한 번 더 확인)
     if (isStudying) return
     setSelectedSubjectId(subjectId)
+    setPlanNotice(null)
   }
 
   function handleChangeMode(nextMode: TimerMode) {
@@ -247,6 +273,51 @@ export function TimerPage() {
     start()
   }
 
+  /** 계획 하나를 골라서 바로 시작합니다. 과목과 목표 시간을 계획에서 가져옵니다. */
+  function handleStartPlan(plan: StudyPlan) {
+    // 이미 다른 공부를 재는 중이면 기록이 섞이지 않게 막고 안내합니다.
+    if (isStudying) {
+      setPlanNotice(
+        '지금 하던 걸 먼저 끝내 주세요. 정지(마치기)한 뒤에 다른 계획을 시작할 수 있어요.',
+      )
+      return
+    }
+    if (!subjects.some((subject) => subject.id === plan.subjectId)) {
+      setPlanNotice('이 계획의 과목이 지워졌어요. 아래에서 과목을 골라 시작해 주세요.')
+      return
+    }
+
+    const progress = getPlanProgress(plan, sessions)
+    setPlanNotice(null)
+    setMode('target')
+    setSelectedSubjectId(plan.subjectId)
+    // 전에 하다 만 계획이면 남은 시간만큼만, 처음이면 계획한 시간 그대로 약속합니다.
+    setTargetMinutes(
+      normalizeTargetMinutes(
+        progress.remainingMinutes > 0 ? progress.remainingMinutes : plan.targetMinutes,
+      ),
+    )
+    setActivePlanId(plan.id)
+    handleStart()
+  }
+
+  // 계획 화면의 [▶ 시작] 은 주소에 ?plan=계획id 를 붙여서 이 화면으로 옵니다. 그 계획으로 바로 시작합니다.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const planIdFromUrl = searchParams.get('plan')
+
+  useEffect(() => {
+    if (planIdFromUrl === null) return
+    // 주소의 ?plan= 은 한 번 쓰고 지웁니다. 남겨 두면 새로고침할 때마다 다시 시작하려고 하기 때문입니다.
+    setSearchParams({}, { replace: true })
+
+    const plan = allPlans.find((item) => item.id === planIdFromUrl)
+    if (!plan) return
+    // 그 계획을 이미 하는 중이면 그대로 둡니다.
+    if (isStarted && plan.id === activePlanId) return
+    handleStartPlan(plan)
+    // [planIdFromUrl]: 주소의 계획이 바뀔 때만 실행합니다. 나머지 값은 그 순간의 값을 쓰면 됩니다.
+  }, [planIdFromUrl])
+
   function handleStop() {
     const endedAt = Date.now()
     // 뽀모도로의 휴식 구간은 공부한 시간이 아니라서 뺍니다. (일반 모드에는 휴식 구간이 없어서 0 입니다)
@@ -255,7 +326,7 @@ export function TimerPage() {
 
     // 1분 미만 공부는 실수로 누른 것으로 보고 저장하지 않습니다.
     if (selectedSubject && startedAt !== null && studySeconds >= MIN_SAVE_SECONDS) {
-      addSession({
+      const newSession: StudySession = {
         id: `session-${endedAt}`,
         subjectId: selectedSubject.id,
         startedAt,
@@ -265,12 +336,23 @@ export function TimerPage() {
         pausedMs: getPausedMs(endedAt) + breakSeconds * 1000,
         // 목표 정하기로 쟀을 때만 약속한 시간을 같이 남깁니다. (나중에 "목표를 채웠는지"를 이 값으로 봅니다)
         ...(isTarget ? { targetMinutes } : {}),
-      })
+        // 계획에서 시작했으면 어느 계획인지 남깁니다. (계획별 실제 시간을 이 값으로 모읍니다)
+        ...(activePlan ? { planId: activePlan.id } : {}),
+      }
+      addSession(newSession)
+
+      // 이 계획으로 공부한 시간이 목표를 채웠으면 계획을 자동으로 완료로 바꿉니다. (계획 화면에서 손으로 다시 풀 수 있습니다)
+      if (activePlan && !activePlan.done) {
+        const progress = getPlanProgress(activePlan, [...sessions, newSession])
+        if (progress.isReached) completePlan(activePlan.id)
+      }
     }
 
     // 정지하면 구간 끝 안내·목표 달성 안내·딴짓 안내도 함께 지웁니다.
     setEndedPhase(null)
     setIsTargetNoticeOpen(false)
+    setActivePlanId(null)
+    setPlanNotice(null)
     dismissAwayNotice()
     stop()
   }
@@ -309,7 +391,7 @@ export function TimerPage() {
     return (
       <FocusModeScreen
         subject={selectedSubject}
-        planContent={todaySubjectPlans[0]?.content ?? null}
+        planContent={activePlan?.content ?? todaySubjectPlans[0]?.content ?? null}
         timeText={timeText}
         isRunning={isRunning}
         studiedMinutes={todaySubjectMinutes}
@@ -363,9 +445,57 @@ export function TimerPage() {
           )}
         </div>
 
-        {/* 목표 시간 고르기. 시작하기 전에만 보입니다. (공부 중에는 약속한 시간이 숫자 아래에 보입니다) */}
-        {isTarget && !isStudying && (
-          <TargetPicker value={targetMinutes} onChange={handleChangeTarget} />
+        {/* 오늘 계획에서 바로 시작하기. 누르면 그 계획의 과목·목표 시간으로 바로 시작됩니다. (시작 전에만 보입니다) */}
+        {!isStudying && startablePlans.length > 0 && (
+          <div className="flex w-full flex-col gap-2">
+            <p className="text-sm font-medium text-slate-700">오늘 계획에서 시작</p>
+            <ul className="flex flex-col gap-2">
+              {startablePlans.map((plan) => {
+                const subject = subjects.find((item) => item.id === plan.subjectId)
+                const progress = getPlanProgress(plan, sessions)
+                return (
+                  <li key={plan.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleStartPlan(plan)}
+                      className="flex min-h-12 w-full cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50"
+                    >
+                      {subject && (
+                        <SubjectBadge
+                          name={subject.name}
+                          color={subject.color}
+                          className="shrink-0"
+                        />
+                      )}
+                      {/* min-w-0 + break-words: 긴 내용이 가로 스크롤을 만들지 않게 합니다. */}
+                      <span className="min-w-0 flex-1 font-medium break-words text-slate-900">
+                        {plan.content}
+                      </span>
+                      <span className="shrink-0 text-slate-500 tabular-nums">
+                        {progress.actualMinutes > 0
+                          ? `남은 ${progress.remainingMinutes}분`
+                          : `${plan.targetMinutes}분`}
+                      </span>
+                      <span className="text-brand shrink-0 font-bold">▶ 시작</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+
+        {planNotice && (
+          <p role="status" className="w-full text-center text-sm break-keep text-sky-700">
+            {planNotice}
+          </p>
+        )}
+
+        {/* 계획에 없는 공부는 과목을 직접 골라서 시작합니다. */}
+        {!isStudying && subjects.length > 0 && (
+          <p className="-mb-4 w-full text-sm font-medium text-slate-700">
+            {startablePlans.length > 0 ? '계획 없이 시작 (과목 고르기)' : '과목 고르기'}
+          </p>
         )}
 
         {subjects.length === 0 ? (
@@ -398,6 +528,12 @@ export function TimerPage() {
           </div>
         )}
 
+        {/* 목표 시간 고르기. 시작하기 전에만 보입니다. (공부 중에는 약속한 시간이 숫자 아래에 보입니다) */}
+        {/* 계획에서 시작하면 목표 시간이 계획에서 오기 때문에, 과목을 직접 고르는 쪽 아래에 둡니다. */}
+        {isTarget && !isStudying && (
+          <TargetPicker value={targetMinutes} onChange={handleChangeTarget} />
+        )}
+
         <div className="flex flex-wrap items-center justify-center gap-2">
           {/* 고른 과목을 타이머 위에 태그로 보여줍니다. */}
           {selectedSubject && (
@@ -406,6 +542,12 @@ export function TimerPage() {
               color={selectedSubject.color}
               className="px-3 py-1 text-sm"
             />
+          )}
+          {/* 계획에서 시작했으면 어떤 계획을 하는 중인지 같이 보여줍니다. */}
+          {isStudying && activePlan && (
+            <span className="text-sm font-medium break-words text-slate-900">
+              {activePlan.content}
+            </span>
           )}
           {isRunning && (
             <span

@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoalAdjustModal } from '@/components/ui/GoalAdjustModal'
 import { Input } from '@/components/ui/Input'
+import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { moveDateKey, toDateKey } from '@/lib/date'
@@ -14,9 +15,11 @@ import { getTodayCareDecision } from '@/lib/careInputs'
 import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
 import { mockSubjects } from '@/lib/mock'
+import { getPlanProgress } from '@/lib/planProgress'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, Subject, SubjectColor } from '@/types'
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 
 /* 과목 색 → 태그 색. (#11 SubjectBadge 가 생기면 그걸로 바꾸면 됩니다) */
 const subjectColorStyles: Record<SubjectColor, string> = {
@@ -374,54 +377,73 @@ export function PlannerPage() {
             <ul className="divide-y divide-slate-100">
               {plans.map((plan) => {
                 const subject = subjects.find((item) => item.id === plan.subjectId)
+                // 이 계획에서 타이머를 시작해 공부한 시간. "32 / 50분" 과 진행 막대에 씁니다. (lib/planProgress.ts)
+                const progress = getPlanProgress(plan, sessions)
 
                 return (
-                  <li key={plan.id} className="flex items-center gap-2 py-1">
-                    {/* label 로 감싸서 체크박스 주변 40px 전체를 눌러도 체크됩니다. */}
-                    <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={plan.done}
-                        onChange={() => toggleDone(plan.id)}
-                        aria-label={`${plan.content} 완료`}
-                        className="accent-brand h-5 w-5 cursor-pointer"
-                      />
-                    </label>
+                  // 한 계획 = 두 줄. 윗줄: 체크·과목·내용·시작 버튼 / 아랫줄: 진행 막대·실제/목표·삭제
+                  <li key={plan.id} className="flex flex-col py-1">
+                    <div className="flex items-center gap-2">
+                      {/* label 로 감싸서 체크박스 주변 40px 전체를 눌러도 체크됩니다. */}
+                      <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={plan.done}
+                          onChange={() => toggleDone(plan.id)}
+                          aria-label={`${plan.content} 완료`}
+                          className="accent-brand h-5 w-5 cursor-pointer"
+                        />
+                      </label>
 
-                    {subject && (
+                      {subject && (
+                        <span
+                          className={cn(
+                            'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
+                            subjectColorStyles[subject.color],
+                          )}
+                        >
+                          {subject.name}
+                        </span>
+                      )}
+
+                      {/* min-w-0 + break-words: 긴 내용이 가로 스크롤을 만들지 않게 합니다. */}
                       <span
                         className={cn(
-                          'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
-                          subjectColorStyles[subject.color],
+                          'min-w-0 flex-1 text-sm break-words text-slate-900',
+                          plan.done && 'text-slate-400 line-through',
                         )}
                       >
-                        {subject.name}
+                        {plan.content}
                       </span>
-                    )}
 
-                    {/* min-w-0 + break-words: 긴 내용이 가로 스크롤을 만들지 않게 합니다. */}
-                    <span
-                      className={cn(
-                        'min-w-0 flex-1 text-sm break-words text-slate-900',
-                        plan.done && 'text-slate-400 line-through',
+                      {/* 오늘의 안 끝난 계획만 바로 시작할 수 있습니다. 누르면 타이머가 이 계획의 과목·목표 시간으로 시작됩니다. */}
+                      {isToday && !plan.done && (
+                        <Link
+                          to={`/timer?plan=${plan.id}`}
+                          aria-label={`${plan.content} 타이머 시작`}
+                          className="bg-brand hover:bg-brand-dark inline-flex h-10 shrink-0 items-center rounded-full px-3 text-sm font-medium text-white transition-colors"
+                        >
+                          ▶ {progress.actualMinutes > 0 ? '이어서' : '시작'}
+                        </Link>
                       )}
-                    >
-                      {plan.content}
-                    </span>
+                    </div>
 
-                    {/* 아주 큰 숫자가 와도 줄을 넘지 않게 break-all 로 줄바꿈을 허용합니다. */}
-                    <span className="min-w-0 text-sm break-all text-slate-500">
-                      {plan.targetMinutes}분
-                    </span>
-
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleDelete(plan)}
-                      aria-label={`${plan.content} 삭제`}
-                      className="shrink-0 px-3 text-slate-500 hover:text-red-600"
-                    >
-                      삭제
-                    </Button>
+                    {/* pl-12: 체크박스(40px) + 간격(8px)만큼 들여써서 과목 태그와 줄을 맞춥니다. */}
+                    <div className="flex items-center gap-3 pl-12">
+                      <ProgressBar value={progress.percent} className="min-w-0 flex-1" />
+                      {/* 아주 큰 숫자가 와도 줄을 넘지 않게 break-all 로 줄바꿈을 허용합니다. */}
+                      <span className="min-w-0 text-sm break-all text-slate-500 tabular-nums">
+                        {progress.actualMinutes} / {plan.targetMinutes}분
+                      </span>
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleDelete(plan)}
+                        aria-label={`${plan.content} 삭제`}
+                        className="shrink-0 px-3 text-slate-500 hover:text-red-600"
+                      >
+                        삭제
+                      </Button>
+                    </div>
                   </li>
                 )
               })}
