@@ -39,6 +39,7 @@ import {
 } from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
+import { getTimerDisplay, loadTimerMode, type TimerMode } from '@/lib/timerDisplay'
 import type {
   AwayRecord,
   MissReason,
@@ -52,34 +53,12 @@ import type {
 // 1분 미만은 실수로 누른 것으로 보고 기록을 저장하지 않습니다.
 const MIN_SAVE_SECONDS = 60
 
-// target: 목표 정하기(목표 시간에서 0 으로 줄어듦)
-// pomodoro: 뽀모도로(25분 공부 / 5분 휴식)
-// free: 목표 없이(흐른 시간이 늘어남)
-type TimerMode = 'target' | 'pomodoro' | 'free'
-
+// 타이머 방식(TimerMode)과 시간 글자를 만드는 함수는 홈에서도 쓰여서 lib/timerDisplay.ts 에 있습니다.
 const modeOptions: { mode: TimerMode; label: string }[] = [
   { mode: 'target', label: '목표 정하기' },
   { mode: 'pomodoro', label: '뽀모도로' },
   { mode: 'free', label: '목표 없이' },
 ]
-
-/** 저장해 둔 모드를 읽습니다. 예전 값('normal')이나 모르는 값은 기본인 '목표 정하기' 로 봅니다. */
-function loadTimerMode(): TimerMode {
-  const saved = loadData<unknown>('timer-mode', 'target')
-  if (saved === 'pomodoro' || saved === 'free') return saved
-  return 'target'
-}
-
-// 초 단위 숫자를 '01:23:45' 형태로 바꿔줍니다.
-function formatTime(totalSeconds: number) {
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-
-  const pad = (value: number) => value.toString().padStart(2, '0')
-
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
-}
 
 // 오늘 하루 공부한 시간(분)을 '2시간 14분' / '40분' 형태로 바꿔줍니다.
 function formatTotalMinutes(totalMinutes: number) {
@@ -158,17 +137,11 @@ export function TimerPage() {
   const pomodoro = getPomodoroStatus(seconds)
   const isBreak = isPomodoro && pomodoro.phase === 'break'
 
-  // 화면에 크게 보여줄 시간 글자입니다.
+  // 화면에 크게 보여줄 시간 글자입니다. 홈의 "진행 중인 타이머" 와 같은 함수로 만듭니다. (lib/timerDisplay.ts)
   //  - 목표 없이: 흐른 시간이 늘어남              00:12:34
   //  - 뽀모도로: 이번 구간의 남은 시간이 줄어듦    00:24:59
   //  - 목표 정하기: 남은 시간이 줄어들고, 목표를 채우면 더 한 시간을 + 로 보여줌   37:48 → +03:12
-  let timeText = formatTime(seconds)
-  if (isPomodoro) timeText = formatTime(pomodoro.remainingSeconds)
-  if (isTarget) {
-    timeText = isTargetDone
-      ? `+${formatCountdown(countdown.overSeconds)}`
-      : formatCountdown(countdown.remainingSeconds)
-  }
+  const { timeText } = getTimerDisplay(mode, seconds, targetMinutes)
 
   // 목표를 방금 채웠을 때 띄우는 안내입니다.
   const [isTargetNoticeOpen, setIsTargetNoticeOpen] = useState(false)
