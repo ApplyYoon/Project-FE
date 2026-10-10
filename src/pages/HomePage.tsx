@@ -3,8 +3,10 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { useToggle } from '@/hooks/useToggle'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 export function HomePage() {
+  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [isDetailOpen, toggleDetail] = useToggle()
 
@@ -17,6 +19,16 @@ export function HomePage() {
           여러분의 페이지를 만들어 보세요.
         </p>
       </section>
+
+      {/* 아직 실제 홈 화면(#94 #85 #68 등)은 만들어지기 전이라, 체크인으로 갈 수 있는 버튼만 먼저 둡니다. (#24) */}
+      <Card title="오늘 체크인" className="rounded-2xl">
+        <p className="text-sm text-slate-600">
+          전화를 못 받은 날은 여기서 컨디션·기분·오늘 예상 공부시간을 체크인해 주세요.
+        </p>
+        <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/check')}>
+          매일 체크인하러 가기
+        </Button>
+      </Card>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Card title="버튼 컴포넌트">
