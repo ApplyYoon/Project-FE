@@ -1,51 +1,20 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
+import { CALL_TIME_STORAGE_KEY } from '@/lib/callReminder'
+import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
+import { getMessageSettings } from '@/lib/messageSettings'
 import { loadData } from '@/lib/storage'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 // 온보딩 설문 답을 저장한 이름. OnboardingPage 와 같은 값이어야 합니다. (답이 있으면 = 온보딩을 마친 사람)
 const ANSWERS_KEY = 'onboarding-answers'
-// 관리 한도를 저장하는 이름. 설정 화면 PR #127 의 lib/careLimits.ts 와 같은 값입니다.
-const CARE_LIMITS_KEY = 'care-limits'
-
-// 아직 한 번도 설정하지 않았을 때의 처음 값. PR #127 의 defaultLimits 와 같게 맞췄습니다.
-const DEFAULT_MAX_CARE_LEVEL = 2
-const DEFAULT_MAX_HARSHNESS = 3
 
 /** 관리 강도 단계 이름. 배열 번호 = 단계 (0~4). lib/careLevel.ts 의 설명과 같습니다. */
 const careLevelNames = ['회복', '당근', '넛지', '심리적 채찍', '강제적 채찍']
 
-/** 앞으로 진행되는 3단계 */
-const nextSteps = [
-  { when: '오늘', what: '타이머로 공부를 기록해요' },
-  { when: '내일 아침', what: 'AI 선생님이 첫 체크인 전화를 걸어요' },
-  { when: '14일 뒤', what: '첫 리포트에서 나만의 패턴을 알려줘요' },
-]
-
 const NOT_SET = '아직 안 정했어요'
-
-/**
- * 저장된 관리 한도를 읽습니다. 없거나 모양이 틀리면 처음 값을 씁니다.
- * TODO(#59): PR #127 이 merge 되면 getCareLimits() 로 바꾸기
- *   (getCareLimits 는 예약해 둔 한도 상향까지 반영해 줍니다)
- */
-function loadCareLimits(): { maxCareLevel: number; maxHarshness: number } {
-  const saved = loadData<unknown>(CARE_LIMITS_KEY, null)
-  const limits = { maxCareLevel: DEFAULT_MAX_CARE_LEVEL, maxHarshness: DEFAULT_MAX_HARSHNESS }
-  if (typeof saved !== 'object' || saved === null) return limits
-
-  const item = saved as Record<string, unknown>
-  // 0~4, 1~5 사이 정수일 때만 저장된 값을 씁니다.
-  if (Number.isInteger(item.maxCareLevel) && Number(item.maxCareLevel) >= 0) {
-    limits.maxCareLevel = Math.min(4, Number(item.maxCareLevel))
-  }
-  if (Number.isInteger(item.maxHarshness) && Number(item.maxHarshness) >= 1) {
-    limits.maxHarshness = Math.min(5, Number(item.maxHarshness))
-  }
-  return limits
-}
 
 /**
  * 'HH:MM' 을 '밤 11시', '아침 7시 30분' 처럼 바꿉니다. 시각 모양이 아니면 null.
@@ -76,14 +45,27 @@ function formatKoreanTime(time: string | undefined): string | null {
 export function OnboardingDonePage() {
   const navigate = useNavigate()
   const [answers] = useState(() => loadData<Record<string, string> | null>(ANSWERS_KEY, null))
-  const [limits] = useState(loadCareLimits)
+  // 설정 화면과 같은 함수로 읽어서, 설정 화면에 보이는 값과 똑같이 나오게 합니다.
+  const [limits] = useState(getCareLimits) // 관리 강도·독설 수위 (#59)
+  const [messageSettings] = useState(getMessageSettings) // 연락 금지 시간 (#60)
+  const [callTime] = useState(() => loadData<unknown>(CALL_TIME_STORAGE_KEY, '')) // 전화 시간 (#39)
 
   if (answers === null) return <Navigate to="/onboarding" replace />
 
-  // 연락 금지 시간은 #60(조용한 시간)이 생기기 전까지 "자는 시간 ~ 일어나는 시간" 으로 보여줍니다.
-  const sleepTime = formatKoreanTime(answers.sleepTime)
-  const wakeUpTime = formatKoreanTime(answers.wakeUpTime)
-  const quietTime = sleepTime && wakeUpTime ? `${sleepTime} ~ ${wakeUpTime}` : NOT_SET
+  // 전화 시간은 설정 화면에서 정합니다. 아직 안 정했으면 null 입니다.
+  const callTimeText = typeof callTime === 'string' ? formatKoreanTime(callTime) : null
+  const quietStart = formatKoreanTime(messageSettings.quietStart)
+  const quietEnd = formatKoreanTime(messageSettings.quietEnd)
+
+  /** 앞으로 진행되는 3단계 */
+  const nextSteps = [
+    { when: '오늘', what: '타이머로 공부를 기록해요' },
+    // 전화 시간을 안 정했으면 전화가 오지 않으니, 정하라고 알려줍니다.
+    callTimeText
+      ? { when: `내일 ${callTimeText}`, what: 'AI 선생님이 첫 체크인 전화를 걸어요' }
+      : { when: '전화 시간을 정하면', what: 'AI 선생님이 매일 체크인 전화를 걸어요' },
+    { when: '14일 뒤', what: '첫 리포트에서 나만의 패턴을 알려줘요' },
+  ]
 
   const settings = [
     {
@@ -91,9 +73,11 @@ export function OnboardingDonePage() {
       value: `${limits.maxCareLevel}단계 · ${careLevelNames[limits.maxCareLevel]}까지`,
     },
     { label: '독설 수위', value: `${limits.maxHarshness} / 5` },
-    // 전화 시간을 묻는 곳이 아직 없습니다. 생기면 여기에 연결하세요.
-    { label: '전화 시간', value: NOT_SET },
-    { label: '연락 금지', value: quietTime },
+    { label: '전화 시간', value: callTimeText ? `매일 ${callTimeText}` : NOT_SET },
+    {
+      label: '연락 금지',
+      value: quietStart && quietEnd ? `${quietStart} ~ ${quietEnd}` : NOT_SET,
+    },
   ]
 
   function handleGoHome() {
