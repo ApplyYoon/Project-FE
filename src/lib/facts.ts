@@ -5,7 +5,7 @@
  * 숫자는 코드가 계산하고, AI 는 그 숫자를 말로 풀기만 합니다.
  * 계산 규칙은 BE 와 같아야 합니다. (Project 저장소 #12 "같이 바뀌는 계산 규칙") 규칙을 바꾸면 BE 에도 알려야 합니다.
  */
-import { toDateKey } from '@/lib/date'
+import { DAY_START_HOUR, toDayDate, toDayKey } from '@/lib/date'
 import { getStudyMs } from '@/lib/studyTime'
 import type { StudyPlan, StudySession } from '@/types'
 
@@ -91,8 +91,10 @@ function getPlannedStartAt(plan: StudyPlan): number | null {
   const [year, month, day] = [Number(dateMatch[1]), Number(dateMatch[2]), Number(dateMatch[3])]
   const [hour, minute] = [Number(timeMatch[1]), Number(timeMatch[2])]
   if (hour > 23 || minute > 59) return null
-  // new Date(년, 월, 일, 시, 분) 은 내 컴퓨터의 시간대(한국 시간)로 만듭니다. (월은 0부터 시작)
-  return new Date(year, month - 1, day, hour, minute).getTime()
+  // 하루는 새벽 4시에 시작하므로, 00:00 ~ 03:59 는 달력으로 다음 날 새벽입니다. (규칙 8)
+  const calendarDay = hour < DAY_START_HOUR ? day + 1 : day
+  // new Date(년, 월, 일, 시, 분) 은 내 컴퓨터의 시간대(한국 시간)로 만듭니다. (월은 0부터 시작, 일이 넘치면 다음 달로 넘어갑니다)
+  return new Date(year, month - 1, calendarDay, hour, minute).getTime()
 }
 
 /**
@@ -106,6 +108,7 @@ function getPlannedStartAt(plan: StudyPlan): number | null {
  * ■ 정해 둔 규칙 (BE 도 똑같이 만들어야 같은 결과가 나옵니다)
  *
  *  1. 날짜는 한국 시간 기준이고, 'YYYY-MM-DD' 글자로 비교합니다. 시작 날짜와 끝 날짜를 모두 포함합니다.
+ *     하루는 새벽 4시에 시작합니다. 00:00 ~ 03:59 에 시작한 기록은 전날 것입니다. (lib/date.ts 의 toDayKey)
  *  2. 계획은 계획의 날짜(date)가, 기록은 "시작한 날" 이 기간 안에 있으면 셉니다. (daySummary 와 같습니다)
  *  3. 노는 계획과 노는 기록(kind 가 'play')은 모든 숫자에서 뺍니다.
  *  4. 순공시간은 lib/studyTime.ts 의 getStudyMs 로 구합니다. (끝 − 시작 − 일시정지한 시간)
@@ -117,6 +120,7 @@ function getPlannedStartAt(plan: StudyPlan): number | null {
  *  7. 완주 = 그 기록의 순공시간이 약속한 시간(targetMinutes) 이상입니다.
  *     완주율 = 완주한 수 ÷ 목표가 있는 타이머 수 × 100. 소수점은 버립니다. 목표가 있는 타이머가 없으면 null 입니다.
  *  8. 시작 지연 = 그 계획으로 처음 켠 타이머의 시작 시각 − 계획의 시작 시각. (계획에 시작 시각이 있을 때만)
+ *     계획의 시작 시각이 00:00 ~ 03:59 이면 달력으로는 다음 날 새벽입니다. (10/5 계획의 01:00 = 10/6 01:00)
  *     계획보다 일찍 시작했으면 음수가 아니라 0분으로 칩니다.
  *     일찍 시작한 날이 늦게 시작한 날을 지워서, 평균이 "늦지 않았다" 처럼 보이면 안 되기 때문입니다.
  *     한 번도 시작하지 않은 계획은 "늦은 것" 이 아니라 "안 한 것" 이라 표본에서 뺍니다.
@@ -124,6 +128,7 @@ function getPlannedStartAt(plan: StudyPlan): number | null {
  *  9. 멈추는 지점 = 완주하지 못한 "목표가 있는 타이머" 가 목표의 몇 % 에서 끝났는지(순공 ÷ 목표)의 평균.
  *     소수점은 마지막에 한 번만 버립니다. 그만둔 이유(stopReason)를 골랐는지와 상관없이 셉니다. 표본이 없으면 null 입니다.
  * 10. 요일별·시간대별 완주율은 기록을 "시작한 시각" 의 요일·시간대로 나눠서 규칙 7 을 그대로 씁니다.
+ *     요일은 규칙 1 의 "그 기록이 속한 날" 의 요일이고(화요일 새벽 1시 = 월요일), 시간대는 실제 시계 시각입니다(새벽 1시 = 밤).
  *     그 요일·시간대에 목표가 있는 타이머가 없으면 null 입니다.
  *
  * ■ 예시 (입력 → 결과) — 기간은 2026-10-05(월) ~ 2026-10-11(일)
@@ -159,6 +164,9 @@ function getPlannedStartAt(plan: StudyPlan): number | null {
  *        -> completionByWeekday[2](화) { value: 50, sampleCount: 2 }, [6](토) { value: 100, sampleCount: 1 }, 나머지 null
  *        -> completionByTimeOfDay.evening { value: 100, sampleCount: 1 }, night { value: 0, sampleCount: 1 },
  *           morning { value: 100, sampleCount: 1 }, afternoon { value: null, sampleCount: 0 }
+ *
+ *   예8) 새벽 4시 기준: 10/12(월) 01:30 에 시작해 완주한 기록
+ *        -> 10/11(일)의 기록입니다. 기간(10/05 ~ 10/11) 안에 들어가고, 요일은 일요일([0]), 시간대는 밤입니다.
  */
 export function getFacts(
   plans: StudyPlan[],
@@ -171,7 +179,7 @@ export function getFacts(
   // 기간 안의 공부 계획과 공부 기록만 고릅니다. (규칙 1 ~ 3)
   const studyPlans = plans.filter((plan) => plan.kind !== 'play' && isInPeriod(plan.date))
   const studySessions = sessions.filter(
-    (session) => session.kind !== 'play' && isInPeriod(toDateKey(new Date(session.startedAt))),
+    (session) => session.kind !== 'play' && isInPeriod(toDayKey(session.startedAt)),
   )
 
   /* ---------- 계획 대비 실제 (규칙 5) ---------- */
@@ -212,12 +220,10 @@ export function getFacts(
     const sessionMs = getStudyMs(session)
     const isCompleted = sessionMs >= targetMs
 
-    const startedAt = new Date(session.startedAt)
-    const buckets = [
-      overall,
-      byWeekday[startedAt.getDay()],
-      byTimeOfDay[getTimeOfDay(startedAt.getHours())],
-    ]
+    // 요일은 "그 기록이 속한 날"(새벽 4시 기준)의 요일, 시간대는 실제 시계 시각으로 봅니다. (규칙 10)
+    const weekday = toDayDate(session.startedAt).getDay()
+    const startHour = new Date(session.startedAt).getHours()
+    const buckets = [overall, byWeekday[weekday], byTimeOfDay[getTimeOfDay(startHour)]]
     for (const bucket of buckets) {
       bucket.total += 1
       if (isCompleted) bucket.completed += 1

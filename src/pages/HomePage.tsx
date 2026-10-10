@@ -512,7 +512,7 @@ interface WeeklyGoalCardProps {
 function WeeklyGoalCard({ plans, sessions }: WeeklyGoalCardProps) {
   const today = new Date()
   const mondayKey = getMondayKey(today)
-  const { thisWeek, lastWeek } = getWeeklyFacts(plans, sessions, mondayKey, toDateKey(today))
+  const { thisWeek, lastWeek } = getWeeklyFacts(plans, sessions, mondayKey, getTodayKey())
 
   // 이번 주에 이미 고른 것(목표 또는 쉬기). 아직 안 골랐으면 null 입니다.
   const [choice, setChoice] = useState<WeeklyGoalChoice | null>(

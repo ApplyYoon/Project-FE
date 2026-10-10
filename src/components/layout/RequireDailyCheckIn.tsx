@@ -2,7 +2,7 @@ import { PlainLayout } from '@/components/layout/PlainLayout'
 import { DailyCheckInScreen } from '@/components/ui/DailyCheckInScreen'
 import { useAuth } from '@/hooks/useAuth'
 import { isPublicPath } from '@/lib/authRedirect'
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import { hasCheckIn, saveQuickCheckIn } from '@/lib/quickCheckIn'
 import { useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -24,14 +24,15 @@ interface RequireDailyCheckInProps {
 export function RequireDailyCheckIn({ children }: RequireDailyCheckInProps) {
   const { isLoggedIn } = useAuth()
   // useLocation 을 쓰면 주소가 바뀔 때마다 이 컴포넌트가 다시 그려집니다.
-  // 앱을 켜 둔 채 자정이 지나도, 다음에 화면을 옮길 때 "오늘 체크인" 을 다시 확인하게 됩니다.
+  // 앱을 켜 둔 채 날이 바뀌어도(새벽 4시), 다음에 화면을 옮길 때 "오늘 체크인" 을 다시 확인하게 됩니다.
   const { pathname } = useLocation()
 
   // 방금 이 화면에서 체크인한 날짜. 저장소(localStorage)가 바뀐 것은 React 가 몰라서,
   // 이 값을 바꿔 화면을 다시 그리게 합니다. (저장소를 쓸 수 없는 브라우저에서도 이 화면에 갇히지 않습니다)
   const [checkedDate, setCheckedDate] = useState<string | null>(null)
 
-  const todayKey = toDateKey(new Date())
+  // 오늘 날짜. 하루는 새벽 4시에 시작합니다. (lib/date.ts · 체크인 화면과 같은 기준이어야 같은 날로 저장됩니다)
+  const todayKey = getTodayKey()
   // 체크인 화면(/check)에서 저장한 것도 바로 알 수 있게, 저장소를 그때그때 읽습니다.
   const isCheckedInToday = checkedDate === todayKey || hasCheckIn(todayKey)
 

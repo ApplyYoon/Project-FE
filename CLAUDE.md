@@ -69,6 +69,7 @@ src/
 - `className` 을 합칠 때는 **항상 `cn()`** (`@/lib/cn`). 문자열 템플릿으로 붙이면 Tailwind 충돌이 안 잡힙니다.
 - `cn()` 에서 **`className` props 는 맨 마지막**. 그래야 쓰는 쪽에서 덮어쓸 수 있습니다.
 - import 는 **`@/` 별칭**. `../../` 금지.
+- **탭·날짜·단계처럼 "지금 무엇을 보고 있는지" 는 주소에 둔다.** `useState` 대신 `useQueryParam`(`@/hooks/useQueryParam`)을 쓰면 새로고침해도 유지되고 뒤로 가기가 자연스럽습니다. 주소에서 받은 값은 쓰기 전에 꼭 확인하고, 비밀번호·이름 같은 개인 내용은 주소에 담지 않습니다.
 - 컴포넌트·페이지는 **PascalCase + named export**. 훅·유틸은 **camelCase**.
 - props 타입은 `interface XxxProps` 로 명시.
 - 이벤트 핸들러는 `handleXxx`, props 로 받는 함수는 `onXxx`.
