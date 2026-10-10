@@ -9,6 +9,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useAwayDetection } from '@/hooks/useAwayDetection'
 import { useFocusMode } from '@/hooks/useFocusMode'
+import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
 import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { useStudySessions } from '@/hooks/useStudySessions'
@@ -209,7 +210,12 @@ export function TimerPage() {
     sessions.filter(isToday).reduce((sum, session) => sum + getStudyMs(session), 0) / 60000,
   )
 
+  // 타이머가 흐르는 동안에는 휴대폰 화면이 자동으로 꺼지지 않게 합니다. (#234)
+  // 책을 보느라 화면을 안 만져서 꺼지는 것까지 "나갔다" 로 세지 않기 위해서입니다.
+  useKeepScreenOn(isRunning)
+
   // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
+  // 30분 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. (#234)
   // 뽀모도로 휴식 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
   const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({
     isStarted,
@@ -644,7 +650,10 @@ export function TimerPage() {
               </p>
               <p>
                 자리 비움 {formatClock(awayNotice.leftAt)} → {formatClock(awayNotice.returnedAt)} ·
-                오늘 {awayCountToday}번째예요. 시작을 누르면 이어서 공부해요.
+                오늘 {awayCountToday}번째예요.{' '}
+                {isRunning
+                  ? '그 시간은 빼고 이어서 재고 있어요.'
+                  : '오래 비워서 멈춰 뒀어요. 시작을 누르면 이어서 공부해요.'}
               </p>
             </div>
             <button
@@ -730,7 +739,7 @@ export function TimerPage() {
           <p>
             {isBreak
               ? '쉬는 중에는 다른 탭에 가도 괜찮아요.'
-              : '다른 탭이나 앱으로 가면 자동으로 일시정지돼요.'}
+              : '공부 중에는 화면이 꺼지지 않아요. 다른 탭이나 앱에 다녀오면 그 시간은 빼고 이어서 재요.'}
           </p>
         </div>
       </Card>
@@ -1037,7 +1046,9 @@ function FocusModeScreen({
           {isRunning ? '⏸ 일시정지' : '▶ 다시 시작'}
         </button>
 
-        <p className="text-sm text-slate-400">다른 탭으로 가면 자동으로 일시정지돼</p>
+        <p className="text-sm break-keep text-slate-400">
+          화면은 꺼지지 않아. 다른 탭에 다녀오면 그 시간은 빼고 이어서 재
+        </p>
 
         <button
           type="button"
