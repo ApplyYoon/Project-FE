@@ -126,6 +126,10 @@ export function SuggestionsPage() {
 
       <div>
         <h2 className="text-lg font-semibold text-slate-900">새로 도전할 개선안</h2>
+        {/* 아직 내 기록으로 개선안을 만들어 주는 기능이 없어서, 지금은 누구에게나 같은 예시를 보여줍니다. */}
+        <p className="mt-1 text-sm break-keep text-slate-500">
+          아직은 누구에게나 같은 예시예요. 기록이 쌓이면 나에게 맞는 개선안으로 바뀔 거예요.
+        </p>
 
         {showLimitNotice && (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
