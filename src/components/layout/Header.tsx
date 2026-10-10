@@ -26,7 +26,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
   // 새 알림이 쌓이면 화면을 옮기지 않아도 바로 다시 그려져서 빨간 점이 뜹니다. (hooks/useAiMessages.ts)
   const messages = useAiMessages()
   // 알림 화면을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
-  const unreadCount = pathname === '/messages' ? 0 : countUnreadAiMessages(messages)
+  const unreadCount = pathname === '/notifications' ? 0 : countUnreadAiMessages(messages)
   // 화면을 읽어 주는 프로그램이 "알림, 안 읽은 알림 3개" 처럼 개수까지 읽어 줍니다.
   const bellLabel = unreadCount > 0 ? `알림, 안 읽은 알림 ${unreadCount}개` : '알림'
 
@@ -70,7 +70,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
             </nav>
 
             {/* 알림 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
-            <NavLink to="/messages" aria-label={bellLabel} className={bellLinkClass}>
+            <NavLink to="/notifications" aria-label={bellLabel} className={bellLinkClass}>
               <BellIcon />
               {unreadCount > 0 && (
                 <span
@@ -121,7 +121,7 @@ function guestLinkClass({ isActive }: { isActive: boolean }) {
   )
 }
 
-/* 종 버튼도 메뉴와 같은 방법으로, /messages 에 있으면 선택된 모양(연보라 배경)이 됩니다. */
+/* 종 버튼도 메뉴와 같은 방법으로, /notifications 에 있으면 선택된 모양(연보라 배경)이 됩니다. */
 function bellLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
     'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors',
