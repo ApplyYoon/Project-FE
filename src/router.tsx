@@ -1,6 +1,7 @@
 import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { AboutPage } from '@/pages/AboutPage'
+import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
 import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
@@ -52,6 +53,9 @@ export const router = createBrowserRouter([
       { path: 'settings', element: <SettingsPage /> },
       { path: 'messages', element: <MessagesPage /> },
       { path: 'login', element: <LoginPage /> },
+      // SNS 로그인을 마치고 돌아오는 주소. 주소에 ?code=... 가 붙어서 옵니다.
+      // 로그인 전에 열려야 해서 lib/authRedirect.ts 의 PUBLIC_PATHS 에 이미 적혀 있습니다. (RequireAuth 가 막지 않습니다)
+      { path: 'auth/callback', element: <AuthCallbackPage /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
