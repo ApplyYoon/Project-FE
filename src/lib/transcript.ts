@@ -62,6 +62,10 @@ export function parseTranscriptEvent(raw: unknown): TranscriptEvent | null {
       return typeof event.transcript === 'string'
         ? { type: 'me-done', itemId, text: event.transcript }
         : null
+    // 내 말을 글자로 바꾸지 못했을 때입니다. 빈 글자로 "끝났다" 고 알려서, 자리만 잡아 둔 '…' 말풍선을 지웁니다.
+    // (applyTranscript 는 글자가 비어 있으면 그 말풍선을 없앱니다)
+    case 'conversation.item.input_audio_transcription.failed':
+      return { type: 'me-done', itemId, text: '' }
     default:
       return null
   }
