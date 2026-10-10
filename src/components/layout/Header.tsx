@@ -22,8 +22,9 @@ export function Header({ hideNav = false, action }: HeaderProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
-        <NavLink to="/" className="text-brand text-base font-bold sm:text-lg">
-          Project FE
+        {/* whitespace-nowrap: 좁은 화면에서도 앱 이름이 두 줄로 꺾이지 않게 합니다. */}
+        <NavLink to="/" className="text-brand text-base font-bold whitespace-nowrap sm:text-lg">
+          STARFLOW
         </NavLink>
 
         {/* 메뉴를 숨기는 화면(온보딩 등)에서는 종 아이콘도 숨기고 action 만 보여줍니다. */}
