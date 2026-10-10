@@ -144,6 +144,10 @@ export function HomePage() {
 
   const yesterdaySummary = getDaySummary(yesterdayKey, allPlans, sessions)
   const hasYesterdayRecord = yesterdaySummary.studyMinutes > 0
+  // 어제 공부 계획이 있었는지. (노는 계획과 0분짜리 계획은 세지 않습니다)
+  const hasYesterdayPlan = allPlans.some(
+    (plan) => plan.date === yesterdayKey && plan.kind !== 'play' && plan.targetMinutes > 0,
+  )
 
   return (
     <div className="flex flex-col gap-8">
@@ -188,10 +192,15 @@ export function HomePage() {
         <TodayCard plans={todayPlans} subjects={subjects} sessions={allSessions} />
 
         <Card title="어제 한 줄">
-          {hasYesterdayRecord ? (
+          {hasYesterdayRecord && hasYesterdayPlan ? (
             <p className="text-base font-semibold text-slate-900">
               어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획의{' '}
               {yesterdaySummary.achievementRate}%야.
+            </p>
+          ) : hasYesterdayRecord ? (
+            // 계획 없이 공부한 날은 "계획의 0%" 라고 하면 못한 것처럼 들려서, 다르게 말합니다.
+            <p className="text-base font-semibold text-slate-900">
+              어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획 없이도 해냈네.
             </p>
           ) : (
             <p className="text-base font-semibold text-slate-900">오늘부터 시작해 볼까?</p>
