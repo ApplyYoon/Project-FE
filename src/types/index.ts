@@ -180,6 +180,8 @@ export interface CheckIn {
   mood: number
   /** 어제 계획을 다 못 채운 날에만 고르는 미달 원인 (#26) */
   missReason?: MissReason
+  /** 미달 원인을 '기타'(etc)로 골랐을 때 적은 한 줄 (최대 50자) */
+  missReasonNote?: string
   /** 오늘 예상 순공시간(분) */
   expectedMinutes: number
   /** 오늘의 약속 "만약 ~하면" (#79) */

@@ -1,16 +1,11 @@
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
+import type { MissReason } from '@/types'
 
-/**
- * 어제 계획을 다 못 채운 이유. etc 는 '기타' 입니다.
- * #78(공통 타입) 의 MissReason 과 값 이름을 맞췄습니다. (전에는 overplan/lazy 였습니다)
- */
-export type MissReasonKey = 'tired' | 'event' | 'phone' | 'tooMuch' | 'unwilling' | 'sick' | 'etc'
-
-/** 고른 이유. '기타' 를 골랐을 때만 note 에 한 줄을 적습니다. */
+/** 고른 이유. '기타' 를 골랐을 때만 note 에 한 줄을 적습니다. (이유 이름은 공통 타입 MissReason 입니다) */
 export interface MissReasonValue {
-  reason: MissReasonKey
+  reason: MissReason
   /** '기타' 일 때 적는 한 줄 (최대 50자). 다른 이유를 골랐으면 빈 글자입니다. */
   note: string
 }
@@ -19,7 +14,7 @@ export interface MissReasonValue {
 const NOTE_MAX_LENGTH = 50
 
 // 버튼은 이 순서대로 보입니다.
-const reasonOptions: { key: MissReasonKey; label: string }[] = [
+const reasonOptions: { key: MissReason; label: string }[] = [
   { key: 'tired', label: '피곤·수면' },
   { key: 'event', label: '약속·행사' },
   { key: 'phone', label: '폰·SNS' },
@@ -56,7 +51,7 @@ export function MissReasonPicker({
   // 다 채웠거나(100% 이상), 계획이 없던 날(0 ÷ 0 = 숫자가 아님)에는 물어볼 게 없습니다.
   if (Number.isNaN(achievementRate) || achievementRate >= 100) return null
 
-  function handleSelect(reason: MissReasonKey) {
+  function handleSelect(reason: MissReason) {
     // 이미 고른 걸 또 눌러도 그대로 둡니다. ('기타' 에 적은 글이 지워지면 안 되기 때문입니다)
     if (value?.reason === reason) return
     onChange({ reason, note: '' })
