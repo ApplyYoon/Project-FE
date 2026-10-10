@@ -1,7 +1,10 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useDiaryEntries } from '@/hooks/useDiaryEntries'
+import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
+import { mockReflectionPrescription } from '@/lib/mock'
 import type { DiaryEntry } from '@/types'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -31,9 +34,30 @@ function formatDateLabel(dateKey: string, options: Intl.DateTimeFormatOptions): 
   return new Date(year, month - 1, day).toLocaleDateString('ko-KR', options)
 }
 
+/** fromKey 부터 toKey 까지 며칠째인지 셉니다. (같은 날이면 1일째) */
+function countDays(fromKey: string, toKey: string): number {
+  const [fromYear, fromMonth, fromDay] = fromKey.split('-').map(Number)
+  const [toYear, toMonth, toDay] = toKey.split('-').map(Number)
+  const msPerDay = 24 * 60 * 60 * 1000
+  const diffMs =
+    new Date(toYear, toMonth - 1, toDay).getTime() -
+    new Date(fromYear, fromMonth - 1, fromDay).getTime()
+  return Math.round(diffMs / msPerDay) + 1
+}
+
+/** "지난 일기" 목록 한 줄. 일반 일기와 성찰 일기(#70)를 날짜 기준으로 합친 모양입니다. */
+interface TimelineItem {
+  date: string
+  isReflection: boolean
+  /** 그날 기분. 성찰만 쓰고 일반 일기는 안 쓴 날은 없습니다. */
+  mood?: number
+  previewText: string
+}
+
 export function DiaryPage() {
   const todayKey = toDateKey(new Date())
   const { allEntries, getEntry, saveEntry } = useDiaryEntries()
+  const { allEntries: allReflectionEntries } = useReflectionEntries()
 
   // 오늘 이미 썼으면 그 내용을 불러와서 고칠 수 있게 합니다.
   const existingEntry = getEntry(todayKey)
@@ -41,8 +65,36 @@ export function DiaryPage() {
   const [content, setContent] = useState(existingEntry?.content ?? '')
   const [savedMessage, setSavedMessage] = useState('')
 
-  // "지난 일기" 목록에는 오늘 것만 빼고 보여줍니다. (오늘 것은 위 "오늘 일기" 칸에 있으니까요)
-  const pastEntries = allEntries.filter((entry) => entry.date !== todayKey)
+  // 성찰 일기 처방(#70). AI 가 실제로 내려주는 서버가 아직 없어서 지금은 예시 처방 하나로 동작합니다.
+  const prescription = mockReflectionPrescription
+  const prescriptionDayIndex = countDays(prescription.startDate, todayKey)
+  const isPrescriptionActive =
+    prescriptionDayIndex >= 1 && prescriptionDayIndex <= prescription.days
+
+  // "지난 일기" 목록에는 오늘 것만 빼고, 일반 일기와 성찰 일기를 날짜 기준으로 합쳐서 보여줍니다.
+  // (오늘 것은 위 "오늘 일기" 칸에 있으니까요)
+  const itemsByDate = new Map<string, TimelineItem>()
+  for (const entry of allEntries) {
+    if (entry.date === todayKey) continue
+    itemsByDate.set(entry.date, {
+      date: entry.date,
+      isReflection: false,
+      mood: entry.mood,
+      previewText: entry.content || '(내용 없음)',
+    })
+  }
+  for (const entry of allReflectionEntries) {
+    if (entry.date === todayKey) continue
+    // 같은 날 일반 일기도 썼으면 그 기분은 그대로 두고, 미리보기 글만 성찰 답으로 바꿉니다.
+    const sameDayEntry = itemsByDate.get(entry.date)
+    itemsByDate.set(entry.date, {
+      date: entry.date,
+      isReflection: true,
+      mood: sameDayEntry?.mood,
+      previewText: entry.answers.find((answer) => answer) || '(내용 없음)',
+    })
+  }
+  const pastEntries = [...itemsByDate.values()].sort((a, b) => b.date.localeCompare(a.date))
 
   function handleSave() {
     // #95 안전 브레이크 함수가 아직 없어서, 위기 표현 확인 없이 바로 저장합니다.
@@ -63,6 +115,25 @@ export function DiaryPage() {
           원할 때만 쓰는 기록이에요. AI 가 기분과 반복되는 말을 분석에 써요.
         </p>
       </div>
+
+      {/* 성찰 일기 처방(#70). AI 가 처방을 내린 기간에만 보입니다. */}
+      {isPrescriptionActive && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-brand text-sm font-semibold">
+              성찰 일기 처방 중 · {prescriptionDayIndex}일째 / {prescription.days}일
+            </p>
+            <Link
+              to="/diary/reflection"
+              className="text-brand text-sm font-semibold hover:underline"
+            >
+              오늘 성찰 쓰기
+            </Link>
+          </div>
+          <ProgressBar value={(prescriptionDayIndex / prescription.days) * 100} className="mt-2" />
+          <p className="mt-2 text-sm text-slate-500">{prescription.reason}</p>
+        </Card>
+      )}
 
       {/* 모바일은 세로로 쌓고, PC(lg)에서는 왼쪽 오늘 일기 · 오른쪽 지난 일기로 나눕니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -139,15 +210,24 @@ export function DiaryPage() {
                 const moodOption = MOOD_OPTIONS.find((option) => option.value === entry.mood)
                 return (
                   <li key={entry.date} className="flex items-start gap-3 py-3">
-                    <span className="text-xl" role="img" aria-label={moodOption?.label ?? ''}>
-                      {moodOption?.emoji}
-                    </span>
+                    {moodOption ? (
+                      <span className="text-xl" role="img" aria-label={moodOption.label}>
+                        {moodOption.emoji}
+                      </span>
+                    ) : (
+                      <span className="w-6 shrink-0" aria-hidden />
+                    )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-900">
+                      <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
                         {formatDateLabel(entry.date, { month: 'long', day: 'numeric' })}
+                        {entry.isReflection && (
+                          <span className="bg-brand-light text-brand rounded px-1.5 py-0.5 text-xs font-semibold">
+                            성찰
+                          </span>
+                        )}
                       </p>
                       <p className="mt-0.5 line-clamp-2 text-sm break-words text-slate-600">
-                        {entry.content || '(내용 없음)'}
+                        {entry.previewText}
                       </p>
                     </div>
                   </li>
