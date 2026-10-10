@@ -7,6 +7,7 @@ import { CheckPage } from '@/pages/CheckPage'
 import { DiaryPage } from '@/pages/DiaryPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
+import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { PlannerPage } from '@/pages/PlannerPage'
@@ -34,9 +35,8 @@ export const router = createBrowserRouter([
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'messages', element: <MessagesPage /> },
       { path: 'login', element: <LoginPage /> },
-      { path: 'signup', element: <SignupPage /> },
-      { path: 'onboarding', element: <OnboardingPage /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
@@ -44,4 +44,7 @@ export const router = createBrowserRouter([
   // 전화 화면은 헤더·하단 탭 없이 화면 전체를 쓰므로 Layout 밖에 둡니다.
   { path: '/call', element: <CallPage /> },
   { path: '/call/active', element: <CallActivePage /> },
+  // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
+  { path: '/onboarding', element: <OnboardingPage /> },
+  { path: '/signup', element: <SignupPage /> },
 ])
