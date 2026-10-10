@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
+import { toDateKey } from '@/lib/date'
 import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
 import {
@@ -17,7 +18,7 @@ import {
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
 import { loadData, removeData, saveData } from '@/lib/storage'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 // 설문을 끝내고 답을 저장하는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-onboarding-answers' 가 됩니다)
@@ -162,6 +163,8 @@ function StepInput({ step, value, onChange }: StepInputProps) {
         <Input
           type="date"
           aria-label={step.title}
+          // min: 달력에서 오늘보다 앞의 날짜를 고를 수 없게 합니다. (지난 시험 날짜는 D-day 를 셀 수 없습니다)
+          min={toDateKey(new Date())}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           error={hasPassed ? '오늘 이후 날짜를 골라 주세요.' : undefined}
@@ -238,6 +241,19 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
     if (shouldSaveDraft) saveData(DRAFT_KEY, { stepIndex, answers })
   }, [shouldSaveDraft, stepIndex, answers])
 
+  // 질문이 바뀌면 키보드 포커스를 새 질문 제목으로 옮깁니다.
+  // ("다음" 을 누르면 누른 버튼이 잠깐 꺼지면서 포커스가 사라져서, 스크린리더가 새 질문을 읽어 주지 않았습니다)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  // 화면이 처음 열릴 때는 옮기지 않습니다. 질문을 넘겼을 때만 옮깁니다.
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    titleRef.current?.focus()
+  }, [stepIndex])
+
   // 처음 설문: 이미 마친 사람은 홈으로 보냅니다. (Navigate: 화면을 그리는 대신 주소를 바꿔 주는 부품)
   if (!isMore && savedAnswers !== null) return <Navigate to="/" replace />
   // 더 알려주기: 처음 설문을 안 한 사람은 처음 설문부터 하게 하고, 남은 질문이 없으면 설정으로 돌려보냅니다.
@@ -276,7 +292,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
       // 적은 답은 바로 저장합니다. 비워 둔 선택 질문도 "이미 본 질문" 으로 남기려고 빈 글자로 저장합니다.
       // 비워 둔 필수 질문은 저장하지 않습니다. 그래서 다음에 들어오면 다시 물어봅니다.
       if (!isEmpty || step.optional) {
-        const nextStored = { ...storedAnswers, [step.key]: value }
+        // trim: 앞뒤 빈칸은 떼고 저장합니다. (빈칸만 적은 답은 빈 글자가 됩니다)
+        const nextStored = { ...storedAnswers, [step.key]: value.trim() }
         saveData(STORAGE_KEY, nextStored)
         setStoredAnswers(nextStored)
       }
@@ -286,7 +303,12 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
     }
 
     if (isLastStep) {
-      saveData(STORAGE_KEY, answers)
+      // 앞뒤 빈칸은 떼고 저장합니다. 빈칸만 적은 선택 질문은 답하지 않은 것으로 보고 저장하지 않습니다.
+      const trimmedAnswers: Record<string, string> = {}
+      for (const [key, answer] of Object.entries(answers)) {
+        if (answer.trim() !== '') trimmedAnswers[key] = answer.trim()
+      }
+      saveData(STORAGE_KEY, trimmedAnswers)
       // 설문을 끝냈으니 임시로 저장해 둔 답은 지웁니다.
       removeData(DRAFT_KEY)
       // 관리 강도 한도 · 독설 수위 · 메시지 설정은 묻지 않고 기본값으로 시작합니다. (#239)
@@ -325,7 +347,12 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
         </div>
 
         <div>
-          <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+          {/* tabIndex -1: 코드로 포커스를 줄 수 있게 합니다. outline-none: 제목에 포커스 테두리는 그리지 않습니다. */}
+          <h1
+            ref={titleRef}
+            tabIndex={-1}
+            className="text-2xl font-bold tracking-tight break-keep outline-none sm:text-3xl"
+          >
             {step.title}
             {step.optional && (
               <span className="ml-2 align-middle text-sm font-medium text-slate-400">(선택)</span>
