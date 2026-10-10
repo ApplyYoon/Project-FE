@@ -1,9 +1,14 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { GoalAdjustModal } from '@/components/ui/GoalAdjustModal'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
+import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { usePlans } from '@/hooks/usePlans'
+import { useStudySessions } from '@/hooks/useStudySessions'
+import { scalePlanMinutes } from '@/lib/goalAdjust'
+import { getRecentAverageMinutes, getTodayCareAction } from '@/lib/goalAdjustInput'
 import { mockSubjects } from '@/lib/mock'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, Subject, SubjectColor } from '@/types'
@@ -229,7 +234,8 @@ export function PlannerPage() {
   const todayKey = toDateKey(new Date())
 
   // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
-  const { allPlans, getPlans, addPlan, toggleDone, deletePlan } = usePlans()
+  const { allPlans, getPlans, addPlan, toggleDone, deletePlan, replaceDayPlans } = usePlans()
+  const { sessions } = useStudySessions()
   const [selectedDate, setSelectedDate] = useState(todayKey)
 
   // 새로고침해도 과목 목록이 유지되도록 localStorage 에서 불러옵니다. (처음 한 번은 예시 과목으로 시작)
@@ -242,6 +248,27 @@ export function PlannerPage() {
   // 화면에는 고른 날짜의 계획만 보여 줍니다.
   const plans = getPlans(selectedDate)
   const isToday = selectedDate === todayKey
+
+  // 목표 조정 제안 (#67): 오늘의 대응이 "목표 상향/하향" 이면 팝업으로 물어봅니다.
+  // 개선안 이행·효과 판정, 기분, 미달 원인은 아직 저장하는 곳이 없어서 null/false 입니다.
+  // (그 기능들이 저장을 시작하면 여기에 연결하세요. 그 전에는 대응이 정해지지 않아 팝업이 뜨지 않습니다)
+  const todayPlans = getPlans(todayKey)
+  const todayGoalMinutes = todayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
+  const careAction = getTodayCareAction({
+    fulfillment: null,
+    effect: null,
+    mainMissCause: null,
+    isMoodLow: false,
+    plans: allPlans,
+    sessions,
+  })
+  const { proposal, accept, decline } = useGoalAdjust({
+    action: careAction,
+    currentMinutes: todayGoalMinutes,
+    recentAverageMinutes: getRecentAverageMinutes(allPlans, sessions),
+    // 수락하면 오늘 계획들의 목표 시간을 새 목표에 맞춰 같은 비율로 바꿉니다.
+    onAccept: (newMinutes) => replaceDayPlans(todayKey, scalePlanMinutes(todayPlans, newMinutes)),
+  })
 
   // 'ko-KR' 로 바꾸면 "10월 5일 일요일" 처럼 한국어 날짜가 됩니다.
   // 'YYYY-MM-DD' 문자열은 영국 시간으로 읽히므로, 년·월·일을 쪼개서 우리 시간대로 만듭니다.
@@ -399,6 +426,8 @@ export function PlannerPage() {
       </div>
 
       <SubjectManager subjects={subjects} onAdd={handleAddSubject} onDelete={handleDeleteSubject} />
+
+      <GoalAdjustModal proposal={proposal} onAccept={accept} onDecline={decline} />
     </div>
   )
 }
