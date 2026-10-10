@@ -7,6 +7,7 @@ import { CallResultPage } from '@/pages/CallResultPage'
 import { CheckPage } from '@/pages/CheckPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
+import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { PlannerPage } from '@/pages/PlannerPage'
@@ -32,7 +33,6 @@ export const router = createBrowserRouter([
       // ---- 로그인 없이 볼 수 있는 곳 ----
       // 여기를 막으면 로그인하러 가는 길도 막힙니다.
       { path: 'login', element: <LoginPage /> },
-      { path: 'signup', element: <SignupPage /> },
       // SNS 로그인 뒤 돌아오는 콜백 주소(/auth/callback)를 만들면 이 자리에 넣어 주세요.
 
       // ---- 로그인해야 볼 수 있는 곳 ----
@@ -48,6 +48,7 @@ export const router = createBrowserRouter([
           { path: 'call/result', element: <CallResultPage /> },
           { path: 'records', element: <RecordsPage /> },
           { path: 'settings', element: <SettingsPage /> },
+          { path: 'messages', element: <MessagesPage /> },
         ],
       },
 
@@ -55,7 +56,10 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-  // 아래 화면들도 로그인해야 볼 수 있어서 RequireAuth 로 감쌉니다.
+  // 가입 화면은 로그인 없이 열려야 해서 RequireAuth 바깥에 둡니다.
+  // 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
+  { path: '/signup', element: <SignupPage /> },
+  // 아래 화면들은 로그인해야 볼 수 있어서 RequireAuth 로 감쌉니다.
   {
     element: <RequireAuth />,
     children: [
