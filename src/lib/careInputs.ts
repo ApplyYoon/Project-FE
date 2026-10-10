@@ -27,7 +27,7 @@ export const LOW_MOOD_MAX = 2
 export const BASELINE_DAYS = 14
 
 /** 실험 시작일이 있는 진행 중 개선안 한 개 (시작일·기간이 확정된 것) */
-interface DatedSuggestion extends Suggestion {
+export interface DatedSuggestion extends Suggestion {
   startDate: string
   days: number
 }
@@ -87,7 +87,7 @@ export function pickFinishedSuggestion(
 }
 
 /** startDate 부터 count 일 동안의 날짜('YYYY-MM-DD') 목록을 만듭니다. (count 가 음수면 거꾸로가 아니라 비어 있음) */
-function listDates(startDate: string, count: number): string[] {
+export function listDates(startDate: string, count: number): string[] {
   return Array.from({ length: Math.max(0, count) }, (_, index) => moveDateKey(startDate, index))
 }
 

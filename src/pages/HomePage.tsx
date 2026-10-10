@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
+import { ExperimentSection } from '@/components/ui/ExperimentSection'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -194,6 +195,12 @@ export function HomePage() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* 도전 중인 실험의 진행 상황과, 끝난 실험의 결과·다음 행동 버튼 (#93) */}
+      <section>
+        <h2 className="text-lg font-bold text-slate-900">실험</h2>
+        <ExperimentSection plans={allPlans} sessions={sessions} className="mt-3" />
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">

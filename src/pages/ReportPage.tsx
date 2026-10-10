@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ExperimentSection } from '@/components/ui/ExperimentSection'
 import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { Input } from '@/components/ui/Input'
@@ -384,12 +385,10 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
         </>
       )}
 
-      {/* 지난 실험 결과(#93) · 도전 중인 실험(#65)이 아직 없어서 자리만 만들어 둡니다. */}
+      {/* 도전 중인 실험의 진행 상황과, 끝난 실험의 결과·다음 행동 버튼 (#93) */}
       <section>
         <h2 className="text-lg font-bold text-slate-900">실험</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          지난 실험 결과와 도전 중인 실험은 #65·#93 이 끝나면 여기 보여요.
-        </p>
+        <ExperimentSection plans={allPlans} sessions={sessions} className="mt-3" />
       </section>
 
       {/* 새 개선안 고르기(#64)가 아직 없어서 자리만 만들어 둡니다. */}

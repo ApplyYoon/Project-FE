@@ -37,6 +37,8 @@ const RECORD_KEYS = [
   'insight-responses',
   // 개선안을 날마다 지켰는지 적은 기록 (#65)
   'suggestion-checks',
+  // 실험에서 효과가 확인되어 "나 사용설명서" 에 올린 항목 (#93)
+  'manual-items',
   ...DIARY_KEYS,
 ]
 
