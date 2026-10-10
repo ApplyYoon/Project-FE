@@ -52,7 +52,7 @@ function loadState(): StopwatchState {
  *   (지금 - 시작 시각 - 일시정지했던 시간)
  * 으로 계산합니다. setInterval 은 화면을 다시 그리는 용도로만 씁니다.
  *
- *   const { seconds, isRunning, isStarted, startedAt, pauseCount, getPausedMs, start, pause, stop } = useStopwatch()
+ *   const { seconds, isRunning, isStarted, startedAt, pauseCount, getPausedMs, start, pause, autoPause, stop } = useStopwatch()
  */
 export function useStopwatch() {
   const [state, setState] = useState<StopwatchState>(loadState)
@@ -116,6 +116,19 @@ export function useStopwatch() {
     })
   }
 
+  /**
+   * 일시정지 횟수를 올리지 않고 멈춥니다. 다른 탭·앱에 가서 저절로 멈출 때 씁니다. (useAwayDetection)
+   * 일시정지 횟수는 "내가 직접 멈춘 횟수" 여야 해서, 저절로 멈춘 것은 세지 않습니다. (딴짓 횟수는 따로 기록됩니다)
+   */
+  const autoPause = () => {
+    const currentTime = Date.now()
+    setNow(currentTime)
+    setState((prev) => {
+      if (prev.startedAt === null || prev.pausedAt !== null) return prev
+      return { ...prev, pausedAt: currentTime }
+    })
+  }
+
   const stop = () => {
     setNow(Date.now())
     setState(idleState)
@@ -141,6 +154,7 @@ export function useStopwatch() {
     getPausedMs,
     start,
     pause,
+    autoPause,
     stop,
   }
 }

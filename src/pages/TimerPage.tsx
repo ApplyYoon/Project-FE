@@ -78,8 +78,18 @@ function isToday(session: StudySession) {
 
 export function TimerPage() {
   // startedAt·pauseCount 는 새로고침해도 이어져야 해서 useStopwatch 안에서 같이 저장합니다.
-  const { seconds, isRunning, isStarted, startedAt, pauseCount, getPausedMs, start, pause, stop } =
-    useStopwatch()
+  const {
+    seconds,
+    isRunning,
+    isStarted,
+    startedAt,
+    pauseCount,
+    getPausedMs,
+    start,
+    pause,
+    autoPause,
+    stop,
+  } = useStopwatch()
   // sessions: 공부 기록만 (오늘 총 공부 시간 등) / allSessions: 노는 기록까지 (계획별 실제 시간)
   const { sessions, allSessions, addSession } = useStudySessions()
 
@@ -205,7 +215,8 @@ export function TimerPage() {
     isRunning,
     isResting: isBreak || isPlay,
     subjectId: selectedSubjectId,
-    pause,
+    // 저절로 멈출 때는 일시정지 횟수를 올리지 않는 autoPause 를 씁니다. (횟수는 내가 직접 멈춘 것만 셉니다)
+    pause: autoPause,
     start,
   })
 
