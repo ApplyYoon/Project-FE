@@ -13,6 +13,7 @@
  */
 import { api } from '@/lib/api'
 import { createConnectionWatcher } from '@/lib/connectionWatch'
+import type { CallTone } from '@/lib/todayCare'
 import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
@@ -87,10 +88,24 @@ export function unlockCallAudio(): void {
  * api() 로 부르기 때문에 서버 주소와 로그인 토큰이 자동으로 붙습니다.
  * (예전에는 주소를 그냥 적어서 화면을 띄운 서버로 요청이 가고, 통화가 항상 실패했습니다)
  * signal 이 "그만" 을 알리면 요청을 멈춥니다.
+ *
+ * tone 이 있으면 오늘의 관리 강도와 독설 허용 수위를 주소 뒤에 붙여 보냅니다. (#257)
+ *   /realtime/token?careLevel=1&maxHarshness=3
+ * 서버가 아직 이 값을 읽지 않아도 괜찮습니다. 모르는 값은 무시되고 임시 키는 그대로 옵니다.
+ * ⚠️ 주소 뒤에 붙이는 값에는 이름·일기 같은 개인 내용을 넣지 않습니다. (주소는 서버 기록에 남기 쉽습니다)
  */
-async function fetchEphemeralKey(signal: AbortSignal): Promise<string> {
+async function fetchEphemeralKey(signal: AbortSignal, tone?: CallTone): Promise<string> {
+  // URLSearchParams: { careLevel: '1', maxHarshness: '3' } 를 'careLevel=1&maxHarshness=3' 으로 만들어 줍니다.
+  const query =
+    tone === undefined
+      ? ''
+      : `?${new URLSearchParams({
+          careLevel: String(tone.careLevel),
+          maxHarshness: String(tone.maxHarshness),
+        }).toString()}`
+
   try {
-    const data = await api<unknown>(TOKEN_PATH, { signal })
+    const data = await api<unknown>(`${TOKEN_PATH}${query}`, { signal })
     const value =
       typeof data === 'object' && data !== null ? (data as { value?: unknown }).value : null
     if (typeof value !== 'string' || value === '') throw new Error('임시 키가 없습니다')
@@ -138,6 +153,8 @@ export interface StartCallOptions {
    * 기다리던 요청을 멈추고, 이미 켠 마이크를 끕니다.
    */
   signal?: AbortSignal
+  /** 오늘의 말투(관리 강도 · 독설 허용 수위). 임시 키를 요청할 때 서버에 같이 보냅니다. (lib/todayCare.ts 의 getCallTone) */
+  tone?: CallTone
 }
 
 /**
@@ -155,7 +172,7 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
   let ephemeralKey: string
   let microphone: MediaStream
   try {
-    ephemeralKey = await fetchEphemeralKey(signal)
+    ephemeralKey = await fetchEphemeralKey(signal, options.tone)
     microphone = await openMicrophone()
   } catch (error) {
     clearTimeout(timeoutId)

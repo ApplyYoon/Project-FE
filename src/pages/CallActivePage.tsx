@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
-import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
+import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
@@ -237,6 +237,8 @@ export function CallActivePage() {
 
     startRealtimeCall({
       signal: controller.signal,
+      // 오늘의 관리 강도와 독설 허용 수위를 서버에 알려서, AI 의 말투가 내가 정한 한도를 넘지 않게 합니다. (#257)
+      tone: getCallTone(),
       // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
       onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
       // 연결이 끊어지면 마이크를 끄고, 안내 화면을 보여줍니다.

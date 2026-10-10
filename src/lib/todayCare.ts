@@ -1,6 +1,7 @@
 import { getCareLimits } from '@/lib/careLimits'
 import { getCareLevelInfo } from '@/lib/careLevelInfo'
 import type { CareLevel } from '@/lib/careTheme'
+import { isSafetyBrakeOnNow } from '@/lib/focusMode'
 
 /**
  * 오늘 화면에 쓸 관리 강도와 독설 허용 수위를 돌려줍니다.
@@ -62,5 +63,33 @@ export function getTodayMaxHarshness(): number {
     return Number.isFinite(value) ? value : DEFAULT_MAX_HARSHNESS
   } catch {
     return DEFAULT_MAX_HARSHNESS
+  }
+}
+
+/** 통화를 연결할 때 서버에 알려 주는 "오늘의 말투" 입니다. 서버는 이 값으로 AI 의 말투 지침을 정합니다. (#257) */
+export interface CallTone {
+  /** 오늘의 관리 강도 (0 회복 ~ 3). 내가 정한 최대 한도를 넘지 않습니다. */
+  careLevel: CareLevel
+  /** 내가 허용한 독설 수위 (1 ~ 5). AI 는 이보다 센 말을 하면 안 됩니다. */
+  maxHarshness: number
+}
+
+/**
+ * 지금 통화를 걸 때 쓸 말투 값을 돌려줍니다.
+ *
+ * ■ 규칙
+ *  1. 관리 강도는 getTodayCareLevel() 의 값입니다. 이 값은 설정의 "관리 강도 최대 한도" 를 넘지 않습니다.
+ *  2. 안전 브레이크(#95)가 켜져 있으면 단계와 상관없이 회복(0)으로 보냅니다. 힘든 날에는 목소리도 누그러져야 합니다.
+ *  3. 독설 허용 수위는 설정에서 정한 값 그대로입니다. "여기까지는 괜찮다" 는 한도이지, 그만큼 세게 하라는 뜻이 아닙니다.
+ *
+ * ■ 예시
+ *   한도 2, 허용 수위 3, 안전 브레이크 꺼짐  -> { careLevel: 1, maxHarshness: 3 }
+ *   한도 0(회복만), 허용 수위 3              -> { careLevel: 0, maxHarshness: 3 }
+ *   한도 2, 허용 수위 5, 안전 브레이크 켜짐  -> { careLevel: 0, maxHarshness: 5 }
+ */
+export function getCallTone(): CallTone {
+  return {
+    careLevel: isSafetyBrakeOnNow() ? 0 : getTodayCareLevel(),
+    maxHarshness: getTodayMaxHarshness(),
   }
 }
