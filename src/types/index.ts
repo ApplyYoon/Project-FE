@@ -1,5 +1,8 @@
 /** 프로젝트 전체에서 쓰는 타입을 모아둡니다. */
 
+// 관리 강도 타입은 #78 이 끝나기 전까지 lib/careLevel.ts 에 있는 것을 가져다 씁니다.
+import type { CareLevel } from '@/lib/careLevel'
+
 /*
  * 날짜·시각 표기 규칙 (모든 타입 공통)
  * - 날짜: 'YYYY-MM-DD' 형식의 문자열        예) '2026-09-28'
@@ -78,4 +81,29 @@ export interface Evaluation {
   mood: AiMood
   /** AI 가 남긴 한마디 요약 */
   summary: string
+}
+
+/**
+ * AI 가 보낸 메시지의 종류
+ * - regular: 정해진 빈도(예: 하루 3번)에 맞춰 보낸 메시지
+ * - event: 무슨 일이 생겨서 바로 보낸 메시지 (예: 계획 시간 지남, 목표 달성)
+ */
+export type AiMessageKind = 'regular' | 'event'
+
+/** 메시지함에 쌓이는 AI 메시지 하나 */
+export interface AiMessage {
+  /** 메시지를 구분하는 고유 값 */
+  id: string
+  /** 보낸 시각 (Date.now() 값) */
+  sentAt: number
+  /** 보낼 때의 관리 강도 (0 회복 ~ 4 강제적 채찍). 말풍선 색이 이 값에 따라 바뀝니다. */
+  careLevel: CareLevel
+  /** 정기 메시지인지, 이벤트 알림인지 */
+  kind: AiMessageKind
+  /** 이벤트 알림일 때 말풍선 아래에 붙는 짧은 이름 (예: '계획 시간 지남') */
+  eventLabel?: string
+  /** 메시지 내용 */
+  text: string
+  /** 읽었으면 true, 아직 안 읽었으면 false */
+  read: boolean
 }
