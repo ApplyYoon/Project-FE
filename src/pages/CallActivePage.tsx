@@ -1,6 +1,16 @@
 import { cn } from '@/lib/cn'
+import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+/** 연결 실패를 학생(사용자)이 이해할 수 있는 문구로 바꿉니다. */
+function getFailMessage(error: unknown) {
+  if (error instanceof RealtimeCallError) {
+    if (error.reason === 'mic') return '마이크를 사용할 수 없어요. 마이크 권한을 확인해 주세요.'
+    if (error.reason === 'token') return 'AI 연결 준비에 실패했어요. 잠시 뒤에 다시 시도해 주세요.'
+  }
+  return 'AI 와 연결하지 못했어요. 끊고 다시 시도해 주세요.'
+}
 
 /** AI 선생님의 태도. 나중에 AI 가 정해 주면 아바타 모양이 바뀝니다. */
 type AiMood = 'calm' | 'happy' | 'strict'
@@ -56,6 +66,36 @@ export function CallActivePage() {
   const [isMuted, setIsMuted] = useState(false)
   // 지금은 AI 연결 전이라 고정값입니다. 나중에 AI 가 정한 태도를 여기에 넣으면 됩니다.
   const mood: AiMood = 'calm'
+  // AI 와의 연결 상태. 연결 중 → 연결됨, 실패하면 error 와 안내 문구
+  const [connection, setConnection] = useState<'connecting' | 'connected' | 'error'>('connecting')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  // 화면이 열리면 AI 와 음성 연결을 시작하고, 화면을 떠나면(끊기·뒤로가기) 연결과 마이크를 정리합니다.
+  useEffect(() => {
+    let isCancelled = false
+    let call: RealtimeCall | null = null
+
+    startRealtimeCall()
+      .then((startedCall) => {
+        // 연결되는 사이에 이미 화면을 떠났다면 바로 정리합니다.
+        if (isCancelled) {
+          startedCall.close()
+          return
+        }
+        call = startedCall
+        setConnection('connected')
+      })
+      .catch((error: unknown) => {
+        if (isCancelled) return
+        setConnection('error')
+        setErrorMessage(getFailMessage(error))
+      })
+
+    return () => {
+      isCancelled = true
+      call?.close()
+    }
+  }, [])
 
   useEffect(() => {
     const startedAt = Date.now()
@@ -74,13 +114,16 @@ export function CallActivePage() {
   }
 
   function handleHangUp() {
+    // 화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다.
     navigate('/call/result')
   }
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-slate-900 px-4 py-10 text-white sm:px-6">
       <div className="flex w-full max-w-md flex-1 flex-col items-center text-center">
-        <p className="text-sm text-indigo-100 sm:text-base">AI 선생님 · 통화 중</p>
+        <p className="text-sm text-indigo-100 sm:text-base">
+          AI 선생님 · {connection === 'connecting' ? '연결 중…' : '통화 중'}
+        </p>
         {/* tabular-nums: 숫자 폭을 똑같이 해서 시간이 올라갈 때 글자가 흔들리지 않습니다. */}
         <h1 className="mt-3 text-4xl font-bold tracking-tight tabular-nums sm:text-5xl">
           {formatCallTime(seconds)}
@@ -89,6 +132,13 @@ export function CallActivePage() {
         <div className="mt-12">
           <AiAvatar mood={mood} />
         </div>
+
+        {connection === 'error' && (
+          // role="alert": 실패하면 화면을 읽어 주는 프로그램이 바로 알려 줍니다.
+          <p role="alert" className="mt-6 rounded-lg bg-red-600/20 px-4 py-3 text-sm break-keep">
+            {errorMessage}
+          </p>
+        )}
 
         {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
         <div className="mt-auto flex w-full items-start justify-around pt-12">
