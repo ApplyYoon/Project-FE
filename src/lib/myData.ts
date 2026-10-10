@@ -19,6 +19,7 @@ const DIARY_KEYS = ['diary', 'reflection-entries']
  *   timer-mode  스톱워치·뽀모도로 중 고른 공부 방식. 이것도 설정입니다.
  *   onboarding-answers  온보딩 설문 답. 기록이 아니라 내 정보이고, 지우면 설문을 처음부터 다시 하게 되어서 남깁니다.
  *   signup-info  가입 때 정한 닉네임과 동의 내역. 기록이 아니라 계정 정보이고, 동의한 기록은 남겨 두어야 해서 남깁니다.
+ *   call-time, call-last-ring  전화 받을 시간과 마지막으로 울린 시각. 내가 정한 설정이라 남깁니다.
  *   auth        로그인 정보. 지우면 로그아웃되어 버립니다.
  */
 const RECORD_KEYS = [
