@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
+import { getTodayKey } from '@/lib/date'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -10,13 +11,6 @@ import { loadRecord } from '@/lib/storage'
 import type { DiaryEntry, ReflectionEntry } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-
-/** Date 를 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString() 은 영국 시간 기준이라 쓰지 않습니다) */
-function toDateKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
 
 /** fromKey 부터 toKey 까지 며칠째인지 셉니다. (같은 날이면 1일째) */
 function countDays(fromKey: string, toKey: string): number {
@@ -31,7 +25,7 @@ function countDays(fromKey: string, toKey: string): number {
 
 export function ReflectionPage() {
   const navigate = useNavigate()
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   // 지금 내려진 처방. 없으면 null 입니다. (서버가 생기기 전까지 진짜 사용자에게는 처방이 없습니다. lib/reflectionPrescription.ts)
   const [prescription] = useState(() => getReflectionPrescription(loadStudySessions()))
 

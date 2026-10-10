@@ -12,6 +12,7 @@ import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
 import { DEFAULT_TARGET_MINUTES, normalizeTargetMinutes } from '@/lib/countdown'
 import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
+import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { formatDday } from '@/lib/exams'
 import { getFirstMe, type FirstMe } from '@/lib/firstMe'
@@ -70,7 +71,7 @@ function formatMinutes(totalMinutes: number): string {
 function calculateTree(): TreeState {
   const days = groupSessionsByDate(loadStudySessions())
   const totalStudyMinutes = days.reduce((sum, day) => sum + day.totalMinutes, 0)
-  const today = days.find((day) => day.date === toDateKey(new Date()))
+  const today = days.find((day) => day.date === getTodayKey())
 
   return getTreeState({
     totalStudyMinutes,
@@ -85,7 +86,7 @@ function calculateTree(): TreeState {
   })
 }
 
-/** 오늘 날짜를 '10월 10일 토요일' 처럼 보여줍니다. */
+/** 오늘 날짜를 '10월 10일 토요일' 처럼 보여줍니다. (새벽 4시 전이면 어제 날짜를 넘겨받습니다) */
 function formatToday(date: Date): string {
   return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })
 }
@@ -121,7 +122,7 @@ export function HomePage() {
   // 인사이트는 가상 데이터를 넣었을 때만 예시로 보여줍니다. (lib/insights.ts)
   const { insights, isExample: isExampleInsight } = getInsightsToShow(sessions)
 
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   const yesterdayKey = moveDateKey(todayKey, -1)
 
   // 오늘 계획과, 그중 아직 안 끝난 것입니다. 안 끝난 것의 맨 앞이 "지금 할 일" 입니다.
@@ -136,7 +137,7 @@ export function HomePage() {
   // 첫 기록 날짜 = 계획과 공부 기록을 통틀어 가장 이른 날짜. 기록이 하나도 없으면 null 입니다.
   const recordDates = [
     ...allPlans.map((plan) => plan.date),
-    ...sessions.map((session) => toDateKey(new Date(session.startedAt))),
+    ...sessions.map((session) => toDayKey(session.startedAt)),
   ]
   const firstRecordKey = recordDates.length === 0 ? null : [...recordDates].sort()[0]
   const daysSinceFirstRecord = firstRecordKey === null ? 0 : countDays(firstRecordKey, todayKey)
@@ -154,7 +155,7 @@ export function HomePage() {
       <section className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-slate-500">
-            {formatToday(new Date())}
+            {formatToday(toDayDate(new Date()))}
             {firstMe.daysUntilExam !== null &&
               ` · ${firstMe.examName} ${formatDday(firstMe.daysUntilExam)}`}
           </p>

@@ -1,4 +1,4 @@
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import { loadRoutines, takeRoutinePlans } from '@/lib/routines'
 import { loadRecord, saveData } from '@/lib/storage'
 import type { Routine, StudyPlan } from '@/types'
@@ -17,7 +17,7 @@ const STORAGE_KEY = 'plans'
 function loadPlansWithTodayRoutines(): PlansByDate {
   // loadRecord: 저장된 값이 깨져 있으면(객체가 아니면) 빈 객체로 시작합니다.
   const saved: PlansByDate = loadRecord<StudyPlan[]>(STORAGE_KEY)
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   const newPlans = takeRoutinePlans(todayKey, todayKey, loadRoutines())
   if (newPlans.length === 0) return saved
 
@@ -73,7 +73,7 @@ export function usePlans() {
    * 계획 화면에서 다른 날짜로 옮겨 갈 때 씁니다. (오늘 것은 처음 불러올 때 이미 채웁니다)
    */
   function fillRoutines(date: string, routines: Routine[]) {
-    const newPlans = takeRoutinePlans(date, toDateKey(new Date()), routines)
+    const newPlans = takeRoutinePlans(date, getTodayKey(), routines)
     if (newPlans.length > 0) addPlans(newPlans)
   }
 

@@ -7,7 +7,7 @@ import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { getTodayKey, moveDateKey } from '@/lib/date'
 import { usePlans } from '@/hooks/usePlans'
 import { useRoutines } from '@/hooks/useRoutines'
 import { useStudySessions } from '@/hooks/useStudySessions'
@@ -943,7 +943,7 @@ function getDayBeforeLabel(dateKey: string, todayKey: string): string {
 }
 
 export function PlannerPage() {
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
 
   // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
   const {
