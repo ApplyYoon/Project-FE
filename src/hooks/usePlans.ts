@@ -62,5 +62,10 @@ export function usePlans() {
     })
   }
 
-  return { allPlans, getPlans, addPlan, toggleDone, deletePlan }
+  /** 그 날짜의 계획 목록을 통째로 바꿉니다. (목표 시간 조정 수락처럼 한꺼번에 고칠 때 씁니다) */
+  function replaceDayPlans(date: string, plans: StudyPlan[]) {
+    setPlansByDate((prev) => ({ ...prev, [date]: plans }))
+  }
+
+  return { allPlans, getPlans, addPlan, toggleDone, deletePlan, replaceDayPlans }
 }

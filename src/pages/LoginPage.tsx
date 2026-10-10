@@ -2,9 +2,11 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/hooks/useAuth'
+import { getReturnPath } from '@/lib/authRedirect'
 import { cn } from '@/lib/cn'
 import type { AuthUser } from '@/types'
 import { useState, type ReactNode } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
 
 /* ---------- SNS 로고 ----------
  * 각 SNS 의 로고는 모양·비율·색을 바꾸면 안 됩니다. (공식 디자인 가이드)
@@ -137,6 +139,17 @@ function FakeLoginPanel() {
 export function LoginPage() {
   // 누른 SNS 를 기억해 두면, 그 SNS 이름으로 "준비 중" 안내를 띄울 수 있습니다. null 이면 안내가 닫혀 있습니다.
   const [pendingProvider, setPendingProvider] = useState<SnsProvider | null>(null)
+
+  const { isLoggedIn } = useAuth()
+  const location = useLocation()
+  // 로그인 안 하고 막힌 페이지에 갔다가 여기로 왔다면, 가려던 주소가 들어 있습니다. (RequireAuth 가 넘겨줌)
+  const returnPath = getReturnPath(location.state)
+
+  // 로그인이 되면 가려던 페이지로 돌아갑니다. replace: 로그인 화면을 기록에 남기지 않습니다.
+  // 가려던 주소 없이 직접 /login 에 온 사람은 그대로 둡니다. (로그아웃 버튼을 쓸 수 있어야 하기 때문입니다)
+  if (isLoggedIn && returnPath !== null) {
+    return <Navigate to={returnPath} replace />
+  }
 
   return (
     // max-w-sm + mx-auto: 화면이 넓어도 버튼이 너무 길어지지 않게 가운데에 모읍니다. (모바일은 가득)
