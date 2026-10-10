@@ -40,7 +40,7 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 일기가 전부 사라져요. 과목과 로그인 정보는 그대로 남아요.',
+      '공부 계획, 공부 기록, 진행 중인 타이머, 시험, 일기가 전부 사라져요. 과목과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
