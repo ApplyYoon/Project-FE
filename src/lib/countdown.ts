@@ -7,6 +7,26 @@
 
 /** 목표 시간 버튼에 보여줄 값들 (분) */
 export const TARGET_PRESETS = [25, 50, 80]
+
+// 목표 시간 버튼마다 "이게 어느 정도 길이인지" 를 알려 주는 한 줄입니다. 버튼을 바꾸면 여기도 같이 고치세요.
+// 사실만 적습니다. (수능 국어는 80분, 수학은 100분입니다)
+const TARGET_HINTS: Record<number, string> = {
+  25: '뽀모도로 한 번과 같은 길이예요. 가볍게 시작하고 싶을 때 좋아요.',
+  50: '학교 수업 한 교시와 같은 길이예요. 평소 공부에 잘 맞아요.',
+  80: '수능 국어 시험 시간과 같은 길이예요. 길게 버티는 연습을 할 때 골라요.',
+}
+
+/**
+ * 고른 목표 시간이 어느 정도 길이인지 알려 주는 한 줄을 돌려줍니다.
+ * 버튼에 없는 값(직접 적은 값)은 설명이 없어서 null 입니다.
+ *
+ *   getTargetHint(50) -> '학교 수업 한 교시와 같은 길이예요. 평소 공부에 잘 맞아요.'
+ *   getTargetHint(40) -> null
+ */
+export function getTargetHint(minutes: number): string | null {
+  return TARGET_HINTS[minutes] ?? null
+}
+
 /** 처음 쓰는 사람에게 골라 두는 목표 시간 (분) */
 export const DEFAULT_TARGET_MINUTES = 50
 /** 직접 입력할 수 있는 가장 짧은·긴 목표 시간 (분) */
