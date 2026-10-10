@@ -1,13 +1,13 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
+import { SUPPORT_PATH } from '@/lib/helpLines'
 import { mockReflectionPrescription } from '@/lib/mock'
 import type { ReflectionEntry } from '@/types'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 /** Date 를 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString() 은 영국 시간 기준이라 쓰지 않습니다) */
 function toDateKey(date: Date): string {
@@ -28,6 +28,7 @@ function countDays(fromKey: string, toKey: string): number {
 }
 
 export function ReflectionPage() {
+  const navigate = useNavigate()
   const todayKey = toDateKey(new Date())
   // AI 가 실제로 처방을 내리는 서버가 아직 없어서, 지금은 예시 처방 하나로 동작합니다. (#70)
   const prescription = mockReflectionPrescription
@@ -43,8 +44,6 @@ export function ReflectionPage() {
     () => existingEntry?.answers ?? prescription.questions.map(() => ''),
   )
   const [savedMessage, setSavedMessage] = useState('')
-  // 위기 표현이 보일 때 띄우는 도움 연결 안내 (#95)
-  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   function handleChangeAnswer(index: number, value: string) {
     setAnswers((prev) => prev.map((answer, i) => (i === index ? value : answer)))
@@ -62,8 +61,9 @@ export function ReflectionPage() {
     setSavedMessage('저장했어요.')
 
     // 성찰 일기에는 기분 칸이 없어서, 체크인의 기분 기록만 함께 봅니다.
+    // 감지되면 도움 연결 안내 화면으로 보냅니다. (글은 이미 저장했습니다)
     if (shouldShowCrisisHelp({ texts: entry.answers, diaryMoods: [] })) {
-      setIsHelpOpen(true)
+      navigate(SUPPORT_PATH)
     }
   }
 
@@ -128,8 +128,6 @@ export function ReflectionPage() {
           )}
         </>
       )}
-
-      <CrisisHelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   )
 }
