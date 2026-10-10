@@ -7,6 +7,7 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
+import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
 import {
   getCareLimits,
@@ -53,14 +54,13 @@ interface DeleteMessage {
   isSuccess: boolean
 }
 
-/** 관리 강도 단계별 이름과 한 줄 설명. (#28 의 단계 표와 같은 문구) */
-const careLevelOptions: { level: CareLevel; label: string; description: string }[] = [
-  { level: 0, label: '0 회복', description: '위로만. "오늘은 10분만"' },
-  { level: 1, label: '1 당근', description: '구체적 칭찬, 나무 성장' },
-  { level: 2, label: '2 넛지', description: '담백한 알림. "계획 시간 10분 지났어"' },
-  { level: 3, label: '3 심리적 채찍', description: '팩폭 말투, 독촉 메시지, 나무 시듦' },
-  { level: 4, label: '4 강제적 채찍', description: '공부 시간에 집중 모드 잠금' },
-]
+/** 관리 강도 단계별 이름과 한 줄 설명. (홈의 "지금 관리 모드" 배너와 같은 문구를 씁니다: lib/careLevelInfo.ts) */
+const careLevelOptions: { level: CareLevel; label: string; description: string }[] =
+  careLevelInfos.map((info) => ({
+    level: info.level,
+    label: `${info.level} ${info.name}`,
+    description: info.description,
+  }))
 
 /** 독설 허용 수위(1~5)별 한 줄 설명 */
 const harshnessDescriptions: Record<number, string> = {
