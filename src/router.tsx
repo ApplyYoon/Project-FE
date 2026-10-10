@@ -15,6 +15,7 @@ import { RecordsPage } from '@/pages/RecordsPage'
 import { ReportPage } from '@/pages/ReportPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SignupPage } from '@/pages/SignupPage'
+import { SuggestionsPage } from '@/pages/SuggestionsPage'
 import { TimerPage } from '@/pages/TimerPage'
 import { createBrowserRouter } from 'react-router-dom'
 
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'report', element: <ReportPage /> },
+      { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'messages', element: <MessagesPage /> },
       { path: 'login', element: <LoginPage /> },

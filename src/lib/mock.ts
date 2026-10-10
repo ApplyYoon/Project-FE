@@ -1,4 +1,12 @@
-import type { AiMessage, Evaluation, Insight, StudyPlan, StudySession, Subject } from '@/types'
+import type {
+  AiMessage,
+  Evaluation,
+  Insight,
+  StudyPlan,
+  StudySession,
+  Subject,
+  Suggestion,
+} from '@/types'
 
 /**
  * 백엔드가 생기기 전까지 화면에 보여줄 가짜 데이터입니다.
@@ -151,6 +159,40 @@ export const mockEvaluations: Evaluation[] = [
     score: 55,
     mood: 'normal',
     summary: '절반은 해냈어요. 내일은 수학 시간을 조금 늘려 봐요.',
+  },
+]
+
+/**
+ * 폰·SNS 때문에 계획을 못 채운 사람에게 맞춘 개선안 3개 (쉬움·보통·강함)
+ * 원인별 분기(#91)가 생기기 전까지는 이 세트 하나만 보여줍니다.
+ */
+export const mockSuggestions: Suggestion[] = [
+  {
+    id: 'suggestion-1',
+    cause: 'phone',
+    level: 'easy',
+    ifText: '공부를 시작하면',
+    thenText: '알림을 모두 끈다',
+    reason: '버튼 하나라 부담이 제일 적어.',
+    status: 'suggested',
+  },
+  {
+    id: 'suggestion-2',
+    cause: 'phone',
+    level: 'normal',
+    ifText: '학원에서 돌아오면',
+    thenText: '폰을 가방에 넣고 시작한다',
+    reason: '학원 다음이 제일 약한 시간이었어.',
+    status: 'suggested',
+  },
+  {
+    id: 'suggestion-3',
+    cause: 'phone',
+    level: 'hard',
+    ifText: '계획된 공부 시간이 되면',
+    thenText: '집중 모드를 켠다',
+    reason: '나가려면 10초 기다리고 이유를 적어야 해.',
+    status: 'suggested',
   },
 ]
 
