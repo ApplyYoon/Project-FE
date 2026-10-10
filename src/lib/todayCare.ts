@@ -1,30 +1,42 @@
+import { getCareLimits } from '@/lib/careLimits'
 import type { CareLevel } from '@/lib/careTheme'
 
 /**
  * 오늘 화면에 쓸 관리 강도와 독설 허용 수위를 돌려줍니다.
  * 통화 화면들(수신·통화 중)이 이 함수만 부르게 해서, 나중에 진짜 값으로 바꿀 곳을 한 군데로 모았습니다.
  *
- * ⚠️ 아직 진짜 값이 없어서 고정값입니다. 아래 입력이 준비되면 바꿉니다.
+ * - 독설 허용 수위: 사용자가 설정 화면에서 정한 값을 씁니다. (#59)
+ * - ⚠️ 관리 강도: 아직 진짜 값이 없어서 고정값입니다. 아래 입력이 준비되면 바꿉니다.
  */
 
 /**
  * 오늘의 관리 강도 (0~3).
  * TODO(#28): getCareLevel({ yesterdayLevel, branch, maxLevel, isSafetyBrakeOn }) 의 결과로 바꾸기
  *   - yesterdayLevel: 어제 단계를 저장해 둔 곳이 아직 없습니다
- *   - branch: 어제 결과 분기(#91)가 아직 없습니다
+ *   - branch: 어제 결과 분기. #91 의 decideCareAction 결과(CareAction)가 있지만, getCareLevel 의
+ *     입력(success/fail/adjust)과 아직 맞지 않고, decideCareAction 에 넣을 기록(체크인 #24, 이행 체크 #65)도 없습니다
  *   - maxLevel: getCareLimits().maxCareLevel (#59)
- *   - isSafetyBrakeOn: 안전 브레이크 판정(#95)이 아직 없습니다
+ *   - isSafetyBrakeOn: getSafetyBrakeResult(#95) 가 있지만, 넣을 기록(최근 글·기분·시험)이 아직 없습니다
  * (getCareLevel 은 0~4 를 돌려주는데 색 테마는 0~3 까지만 있어서, 4 는 집중 모드 화면(#69)으로 보내거나 맞춰야 합니다)
  */
 export function getTodayCareLevel(): CareLevel {
   return 1
 }
 
+// 저장된 값을 읽지 못할 때 쓰는 수위입니다. 설정 화면의 처음 값(careLimits.ts 의 기본값)과 같습니다.
+const DEFAULT_MAX_HARSHNESS = 3
+
 /**
- * 사용자가 허용한 독설 수위 (1~5).
- * TODO(#59): getCareLimits().maxHarshness 로 바꾸기 (설정 화면 PR #127 이 merge 된 뒤)
- * 3 은 설정 화면의 처음 값과 같습니다.
+ * 사용자가 허용한 독설 수위 (1~5). 설정 화면에서 정한 값입니다. (#59)
+ * 아직 한 번도 설정하지 않았으면 설정 화면의 처음 값(3)이 나옵니다.
+ *
+ * 통화 화면이 열릴 때 부르는 함수라서, 저장된 값이 깨져 있어도 에러를 내지 않고 기본값(3)을 돌려줍니다.
  */
 export function getTodayMaxHarshness(): number {
-  return 3
+  try {
+    const value = getCareLimits().maxHarshness
+    return Number.isFinite(value) ? value : DEFAULT_MAX_HARSHNESS
+  } catch {
+    return DEFAULT_MAX_HARSHNESS
+  }
 }

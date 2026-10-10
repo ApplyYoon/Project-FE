@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { cn } from '@/lib/cn'
@@ -15,7 +18,6 @@ import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
 import type { StudySession, Subject } from '@/types'
-import { useState } from 'react'
 
 const weekdayNames = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -59,6 +61,7 @@ function SubjectTag({ subject }: SubjectTagProps) {
 }
 
 export function RecordsPage() {
+  const navigate = useNavigate()
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
@@ -76,11 +79,18 @@ export function RecordsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">기록·통계</h1>
-      {/* 연속 공부일 카드와 최근 7일 막대그래프. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
-      {/* items-start: 높이가 다른 두 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
+      {/* 연속 공부일 · 최근 7일 막대그래프 · 주간 리포트 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
+      {/* items-start: 높이가 다른 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <StreakCard sessions={sessions} />
         <WeeklyBarCard sessions={sessions} />
+
+        <Card title="주간 리포트">
+          <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
+          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/report')}>
+            주간 리포트 보기
+          </Button>
+        </Card>
       </div>
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 기록 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}
