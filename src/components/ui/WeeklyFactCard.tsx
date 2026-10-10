@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui/Card'
 import { formatMinutes } from '@/lib/dailyRecords'
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import {
   MIN_COMPLETION_SAMPLES,
   getFactDelta,
@@ -57,7 +57,8 @@ export function WeeklyFactCard({
     plans,
     sessions,
     mondayKey ?? getMondayKey(today),
-    toDateKey(today),
+    // 오늘 날짜도 새벽 4시 기준입니다. (lib/date.ts)
+    getTodayKey(),
   )
 
   /* ---------- 계획 대비 실제 ---------- */
