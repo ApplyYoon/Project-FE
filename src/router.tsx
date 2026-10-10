@@ -8,6 +8,7 @@ import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
@@ -44,5 +45,6 @@ export const router = createBrowserRouter([
   { path: '/call/active', element: <CallActivePage /> },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
   { path: '/onboarding', element: <OnboardingPage /> },
+  { path: '/onboarding/done', element: <OnboardingDonePage /> },
   { path: '/signup', element: <SignupPage /> },
 ])

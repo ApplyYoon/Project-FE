@@ -112,7 +112,7 @@ function StepInput({ step, value, onChange }: StepInputProps) {
  * 첫 실행 온보딩 설문입니다. 한 화면에 질문 하나씩 보여주고 "다음" 으로 넘어갑니다.
  * 질문 목록은 lib/onboardingSteps.ts 한 곳에서 관리합니다.
  *
- * 마지막 질문에서 "완료" 를 누르면 답을 저장하고 홈으로 갑니다.
+ * 마지막 질문에서 "완료" 를 누르면 답을 저장하고 "준비 끝!" 화면(/onboarding/done)으로 갑니다.
  * 위쪽의 "나중에 하기" 를 누르면 답을 저장하지 않고 홈으로 갑니다. (지금까지 고른 답은 사라집니다)
  * 이미 설문을 마친 사람(저장된 답이 있는 사람)이 오면 바로 홈으로 돌려보냅니다.
  *
@@ -154,7 +154,7 @@ export function OnboardingPage() {
 
     if (isLastStep) {
       saveData(STORAGE_KEY, answers)
-      navigate('/')
+      navigate('/onboarding/done')
       return
     }
     setStepIndex((index) => index + 1)
