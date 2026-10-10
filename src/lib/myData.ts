@@ -58,8 +58,9 @@ const RECORD_KEYS = [
   'weekly-reviews',
   // 개선안과 도전 상태. 이행 기록(suggestion-checks)만 지우고 이것을 남기면 "도전 중" 인데 기록이 0 인 상태가 됩니다.
   'suggestions',
-  // 목표 조정 제안을 거절한 날짜
+  // 목표 조정 제안을 거절한 날짜, 수락한 날짜
   'goal-adjust-declined',
+  'goal-adjust-accepted',
   // 받은 AI 메시지와, 알림을 보낸 기록
   'ai-messages',
   'ai-message-notified-ids',
