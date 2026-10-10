@@ -1,8 +1,10 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
+import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
 import {
   getDaysUntil,
   isAnswerValid,
@@ -96,7 +98,7 @@ function StepInput({ step, value, onChange }: StepInputProps) {
     )
   }
 
-  // 시각 (step.type === 'time')
+  // 시각 (step.type === 'time'). messageSettings 단계는 OnboardingPage 가 따로 그려서 여기로 오지 않습니다.
   return (
     <Input
       type="time"
@@ -113,6 +115,7 @@ function StepInput({ step, value, onChange }: StepInputProps) {
  * 질문 목록은 lib/onboardingSteps.ts 한 곳에서 관리합니다.
  *
  * 마지막 질문에서 "완료" 를 누르면 답을 저장하고 "준비 끝!" 화면(/onboarding/done)으로 갑니다.
+ * ("관리 설정" 단계의 메시지 설정도 이때 같이 저장합니다)
  * 위쪽의 "나중에 하기" 를 누르면 답을 저장하지 않고 홈으로 갑니다. (지금까지 고른 답은 사라집니다)
  * 이미 설문을 마친 사람(저장된 답이 있는 사람)이 오면 바로 홈으로 돌려보냅니다.
  *
@@ -126,6 +129,8 @@ export function OnboardingPage() {
   // 지금까지 고른 답. 예) { grade: '고2', targetExam: '수능' }
   // "이전" 으로 돌아가도 여기에 남아 있어서 고른 답이 그대로 보입니다.
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  // "관리 설정" 단계의 메시지 설정. 글자 하나가 아니라서 answers 와 따로 들고 있다가 "완료" 때 저장합니다.
+  const [messageSettings, setMessageSettings] = useState(getMessageSettings)
 
   // 이미 마친 사람은 홈으로 보냅니다. (Navigate: 화면을 그리는 대신 주소를 바꿔 주는 부품)
   if (isFinished) return <Navigate to="/" replace />
@@ -154,6 +159,7 @@ export function OnboardingPage() {
 
     if (isLastStep) {
       saveData(STORAGE_KEY, answers)
+      saveMessageSettings(messageSettings)
       navigate('/onboarding/done')
       return
     }
@@ -197,8 +203,12 @@ export function OnboardingPage() {
           )}
         </div>
 
-        {/* key: 질문이 바뀔 때 입력칸을 새로 만들어서 이전 질문의 상태가 섞이지 않게 합니다. */}
-        <StepInput key={step.key} step={step} value={value} onChange={handleChangeAnswer} />
+        {step.type === 'messageSettings' ? (
+          <MessageSettingsFields value={messageSettings} onChange={setMessageSettings} />
+        ) : (
+          // key: 질문이 바뀔 때 입력칸을 새로 만들어서 이전 질문의 상태가 섞이지 않게 합니다.
+          <StepInput key={step.key} step={step} value={value} onChange={handleChangeAnswer} />
+        )}
 
         <div className="flex gap-3">
           <Button

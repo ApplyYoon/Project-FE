@@ -7,8 +7,9 @@
  * ■ 다른 이슈(#88 현재 수준, #89 실패 경험·자기 인식·동기)에서 단계를 끼워 넣는 방법
  *   1. onboardingSteps 에 객체를 하나 더합니다. (group 을 새 이름으로 쓰면 새 묶음이 됩니다)
  *   2. key 는 #78 의 OnboardingAnswers 필드 이름과 똑같이 씁니다. 답이 그 이름으로 저장됩니다.
- *   3. 아래 네 가지 모양(choice, text, date, time)으로 안 되는 질문이면
+ *   3. 아래 모양(choice, text, date, time)으로 안 되는 질문이면
  *      (예: 여러 개 고르기) 위에 Step 모양을 하나 더 만들고, OnboardingPage 의 StepInput 에도 한 줄 더하세요.
+ *      답이 글자 하나가 아닌 단계(messageSettings)는 OnboardingPage 가 StepInput 대신 따로 그립니다.
  */
 
 /** 모든 단계가 같이 가지는 정보 */
@@ -48,7 +49,15 @@ interface TimeStep extends BaseStep {
   type: 'time'
 }
 
-export type OnboardingStep = ChoiceStep | TextStep | DateStep | TimeStep
+/**
+ * AI 메시지 횟수·연락 금지 시간을 고르는 단계. 설정 화면과 같은 입력칸(MessageSettingsFields)을 씁니다.
+ * 답은 온보딩 답이 아니라 메시지 설정(lib/messageSettings)으로 "완료" 때 저장됩니다.
+ */
+interface MessageSettingsStep extends BaseStep {
+  type: 'messageSettings'
+}
+
+export type OnboardingStep = ChoiceStep | TextStep | DateStep | TimeStep | MessageSettingsStep
 
 /** 질문 목록. 위에서부터 차례로 보입니다. */
 export const onboardingSteps: OnboardingStep[] = [
@@ -136,6 +145,15 @@ export const onboardingSteps: OnboardingStep[] = [
     title: '주로 어디서 공부해?',
     options: ['집', '학교', '학원', '독서실·도서관', '카페', '기타'],
   },
+
+  /* ---------- 관리 설정 ---------- */
+  {
+    key: 'messageSettings',
+    group: '관리 설정',
+    type: 'messageSettings',
+    title: 'AI 연락은 언제, 얼마나 받을래?',
+    description: '나중에 설정에서 언제든 바꿀 수 있어요.',
+  },
 ]
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -171,6 +189,8 @@ export function isAnswerValid(
   value: string,
   now: Date = new Date(),
 ): boolean {
+  // 메시지 설정은 처음 값(하루 3번, 23:00 ~ 07:00)이 들어 있어서 그대로 넘어가도 됩니다.
+  if (step.type === 'messageSettings') return true
   if (value.trim() === '') return step.optional === true
   if (step.type === 'date') return getDaysUntil(value, now) >= 0
   return true

@@ -1,4 +1,13 @@
-import type { AiMessage, Evaluation, StudyPlan, StudySession, Subject } from '@/types'
+import type {
+  AiMessage,
+  Evaluation,
+  Insight,
+  ReflectionPrescription,
+  StudyPlan,
+  StudySession,
+  Subject,
+  Suggestion,
+} from '@/types'
 
 /**
  * 백엔드가 생기기 전까지 화면에 보여줄 가짜 데이터입니다.
@@ -38,13 +47,21 @@ interface SessionInput {
   daysAgo: number // 며칠 전인지 (1 = 어제)
   start: string // 시작 시각 'HH:MM'
   minutes: number // 공부한 시간(분)
+  pauseCount?: number // 일시정지한 횟수 (안 적으면 0)
 }
 
 /** 읽기 쉬운 입력을 받아 StudySession 하나를 만듭니다. */
-function makeSession({ id, subjectId, daysAgo, start, minutes }: SessionInput): StudySession {
+function makeSession({
+  id,
+  subjectId,
+  daysAgo,
+  start,
+  minutes,
+  pauseCount = 0,
+}: SessionInput): StudySession {
   const [hour, minute] = start.split(':').map(Number)
   const startedAt = timeDaysAgo(daysAgo, hour, minute)
-  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE }
+  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount }
 }
 
 /* ---------- 가짜 데이터 ---------- */
@@ -143,6 +160,80 @@ export const mockEvaluations: Evaluation[] = [
     score: 55,
     mood: 'normal',
     summary: '절반은 해냈어요. 내일은 수학 시간을 조금 늘려 봐요.',
+  },
+]
+
+/**
+ * 성찰 일기 처방 예시 (#70)
+ * AI 가 패턴을 보고 내려주는 처방이라, 서버가 생기기 전까지 예시로 둡니다.
+ * startDate 를 2일 전으로 둬서, 오늘 열면 "3일째 / 5일"이 됩니다.
+ */
+export const mockReflectionPrescription: ReflectionPrescription = {
+  id: 'reflection-1',
+  startDate: dateDaysAgo(2),
+  days: 5,
+  reason: "최근 '하기 싫음'이 3번 나와서, 5일 동안 짧게 돌아보기로 했어.",
+  questions: ['오늘 계획을 못 지킨 진짜 이유는?', '내일 하나만 바꾼다면?', '오늘 잘한 한 가지는?'],
+}
+
+/**
+ * 폰·SNS 때문에 계획을 못 채운 사람에게 맞춘 개선안 3개 (쉬움·보통·강함)
+ * 원인별 분기(#91)가 생기기 전까지는 이 세트 하나만 보여줍니다.
+ */
+export const mockSuggestions: Suggestion[] = [
+  {
+    id: 'suggestion-1',
+    cause: 'phone',
+    level: 'easy',
+    ifText: '공부를 시작하면',
+    thenText: '알림을 모두 끈다',
+    reason: '버튼 하나라 부담이 제일 적어.',
+    status: 'suggested',
+  },
+  {
+    id: 'suggestion-2',
+    cause: 'phone',
+    level: 'normal',
+    ifText: '학원에서 돌아오면',
+    thenText: '폰을 가방에 넣고 시작한다',
+    reason: '학원 다음이 제일 약한 시간이었어.',
+    status: 'suggested',
+  },
+  {
+    id: 'suggestion-3',
+    cause: 'phone',
+    level: 'hard',
+    ifText: '계획된 공부 시간이 되면',
+    thenText: '집중 모드를 켠다',
+    reason: '나가려면 10초 기다리고 이유를 적어야 해.',
+    status: 'suggested',
+  },
+]
+
+/**
+ * 인사이트 2개 (#73)
+ * 계산은 서버(AI)가 하고 FE 는 결과만 보여주므로, 서버가 생기기 전까지 예시로 둡니다.
+ */
+export const mockInsights: Insight[] = [
+  {
+    id: 'insight-1',
+    sentence: '스스로 밤형이라고 했지만, 오전 세션은 일시정지가 밤의 절반이야.',
+    // 비교하는 두 조건(오전/밤) 중 하나가 아직 5일 미만이라 "가설" 배지가 붙습니다.
+    evidenceDates: [dateDaysAgo(1), dateDaysAgo(2), dateDaysAgo(3), dateDaysAgo(4)],
+    isHypothesis: true,
+  },
+  {
+    id: 'insight-2',
+    sentence: '공부 시간을 매일 평균 1시간 20분 높게 예상해. 계획을 예상의 75%로 잡아보자.',
+    evidenceDates: [
+      dateDaysAgo(1),
+      dateDaysAgo(2),
+      dateDaysAgo(3),
+      dateDaysAgo(4),
+      dateDaysAgo(5),
+      dateDaysAgo(6),
+    ],
+    isHypothesis: false,
   },
 ]
 
