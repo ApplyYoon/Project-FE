@@ -2,6 +2,7 @@ import { Layout } from '@/components/layout/Layout'
 import { AboutPage } from '@/pages/AboutPage'
 import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
+import { CallResultPage } from '@/pages/CallResultPage'
 import { CheckPage } from '@/pages/CheckPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: 'planner', element: <PlannerPage /> },
       { path: 'timer', element: <TimerPage /> },
       { path: 'check', element: <CheckPage /> },
+      { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'login', element: <LoginPage /> },
