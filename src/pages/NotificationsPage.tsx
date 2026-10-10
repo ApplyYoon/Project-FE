@@ -61,6 +61,9 @@ const emptyTexts: Record<TabKey, string> = {
   app: '아직 앱 알림이 없어요.',
 }
 
+// 빈 안내 아래에 붙이는 한 줄: 앱 알림이 언제 오는지 (lib/appAlertCheck.ts). AI 메시지 탭에는 붙이지 않습니다.
+const APP_ALERT_HINT = '계획한 시작 시각이 되거나 목표를 채우면 여기에 알려 줄게요.'
+
 /** 앱이 정해 둔 문장으로 만든 알림이면 true, AI 가 쓴 메시지면 false 입니다. */
 function isAppAlert(message: AiMessage): boolean {
   return message.source === 'app'
@@ -179,7 +182,10 @@ export function NotificationsPage() {
       )}
 
       {visibleMessages.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">{emptyTexts[tab]}</p>
+        <div className="flex flex-col gap-1 py-10 text-center text-sm break-keep text-slate-500">
+          <p>{emptyTexts[tab]}</p>
+          {tab !== 'ai' && <p>{APP_ALERT_HINT}</p>}
+        </div>
       ) : (
         <ol className="flex flex-col gap-5">
           {visibleMessages.map((message, index) => {
