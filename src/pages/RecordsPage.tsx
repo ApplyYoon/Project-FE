@@ -93,6 +93,13 @@ export function RecordsPage() {
       {/* 연속 공부일 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StreakCard sessions={sessions} />
+
+        <Card title="주간 리포트">
+          <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
+          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/report')}>
+            주간 리포트 보기
+          </Button>
+        </Card>
       </div>
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 기록 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}

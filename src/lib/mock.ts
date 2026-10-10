@@ -1,6 +1,7 @@
 import type {
   AiMessage,
   Evaluation,
+  Insight,
   ReflectionPrescription,
   StudyPlan,
   StudySession,
@@ -51,7 +52,8 @@ interface SessionInput {
 function makeSession({ id, subjectId, daysAgo, start, minutes }: SessionInput): StudySession {
   const [hour, minute] = start.split(':').map(Number)
   const startedAt = timeDaysAgo(daysAgo, hour, minute)
-  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE }
+  // 가짜 데이터라 일시정지는 안 한 것으로 둡니다.
+  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount: 0 }
 }
 
 /* ---------- 가짜 데이터 ---------- */
@@ -165,6 +167,33 @@ export const mockReflectionPrescription: ReflectionPrescription = {
   reason: "최근 '하기 싫음'이 3번 나와서, 5일 동안 짧게 돌아보기로 했어.",
   questions: ['오늘 계획을 못 지킨 진짜 이유는?', '내일 하나만 바꾼다면?', '오늘 잘한 한 가지는?'],
 }
+
+/**
+ * 인사이트 2개 (#73)
+ * 계산은 서버(AI)가 하고 FE 는 결과만 보여주므로, 서버가 생기기 전까지 예시로 둡니다.
+ */
+export const mockInsights: Insight[] = [
+  {
+    id: 'insight-1',
+    sentence: '스스로 밤형이라고 했지만, 오전 세션은 일시정지가 밤의 절반이야.',
+    // 비교하는 두 조건(오전/밤) 중 하나가 아직 5일 미만이라 "가설" 배지가 붙습니다.
+    evidenceDates: [dateDaysAgo(1), dateDaysAgo(2), dateDaysAgo(3), dateDaysAgo(4)],
+    isHypothesis: true,
+  },
+  {
+    id: 'insight-2',
+    sentence: '공부 시간을 매일 평균 1시간 20분 높게 예상해. 계획을 예상의 75%로 잡아보자.',
+    evidenceDates: [
+      dateDaysAgo(1),
+      dateDaysAgo(2),
+      dateDaysAgo(3),
+      dateDaysAgo(4),
+      dateDaysAgo(5),
+      dateDaysAgo(6),
+    ],
+    isHypothesis: false,
+  },
+]
 
 /** 지금으로부터 n분 전 시각을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function minutesAgo(minutes: number): number {
