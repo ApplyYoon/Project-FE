@@ -416,12 +416,13 @@ function FirstMeCard({ firstMe }: FirstMeCardProps) {
           <p className="mt-2 text-sm text-slate-600">
             시험 날짜와 공부하는 이유를 알려주면, 힘들 때 여기서 다시 보여줄게요.
           </p>
-          {/* 설문을 이미 끝낸 사람은 /onboarding 이 홈으로 돌려보내서, 아직 안 한 사람에게만 보여줍니다. */}
-          {!firstMe.hasAnswers && (
-            <Link to="/onboarding" className={cn(textLinkClass, 'mt-1')}>
-              내 정보 더 알려주기
-            </Link>
-          )}
+          {/* 처음 설문을 안 한 사람은 처음 설문으로, 한 사람은 남은 질문을 이어서 답하는 화면으로 보냅니다. (#239) */}
+          <Link
+            to={firstMe.hasAnswers ? '/onboarding/more' : '/onboarding'}
+            className={cn(textLinkClass, 'mt-1')}
+          >
+            내 정보 더 알려주기
+          </Link>
         </>
       )}
     </Card>

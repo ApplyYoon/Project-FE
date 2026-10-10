@@ -346,7 +346,11 @@ export interface SubjectLevel {
   confidence: number
 }
 
-/** 온보딩 설문 답 (#58, #88, #89) */
+/**
+ * 온보딩 설문 답 (#58, #88, #89)
+ * 처음에는 학년 · 시험 · 시험 날짜 · 하루 공부 가능 시간만 꼭 묻습니다.
+ * ? 가 붙은 항목은 나중에 "내 정보 더 알려주기" 에서 답하는 것이라 없을 수 있습니다. (#239)
+ */
 export interface OnboardingAnswers {
   /** 학년 */
   grade: '고1' | '고2' | '고3' | 'N수' | '대학생'
@@ -359,31 +363,31 @@ export interface OnboardingAnswers {
   /** 목표 점수 (선택) */
   targetScore?: string
   /** 평소 기상 시각 ('HH:MM') */
-  wakeUpTime: string
+  wakeUpTime?: string
   /** 평소 취침 시각 ('HH:MM') */
-  sleepTime: string
+  sleepTime?: string
   /** 학교 끝나는 시각 ('HH:MM') */
-  schoolEndTime: string
+  schoolEndTime?: string
   /** 학원 끝나는 시각 ('HH:MM') */
-  academyEndTime: string
+  academyEndTime?: string
   /** 주로 공부하는 장소 */
-  studyPlace: string
+  studyPlace?: string
   /** 과목별 최근 성적·자신감 (#88, 건너뛰면 빈 배열) */
-  subjectLevels: SubjectLevel[]
+  subjectLevels?: SubjectLevel[]
   /** 과거에 계획이 무너졌던 때 (여러 개) */
-  pastFailureCauses: PastFailureCause[]
+  pastFailureCauses?: PastFailureCause[]
   /** 아침형 / 밤형 */
-  chronotype: Chronotype
+  chronotype?: Chronotype
   /** 한 번에 집중 가능한 시간(분) */
-  maxFocusMinutes: number
+  maxFocusMinutes?: number
   /** 가장 큰 방해 요소 */
-  biggestDistraction: string
+  biggestDistraction?: string
   /** 하루 공부 가능 시간(분) */
   dailyAvailableMinutes: number
-  /** 공부하는 이유 (한 줄, 최대 50자) */
-  motivationReason: string
+  /** 공부하는 이유 (한 줄, 최대 50자). 비워 둘 수 있습니다 */
+  motivationReason?: string
   /** 목표를 이루면 하고 싶은 것 (한 줄, 최대 50자) */
-  goalReward: string
+  goalReward?: string
 }
 
 /** 나 사용설명서 항목의 분류 (#87) */

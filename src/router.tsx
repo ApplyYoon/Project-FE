@@ -97,6 +97,15 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
+  // 설정의 "내 정보 더 알려주기". 같은 설문 화면으로 아직 안 답한 질문만 이어서 묻습니다. (#239)
+  {
+    path: '/onboarding/more',
+    element: (
+      <RequireAuth>
+        <OnboardingPage mode="more" />
+      </RequireAuth>
+    ),
+  },
   {
     path: '/onboarding/done',
     element: (

@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
+import { getUnansweredSteps } from '@/lib/onboardingSteps'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
@@ -80,6 +81,10 @@ export function SettingsPage() {
     setConfirmCareLevel(null)
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
+  // 온보딩 답. "내 정보 더 알려주기" 에서 남은 질문 수를 세는 데 씁니다. (#239)
+  const [onboardingAnswers] = useState(() =>
+    loadData<Record<string, string> | null>('onboarding-answers', null),
+  )
 
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
@@ -137,6 +142,13 @@ export function SettingsPage() {
     setPendingKind(null)
   }
 
+  // 온보딩에서 미뤄 둔 질문이 몇 개 남았는지 셉니다. 설문을 한 번도 안 했으면 답이 null 입니다. (#239)
+  const remainingCount =
+    onboardingAnswers === null ? 0 : getUnansweredSteps(onboardingAnswers).length
+  // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스. h-10 으로 누르는 높이를 40px 로 둡니다.
+  const moreLinkClass =
+    'bg-brand hover:bg-brand-dark mt-3 inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium text-white transition-colors'
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -149,6 +161,34 @@ export function SettingsPage() {
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 왼쪽은 관리 강도 한도, 오른쪽은 내 데이터 등 그 밖의 설정입니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
+          {/* 온보딩에서 미뤄 둔 질문을 여기서 이어서 답합니다. (#239) */}
+          <Card title="내 정보와 처음의 나">
+            <h4 className="text-sm font-semibold text-slate-900">내 정보 더 알려주기</h4>
+            {onboardingAnswers === null ? (
+              <>
+                <p className="mt-1 text-sm break-keep text-slate-500">
+                  아직 처음 질문에 답하지 않았어요. 질문 몇 개면 끝나요.
+                </p>
+                <Link to="/onboarding" className={moreLinkClass}>
+                  처음 질문 답하기
+                </Link>
+              </>
+            ) : remainingCount > 0 ? (
+              <>
+                <p className="mt-1 text-sm break-keep text-slate-500">
+                  남은 질문 {remainingCount}개 · 안 해도 앱은 그대로 쓸 수 있어요
+                </p>
+                <Link to="/onboarding/more" className={moreLinkClass}>
+                  이어서 답하기
+                </Link>
+              </>
+            ) : (
+              <p className="mt-1 text-sm break-keep text-slate-500">
+                질문에 다 답했어요. 알려준 만큼 더 잘 맞춰 줄게요.
+              </p>
+            )}
+          </Card>
+
           <Card title="관리 강도 최대 한도">
             <p className="text-sm text-slate-500">
               고르면 바로 적용돼요. 언제든 다시 바꿀 수 있어요.

@@ -99,7 +99,7 @@ export function OnboardingDonePage() {
             준비 끝! 오늘부터 같이 해 볼게요
           </h1>
           <p className="mt-2 text-sm break-keep text-slate-600">
-            온보딩 답은 설정에서 언제든 바꿀 수 있어요.
+            남은 질문은 설정의 &quot;내 정보 더 알려주기&quot; 에서 천천히 답해도 돼요.
           </p>
         </div>
 
@@ -129,7 +129,7 @@ export function OnboardingDonePage() {
 
         <section className="rounded-xl bg-slate-50 p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">내가 정한 관리 설정</h2>
+            <h2 className="text-base font-semibold text-slate-900">관리 설정 (기본값)</h2>
             {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
             <Link
               to="/settings"
@@ -138,6 +138,10 @@ export function OnboardingDonePage() {
               설정에서 바꾸기
             </Link>
           </div>
+          {/* 관리 설정은 온보딩에서 묻지 않고 기본값으로 시작합니다. (#239) */}
+          <p className="text-sm break-keep text-slate-500">
+            기본값으로 시작해요. 설정에서 언제든 바꿀 수 있어요.
+          </p>
           <dl className="mt-2 flex flex-col gap-2">
             {settings.map((setting) => (
               <div key={setting.label} className="flex gap-4 text-sm">
