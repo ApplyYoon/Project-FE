@@ -1,7 +1,13 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
+import {
+  getMessageSettings,
+  saveMessageSettings,
+  type MessageSettings,
+} from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
 import { useState } from 'react'
 
@@ -27,9 +33,17 @@ interface DeleteMessage {
 }
 
 export function SettingsPage() {
+  const [messageSettings, setMessageSettings] = useState(getMessageSettings)
+
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
   const [message, setMessage] = useState<DeleteMessage | null>(null)
+
+  function handleChangeMessageSettings(next: MessageSettings) {
+    setMessageSettings(next)
+    // "저장" 버튼이 따로 없어서, 바꾸는 즉시 저장합니다.
+    saveMessageSettings(next)
+  }
 
   function handleConfirm() {
     if (pendingKind === null) return
@@ -51,6 +65,10 @@ export function SettingsPage() {
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 설정 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <Card title="전화와 메시지">
+          <MessageSettingsFields value={messageSettings} onChange={handleChangeMessageSettings} />
+        </Card>
+
         <Card title="내 데이터 관리">
           <div className="flex flex-col gap-4">
             <p className="text-sm text-slate-500">
