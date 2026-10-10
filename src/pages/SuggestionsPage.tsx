@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
+import { splitActiveExperiments } from '@/lib/experimentResult'
 import type { Suggestion, SuggestionLevel } from '@/types'
 
 /** 실험 기간으로 고를 수 있는 일수. 기본값은 14일입니다. */
@@ -64,6 +66,10 @@ export function SuggestionsPage() {
   const [showLimitNotice, setShowLimitNotice] = useState(false)
 
   const activeSuggestions = suggestions.filter((suggestion) => suggestion.status === 'active')
+  // 도전 중인 것 가운데 실험 기간이 끝난 것. 결과를 확인해야 자리가 비어서 새 개선안을 고를 수 있습니다.
+  const finishedIds = splitActiveExperiments(suggestions).finished.map(
+    (suggestion) => suggestion.id,
+  )
   const candidateSuggestions = suggestions.filter((suggestion) => suggestion.status === 'suggested')
   const selected = suggestions.find((suggestion) => suggestion.id === selectedId)
 
@@ -107,6 +113,25 @@ export function SuggestionsPage() {
             const totalDays = suggestion.days ?? 0
             const elapsed = Math.min(daysElapsed(suggestion.startDate ?? todayKey()), totalDays)
             const percent = totalDays > 0 ? (elapsed / totalDays) * 100 : 0
+
+            // 기간이 끝난 실험은 "N일째" 대신, 결과를 확인하러 가는 길을 보여줍니다.
+            if (finishedIds.includes(suggestion.id)) {
+              return (
+                <Card key={suggestion.id}>
+                  <SuggestionSentence suggestion={suggestion} />
+                  <p className="mt-3 text-sm font-medium break-keep text-slate-700">
+                    {totalDays}일 실험이 끝났어요. 결과를 확인하면 새 개선안을 고를 수 있어요.
+                  </p>
+                  {/* 결과 카드는 홈의 "실험" 에 있습니다. h-10 으로 누르는 높이를 40px 로 둡니다. */}
+                  <Link
+                    to="/"
+                    className="text-brand mt-1 inline-flex h-10 items-center text-sm font-medium underline underline-offset-4"
+                  >
+                    홈에서 결과 확인하기
+                  </Link>
+                </Card>
+              )
+            }
 
             return (
               <Card key={suggestion.id}>
