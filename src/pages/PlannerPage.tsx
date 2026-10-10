@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
+import { moveDateKey, toDateKey } from '@/lib/date'
 import { usePlans } from '@/hooks/usePlans'
 import { mockSubjects } from '@/lib/mock'
 import { loadData, saveData } from '@/lib/storage'
@@ -26,20 +27,6 @@ const colorSwatchStyles: Record<SubjectColor, string> = {
   orange: 'bg-orange-500',
 }
 const subjectColorOrder: SubjectColor[] = ['blue', 'green', 'red', 'purple', 'orange']
-
-/** Date 를 계획 데이터와 같은 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString 은 한국 시간이 아니라서 쓰지 않습니다)*/
-function toDateKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
-/** 'YYYY-MM-DD' 날짜에서 days 일 만큼 이동한 날짜를 돌려줍니다. (-1 = 어제, 1 = 내일) */
-function moveDateKey(dateKey: string, days: number): string {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (월은 0부터 시작)
-  return toDateKey(new Date(year, month - 1, day + days))
-}
 
 interface PlanAddFormProps {
   /** 고를 수 있는 과목 목록 */
