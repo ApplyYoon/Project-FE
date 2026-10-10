@@ -132,6 +132,11 @@ interface PlanAddFormProps {
 function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAddFormProps) {
   // 첫 과목을 미리 골라 둡니다. 과목이 하나도 없으면 빈 값입니다.
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
+  // 고른 과목이 "내 과목" 에서 지워졌으면, 남아 있는 첫 과목을 고른 것으로 봅니다. 과목이 하나도 없으면 빈 글자입니다.
+  // (지워진 과목의 id 로 계획이 저장되지 않게 하기 위해서입니다)
+  const selectedSubjectId = subjects.some((subject) => subject.id === subjectId)
+    ? subjectId
+    : (subjects[0]?.id ?? '')
   // 공부 계획을 넣는 중인지 노는 계획을 넣는 중인지 (#238)
   const [kind, setKind] = useState<PlanKind>('study')
   // 노는 계획에서 고른 종류 (게임 · 영상 … 또는 '직접 입력')
@@ -178,6 +183,12 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
     const usesTypedContent = !isPlay || playType === CUSTOM_PLAY_TYPE
     const finalContent = usesTypedContent ? trimmedContent : playType
 
+    // 공부 계획은 과목이 있어야 합니다. 과목을 전부 지웠으면 추가하지 않고 알려 줍니다.
+    if (!isPlay && selectedSubjectId === '') {
+      setContentError('과목이 없어요. 아래 "내 과목" 에서 먼저 추가해 주세요.')
+      return
+    }
+
     // 내용이 비었으면 추가하지 않고 안내 문구만 보여 줍니다. (목표 시간은 버튼으로 골라서 항상 쓸 수 있는 값입니다)
     if (finalContent === '') {
       setContentError(isPlay ? '무엇을 하며 놀지 적어 주세요.' : '할 일을 입력해 주세요.')
@@ -193,7 +204,7 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
     onAdd({
       kind,
       // 노는 계획은 과목이 없어서 빈 글자를 넘깁니다.
-      subjectId: isPlay ? '' : subjectId,
+      subjectId: isPlay ? '' : selectedSubjectId,
       content: finalContent,
       targetMinutes: minutes,
       startTime,
@@ -290,14 +301,19 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
               {subjects.map((subject) => (
                 <Button
                   key={subject.id}
-                  variant={subject.id === subjectId ? 'primary' : 'secondary'}
-                  aria-pressed={subject.id === subjectId}
+                  variant={subject.id === selectedSubjectId ? 'primary' : 'secondary'}
+                  aria-pressed={subject.id === selectedSubjectId}
                   onClick={() => setSubjectId(subject.id)}
                 >
                   {subject.name}
                 </Button>
               ))}
             </div>
+            {subjects.length === 0 && (
+              <p className="text-sm break-keep text-slate-500">
+                과목이 없어요. 아래 &quot;내 과목&quot; 에서 먼저 추가해 주세요.
+              </p>
+            )}
           </div>
         ) : (
           // 노는 계획은 과목 대신 무엇을 하며 놀지 고릅니다.
