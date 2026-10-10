@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { MissReasonPicker, type MissReasonValue } from '@/components/ui/MissReasonPicker'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useCheckIns } from '@/hooks/useCheckIns'
 import { usePlans } from '@/hooks/usePlans'
@@ -80,6 +81,13 @@ export function CheckPage() {
     existingCheckIn?.expectedMinutes ?? DEFAULT_EXPECTED_MINUTES,
   )
 
+  // 어제 못 채운 이유. 체크인에 이미 있으면 그 값으로 시작합니다. 아직 안 골랐으면 null 입니다.
+  const [missReason, setMissReason] = useState<MissReasonValue | null>(() =>
+    existingCheckIn?.missReason
+      ? { reason: existingCheckIn.missReason, note: existingCheckIn.missReasonNote ?? '' }
+      : null,
+  )
+
   // 어제 계획 달성률 = 어제 실제로 공부한 시간 ÷ 어제 계획한 목표 시간
   const yesterdayPlans = getPlans(yesterdayKey)
   const targetMinutes = yesterdayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
@@ -94,12 +102,24 @@ export function CheckPage() {
 
   const achievementRate = targetMinutes === 0 ? 0 : (actualMinutes / targetMinutes) * 100
 
+  // 계획이 있었는데 다 못 채운 날에만 "왜 못 했어?" 를 묻습니다. (계획이 없던 날은 못 채운 게 아닙니다)
+  const needsMissReason = targetMinutes > 0 && achievementRate < 100
+
   function handleSubmit() {
     const checkIn: CheckIn = {
       date: todayKey,
       condition,
       mood,
       expectedMinutes,
+    }
+
+    // 못 채운 날에 이유를 골랐을 때만 저장합니다. '기타' 일 때만 적은 한 줄도 같이 저장합니다.
+    if (needsMissReason && missReason !== null) {
+      checkIn.missReason = missReason.reason
+      const note = missReason.note.trim()
+      if (missReason.reason === 'etc' && note !== '') {
+        checkIn.missReasonNote = note
+      }
     }
     saveCheckIn(checkIn)
   }
@@ -183,6 +203,15 @@ export function CheckPage() {
           ))}
         </div>
       </Card>
+
+      {needsMissReason && (
+        <MissReasonPicker
+          achievementRate={achievementRate}
+          value={missReason}
+          onChange={setMissReason}
+          className="rounded-2xl"
+        />
+      )}
 
       <Card title="오늘은 몇 시간 할 것 같아?" className="rounded-2xl">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
