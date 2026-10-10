@@ -1,17 +1,7 @@
-import { isExam } from '@/lib/exams'
-import { loadData, saveData } from '@/lib/storage'
+import { EXAMS_STORAGE_KEY, loadExams } from '@/lib/exams'
+import { saveData } from '@/lib/storage'
 import type { Exam } from '@/types'
 import { useEffect, useState } from 'react'
-
-// 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-exams' 가 됩니다)
-// "모든 기록 지우기" 가 이 키도 지웁니다. 이름을 바꾸면 src/lib/myData.ts 도 같이 바꾸세요.
-const STORAGE_KEY = 'exams'
-
-/** 저장소에서 시험 목록을 불러옵니다. 모양이 깨진 항목은 버립니다. */
-function loadExams(): Exam[] {
-  const saved = loadData<unknown>(STORAGE_KEY, [])
-  return Array.isArray(saved) ? saved.filter(isExam) : []
-}
 
 /**
  * 시험 목록을 들고 있고, 바뀔 때마다 localStorage 에 저장합니다. (#80)
@@ -24,7 +14,7 @@ export function useExams() {
 
   // 시험이 바뀔 때마다 저장합니다.
   useEffect(() => {
-    saveData(STORAGE_KEY, exams)
+    saveData(EXAMS_STORAGE_KEY, exams)
   }, [exams])
 
   /** 새 시험을 목록 맨 뒤에 붙입니다. */

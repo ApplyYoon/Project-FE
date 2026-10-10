@@ -3,7 +3,12 @@
  * React 를 쓰지 않아서 같은 입력이면 항상 같은 결과가 나옵니다.
  */
 import { toDateKey } from '@/lib/date'
+import { loadData } from '@/lib/storage'
 import type { Exam, ExamType } from '@/types'
+
+// 시험 목록을 넣어 두는 저장소 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-exams' 가 됩니다)
+// "모든 기록 지우기" 가 이 키도 지웁니다. 이름을 바꾸면 src/lib/myData.ts 도 같이 바꾸세요.
+export const EXAMS_STORAGE_KEY = 'exams'
 
 /** 시험 종류 버튼에 보여줄 이름. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 export const examTypeOptions: { value: ExamType; label: string }[] = [
@@ -93,4 +98,13 @@ export function isExam(value: unknown): value is Exam {
         typeof (score as Record<string, unknown>).expectedScore === 'number',
     )
   )
+}
+
+/**
+ * 저장소에서 시험 목록을 불러옵니다. 모양이 깨진 항목은 버립니다.
+ * 화면(useExams)과, 시험 날짜를 읽기만 하는 곳(안전 브레이크 등)이 같이 씁니다.
+ */
+export function loadExams(): Exam[] {
+  const saved = loadData<unknown>(EXAMS_STORAGE_KEY, [])
+  return Array.isArray(saved) ? saved.filter(isExam) : []
 }
