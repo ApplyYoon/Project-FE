@@ -43,18 +43,10 @@ function todayKey(): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
-/** 내일 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function tomorrowKey(): string {
-  const date = new Date()
-  date.setDate(date.getDate() + 1)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
 /**
  * 지금 적용되는 한도를 돌려줍니다.
  * 예약해 둔 한도 상향의 적용 날짜가 지났으면, 지금 적용하고 저장한 뒤 돌려줍니다.
+ * (지금은 한도를 올려도 바로 적용돼서 새로 예약되는 일은 없습니다. 예전에 저장된 예약을 위한 코드입니다)
  */
 export function getCareLimits(): CareLimits {
   const saved = loadData(STORAGE_KEY, defaultLimits)
@@ -76,29 +68,23 @@ export function getCareLimits(): CareLimits {
   return applied
 }
 
-/** 관리 강도 최대 한도를 바꿉니다. 낮추면 바로 적용되고, 높이면 내일부터 적용됩니다. */
+/**
+ * 관리 강도 최대 한도를 바꿉니다. 높이든 낮추든 바로 적용됩니다.
+ * 예전에 예약해 둔 한도 상향이 남아 있으면 같이 지웁니다. (새로 고른 값이 우선)
+ * 4단계로 올릴 때 "정말 올릴까요?" 하고 한 번 더 묻는 건 설정 화면(SettingsPage)이 합니다.
+ */
 export function setMaxCareLevel(nextLevel: CareLevel): CareLimits {
-  const current = getCareLimits()
-
-  const next: CareLimits =
-    nextLevel <= current.maxCareLevel
-      ? {
-          ...current,
-          maxCareLevel: nextLevel,
-          pendingMaxCareLevel: null,
-          pendingEffectiveDate: null,
-        }
-      : { ...current, pendingMaxCareLevel: nextLevel, pendingEffectiveDate: tomorrowKey() }
-
+  const next: CareLimits = {
+    ...getCareLimits(),
+    maxCareLevel: nextLevel,
+    pendingMaxCareLevel: null,
+    pendingEffectiveDate: null,
+  }
   saveData(STORAGE_KEY, next)
   return next
 }
 
-/**
- * 온보딩에서 한도를 처음 정할 때 씁니다. 고른 값이 바로 적용됩니다.
- * "높이면 내일부터" 규칙(setMaxCareLevel)은 쓰는 도중에 갑자기 세게 올리는 걸 막는 규칙이라,
- * 처음 정하는 온보딩에는 쓰지 않습니다. (쓰면 3단계를 골라도 "준비 끝" 화면에 2단계로 보입니다)
- */
+/** 온보딩에서 한도를 처음 정할 때 씁니다. 관리 강도와 독설 수위를 한 번에 바로 적용합니다. */
 export function setInitialCareLimits(maxCareLevel: CareLevel, maxHarshness: number): CareLimits {
   const next: CareLimits = {
     ...getCareLimits(),

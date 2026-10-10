@@ -165,7 +165,7 @@ export function OnboardingPage() {
     if (isLastStep) {
       saveData(STORAGE_KEY, answers)
       saveMessageSettings(messageSettings)
-      // 처음 정하는 한도라서 "높이면 내일부터" 규칙 없이 바로 적용합니다.
+      // 처음 정하는 관리 강도·독설 수위를 한 번에 저장합니다.
       setInitialCareLimits(maxCareLevel, maxHarshness)
       navigate('/onboarding/done')
       return
