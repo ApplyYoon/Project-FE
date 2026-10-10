@@ -2,7 +2,8 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
-import { mockPlans, mockSubjects } from '@/lib/mock'
+import { usePlans } from '@/hooks/usePlans'
+import { mockSubjects } from '@/lib/mock'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, Subject, SubjectColor } from '@/types'
 import { useEffect, useState, type FormEvent } from 'react'
@@ -240,8 +241,8 @@ function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
 export function PlannerPage() {
   const todayKey = toDateKey(new Date())
 
-  // 모든 날짜의 계획을 들고 있고, 화면에는 고른 날짜의 계획만 보여 줍니다.
-  const [allPlans, setAllPlans] = useState<StudyPlan[]>(mockPlans)
+  // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
+  const { allPlans, getPlans, addPlan, toggleDone, deletePlan } = usePlans()
   const [selectedDate, setSelectedDate] = useState(todayKey)
 
   // 새로고침해도 과목 목록이 유지되도록 localStorage 에서 불러옵니다. (처음 한 번은 예시 과목으로 시작)
@@ -251,7 +252,8 @@ export function PlannerPage() {
     saveData('subjects', subjects)
   }, [subjects])
 
-  const plans = allPlans.filter((plan) => plan.date === selectedDate)
+  // 화면에는 고른 날짜의 계획만 보여 줍니다.
+  const plans = getPlans(selectedDate)
   const isToday = selectedDate === todayKey
 
   // 'ko-KR' 로 바꾸면 "10월 5일 일요일" 처럼 한국어 날짜가 됩니다.
@@ -263,22 +265,14 @@ export function PlannerPage() {
     weekday: 'long',
   })
 
-  // 체크박스를 누르면 그 계획의 done 만 뒤집습니다. (나머지는 그대로)
-  function handleToggleDone(planId: string) {
-    setAllPlans((prev) =>
-      prev.map((plan) => (plan.id === planId ? { ...plan, done: !plan.done } : plan)),
-    )
-  }
-
   // window.confirm 은 브라우저 기본 확인창입니다. "확인" 을 누르면 true, "취소" 면 false 를 돌려줍니다.
   function handleDelete(target: StudyPlan) {
     const isConfirmed = window.confirm(`"${target.content}" 계획을 정말 지울까요?`)
     if (!isConfirmed) return
-    // filter: 지울 계획만 빼고 나머지로 새 배열을 만듭니다.
-    setAllPlans((prev) => prev.filter((plan) => plan.id !== target.id))
+    deletePlan(target.id)
   }
 
-  // 폼에서 받은 값으로 새 계획을 만들어 목록 맨 뒤에 붙입니다. 지금 보고 있는 날짜의 계획이 됩니다.
+  // 폼에서 받은 값으로 새 계획을 만들어 저장합니다. 지금 보고 있는 날짜의 계획이 됩니다.
   function handleAdd(subjectId: string, content: string, targetMinutes: number) {
     const newPlan: StudyPlan = {
       // 추가한 시각(밀리초)을 붙여서 다른 계획과 겹치지 않는 id 를 만듭니다.
@@ -289,8 +283,8 @@ export function PlannerPage() {
       targetMinutes,
       done: false,
     }
-    // 기존 계획들 뒤에 새 계획을 붙인 새 배열을 만듭니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
-    setAllPlans((prev) => [...prev, newPlan])
+    // 그날 목록의 맨 뒤에 붙습니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
+    addPlan(newPlan)
   }
 
   // 새 과목을 목록 맨 뒤에 추가합니다.
@@ -367,7 +361,7 @@ export function PlannerPage() {
                       <input
                         type="checkbox"
                         checked={plan.done}
-                        onChange={() => handleToggleDone(plan.id)}
+                        onChange={() => toggleDone(plan.id)}
                         aria-label={`${plan.content} 완료`}
                         className="accent-brand h-5 w-5 cursor-pointer"
                       />
