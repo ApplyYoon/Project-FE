@@ -251,7 +251,7 @@ function SchoolField({ school, onChange }: SchoolFieldProps) {
           id="school"
           label="고등학교 (선택)"
           value={query}
-          placeholder="예) 디지털미디어"
+          placeholder="예) IT희망학교"
           // 검색어를 적는 칸이라 브라우저의 자동 완성(예전에 적은 값 추천)은 끕니다.
           autoComplete="off"
           // 휴대폰 키보드의 Enter 자리에 "검색" 이 보이게 합니다.
@@ -540,7 +540,7 @@ export function SignupPage() {
             label="이름"
             value={name}
             maxLength={NAME_MAX_LENGTH}
-            placeholder="예) 김하늘"
+            placeholder="예) 티맥스"
             // autoComplete: 브라우저가 저장해 둔 내 이름을 추천해 줍니다.
             autoComplete="name"
             error={nameError ?? undefined}
@@ -560,7 +560,7 @@ export function SignupPage() {
             label="닉네임"
             value={nickname}
             maxLength={NICKNAME_MAX_LENGTH}
-            placeholder="예) 공부하는 고양이"
+            placeholder="예) 김티맥"
             autoComplete="nickname"
             error={nicknameError ?? undefined}
             onChange={(event) => {
