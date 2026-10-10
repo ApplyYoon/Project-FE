@@ -496,8 +496,13 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
   const onboardingAnswers = loadOnboardingAnswers() ?? {}
   const examDateKey = onboardingAnswers.targetExamDate || null
   const examLabel = onboardingAnswers.targetExam || '시험일'
+  // 시험 날짜가 이미 지났으면 "시험까지" 를 그릴 수 없습니다. (그래프의 오늘이 시험 날보다 오른쪽으로 나가서 깨집니다)
+  // 'YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다.
+  const isExamPassed = examDateKey !== null && examDateKey < todayKey
   const growthCurve =
-    examDateKey === null ? null : getGrowthCurve(allPlans, sessions, todayKey, examDateKey)
+    examDateKey === null || isExamPassed
+      ? null
+      : getGrowthCurve(allPlans, sessions, todayKey, examDateKey)
 
   return (
     <>
@@ -604,6 +609,10 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
             <Link to="/onboarding" className="text-brand font-semibold hover:underline">
               온보딩 하러 가기
             </Link>
+          </p>
+        ) : isExamPassed ? (
+          <p className="mt-3 text-sm break-keep text-slate-500">
+            {examLabel} 날짜가 지났어요. 다음 시험 날짜가 정해지면 다시 보여드릴게요.
           </p>
         ) : !growthCurve?.hasEnoughData ? (
           <p className="mt-3 text-sm text-slate-500">기록이 더 쌓이면 보여드릴게요.</p>
