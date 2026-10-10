@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/hooks/useAuth'
+import { getPasswordAuthErrorMessage, signupWithPassword } from '@/lib/authApi'
 import { cn } from '@/lib/cn'
 import {
   getSchoolQueryError,
@@ -16,11 +17,14 @@ import {
   NAME_MIN_LENGTH,
   NICKNAME_MAX_LENGTH,
   NICKNAME_MIN_LENGTH,
+  PASSWORD_MIN_LENGTH,
   SIGNUP_STORAGE_KEY,
   canSubmitSignup,
   getEmailError,
   getNameError,
   getNicknameError,
+  getPasswordConfirmError,
+  getPasswordError,
   isAllConsented,
   makeAllConsents,
   type SignupConsents,
@@ -30,7 +34,7 @@ import { saveData } from '@/lib/storage'
 import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument } from '@/lib/terms'
 import { testUser } from '@/lib/testLogin'
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 /*
  * ⚠️ 이 화면의 동의 문구("쓰는 곳" 안내)와 "보기" 로 여는 약관 전문(lib/terms.ts)은 초안입니다.
@@ -84,18 +88,33 @@ const collectedItems = [
   '설정 › 내 데이터에서 언제든 지울 수 있어요',
 ]
 
-// 위쪽 3단계 안내. 지금은 두 번째(가입 정보) 단계입니다.
+// 위쪽 단계 안내. SNS·테스트 로그인을 하고 온 사람은 3단계 중 두 번째(가입 정보)입니다.
 const signupSteps = [
   { label: '로그인 완료', state: 'done' },
   { label: '가입 정보', state: 'current' },
   { label: '온보딩', state: 'next' },
 ] as const
 
+// 이메일로 가입하는 사람은 로그인을 먼저 하지 않아서 2단계입니다.
+const emailSignupSteps = [
+  { label: '가입 정보', state: 'current' },
+  { label: '온보딩', state: 'next' },
+] as const
+
+interface SignupStepsProps {
+  /** 이메일로 가입하는 중이면 true (로그인 없이 가입 화면에 온 사람) */
+  isEmailSignup: boolean
+}
+
 /** "1 로그인 완료 / 2 가입 정보 / 3 온보딩" 처럼 지금 어느 단계인지 보여주는 막대입니다. */
-function SignupSteps() {
+function SignupSteps({ isEmailSignup }: SignupStepsProps) {
+  const steps = isEmailSignup ? emailSignupSteps : signupSteps
+
   return (
-    <ol className="grid grid-cols-3 gap-2 text-xs sm:text-sm">
-      {signupSteps.map((step, index) => (
+    <ol
+      className={cn('grid gap-2 text-xs sm:text-sm', isEmailSignup ? 'grid-cols-2' : 'grid-cols-3')}
+    >
+      {steps.map((step, index) => (
         <li key={step.label} className="flex flex-col gap-2">
           <span
             className={cn('h-1 rounded-full', step.state === 'next' ? 'bg-slate-200' : 'bg-brand')}
@@ -358,7 +377,9 @@ function UnderFourteenView() {
 }
 
 /**
- * 로그인을 처음 한 사람에게 가입 정보를 받는 화면입니다.
+ * 가입 정보를 받는 화면입니다. 두 가지 경우에 옵니다.
+ *   - SNS·테스트 로그인을 처음 한 사람: 이미 로그인된 상태라 비밀번호 없이 가입 정보만 받습니다.
+ *   - 로그인 없이 온 사람(헤더의 "회원가입"): 이메일·비밀번호로 가입합니다. 서버에 계정을 만들고 바로 로그인됩니다.
  *  1) 이름·닉네임·이메일·고등학교(선택)  2) 만 14세 이상인지 확인  3) 개인정보 수집·이용 동의
  * 다 마치면 정보를 저장하고 온보딩(/onboarding)으로 갑니다.
  *
@@ -367,7 +388,10 @@ function UnderFourteenView() {
  */
 export function SignupPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, isLoggedIn, login } = useAuth()
+  // 이메일로 가입하는 중인지 = 로그인 없이 이 화면에 온 사람인지. (SNS·테스트 로그인을 하고 온 사람은 false)
+  // 화면이 처음 그려질 때 한 번만 정합니다. 가입에 성공해 로그인되는 순간 화면이 바뀌면 안 되기 때문입니다.
+  const [isEmailSignup] = useState(!isLoggedIn)
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState('')
@@ -377,6 +401,14 @@ export function SignupPage() {
   const [isNameTouched, setIsNameTouched] = useState(false)
   const [isNicknameTouched, setIsNicknameTouched] = useState(false)
   const [isEmailTouched, setIsEmailTouched] = useState(false)
+  // 이메일로 가입할 때만 쓰는 비밀번호. 서버로 보내기만 하고 이 기기에는 저장하지 않습니다.
+  const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
+  const [isPasswordTouched, setIsPasswordTouched] = useState(false)
+  const [isPasswordConfirmTouched, setIsPasswordConfirmTouched] = useState(false)
+  // 서버에 가입을 보내고 답을 기다리는 중인지, 실패했을 때 보여줄 안내
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   // 만 14세 이상인지. 아직 안 골랐으면 null, 네 = true, 아니요 = false
   const [isOver14, setIsOver14] = useState<boolean | null>(null)
   const [consents, setConsents] = useState<SignupConsents>(makeAllConsents(false))
@@ -391,18 +423,29 @@ export function SignupPage() {
   const nameError = isNameTouched ? getNameError(name) : null
   const nicknameError = isNicknameTouched ? getNicknameError(nickname) : null
   const emailError = isEmailTouched ? getEmailError(email) : null
-  const canSubmit = canSubmitSignup({ name, nickname, email, isOver14, consents })
+  const passwordError = isPasswordTouched ? getPasswordError(password) : null
+  const passwordConfirmError = isPasswordConfirmTouched
+    ? getPasswordConfirmError(password, passwordConfirm)
+    : null
+  // 이메일로 가입할 때는 비밀번호 두 칸도 맞아야 합니다.
+  const isPasswordReady =
+    !isEmailSignup ||
+    (getPasswordError(password) === null &&
+      getPasswordConfirmError(password, passwordConfirm) === null)
+  const canSubmit =
+    canSubmitSignup({ name, nickname, email, isOver14, consents }) && isPasswordReady
   const openedItem = consentItems.find((item) => item.key === openedKey)
 
   function handleChangeConsent(key: ConsentKey, isChecked: boolean) {
     setConsents((prev) => ({ ...prev, [key]: isChecked }))
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // form 이 기본으로 하는 "페이지 새로고침" 을 막습니다.
     event.preventDefault()
-    if (!canSubmit) return
+    if (!canSubmit || isSubmitting) return
 
+    // 이 기기에 저장해 두는 가입 정보입니다. 비밀번호는 넣지 않습니다.
     const info: SignupInfo = {
       name: name.trim(),
       nickname: nickname.trim(),
@@ -411,6 +454,29 @@ export function SignupPage() {
       consents,
       agreedAt: Date.now(),
     }
+
+    // 이메일 가입: 서버에 계정을 만들고, 성공하면 바로 로그인된 상태가 됩니다. (lib/authApi.ts)
+    if (isEmailSignup) {
+      setIsSubmitting(true)
+      setSubmitError(null)
+      try {
+        const result = await signupWithPassword({
+          email: info.email,
+          password,
+          name: info.name,
+          nickname: info.nickname,
+          school,
+          consents,
+        })
+        login(result.user, result.token)
+      } catch (error) {
+        setSubmitError(getPasswordAuthErrorMessage(error, 'signup'))
+        setIsSubmitting(false)
+        // 실패하면 가입 정보도 저장하지 않고 이 화면에 머뭅니다.
+        return
+      }
+    }
+
     saveData(SIGNUP_STORAGE_KEY, info)
     navigate('/onboarding')
   }
@@ -418,18 +484,31 @@ export function SignupPage() {
   return (
     <PlainLayout>
       <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
-        <SignupSteps />
+        <SignupSteps isEmailSignup={isEmailSignup} />
 
         <div>
           <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
             반가워요! 가입 정보를 알려주세요
           </h1>
           {/* 어떤 SNS 로 로그인했는지는 아직 저장하지 않아서(#47 이후) 이름 없이 적습니다. */}
-          <p className="mt-2 break-keep text-slate-600">
-            {isTestUser
-              ? '테스트 계정으로 로그인했어요. 적은 정보는 이 브라우저에만 저장돼요.'
-              : 'SNS 계정으로 로그인했어요.'}
-          </p>
+          {isEmailSignup ? (
+            <p className="mt-2 break-keep text-slate-600">
+              이메일과 비밀번호로 가입해요. 이미 계정이 있다면{' '}
+              {/* h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다. */}
+              <Link
+                to="/login"
+                className="text-brand inline-flex h-10 items-center font-medium underline underline-offset-4"
+              >
+                로그인
+              </Link>
+            </p>
+          ) : (
+            <p className="mt-2 break-keep text-slate-600">
+              {isTestUser
+                ? '테스트 계정으로 로그인했어요. 적은 정보는 이 브라우저에만 저장돼요.'
+                : 'SNS 계정으로 로그인했어요.'}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -487,6 +566,41 @@ export function SignupPage() {
           onBlur={() => setIsEmailTouched(true)}
           className="h-12 text-base"
         />
+
+        {/* 이메일로 가입할 때만 비밀번호를 받습니다. (SNS·테스트 로그인은 비밀번호가 없습니다) */}
+        {isEmailSignup && (
+          <>
+            <div className="flex flex-col gap-2">
+              <Input
+                id="password"
+                // type="password": 적은 글자가 점(●)으로 가려집니다.
+                type="password"
+                label="비밀번호"
+                value={password}
+                // new-password: 브라우저가 "새 비밀번호" 로 알고 저장을 물어봅니다.
+                autoComplete="new-password"
+                error={passwordError ?? undefined}
+                onChange={(event) => setPassword(event.target.value)}
+                onBlur={() => setIsPasswordTouched(true)}
+                className="h-12 text-base"
+              />
+              <p className="text-sm text-slate-500">
+                {PASSWORD_MIN_LENGTH}자 이상, 영문과 숫자를 모두 넣어 주세요.
+              </p>
+            </div>
+            <Input
+              id="password-confirm"
+              type="password"
+              label="비밀번호 확인"
+              value={passwordConfirm}
+              autoComplete="new-password"
+              error={passwordConfirmError ?? undefined}
+              onChange={(event) => setPasswordConfirm(event.target.value)}
+              onBlur={() => setIsPasswordConfirmTouched(true)}
+              className="h-12 text-base"
+            />
+          </>
+        )}
 
         <SchoolField school={school} onChange={setSchool} />
 
@@ -575,13 +689,25 @@ export function SignupPage() {
         </details>
 
         <div className="flex flex-col gap-2">
+          {/* 서버가 가입을 거절했거나 연결하지 못했을 때의 안내 (이메일 가입만) */}
+          {submitError !== null && (
+            <p role="alert" className="text-center text-sm break-keep text-red-600">
+              {submitError}
+            </p>
+          )}
           {/* 이름·닉네임·이메일·나이·필수 동의 중 하나라도 빠졌으면 눌리지 않습니다. */}
-          <Button type="submit" size="lg" className="w-full" disabled={!canSubmit}>
-            다음 · 온보딩 시작
+          <Button type="submit" size="lg" className="w-full" disabled={!canSubmit || isSubmitting}>
+            {isSubmitting
+              ? '가입하는 중…'
+              : isEmailSignup
+                ? '가입하고 온보딩 시작'
+                : '다음 · 온보딩 시작'}
           </Button>
           {!canSubmit && (
             <p className="text-center text-sm break-keep text-slate-500">
-              이름·닉네임·이메일, 만 14세 확인, 필수 동의를 마치면 눌러져요.
+              {isEmailSignup
+                ? '이름·닉네임·이메일·비밀번호, 만 14세 확인, 필수 동의를 마치면 눌러져요.'
+                : '이름·닉네임·이메일, 만 14세 확인, 필수 동의를 마치면 눌러져요.'}
             </p>
           )}
         </div>
