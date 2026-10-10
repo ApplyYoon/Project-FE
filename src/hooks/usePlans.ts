@@ -37,6 +37,17 @@ export function usePlans() {
     setPlansByDate((prev) => ({ ...prev, [plan.date]: [...(prev[plan.date] ?? []), plan] }))
   }
 
+  /** 계획 여러 개를 한 번에 붙입니다. 각 계획은 자기 날짜(plan.date)의 목록 맨 뒤에 들어갑니다. (다른 날 계획 가져오기에 씁니다) */
+  function addPlans(plans: StudyPlan[]) {
+    setPlansByDate((prev) => {
+      const next: PlansByDate = { ...prev }
+      for (const plan of plans) {
+        next[plan.date] = [...(next[plan.date] ?? []), plan]
+      }
+      return next
+    })
+  }
+
   /** 그 계획의 done 만 뒤집습니다. (나머지는 그대로) */
   function toggleDone(planId: string) {
     setPlansByDate((prev) => {
@@ -78,5 +89,14 @@ export function usePlans() {
     setPlansByDate((prev) => ({ ...prev, [date]: plans }))
   }
 
-  return { allPlans, getPlans, addPlan, toggleDone, completePlan, deletePlan, replaceDayPlans }
+  return {
+    allPlans,
+    getPlans,
+    addPlan,
+    addPlans,
+    toggleDone,
+    completePlan,
+    deletePlan,
+    replaceDayPlans,
+  }
 }

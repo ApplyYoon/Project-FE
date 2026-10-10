@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoalAdjustModal } from '@/components/ui/GoalAdjustModal'
 import { Input } from '@/components/ui/Input'
+import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
@@ -16,6 +17,7 @@ import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
 import { mockSubjects } from '@/lib/mock'
 import { getPlanProgress } from '@/lib/planProgress'
+import { copyPlans, getFrequentPlans, type FrequentPlan } from '@/lib/planShortcuts'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, Subject, SubjectColor } from '@/types'
 import { useEffect, useState, type FormEvent } from 'react'
@@ -40,22 +42,27 @@ const colorSwatchStyles: Record<SubjectColor, string> = {
 }
 const subjectColorOrder: SubjectColor[] = ['blue', 'green', 'red', 'purple', 'orange']
 
+// 목표 시간 버튼에 보여줄 값(분)과, 처음에 골라 두는 값
+const PLAN_MINUTES_PRESETS = [30, 60, 90, 120]
+const DEFAULT_PLAN_MINUTES = 60
+
 interface PlanAddFormProps {
   /** 고를 수 있는 과목 목록 */
   subjects: Subject[]
+  /** 최근에 자주 쓴 계획. 버튼으로 보여주고, 누르면 바로 추가합니다. */
+  frequentPlans: FrequentPlan[]
   /** 입력 검사를 통과했을 때, 새 계획에 들어갈 값을 부모에게 넘깁니다. */
   onAdd: (subjectId: string, content: string, targetMinutes: number) => void
 }
 
-/** 새 계획을 입력하는 폼입니다. (과목 · 내용 · 목표 시간) */
-function PlanAddForm({ subjects, onAdd }: PlanAddFormProps) {
+/** 새 계획을 입력하는 폼입니다. (자주 쓰는 계획 · 과목 · 내용 · 목표 시간) */
+function PlanAddForm({ subjects, frequentPlans, onAdd }: PlanAddFormProps) {
   // 첫 과목을 미리 골라 둡니다. 과목이 하나도 없으면 빈 값입니다.
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [content, setContent] = useState('')
-  // input 에서 꺼낸 값은 항상 글자(string)라서, 글자로 들고 있다가 검사할 때 숫자로 바꿉니다.
-  const [minutes, setMinutes] = useState('')
+  // 목표 시간은 버튼으로 고릅니다. 고른 값은 다음 계획을 넣을 때도 그대로 남습니다.
+  const [minutes, setMinutes] = useState(DEFAULT_PLAN_MINUTES)
   const [contentError, setContentError] = useState('')
-  const [minutesError, setMinutesError] = useState('')
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // 폼의 기본 동작(페이지 새로고침)을 막습니다.
@@ -63,27 +70,61 @@ function PlanAddForm({ subjects, onAdd }: PlanAddFormProps) {
 
     // 띄어쓰기만 입력한 것도 빈 내용으로 봅니다.
     const trimmedContent = content.trim()
-    const targetMinutes = Number(minutes)
 
-    const nextContentError = trimmedContent === '' ? '할 일을 입력해 주세요.' : ''
-    // 칸이 비어 있으면 Number('') 가 0 이 되고, 숫자가 아니면 NaN 이 됩니다. 둘 다 "> 0" 이 거짓입니다.
-    const nextMinutesError = targetMinutes > 0 ? '' : '목표 시간(분)을 0보다 크게 입력해 주세요.'
+    // 내용이 비었으면 추가하지 않고 안내 문구만 보여 줍니다. (목표 시간은 버튼으로 골라서 항상 쓸 수 있는 값입니다)
+    if (trimmedContent === '') {
+      setContentError('할 일을 입력해 주세요.')
+      return
+    }
 
-    setContentError(nextContentError)
-    setMinutesError(nextMinutesError)
+    onAdd(subjectId, trimmedContent, minutes)
 
-    // 하나라도 틀렸으면 추가하지 않고 안내 문구만 보여 줍니다.
-    if (nextContentError || nextMinutesError) return
-
-    onAdd(subjectId, trimmedContent, targetMinutes)
-
-    // 추가했으면 입력칸을 비웁니다. (고른 과목은 그대로 둡니다)
+    // 추가했으면 내용 칸을 비웁니다. (고른 과목과 목표 시간은 그대로 둡니다)
     setContent('')
-    setMinutes('')
   }
 
   return (
     <Card title="계획 추가">
+      {/* 자주 쓰는 계획: 누르면 폼을 거치지 않고 바로 추가됩니다. 쓴 적이 없으면 보이지 않습니다. */}
+      {frequentPlans.length > 0 && (
+        <div className="mb-4 flex flex-col gap-1.5 border-b border-slate-100 pb-4">
+          <span className="text-sm font-medium text-slate-700">자주 쓰는 계획</span>
+          {/* 글자 수가 제각각인 버튼이라 flex-wrap 으로 넘치면 다음 줄로 보냅니다. */}
+          <div className="flex flex-wrap gap-2">
+            {frequentPlans.map((plan) => {
+              const subject = subjects.find((item) => item.id === plan.subjectId)
+              return (
+                <button
+                  key={`${plan.subjectId}|${plan.content}|${plan.targetMinutes}`}
+                  type="button"
+                  onClick={() => onAdd(plan.subjectId, plan.content, plan.targetMinutes)}
+                  // max-w-full + min-w-0: 내용이 길어도 버튼이 카드 밖으로 나가지 않게 합니다.
+                  className="flex min-h-10 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-slate-400 bg-slate-50 px-3 py-1 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
+                >
+                  <span aria-hidden className="text-brand font-bold">
+                    +
+                  </span>
+                  {subject && (
+                    <span
+                      className={cn(
+                        'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
+                        subjectColorStyles[subject.color],
+                      )}
+                    >
+                      {subject.name}
+                    </span>
+                  )}
+                  <span className="min-w-0 break-words">
+                    {plan.content} · {plan.targetMinutes}분
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-sm text-slate-500">누르면 바로 추가돼요.</p>
+        </div>
+      )}
+
       {/* noValidate: 브라우저 기본 경고창 대신 아래 Input 의 안내 문구를 보여 주기 위해 끕니다. */}
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
         <div role="group" aria-label="과목" className="flex flex-col gap-1.5">
@@ -114,17 +155,12 @@ function PlanAddForm({ subjects, onAdd }: PlanAddFormProps) {
           error={contentError}
         />
 
-        <Input
-          name="planMinutes"
-          label="목표 시간(분)"
-          type="number"
-          placeholder="예: 60"
+        {/* 숫자를 치는 대신 버튼으로 고릅니다. 버튼에 없는 시간은 "직접" 으로 적습니다. */}
+        <MinutesPicker
+          label="목표 시간"
+          presets={PLAN_MINUTES_PRESETS}
           value={minutes}
-          onChange={(event) => {
-            setMinutes(event.target.value)
-            setMinutesError('')
-          }}
-          error={minutesError}
+          onChange={setMinutes}
         />
 
         <Button type="submit" className="w-full">
@@ -237,11 +273,27 @@ function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
   )
 }
 
+const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
+
+/** 'YYYY-MM-DD' 날짜의 요일 이름을 돌려줍니다. 예: '2026-10-10' -> '토' */
+function getWeekdayName(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return WEEKDAY_NAMES[new Date(year, month - 1, day).getDay()]
+}
+
+/** 보고 있는 날짜의 바로 전날을 부르는 이름입니다. 오늘을 보고 있으면 '어제', 내일을 보고 있으면 '오늘', 그 밖에는 '전날' */
+function getDayBeforeLabel(dateKey: string, todayKey: string): string {
+  if (dateKey === todayKey) return '어제'
+  if (dateKey === moveDateKey(todayKey, 1)) return '오늘'
+  return '전날'
+}
+
 export function PlannerPage() {
   const todayKey = toDateKey(new Date())
 
   // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
-  const { allPlans, getPlans, addPlan, toggleDone, deletePlan, replaceDayPlans } = usePlans()
+  const { allPlans, getPlans, addPlan, addPlans, toggleDone, deletePlan, replaceDayPlans } =
+    usePlans()
   const { sessions } = useStudySessions()
   const [selectedDate, setSelectedDate] = useState(todayKey)
 
@@ -255,6 +307,24 @@ export function PlannerPage() {
   // 화면에는 고른 날짜의 계획만 보여 줍니다.
   const plans = getPlans(selectedDate)
   const isToday = selectedDate === todayKey
+
+  // ---- 원터치 계획 (#235) ----
+  // 지워진 과목의 계획은 가져오기와 자주 쓰는 계획에서 뺍니다.
+  const subjectIds = subjects.map((subject) => subject.id)
+  // 최근 14일 동안 자주 쓴 "과목 + 할 일 + 시간" 조합 (많이 쓴 순, 5개까지)
+  const frequentPlans = getFrequentPlans(allPlans, todayKey, subjectIds)
+  // 계획이 비어 있는 날에 보여줄 "가져오기" 후보: 바로 전날과 지난주 같은 요일
+  const importSources = [
+    { label: getDayBeforeLabel(selectedDate, todayKey), date: moveDateKey(selectedDate, -1) },
+    { label: `지난주 ${getWeekdayName(selectedDate)}요일`, date: moveDateKey(selectedDate, -7) },
+  ]
+    .map((source) => ({
+      ...source,
+      // 가져올 수 있는 계획 수 (지워진 과목의 계획은 빼고 셉니다)
+      count: copyPlans(getPlans(source.date), selectedDate, subjectIds, 0).length,
+    }))
+    // 가져올 계획이 없는 날은 버튼을 보여주지 않습니다.
+    .filter((source) => source.count > 0)
 
   // 목표 조정 제안 (#67, #205): 오늘의 대응이 "목표 상향/하향" 이면 팝업으로 물어봅니다.
   // 대응은 기간이 끝난 개선안의 이행·효과 판정, 체크인의 기분·미달 원인, 연속 미달 일수로 정합니다.
@@ -309,6 +379,11 @@ export function PlannerPage() {
     }
     // 그날 목록의 맨 뒤에 붙습니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
     addPlan(newPlan)
+  }
+
+  // 다른 날의 계획을 지금 보고 있는 날짜로 가져옵니다. 완료 표시는 지우고, 원래 날의 계획은 그대로 둡니다.
+  function handleImport(sourceDate: string) {
+    addPlans(copyPlans(getPlans(sourceDate), selectedDate, subjectIds, Date.now()))
   }
 
   // 새 과목을 목록 맨 뒤에 추가합니다.
@@ -370,9 +445,27 @@ export function PlannerPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <Card title={isToday ? '오늘 계획' : `${month}월 ${day}일 계획`}>
           {plans.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">
-              {isToday ? '오늘' : '이 날'} 계획을 세워 보세요
-            </p>
+            <div className="flex flex-col gap-3 py-4">
+              <p className="text-center text-sm text-slate-500">
+                {isToday ? '오늘' : '이 날'} 계획을 세워 보세요
+              </p>
+              {/* 계획이 비어 있는 날에만 보이는 "가져오기". 한 번 누르면 그날의 계획이 그대로 들어옵니다. */}
+              {importSources.map((source) => (
+                <Button
+                  key={source.date}
+                  variant="secondary"
+                  className="h-auto min-h-10 w-full py-2 break-keep"
+                  onClick={() => handleImport(source.date)}
+                >
+                  {source.label} 계획 가져오기 · {source.count}개
+                </Button>
+              ))}
+              {importSources.length > 0 && (
+                <p className="text-center text-sm break-keep text-slate-500">
+                  완료 표시는 지워져서 들어와요. 가져온 뒤에 고치거나 지울 수 있어요.
+                </p>
+              )}
+            </div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {plans.map((plan) => {
@@ -451,7 +544,7 @@ export function PlannerPage() {
           )}
         </Card>
 
-        <PlanAddForm subjects={subjects} onAdd={handleAdd} />
+        <PlanAddForm subjects={subjects} frequentPlans={frequentPlans} onAdd={handleAdd} />
       </div>
 
       <SubjectManager subjects={subjects} onAdd={handleAddSubject} onDelete={handleDeleteSubject} />

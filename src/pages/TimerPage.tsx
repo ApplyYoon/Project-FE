@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
-import { Input } from '@/components/ui/Input'
+import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
@@ -562,7 +562,15 @@ export function TimerPage() {
         {/* 목표 시간 고르기. 시작하기 전에만 보입니다. (공부 중에는 약속한 시간이 숫자 아래에 보입니다) */}
         {/* 계획에서 시작하면 목표 시간이 계획에서 오기 때문에, 과목을 직접 고르는 쪽 아래에 둡니다. */}
         {isTarget && !isStudying && (
-          <TargetPicker value={targetMinutes} onChange={handleChangeTarget} />
+          <MinutesPicker
+            label="목표 시간"
+            presets={TARGET_PRESETS}
+            value={targetMinutes}
+            onChange={handleChangeTarget}
+            min={MIN_TARGET_MINUTES}
+            max={MAX_TARGET_MINUTES}
+            className="max-w-sm"
+          />
         )}
 
         <div className="flex flex-wrap items-center justify-center gap-2">
@@ -858,104 +866,6 @@ function StopConfirmModal({
         </div>
       </div>
     </Modal>
-  )
-}
-
-/* ---------- 목표 시간 고르기 (#231) ---------- */
-
-interface TargetPickerProps {
-  /** 지금 고른 목표 시간 (분) */
-  value: number
-  /** 다른 시간을 골랐을 때 호출됩니다. */
-  onChange: (minutes: number) => void
-}
-
-/** 직접 입력한 글자가 쓸 수 있는 목표 시간(1 ~ 600 사이의 정수)인지 확인합니다. */
-function isValidTargetText(text: string) {
-  const minutes = Number(text)
-  return (
-    text.trim() !== '' &&
-    Number.isInteger(minutes) &&
-    minutes >= MIN_TARGET_MINUTES &&
-    minutes <= MAX_TARGET_MINUTES
-  )
-}
-
-/** 목표 시간을 버튼(25·50·80분)이나 직접 입력으로 고릅니다. */
-function TargetPicker({ value, onChange }: TargetPickerProps) {
-  // 버튼에 없는 값이면 "직접" 을 고른 상태로 시작합니다.
-  const [isCustom, setIsCustom] = useState(() => !TARGET_PRESETS.includes(value))
-  // input 에서 꺼낸 값은 항상 글자라서, 글자로 들고 있다가 숫자로 바꿔서 넘깁니다.
-  const [customText, setCustomText] = useState(String(value))
-
-  function handleSelectPreset(minutes: number) {
-    setIsCustom(false)
-    onChange(minutes)
-  }
-
-  function handleChangeCustom(text: string) {
-    setCustomText(text)
-    // 비어 있거나 범위를 벗어난 값은 넘기지 않습니다. (입력칸 아래 안내 문구만 보여줍니다)
-    if (isValidTargetText(text)) onChange(Number(text))
-  }
-
-  return (
-    <div className="flex w-full max-w-sm flex-col gap-2">
-      <p className="text-sm font-medium text-slate-700">목표 시간</p>
-      {/* 버튼 4개가 375px 에서도 한 줄에 들어갑니다. */}
-      <div role="group" aria-label="목표 시간" className="grid grid-cols-4 gap-2">
-        {TARGET_PRESETS.map((minutes) => {
-          const isSelected = !isCustom && minutes === value
-          return (
-            <button
-              key={minutes}
-              type="button"
-              aria-pressed={isSelected}
-              onClick={() => handleSelectPreset(minutes)}
-              className={cn(
-                'h-10 cursor-pointer rounded-lg border px-1 text-sm font-medium transition-colors',
-                isSelected
-                  ? 'border-brand bg-brand-light text-brand'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-              )}
-            >
-              {minutes}분
-            </button>
-          )
-        })}
-        <button
-          type="button"
-          aria-pressed={isCustom}
-          onClick={() => setIsCustom(true)}
-          className={cn(
-            'h-10 cursor-pointer rounded-lg border px-1 text-sm font-medium transition-colors',
-            isCustom
-              ? 'border-brand bg-brand-light text-brand'
-              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-          )}
-        >
-          직접
-        </button>
-      </div>
-
-      {isCustom && (
-        <Input
-          name="targetMinutes"
-          label="목표 시간(분)"
-          type="number"
-          inputMode="numeric"
-          min={MIN_TARGET_MINUTES}
-          max={MAX_TARGET_MINUTES}
-          value={customText}
-          onChange={(event) => handleChangeCustom(event.target.value)}
-          error={
-            isValidTargetText(customText)
-              ? undefined
-              : `${MIN_TARGET_MINUTES} ~ ${MAX_TARGET_MINUTES} 사이의 숫자로 적어 주세요.`
-          }
-        />
-      )}
-    </div>
   )
 }
 
