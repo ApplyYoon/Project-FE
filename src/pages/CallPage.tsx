@@ -1,6 +1,9 @@
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useToggle } from '@/hooks/useToggle'
+import { careThemes, pickGreeting } from '@/lib/careTheme'
+import { cn } from '@/lib/cn'
+import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -18,6 +21,11 @@ export function CallPage() {
   const [micError, setMicError] = useState<MicError | null>(null)
   // 권한 창이 떠 있는 동안 받기를 또 누르지 못하게 합니다.
   const [isRequesting, setIsRequesting] = useState(false)
+  // 오늘의 관리 강도에 맞는 색과 인사말입니다. (아직 진짜 값이 없어서 고정값이에요. 자세한 건 todayCare.ts)
+  const careLevel = getTodayCareLevel()
+  const theme = careThemes[careLevel]
+  // useState 안에서 한 번만 고릅니다. (다시 그려질 때마다 인사말이 바뀌지 않게)
+  const [greeting] = useState(() => pickGreeting(careLevel, getTodayMaxHarshness()))
 
   async function handleAccept() {
     if (isRequesting) return
@@ -35,7 +43,8 @@ export function CallPage() {
 
       // 지금은 허락만 확인하면 되므로 바로 마이크를 꺼 둡니다. (실제 대화는 통화 중 화면에서)
       stream.getTracks().forEach((track) => track.stop())
-      navigate('/call/active')
+      // 인사말을 같이 넘겨서, 통화 중 화면에서도 같은 말이 보이게 합니다.
+      navigate('/call/active', { state: { greeting } })
     } catch (error) {
       // NotAllowedError = 사용자가 거부했거나 브라우저에서 막아 둔 경우
       const isDenied = error instanceof DOMException && error.name === 'NotAllowedError'
@@ -114,23 +123,29 @@ export function CallPage() {
 
   return (
     // min-h-screen: 모바일 주소창 때문에 h-screen 대신 사용합니다.
-    <div className="flex min-h-screen flex-col items-center bg-slate-900 px-4 py-10 text-white sm:px-6">
+    <div
+      className={cn(
+        'flex min-h-screen flex-col items-center px-4 py-10 text-white sm:px-6',
+        theme.pageBackground,
+      )}
+    >
       <div className="flex w-full max-w-md flex-1 flex-col items-center text-center">
         <p className="text-sm text-indigo-100 sm:text-base">아침 체크인 전화 · 07:30</p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">AI 선생님</h1>
 
         {/* 프로필 사진 자리: 사진이 없어서 전화 아이콘으로 대신합니다. animate-pulse 로 숨 쉬듯 깜빡입니다. */}
-        <div className="mt-10 animate-pulse rounded-full bg-indigo-500/30 p-3">
-          <div className="bg-brand flex h-28 w-28 items-center justify-center rounded-full text-5xl sm:h-32 sm:w-32">
+        <div className={cn('mt-10 animate-pulse rounded-full p-3', theme.avatarGlow)}>
+          <div
+            className={cn(
+              'flex h-28 w-28 items-center justify-center rounded-full text-5xl sm:h-32 sm:w-32',
+              theme.avatarBackground,
+            )}
+          >
             <span aria-hidden>📞</span>
           </div>
         </div>
 
-        <p className="mt-10 text-lg break-keep sm:text-xl">
-          &quot;어제 순공 3시간 10분이었지?
-          <br />
-          오늘 얘기 잠깐 하자.&quot;
-        </p>
+        <p className="mt-10 text-lg break-keep sm:text-xl">&quot;{greeting}&quot;</p>
         <p className="mt-3 text-sm break-keep text-indigo-100">
           1~3분 · 녹음하지 않고 요약만 저장해요
         </p>

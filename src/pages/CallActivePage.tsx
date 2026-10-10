@@ -1,8 +1,16 @@
 import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
+import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+
+/** 수신 화면이 넘겨준 인사말을 꺼냅니다. 없거나 모양이 다르면 null 입니다. */
+function readGreeting(state: unknown): string | null {
+  if (typeof state !== 'object' || state === null) return null
+  const greeting = (state as { greeting?: unknown }).greeting
+  return typeof greeting === 'string' ? greeting : null
+}
 
 /** 연결 실패를 학생(사용자)이 이해할 수 있는 문구로 바꿉니다. */
 function getFailMessage(error: unknown) {
@@ -120,13 +128,18 @@ function formatCallTime(totalSeconds: number) {
  */
 export function CallActivePage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [seconds, setSeconds] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
-  // 지금은 단계를 정하는 함수(#28)가 없어서 고정값입니다. 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
-  const careLevel: CareLevel = 1
+  // 오늘의 관리 강도입니다. 아직 진짜 값이 없어서 고정값이에요. (자세한 건 todayCare.ts)
+  // 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
+  const careLevel = getTodayCareLevel()
   const theme = careThemes[careLevel]
-  // useState 안에서 한 번만 고릅니다. (그냥 호출하면 1초마다 화면이 다시 그려질 때 인사말이 바뀝니다)
-  const [greeting] = useState(() => pickGreeting(careLevel))
+  // 수신 화면에서 보여준 인사말을 그대로 이어서 씁니다. (없으면 새로 고릅니다)
+  // useState 안에서 한 번만 정합니다. (그냥 호출하면 1초마다 화면이 다시 그려질 때 인사말이 바뀝니다)
+  const [greeting] = useState(
+    () => readGreeting(location.state) ?? pickGreeting(careLevel, getTodayMaxHarshness()),
+  )
   // AI 와의 연결 상태. 연결 중 → 연결됨, 실패하면 error 와 안내 문구
   const [connection, setConnection] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const [errorMessage, setErrorMessage] = useState('')
