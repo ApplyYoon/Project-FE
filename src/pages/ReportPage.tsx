@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { cn } from '@/lib/cn'
+import { ProgressBar } from '@/components/ui/ProgressBar'
 import { usePlans } from '@/hooks/usePlans'
 import { getDaySummary } from '@/lib/daySummary'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
@@ -15,6 +16,9 @@ import { Link } from 'react-router-dom'
 const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토']
 // 월간 리포트는 6주차(42일)부터 볼 수 있습니다. (#86)
 const MIN_DAYS_FOR_MONTHLY = 42
+
+// 며칠 동안 기록이 쌓여야 첫 리포트를 보여줄지 (#85)
+const FIRST_REPORT_DAYS = 14
 
 /** Date 를 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString() 은 영국 시간 기준이라 쓰지 않습니다) */
 function toDateKey(date: Date): string {
@@ -242,6 +246,19 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
   // 계획도 공부 기록도 하나 없는 주는 "기록 없음" 안내로 바꿉니다.
   const hasRecord = thisWeek.targetMinutes > 0 || thisWeek.studyMinutes > 0
 
+  // 첫 기록 날짜 = 계획과 공부 기록을 통틀어 가장 이른 날짜. 기록이 하나도 없으면 null 입니다.
+  const recordDates = [
+    ...allPlans.map((plan) => plan.date),
+    ...sessions.map((session) => toDateKey(new Date(session.startedAt))),
+  ]
+  const firstRecordKey = recordDates.length === 0 ? null : [...recordDates].sort()[0]
+  const daysSinceFirstRecord =
+    firstRecordKey === null ? 0 : countDays(firstRecordKey, toDateKey(new Date()))
+  // 이번 주를 보는 중이고, 아직 14일치 기록이 안 쌓였으면 리포트 대신 카운트다운을 보여줍니다.
+  // (예전 주로 넘겨 보는 중이면 그 주의 기록을 그대로 보여줍니다)
+  const isBeforeFirstReport =
+    weeksAgo === 0 && firstRecordKey !== null && daysSinceFirstRecord < FIRST_REPORT_DAYS
+
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -273,7 +290,22 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
         </div>
       </div>
 
-      {!hasRecord ? (
+      {isBeforeFirstReport ? (
+        <Card>
+          <p className="text-sm text-slate-600">
+            아직 기록이 {FIRST_REPORT_DAYS}일이 안 돼서, 리포트 대신 카운트다운을 보여줘요.
+          </p>
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <p className="text-lg font-semibold text-slate-900">
+              첫 리포트까지 D-{FIRST_REPORT_DAYS - daysSinceFirstRecord}
+            </p>
+            <p className="shrink-0 text-sm text-slate-500">
+              {daysSinceFirstRecord} / {FIRST_REPORT_DAYS}일
+            </p>
+          </div>
+          <ProgressBar value={(daysSinceFirstRecord / FIRST_REPORT_DAYS) * 100} className="mt-2" />
+        </Card>
+      ) : !hasRecord ? (
         <Card>
           <p className="py-6 text-center text-sm text-slate-500">
             이 주는 계획도 공부 기록도 없어요.

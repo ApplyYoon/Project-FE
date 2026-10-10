@@ -15,9 +15,16 @@ interface StopwatchState {
   pausedAt: number | null
   /** 지금까지 일시정지했던 시간을 전부 더한 값 (밀리초). 공부 시간에서 빠집니다. */
   pausedTotalMs: number
+  /** 일시정지를 누른 횟수. 새로고침해도 공부 기록에 그대로 남아야 해서 여기서 같이 저장합니다. */
+  pauseCount: number
 }
 
-const idleState: StopwatchState = { startedAt: null, pausedAt: null, pausedTotalMs: 0 }
+const idleState: StopwatchState = {
+  startedAt: null,
+  pausedAt: null,
+  pausedTotalMs: 0,
+  pauseCount: 0,
+}
 
 /** 저장소에서 꺼낸 값이 우리가 저장한 모양이 맞는지 확인합니다. (깨진 값이면 시간이 NaN 이 되기 때문입니다) */
 function isStopwatchState(value: unknown): value is StopwatchState {
@@ -26,7 +33,8 @@ function isStopwatchState(value: unknown): value is StopwatchState {
   return (
     (state.startedAt === null || typeof state.startedAt === 'number') &&
     (state.pausedAt === null || typeof state.pausedAt === 'number') &&
-    typeof state.pausedTotalMs === 'number'
+    typeof state.pausedTotalMs === 'number' &&
+    typeof state.pauseCount === 'number'
   )
 }
 
@@ -44,7 +52,7 @@ function loadState(): StopwatchState {
  *   (지금 - 시작 시각 - 일시정지했던 시간)
  * 으로 계산합니다. setInterval 은 화면을 다시 그리는 용도로만 씁니다.
  *
- *   const { seconds, isRunning, isStarted, start, pause, stop } = useStopwatch()
+ *   const { seconds, isRunning, isStarted, startedAt, pauseCount, start, pause, stop } = useStopwatch()
  */
 export function useStopwatch() {
   const [state, setState] = useState<StopwatchState>(loadState)
@@ -83,7 +91,7 @@ export function useStopwatch() {
     setState((prev) => {
       // 시작 전: 지금을 시작 시각으로 저장합니다.
       if (prev.startedAt === null) {
-        return { startedAt: currentTime, pausedAt: null, pausedTotalMs: 0 }
+        return { startedAt: currentTime, pausedAt: null, pausedTotalMs: 0, pauseCount: 0 }
       }
       // 일시정지 중: 멈춰 있던 시간을 "빠지는 시간"에 더하고 다시 흐르게 합니다.
       if (prev.pausedAt !== null) {
@@ -102,9 +110,9 @@ export function useStopwatch() {
     const currentTime = Date.now()
     setNow(currentTime)
     setState((prev) => {
-      // 흐르는 중일 때만 멈춘 시각을 기록합니다.
+      // 흐르는 중일 때만 멈춘 시각을 기록하고, 누른 횟수를 올립니다.
       if (prev.startedAt === null || prev.pausedAt !== null) return prev
-      return { ...prev, pausedAt: currentTime }
+      return { ...prev, pausedAt: currentTime, pauseCount: prev.pauseCount + 1 }
     })
   }
 
@@ -113,5 +121,14 @@ export function useStopwatch() {
     setState(idleState)
   }
 
-  return { seconds, isRunning, isStarted, start, pause, stop }
+  return {
+    seconds,
+    isRunning,
+    isStarted,
+    startedAt: state.startedAt,
+    pauseCount: state.pauseCount,
+    start,
+    pause,
+    stop,
+  }
 }

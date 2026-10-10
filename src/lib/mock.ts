@@ -53,7 +53,8 @@ interface SessionInput {
 function makeSession({ id, subjectId, daysAgo, start, minutes }: SessionInput): StudySession {
   const [hour, minute] = start.split(':').map(Number)
   const startedAt = timeDaysAgo(daysAgo, hour, minute)
-  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE }
+  // 가짜 데이터라 일시정지는 안 한 것으로 둡니다.
+  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount: 0 }
 }
 
 /* ---------- 가짜 데이터 ---------- */
