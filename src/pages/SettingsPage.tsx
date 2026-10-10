@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
+import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import {
   getCareLimits,
@@ -18,6 +20,15 @@ import {
 } from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
 import type { CareLevel } from '@/lib/careLevel'
+import {
+  getNotificationPermission,
+  isNotificationSupported,
+  requestNotificationPermission,
+} from '@/lib/notifications'
+import { loadData, removeData, saveData } from '@/lib/storage'
+
+// 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
+const DIARY_ENABLED_KEY = 'diary-enabled'
 
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
@@ -72,6 +83,38 @@ export function SettingsPage() {
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
   const [message, setMessage] = useState<DeleteMessage | null>(null)
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>(getNotificationPermission)
+
+  // 전화 받을 시간 ('HH:MM'). 아직 안 정했으면 빈 글자입니다. 올바른 시간만 불러옵니다.
+  const [callTime, setCallTime] = useState(() => {
+    const saved = loadData<unknown>(CALL_TIME_STORAGE_KEY, '')
+    return typeof saved === 'string' && parseCallTime(saved) !== null ? saved : ''
+  })
+  // 아이폰인데 홈 화면에 추가하지 않았는지. 이 경우에만 안내를 보여줍니다.
+  const [showIosGuide] = useState(isIosWithoutInstall)
+
+  function handleChangeCallTime(nextTime: string) {
+    setCallTime(nextTime)
+    // 시간을 고르면 바로 저장합니다. 시간을 지우면(빈 글자) 저장해 둔 것도 지워서 전화가 울리지 않게 합니다.
+    if (nextTime === '') {
+      removeData(CALL_TIME_STORAGE_KEY)
+    } else {
+      saveData(CALL_TIME_STORAGE_KEY, nextTime)
+    }
+  }
+
+  async function handleRequestNotification() {
+    const permission = await requestNotificationPermission()
+    setNotificationPermission(permission)
+  }
+
+  // 일기 기능을 켰는지. 켜면 기록 화면에 일기 메뉴가 보입니다. (기본은 꺼짐 — #63 "원할 때만 켜는 기능")
+  const [isDiaryEnabled, setIsDiaryEnabled] = useState(() => loadData(DIARY_ENABLED_KEY, false))
+
+  useEffect(() => {
+    saveData(DIARY_ENABLED_KEY, isDiaryEnabled)
+  }, [isDiaryEnabled])
 
   function handleChangeMessageSettings(next: MessageSettings) {
     setMessageSettings(next)
@@ -222,7 +265,88 @@ export function SettingsPage() {
 
         <div className="flex flex-col gap-6">
           <Card title="전화와 메시지">
-            <MessageSettingsFields value={messageSettings} onChange={handleChangeMessageSettings} />
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2">
+                <Input
+                  id="call-time"
+                  type="time"
+                  label="전화 받을 시간"
+                  value={callTime}
+                  onChange={(event) => handleChangeCallTime(event.target.value)}
+                  className="h-12 text-base"
+                />
+                <p className="text-sm break-keep text-slate-500">
+                  {callTime === ''
+                    ? '시간을 고르면 매일 그 시간에 AI 선생님이 전화를 걸어요.'
+                    : `매일 ${callTime} 에 전화가 와요.`}{' '}
+                  앱이 열려 있을 때만 울려요. 알림은 아래 &quot;알림&quot;에서 켤 수 있어요.
+                </p>
+                {showIosGuide && (
+                  <p className="rounded-lg bg-slate-50 p-3 text-sm break-keep text-slate-600">
+                    아이폰은 Safari 의 공유 버튼 → &apos;홈 화면에 추가&apos;로 설치한 뒤에만 알림을
+                    받을 수 있어요.
+                  </p>
+                )}
+              </div>
+
+              <MessageSettingsFields
+                value={messageSettings}
+                onChange={handleChangeMessageSettings}
+              />
+            </div>
+          </Card>
+
+          <Card title="일기 쓰기">
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-slate-500">
+                원할 때만 쓰는 자유 일기예요. 켜면 기록 화면에 일기 메뉴가 보여요.
+              </p>
+
+              <div className="flex gap-3">
+                <Button
+                  variant={isDiaryEnabled ? 'primary' : 'secondary'}
+                  aria-pressed={isDiaryEnabled}
+                  className="h-11 flex-1"
+                  onClick={() => setIsDiaryEnabled(true)}
+                >
+                  켜기
+                </Button>
+                <Button
+                  variant={!isDiaryEnabled ? 'primary' : 'secondary'}
+                  aria-pressed={!isDiaryEnabled}
+                  className="h-11 flex-1"
+                  onClick={() => setIsDiaryEnabled(false)}
+                >
+                  끄기
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card title="알림">
+            <div className="flex flex-col gap-4">
+              {isNotificationSupported() ? (
+                <>
+                  <p className="text-sm text-slate-500">
+                    {notificationPermission === 'granted' &&
+                      '알림이 켜져 있어요. 새 메시지나 전화가 오면 브라우저 알림으로도 알려줄게요.'}
+                    {notificationPermission === 'denied' &&
+                      '알림이 거부되어 있어요. 메시지는 메시지함에 그대로 쌓이고, 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
+                    {notificationPermission === 'default' &&
+                      '알림을 켜면 앱을 안 보고 있어도 새 메시지나 전화를 브라우저 알림으로 알려줘요.'}
+                  </p>
+                  {notificationPermission === 'default' && (
+                    <Button className="h-11 w-full sm:w-auto" onClick={handleRequestNotification}>
+                      알림 켜기
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  이 브라우저는 알림 기능을 지원하지 않아요. 메시지는 메시지함에 그대로 쌓여요.
+                </p>
+              )}
+            </div>
           </Card>
 
           <Card title="내 데이터 관리">

@@ -2,6 +2,8 @@ import { BackToRecordsLink } from '@/components/layout/BackToRecordsLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
 import { RecordsSubNav } from '@/components/layout/RecordsSubNav'
+import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
+import { useCallReminder } from '@/hooks/useCallReminder'
 import { isRecordsCardPath, isRecordsTabPath } from '@/lib/recordsMenu'
 import { Outlet, useLocation } from 'react-router-dom'
 
@@ -10,6 +12,10 @@ import { Outlet, useLocation } from 'react-router-dom'
  * <Outlet /> 자리에 현재 주소에 맞는 페이지가 끼워집니다.
  */
 export function Layout() {
+  // 앱이 열려 있는 동안 안 읽은 AI 메시지를 브라우저 알림으로 띄웁니다. (#62)
+  useAiMessageNotifications()
+  // 정해 둔 "전화 받을 시간" 이 되면 알림을 띄우고 전화 수신 화면으로 보냅니다. (앱이 열려 있을 때만)
+  useCallReminder()
   const { pathname } = useLocation()
 
   return (
