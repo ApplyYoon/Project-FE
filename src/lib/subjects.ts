@@ -2,8 +2,30 @@ import { mockSubjects } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
 import type { Subject, SubjectColor } from '@/types'
 
-// 과목에 쓸 수 있는 색. 이 밖의 색이 저장돼 있으면 태그 색을 못 찾아서 화면이 깨집니다.
-const SUBJECT_COLORS: SubjectColor[] = ['red', 'orange', 'green', 'blue', 'purple']
+/**
+ * 과목에 쓸 수 있는 색과 그 한국어 이름입니다. 적힌 순서대로 색 고르기 버튼에 보입니다. (무지개 순서 + 회색)
+ * Record<SubjectColor, ...> 라서, 타입에 색을 더하고 여기에 안 적으면 타입 검사가 바로 알려 줍니다.
+ */
+export const SUBJECT_COLOR_LABELS: Record<SubjectColor, string> = {
+  red: '빨강',
+  orange: '주황',
+  yellow: '노랑',
+  lime: '연두',
+  green: '초록',
+  teal: '청록',
+  sky: '하늘',
+  blue: '파랑',
+  indigo: '남색',
+  purple: '보라',
+  pink: '분홍',
+  slate: '회색',
+}
+
+/**
+ * 쓸 수 있는 색 전체입니다. (위 이름표에 적힌 순서 그대로)
+ * 이 밖의 색이 저장돼 있으면 태그 색을 못 찾아서 화면이 깨지기 때문에, 불러올 때 이 목록으로 걸러냅니다.
+ */
+export const SUBJECT_COLORS = Object.keys(SUBJECT_COLOR_LABELS) as SubjectColor[]
 
 /** 저장소에서 꺼낸 값이 과목 모양({ id, name, color })이 맞는지 확인합니다. */
 function isSubject(value: unknown): value is Subject {

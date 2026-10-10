@@ -11,13 +11,20 @@ interface SubjectBadgeProps {
 
 // Tailwind 는 `bg-${color}-100` 처럼 이름을 조합하면 어떤 클래스를 쓰는지 몰라서 스타일이 사라집니다.
 // 그래서 완성된 클래스 이름을 그대로 적어 둡니다.
-// 배경 100 + 글자 800 : 글자와 배경의 밝기 차이(대비)가 5가지 색 모두 4.5 이상이라 작은 글자도 잘 읽힙니다.
+// 배경 100 + 글자 800 : 글자와 배경의 밝기 차이(대비)가 12가지 색 모두 4.5 이상이라 작은 글자도 잘 읽힙니다.
 const colorStyles: Record<SubjectColor, string> = {
   red: 'bg-red-100 text-red-800',
   orange: 'bg-orange-100 text-orange-800',
+  yellow: 'bg-yellow-100 text-yellow-800',
+  lime: 'bg-lime-100 text-lime-800',
   green: 'bg-green-100 text-green-800',
+  teal: 'bg-teal-100 text-teal-800',
+  sky: 'bg-sky-100 text-sky-800',
   blue: 'bg-blue-100 text-blue-800',
+  indigo: 'bg-indigo-100 text-indigo-800',
   purple: 'bg-purple-100 text-purple-800',
+  pink: 'bg-pink-100 text-pink-800',
+  slate: 'bg-slate-100 text-slate-800',
 }
 
 /**

@@ -17,7 +17,7 @@ import { scalePlanMinutes } from '@/lib/goalAdjust'
 import { getTodayCareDecision } from '@/lib/careInputs'
 import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
-import { loadSubjects } from '@/lib/subjects'
+import { SUBJECT_COLORS, SUBJECT_COLOR_LABELS, loadSubjects } from '@/lib/subjects'
 import { getPlanProgress, getPlayProgress } from '@/lib/planProgress'
 import { copyPlans, getFrequentPlans, type FrequentPlan } from '@/lib/planShortcuts'
 import {
@@ -37,28 +37,50 @@ import { Link } from 'react-router-dom'
 const subjectColorStyles: Record<SubjectColor, string> = {
   red: 'bg-red-50 text-red-600',
   orange: 'bg-orange-50 text-orange-600',
+  yellow: 'bg-yellow-50 text-yellow-700',
+  lime: 'bg-lime-50 text-lime-700',
   green: 'bg-green-50 text-green-600',
+  teal: 'bg-teal-50 text-teal-700',
+  sky: 'bg-sky-50 text-sky-700',
   blue: 'bg-blue-50 text-blue-600',
+  indigo: 'bg-indigo-50 text-indigo-600',
   purple: 'bg-purple-50 text-purple-600',
+  pink: 'bg-pink-50 text-pink-700',
+  slate: 'bg-slate-100 text-slate-600',
 }
 
-/* 색 고르기 버튼에 칠할 색. 시안과 같은 순서로 보여줍니다. */
+/* 색 고르기 버튼에 칠할 색. 보여주는 순서는 lib/subjects.ts 의 SUBJECT_COLORS 를 따릅니다. */
 const colorSwatchStyles: Record<SubjectColor, string> = {
-  blue: 'bg-blue-500',
-  green: 'bg-green-500',
   red: 'bg-red-500',
-  purple: 'bg-purple-500',
   orange: 'bg-orange-500',
+  yellow: 'bg-yellow-500',
+  lime: 'bg-lime-500',
+  green: 'bg-green-500',
+  teal: 'bg-teal-500',
+  sky: 'bg-sky-500',
+  blue: 'bg-blue-500',
+  indigo: 'bg-indigo-500',
+  purple: 'bg-purple-500',
+  pink: 'bg-pink-500',
+  slate: 'bg-slate-500',
 }
-const subjectColorOrder: SubjectColor[] = ['blue', 'green', 'red', 'purple', 'orange']
+/** 과목을 새로 만들 때 처음 골라 두는 색 */
+const DEFAULT_SUBJECT_COLOR: SubjectColor = 'blue'
 
 /* 플래너 블록의 색. block = 블록의 바탕·테두리·글자 / fill = 실제로 한 만큼 진하게 채우는 색 */
 const blockColorStyles: Record<SubjectColor, { block: string; fill: string }> = {
   red: { block: 'border-red-300 bg-red-50 text-red-900', fill: 'bg-red-200' },
   orange: { block: 'border-orange-300 bg-orange-50 text-orange-900', fill: 'bg-orange-200' },
+  yellow: { block: 'border-yellow-300 bg-yellow-50 text-yellow-900', fill: 'bg-yellow-200' },
+  lime: { block: 'border-lime-300 bg-lime-50 text-lime-900', fill: 'bg-lime-200' },
   green: { block: 'border-green-300 bg-green-50 text-green-900', fill: 'bg-green-200' },
+  teal: { block: 'border-teal-300 bg-teal-50 text-teal-900', fill: 'bg-teal-200' },
+  sky: { block: 'border-sky-300 bg-sky-50 text-sky-900', fill: 'bg-sky-200' },
   blue: { block: 'border-blue-300 bg-blue-50 text-blue-900', fill: 'bg-blue-200' },
+  indigo: { block: 'border-indigo-300 bg-indigo-50 text-indigo-900', fill: 'bg-indigo-200' },
   purple: { block: 'border-purple-300 bg-purple-50 text-purple-900', fill: 'bg-purple-200' },
+  pink: { block: 'border-pink-300 bg-pink-50 text-pink-900', fill: 'bg-pink-200' },
+  slate: { block: 'border-slate-300 bg-slate-50 text-slate-900', fill: 'bg-slate-200' },
 }
 // 노는 계획과, 과목이 지워진 계획의 블록 색 (회색)
 const defaultBlockStyle = {
@@ -516,7 +538,7 @@ interface SubjectManagerProps {
 /** 과목을 추가·삭제하는 카드입니다. */
 function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
   const [name, setName] = useState('')
-  const [color, setColor] = useState<SubjectColor>(subjectColorOrder[0])
+  const [color, setColor] = useState<SubjectColor>(DEFAULT_SUBJECT_COLOR)
   const [nameError, setNameError] = useState('')
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -583,14 +605,18 @@ function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
           />
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">색</span>
+            {/* 색만으로는 구분하기 어려운 사람도 있어서, 고른 색의 이름을 글자로도 보여줍니다. */}
+            <span className="text-sm font-medium text-slate-700">
+              색 <span className="font-normal text-slate-500">· {SUBJECT_COLOR_LABELS[color]}</span>
+            </span>
+            {/* 12개가 한 줄에 안 들어가면 flex-wrap 으로 다음 줄로 넘어갑니다. (375px 에서는 6개씩 두 줄) */}
             <div role="group" aria-label="과목 색" className="flex flex-wrap gap-2">
-              {subjectColorOrder.map((item) => (
+              {SUBJECT_COLORS.map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => setColor(item)}
-                  aria-label={`${item} 색`}
+                  aria-label={`${SUBJECT_COLOR_LABELS[item]} 색`}
                   aria-pressed={color === item}
                   className={cn(
                     'h-10 w-10 cursor-pointer rounded-full',
