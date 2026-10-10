@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useAwayDetection } from '@/hooks/useAwayDetection'
+import { useFocusMode } from '@/hooks/useFocusMode'
+import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { playAlarm } from '@/lib/alarm'
 import { formatAwayDuration, formatClock } from '@/lib/away'
+import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
+import { toDateKey } from '@/lib/date'
+import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { mockSubjects } from '@/lib/mock'
 import { BREAK_MINUTES, STUDY_MINUTES, getPomodoroStatus } from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
-import type { PomodoroPhase, StudySession, Subject, SubjectColor } from '@/types'
+import type { AwayRecord, PomodoroPhase, StudySession, Subject, SubjectColor } from '@/types'
 
 // 1분 미만은 실수로 누른 것으로 보고 기록을 저장하지 않습니다.
 const MIN_SAVE_SECONDS = 60
@@ -122,6 +128,28 @@ export function TimerPage() {
     start,
   })
 
+  // 집중 모드(#69). 설정에서 "집중 모드 잠금 허용" 을 켰고 최대 한도가 4일 때만 버튼이 보입니다. (#59)
+  const focusMode = useFocusMode()
+  const [canUseFocus] = useState(() => canUseFocusMode(getCareLimits()))
+  // "집중 모드 나가기" 를 눌러 해제 화면을 보고 있는지
+  const [isUnlockOpen, setIsUnlockOpen] = useState(false)
+  // 집중 모드를 켜지 못했을 때 보여줄 안내
+  const [focusNotice, setFocusNotice] = useState<string | null>(null)
+
+  // 집중 화면에 보여줄 오늘 계획: 고른 과목의 오늘 계획 내용과 목표 시간
+  const { getPlans } = usePlans()
+  const todaySubjectPlans = getPlans(toDateKey(new Date())).filter(
+    (plan) => plan.subjectId === selectedSubjectId,
+  )
+  const todayTargetMinutes = todaySubjectPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
+  // 오늘 이 과목으로 이미 저장한 공부 + 지금 재고 있는 시간
+  const todaySubjectMinutes =
+    Math.floor(
+      sessions
+        .filter((session) => isToday(session) && session.subjectId === selectedSubjectId)
+        .reduce((sum, session) => sum + (session.endedAt - session.startedAt), 0) / 60000,
+    ) + Math.floor(seconds / 60)
+
   // 버튼 아래에 보여줄 안내 문구
   let helpMessage = '준비됐으면 시작을 눌러 주세요.'
   if (!selectedSubject) helpMessage = '공부할 과목을 먼저 골라 주세요.'
@@ -162,6 +190,54 @@ export function TimerPage() {
     setEndedPhase(null)
     dismissAwayNotice()
     stop()
+  }
+
+  function handleStartFocus() {
+    if (!selectedSubject) return
+    // 버튼이 보일 때와 설정이 달라졌을 수 있어서 누르는 순간 한 번 더 확인합니다. (허용 안 했으면 절대 안 켜짐)
+    if (!canUseFocusMode(getCareLimits())) {
+      setFocusNotice('설정에서 집중 모드 잠금을 허용해야 켤 수 있어요.')
+      return
+    }
+    // 안전 브레이크(#95)가 켜져 있으면 집중 모드를 켜지 않습니다.
+    if (isSafetyBrakeOnNow()) {
+      setFocusNotice('지금은 쉬어 가는 게 좋아서 집중 모드를 켤 수 없어요. 일반 타이머로 해 봐요.')
+      return
+    }
+    setFocusNotice(null)
+    setIsUnlockOpen(false)
+    focusMode.start()
+    // 아직 시작 전이거나 일시정지 중이면 타이머도 같이 시작합니다.
+    if (!isRunning) handleStart()
+  }
+
+  function handleUnlockFocus(reason: string) {
+    focusMode.unlock(reason)
+    setIsUnlockOpen(false)
+  }
+
+  // 집중 모드 중에는 화면 전체를 집중 화면(또는 해제 화면)이 덮습니다. 타이머는 멈추지 않고 그대로 이어집니다.
+  if (focusMode.isOn) {
+    if (isUnlockOpen) {
+      return (
+        <FocusUnlockScreen onStay={() => setIsUnlockOpen(false)} onUnlock={handleUnlockFocus} />
+      )
+    }
+    return (
+      <FocusModeScreen
+        subject={selectedSubject}
+        planContent={todaySubjectPlans[0]?.content ?? null}
+        seconds={seconds}
+        isRunning={isRunning}
+        studiedMinutes={todaySubjectMinutes}
+        targetMinutes={todayTargetMinutes}
+        awayNotice={awayNotice}
+        awayCountToday={awayCountToday}
+        onPause={pause}
+        onResume={handleStart}
+        onExit={() => setIsUnlockOpen(true)}
+      />
+    )
   }
 
   return (
@@ -330,6 +406,26 @@ export function TimerPage() {
           </Button>
         </div>
 
+        {/* 집중 모드는 허용한 사람만, 휴식 구간이 없는 일반 모드에서만 켤 수 있습니다. */}
+        {canUseFocus && !isPomodoro && (
+          <div className="flex w-full flex-col items-center gap-2">
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto"
+              disabled={!selectedSubject}
+              onClick={handleStartFocus}
+            >
+              집중 모드로 시작
+            </Button>
+            {focusNotice && (
+              <p role="status" className="text-center text-sm break-keep text-sky-700">
+                {focusNotice}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col gap-1 text-center text-sm text-slate-500">
           <p>{helpMessage}</p>
           <p>
@@ -347,6 +443,106 @@ export function TimerPage() {
       </Card>
 
       <WeeklySubjectRatio subjects={subjects} sessions={sessions} />
+    </div>
+  )
+}
+
+/* ---------- 집중 모드 화면 (#69) ---------- */
+
+interface FocusModeScreenProps {
+  subject: Subject | undefined
+  /** 고른 과목의 오늘 계획 내용. 계획이 없으면 null */
+  planContent: string | null
+  seconds: number
+  isRunning: boolean
+  /** 오늘 이 과목으로 공부한 시간(분). 지금 재고 있는 시간 포함 */
+  studiedMinutes: number
+  /** 오늘 이 과목의 계획 목표 시간(분). 계획이 없으면 0 */
+  targetMinutes: number
+  awayNotice: AwayRecord | null
+  awayCountToday: number
+  onPause: () => void
+  onResume: () => void
+  onExit: () => void
+}
+
+/** 집중 모드 중에 화면 전체를 덮는 어두운 화면입니다. 타이머만 보이고 메뉴는 보이지 않습니다. */
+function FocusModeScreen({
+  subject,
+  planContent,
+  seconds,
+  isRunning,
+  studiedMinutes,
+  targetMinutes,
+  awayNotice,
+  awayCountToday,
+  onPause,
+  onResume,
+  onExit,
+}: FocusModeScreenProps) {
+  const percent =
+    targetMinutes > 0 ? Math.min(100, Math.round((studiedMinutes / targetMinutes) * 100)) : 0
+
+  return (
+    // fixed inset-0 z-50: 헤더·하단 탭(z-20)까지 덮어서 다른 메뉴로 갈 수 없게 합니다.
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900 text-white">
+      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center gap-6 px-4 py-10 text-center">
+        <span className="rounded-full bg-indigo-500/20 px-4 py-1.5 text-sm font-semibold text-indigo-100">
+          집중 모드
+        </span>
+
+        {subject && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <SubjectBadge name={subject.name} color={subject.color} />
+            {planContent && <span className="text-base font-medium break-keep">{planContent}</span>}
+          </div>
+        )}
+
+        {/* tabular-nums: 숫자가 바뀌어도 폭이 흔들리지 않게 고정 폭으로 보여줍니다. */}
+        <p className="font-mono text-6xl font-bold tracking-tight tabular-nums sm:text-8xl">
+          {formatTime(seconds)}
+        </p>
+
+        {targetMinutes > 0 && (
+          <div className="flex w-full max-w-md flex-col gap-2">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700">
+              <div
+                className="h-full rounded-full bg-indigo-400"
+                // 너비가 숫자에 따라 바뀌어서 Tailwind 클래스로 만들 수 없어 인라인 style 을 씁니다.
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <p className="text-sm text-slate-300">
+              계획 {formatTotalMinutes(targetMinutes)} 중 {formatTotalMinutes(studiedMinutes)}
+            </p>
+          </div>
+        )}
+
+        {awayNotice && (
+          <p role="status" className="text-sm break-keep text-rose-300">
+            딴짓 감지! {formatAwayDuration(awayNotice.awayMs)} 나갔다 왔어요 · 오늘 {awayCountToday}
+            번째예요.
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={isRunning ? onPause : onResume}
+          className="h-12 cursor-pointer rounded-full bg-white px-8 text-base font-bold text-slate-900 transition-colors hover:bg-slate-100"
+        >
+          {isRunning ? '⏸ 일시정지' : '▶ 다시 시작'}
+        </button>
+
+        <p className="text-sm text-slate-400">다른 탭으로 가면 자동으로 일시정지돼</p>
+
+        <button
+          type="button"
+          onClick={onExit}
+          className="h-10 cursor-pointer px-3 text-sm font-medium text-indigo-300 underline underline-offset-4 hover:text-indigo-200"
+        >
+          집중 모드 나가기
+        </button>
+      </div>
     </div>
   )
 }

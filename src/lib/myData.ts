@@ -30,6 +30,9 @@ const RECORD_KEYS = [
   // 딴짓(탭 이탈) 기록과, 나갔다가 아직 돌아오지 않은 임시 기록 (#22)
   'away-records',
   'away-pending',
+  // 집중 모드 중인지, 집중 모드를 해제한 시각과 이유 기록 (#69)
+  'focus-mode',
+  'focus-unlocks',
   ...DIARY_KEYS,
 ]
 
