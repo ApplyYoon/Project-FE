@@ -4,9 +4,9 @@ import { Card } from '@/components/ui/Card'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
-import { mockSubjects } from '@/lib/mock'
+import { mockSessions, mockSubjects } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
-import type { Subject } from '@/types'
+import type { StudySession, Subject, SubjectColor } from '@/types'
 
 // 초 단위 숫자를 '01:23:45' 형태로 바꿔줍니다.
 function formatTime(totalSeconds: number) {
@@ -126,6 +126,109 @@ export function TimerPage() {
 
         <p className="text-center text-sm text-slate-500">{helpMessage}</p>
       </Card>
+
+      <WeeklySubjectRatio subjects={subjects} />
     </div>
+  )
+}
+
+/* ---------- 이번 주 과목별 공부 시간 비율 (#44) ---------- */
+
+// 막대 색. SubjectBadge 처럼 완성된 클래스 이름을 적어 둡니다. (`bg-${color}-500` 은 Tailwind 가 못 알아봅니다)
+const barColorStyles: Record<SubjectColor, string> = {
+  red: 'bg-red-500',
+  orange: 'bg-orange-500',
+  green: 'bg-green-500',
+  blue: 'bg-blue-500',
+  purple: 'bg-purple-500',
+}
+
+// 분 단위 숫자를 '2시간 14분', '40분' 처럼 바꿔줍니다.
+function formatMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours === 0) return `${minutes}분`
+  if (minutes === 0) return `${hours}시간`
+  return `${hours}시간 ${minutes}분`
+}
+
+// 이번 주 월요일 0시 0분을 밀리초 숫자로 돌려줍니다.
+function getThisMondayStart() {
+  const date = new Date()
+  // getDay(): 일요일 0, 월요일 1 ... 토요일 6. 월요일에서 며칠 지났는지 계산합니다. (일요일은 6일)
+  const daysFromMonday = (date.getDay() + 6) % 7
+  date.setDate(date.getDate() - daysFromMonday)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+interface WeeklySubjectRatioProps {
+  subjects: Subject[]
+}
+
+function WeeklySubjectRatio({ subjects }: WeeklySubjectRatioProps) {
+  // 저장된 공부 기록을 불러옵니다. (#20 에서 저장 기능이 생기기 전까지는 가짜 데이터)
+  const [sessions] = useState<StudySession[]>(() => loadData('sessions', mockSessions))
+
+  const mondayStart = getThisMondayStart()
+  const thisWeekSessions = sessions.filter((session) => session.startedAt >= mondayStart)
+
+  // 과목마다 이번 주에 공부한 시간(분)을 더합니다.
+  const rows = subjects
+    .map((subject) => {
+      let minutes = 0
+      for (const session of thisWeekSessions) {
+        if (session.subjectId === subject.id) {
+          minutes += Math.round((session.endedAt - session.startedAt) / 60000)
+        }
+      }
+      return { subject, minutes }
+    })
+    .filter((row) => row.minutes > 0)
+    // 많이 공부한 과목이 위로 오게 정렬합니다.
+    .sort((a, b) => b.minutes - a.minutes)
+
+  const totalMinutes = rows.reduce((sum, row) => sum + row.minutes, 0)
+
+  return (
+    <Card title="이번 주 과목별 공부 시간">
+      {totalMinutes === 0 ? (
+        <p className="py-4 text-center text-sm text-slate-500">
+          이번 주 공부 기록이 아직 없어요. 타이머로 공부를 시작해 보세요.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {rows.map(({ subject, minutes }) => {
+            const percent = Math.round((minutes / totalMinutes) * 100)
+            return (
+              // 모바일: [과목 태그 + 시간] 한 줄, 그 아래 막대 / PC: [태그 | 막대 | 시간] 한 줄
+              <li
+                key={subject.id}
+                className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3"
+              >
+                {/* sm:contents: PC 에서는 이 div 상자를 없는 셈 치고, 안의 태그·시간을 li 에 바로 놓습니다. */}
+                <div className="flex items-center justify-between gap-2 sm:contents">
+                  <SubjectBadge
+                    name={subject.name}
+                    color={subject.color}
+                    className="max-w-24 sm:w-16 sm:shrink-0"
+                  />
+                  <span className="shrink-0 text-sm text-slate-600 tabular-nums sm:order-last sm:w-32 sm:text-right">
+                    {percent}% · {formatMinutes(minutes)}
+                  </span>
+                </div>
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={cn('h-full rounded-full', barColorStyles[subject.color])}
+                    // 너비가 숫자에 따라 바뀌어서 Tailwind 클래스로 만들 수 없어 인라인 style 을 씁니다.
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Card>
   )
 }
