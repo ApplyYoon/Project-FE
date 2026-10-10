@@ -1,4 +1,4 @@
-import { navItems } from '@/components/layout/navItems'
+import { isNavItemSelected, navItems } from '@/components/layout/navItems'
 import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
 import { cn } from '@/lib/cn'
 import type { ReactNode } from 'react'
@@ -34,7 +34,14 @@ export function Header({ hideNav = false, action }: HeaderProps) {
             {/* 데스크톱(sm 이상)에서만 보이는 가로 메뉴. 모바일은 하단 탭(BottomTabNav)을 씁니다. */}
             <nav className="hidden gap-1 sm:flex">
               {navItems.map((item) => (
-                <NavLink key={item.to} to={item.to} className={navLinkClass}>
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    // 기록 아래 화면(리포트·사용설명서 등)에서도 "기록" 이 선택된 모양이 되게 합니다.
+                    navLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
+                  }
+                >
                   {item.label}
                 </NavLink>
               ))}
