@@ -13,6 +13,10 @@ const PENDING_KEY = 'away-pending'
 // 새로고침이 끝나기까지 걸리는 시간의 한계(밀리초). 이보다 오래 걸렸다면 새로고침이 아니라 정말 나갔다 온 것으로 봅니다.
 const RELOAD_LIMIT_MS = 10_000
 
+// 이 시간 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. (#234)
+// 더 오래 비웠으면 멈춘 채로 두고 안내만 합니다. 몇 시간 뒤에 열었는데 어제 타이머가 혼자 다시 돌면 안 되기 때문입니다.
+export const AUTO_RESUME_LIMIT_MS = 30 * 60 * 1000
+
 /** 나간 순간에 적어 두는 값입니다. 돌아오면 이걸로 AwayRecord 를 완성합니다. */
 interface PendingAway {
   /** 나간 시각 (Date.now() 값) */
@@ -114,13 +118,15 @@ interface UseAwayDetectionOptions {
 
 /**
  * 공부 중에 다른 탭·앱으로 나가면 타이머를 자동으로 일시정지하고,
- * 돌아오면 "얼마나 나갔다 왔는지" 알려 주면서 딴짓 기록으로 저장합니다.
+ * 돌아오면 "얼마나 나갔다 왔는지" 알려 주면서 딴짓 기록으로 저장하고, 타이머를 이어서 흐르게 합니다.
+ * (나가 있던 시간은 일시정지한 시간이라 순공에서 빠집니다)
  *
  *   const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({ ... })
  *
  * 나갔는지는 `visibilitychange` 이벤트와 `document.hidden` 으로 압니다.
  * (탭을 바꾸거나, 다른 앱으로 가거나, 휴대폰 화면이 꺼지면 document.hidden 이 true 가 됩니다)
- * 돌아와도 타이머는 저절로 다시 흐르지 않습니다. 사용자가 시작을 눌러야 이어집니다.
+ * 30분 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. 더 오래 비웠으면 멈춘 채로 두고, 시작을 눌러야 이어집니다.
+ * 내가 직접 일시정지해 둔 상태에서 나갔다 온 것은 딴짓으로 세지 않고, 저절로 흐르게 하지도 않습니다.
  */
 export function useAwayDetection(options: UseAwayDetectionOptions) {
   // 페이지가 열릴 때 한 번만 읽습니다. 나갔다 돌아와서 열린 거라면 그 기록이 처음부터 들어 있게 됩니다.
@@ -161,8 +167,11 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
     // discard · reload · finish 는 모두 저장소의 흔적을 지우면 끝입니다.
     removeData(PENDING_KEY)
 
-    // 새로고침 때문에 멈춰 버린 타이머는 다시 흐르게 합니다.
-    if (leftover.action === 'reload' && !optionsRef.current.isRunning) {
+    // 새로고침 때문에 멈춘 타이머와, 잠깐(30분 안) 나갔다 돌아온 타이머는 다시 흐르게 합니다.
+    const shouldResume =
+      leftover.action === 'reload' ||
+      (leftover.action === 'finish' && leftover.record.awayMs <= AUTO_RESUME_LIMIT_MS)
+    if (shouldResume && !optionsRef.current.isRunning) {
       optionsRef.current.start()
     }
   }, [leftover])
@@ -170,7 +179,7 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
   // 탭을 떠나거나 돌아올 때를 지켜봅니다.
   useEffect(() => {
     function handleVisibilityChange() {
-      const { isRunning, isResting, subjectId, pause } = optionsRef.current
+      const { isRunning, isResting, subjectId, pause, start } = optionsRef.current
 
       if (document.hidden) {
         // 시간이 흐르는 중일 때만 딴짓입니다. (이미 멈춰 있거나, 쉬는 중이거나, 이미 나간 상태면 무시)
@@ -196,6 +205,8 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
 
       setRecords((prev) => [...prev, record])
       setAwayNotice(record)
+      // 잠깐 나갔다 온 거라면 다시 누르지 않아도 이어서 흐르게 합니다. (나가 있던 시간은 순공에서 빠집니다)
+      if (record.awayMs <= AUTO_RESUME_LIMIT_MS) start()
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)

@@ -1,5 +1,7 @@
+import { toDateKey } from '@/lib/date'
+import { loadRoutines, takeRoutinePlans } from '@/lib/routines'
 import { loadData, saveData } from '@/lib/storage'
-import type { StudyPlan } from '@/types'
+import type { Routine, StudyPlan } from '@/types'
 import { useEffect, useState } from 'react'
 
 /** 날짜('YYYY-MM-DD')마다 그날의 계획 목록을 따로 모아 둔 모양입니다. */
@@ -9,15 +11,32 @@ type PlansByDate = Record<string, StudyPlan[]>
 const STORAGE_KEY = 'plans'
 
 /**
+ * 저장된 계획을 불러옵니다. 그리고 오늘 요일의 루틴 중 아직 안 넣은 것이 있으면 오늘 계획에 넣습니다. (#236)
+ * 앱을 어느 화면으로 열든(홈·타이머·계획) 오늘의 루틴 계획이 보이도록, 계획을 처음 읽는 이곳에서 채웁니다.
+ */
+function loadPlansWithTodayRoutines(): PlansByDate {
+  const saved = loadData<PlansByDate>(STORAGE_KEY, {})
+  const todayKey = toDateKey(new Date())
+  const newPlans = takeRoutinePlans(todayKey, todayKey, loadRoutines())
+  if (newPlans.length === 0) return saved
+
+  const next = { ...saved, [todayKey]: [...(saved[todayKey] ?? []), ...newPlans] }
+  // "넣었다" 는 표시는 takeRoutinePlans 가 이미 저장했습니다. 계획도 지금 바로 저장해서 둘이 어긋나지 않게 합니다.
+  saveData(STORAGE_KEY, next)
+  return next
+}
+
+/**
  * 공부 계획을 날짜별로 들고 있고, 바뀔 때마다 localStorage 에 저장합니다.
  * 새로고침해도 계획이 남아 있고, 처음 들어온 사람은 빈 목록으로 시작합니다.
  *
- *   const { allPlans, getPlans, addPlan, toggleDone, deletePlan } = usePlans()
+ *   const { allPlans, getPlans, addPlan, toggleDone, completePlan, deletePlan } = usePlans()
  *   const todayPlans = getPlans('2026-09-28')
  */
 export function usePlans() {
   // 처음 한 번만 저장소에서 불러옵니다. 저장된 게 없으면 빈 객체({})라서 목록이 비어 있습니다.
-  const [plansByDate, setPlansByDate] = useState<PlansByDate>(() => loadData(STORAGE_KEY, {}))
+  // 불러오면서 오늘 요일의 루틴도 오늘 계획에 넣습니다. (하루에 한 번만 들어갑니다)
+  const [plansByDate, setPlansByDate] = useState<PlansByDate>(loadPlansWithTodayRoutines)
 
   // 계획이 바뀔 때마다 저장합니다.
   useEffect(() => {
@@ -37,6 +56,26 @@ export function usePlans() {
     setPlansByDate((prev) => ({ ...prev, [plan.date]: [...(prev[plan.date] ?? []), plan] }))
   }
 
+  /** 계획 여러 개를 한 번에 붙입니다. 각 계획은 자기 날짜(plan.date)의 목록 맨 뒤에 들어갑니다. (다른 날 계획 가져오기에 씁니다) */
+  function addPlans(plans: StudyPlan[]) {
+    setPlansByDate((prev) => {
+      const next: PlansByDate = { ...prev }
+      for (const plan of plans) {
+        next[plan.date] = [...(next[plan.date] ?? []), plan]
+      }
+      return next
+    })
+  }
+
+  /**
+   * 그 날짜에 아직 안 넣은 루틴이 있으면 계획으로 넣습니다. 오늘과 앞으로의 날짜만 채웁니다.
+   * 계획 화면에서 다른 날짜로 옮겨 갈 때 씁니다. (오늘 것은 처음 불러올 때 이미 채웁니다)
+   */
+  function fillRoutines(date: string, routines: Routine[]) {
+    const newPlans = takeRoutinePlans(date, toDateKey(new Date()), routines)
+    if (newPlans.length > 0) addPlans(newPlans)
+  }
+
   /** 그 계획의 done 만 뒤집습니다. (나머지는 그대로) */
   function toggleDone(planId: string) {
     setPlansByDate((prev) => {
@@ -45,6 +84,17 @@ export function usePlans() {
         next[date] = plans.map((plan) =>
           plan.id === planId ? { ...plan, done: !plan.done } : plan,
         )
+      }
+      return next
+    })
+  }
+
+  /** 그 계획을 "다 했음" 으로 바꿉니다. 이미 다 한 계획이면 그대로입니다. (타이머로 목표 시간을 채웠을 때 씁니다) */
+  function completePlan(planId: string) {
+    setPlansByDate((prev) => {
+      const next: PlansByDate = {}
+      for (const [date, plans] of Object.entries(prev)) {
+        next[date] = plans.map((plan) => (plan.id === planId ? { ...plan, done: true } : plan))
       }
       return next
     })
@@ -67,5 +117,15 @@ export function usePlans() {
     setPlansByDate((prev) => ({ ...prev, [date]: plans }))
   }
 
-  return { allPlans, getPlans, addPlan, toggleDone, deletePlan, replaceDayPlans }
+  return {
+    allPlans,
+    getPlans,
+    addPlan,
+    addPlans,
+    fillRoutines,
+    toggleDone,
+    completePlan,
+    deletePlan,
+    replaceDayPlans,
+  }
 }

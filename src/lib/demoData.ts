@@ -155,6 +155,11 @@ export function addDemoData(): void {
   }
 }
 
+/** 가상 데이터가 들어 있는지 알려줍니다. id 가 'demo-' 로 시작하는 공부 기록이 하나라도 있으면 true 입니다. */
+export function hasDemoData(sessions: StudySession[]): boolean {
+  return sessions.some((session) => session.id.startsWith(DEMO_ID_PREFIX))
+}
+
 /** 'demo-' 로 시작하는 가상 계획·공부 기록만 지웁니다. 온보딩에 넣어 준 시험 날짜는 남겨 둡니다. */
 export function removeDemoData(): void {
   const plansByDate = loadData<PlansByDate>('plans', {})

@@ -34,27 +34,42 @@ export interface Subject {
   color: SubjectColor
 }
 
-/** 하루 공부 계획 한 줄 */
+/*
+ * 아래 StudyPlan · StudySession 에서 이름 뒤에 ? 가 붙은 항목은 "없어도 되는" 항목입니다.
+ * 나중에 더한 항목이라서, 그 전에 저장된 계획·기록에는 이 값이 없습니다.
+ * 없을 때 어떻게 볼지는 항목마다 주석에 적어 두었습니다. (BE 와 맞춘 표: Project 저장소 #12)
+ */
+
+/** 계획·기록의 종류 — study: 공부, play: 노는 계획 */
+export type PlanKind = 'study' | 'play'
+
+/** 하루 계획 한 줄 (공부 계획 또는 노는 계획) */
 export interface StudyPlan {
   /** 계획을 구분하는 고유 값 */
   id: string
   /** 계획한 날짜 (예: '2026-09-28') */
   date: string
-  /** 어떤 과목의 계획인지 (Subject 의 id) */
+  /** 어떤 과목의 계획인지 (Subject 의 id). 노는 계획이면 빈 글자('') */
   subjectId: string
   /** 할 일 내용 (예: '수학 문제집 3단원 풀기') */
   content: string
-  /** 목표 공부 시간 (분 단위) */
+  /** 목표 시간 (분 단위) */
   targetMinutes: number
   /** 다 했으면 true, 아직이면 false */
   done: boolean
+  /** 시작할 시각 (예: '19:00'). 안 정했으면 없음 */
+  startTime?: string
+  /** 공부 계획인지 노는 계획인지. 없으면 공부(study)로 봅니다 */
+  kind?: PlanKind
+  /** 루틴이 만든 계획이면 그 루틴의 id (Routine 의 id) */
+  routineId?: string
 }
 
-/** 타이머로 한 번 공부한 기록 (시작 ~ 정지) */
+/** 타이머로 한 번 잰 기록 (시작 ~ 정지) */
 export interface StudySession {
   /** 기록을 구분하는 고유 값 */
   id: string
-  /** 어떤 과목을 공부했는지 (Subject 의 id) */
+  /** 어떤 과목을 공부했는지 (Subject 의 id). 노는 기록이면 빈 글자('') */
   subjectId: string
   /** 공부를 시작한 시각 (Date.now() 값) */
   startedAt: number
@@ -62,6 +77,47 @@ export interface StudySession {
   endedAt: number
   /** 이 세션에서 일시정지를 누른 횟수 */
   pauseCount: number
+  /** 시작 ~ 끝 사이에 일시정지해 있던 시간의 합 (밀리초). 없으면 0 으로 봅니다 */
+  pausedMs?: number
+  /** 어느 계획을 하려고 켠 타이머인지 (StudyPlan 의 id). 계획 없이 켰으면 없음 */
+  planId?: string
+  /** 시작할 때 약속한 목표 시간 (분). 목표 없이 켰으면 없음. 나중에 계획을 고쳐도 이 값은 그대로입니다 */
+  targetMinutes?: number
+  /** 목표 전에 그만뒀을 때 고른 이유. 안 골랐으면 없음 */
+  stopReason?: MissReason
+  /** 공부 기록인지 노는 기록인지. 없으면 공부(study)로 봅니다 */
+  kind?: PlanKind
+}
+
+/** 요일마다 반복되는 계획의 틀. 그 요일의 계획에 자동으로 들어옵니다 */
+export interface Routine {
+  /** 루틴을 구분하는 고유 값 */
+  id: string
+  /** 무슨 요일마다 (0 = 일요일, 1 = 월요일 … 6 = 토요일. Date 의 getDay() 와 같은 숫자입니다) */
+  weekdays: number[]
+  /** 공부 루틴인지 노는 루틴인지 */
+  kind: PlanKind
+  /** 어떤 과목인지 (Subject 의 id). 노는 루틴이면 빈 글자('') */
+  subjectId: string
+  /** 할 일 내용 */
+  content: string
+  /** 목표 시간 (분 단위) */
+  targetMinutes: number
+  /** 시작할 시각 (예: '19:00'). 안 정했으면 없음 */
+  startTime?: string
+}
+
+/**
+ * 온보딩에서 처음 세운 계획입니다.
+ * 한 번 저장하면 나중에 루틴을 바꿔도 이 값은 바뀌지 않습니다. "처음의 나" 와 지금을 비교하는 기준입니다.
+ */
+export interface InitialPlan {
+  /** 처음 계획을 세운 날짜 (예: '2026-10-10') */
+  createdDate: string
+  /** 하루에 공부하기로 한 시간 (분) */
+  dailyMinutes: number
+  /** 일주일에 며칠 하기로 했는지 */
+  daysPerWeek: number
 }
 
 /** 공부 중에 다른 탭·앱으로 나갔다 돌아온 기록 (딴짓 한 번) */

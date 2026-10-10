@@ -28,6 +28,23 @@ export interface PomodoroStatus {
  *   getPomodoroStatus(1500) -> 휴식, 5분 남음
  *   getPomodoroStatus(1800) -> 공부, 25분 남음 (두 번째 바퀴 시작)
  */
+/**
+ * 흐른 시간(초) 가운데 "휴식 구간"이 차지한 시간(초)을 구합니다.
+ * 뽀모도로로 잰 기록을 저장할 때, 쉬는 시간을 순공에서 빼려고 씁니다.
+ *
+ *   getPomodoroBreakSeconds(1200) -> 0     (첫 공부 구간 20분째)
+ *   getPomodoroBreakSeconds(1620) -> 120   (25분 공부 + 휴식 2분째)
+ *   getPomodoroBreakSeconds(1800) -> 300   (한 바퀴 끝. 휴식 5분)
+ *   getPomodoroBreakSeconds(2400) -> 300   (두 번째 공부 구간 10분째)
+ */
+export function getPomodoroBreakSeconds(elapsedSeconds: number): number {
+  const cycleCount = Math.floor(elapsedSeconds / CYCLE_SECONDS)
+  const secondsInCycle = elapsedSeconds % CYCLE_SECONDS
+  // 이번 바퀴에서 공부 구간(25분)을 넘긴 만큼이 지금까지의 휴식 시간입니다.
+  const breakSecondsInCycle = Math.max(0, secondsInCycle - STUDY_SECONDS)
+  return cycleCount * BREAK_MINUTES * 60 + breakSecondsInCycle
+}
+
 export function getPomodoroStatus(elapsedSeconds: number): PomodoroStatus {
   const cycleCount = Math.floor(elapsedSeconds / CYCLE_SECONDS)
   // 이번 바퀴가 시작된 뒤 흐른 초 (% 는 나눈 나머지)

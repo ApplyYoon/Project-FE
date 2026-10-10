@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { usePlans } from '@/hooks/usePlans'
 import { cn } from '@/lib/cn'
+import { loadStudySessions } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
-import { mockInsights, mockSessions } from '@/lib/mock'
+import { getInsightsToShow } from '@/lib/insights'
 import { loadData } from '@/lib/storage'
 import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
 import type { StudyPlan, StudySession, WeeklyReview } from '@/types'
@@ -185,8 +186,8 @@ export function ReportPage() {
   const [view, setView] = useState<'weekly' | 'monthly'>('weekly')
 
   const { allPlans } = usePlans()
-  // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 가짜 데이터를 씁니다. (#20 이 아직 머지 전입니다)
-  const [sessions] = useState<StudySession[]>(() => loadData('sessions', mockSessions))
+  // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
+  const [sessions] = useState<StudySession[]>(loadStudySessions)
 
   return (
     <div className="flex flex-col gap-8">
@@ -280,6 +281,9 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
 
   const thisWeek = getWeekStats(mondayKey, allPlans, sessions)
   const previousWeek = getWeekStats(previousMondayKey, allPlans, sessions)
+
+  // 인사이트는 가상 데이터를 넣었을 때만 예시로 보여줍니다. (lib/insights.ts)
+  const { insights, isExample: isExampleInsight } = getInsightsToShow(sessions)
 
   // 계획도 공부 기록도 하나 없는 주는 "기록 없음" 안내로 바꿉니다.
   const hasRecord = thisWeek.targetMinutes > 0 || thisWeek.studyMinutes > 0
@@ -405,14 +409,19 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
 
           <section>
             <h2 className="text-lg font-bold text-slate-900">이번 주 발견</h2>
-            {mockInsights.length === 0 ? (
+            {insights.length === 0 ? (
               <p className="mt-3 text-sm text-slate-500">
                 아직 데이터가 모자라요. 기록이 쌓이면 발견이 생겨요.
               </p>
             ) : (
               <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {mockInsights.slice(0, 2).map((insight) => (
-                  <InsightCard key={insight.id} insight={insight} sessions={sessions} />
+                {insights.map((insight) => (
+                  <InsightCard
+                    key={insight.id}
+                    insight={insight}
+                    sessions={sessions}
+                    isExample={isExampleInsight}
+                  />
                 ))}
               </div>
             )}

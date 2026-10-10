@@ -4,12 +4,13 @@ import { MissReasonPicker, type MissReasonValue } from '@/components/ui/MissReas
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useCheckIns } from '@/hooks/useCheckIns'
 import { usePlans } from '@/hooks/usePlans'
+import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
 import { moveDateKey, toDateKey } from '@/lib/date'
-import { mockSessions } from '@/lib/mock'
 import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
+import { getStudyMs } from '@/lib/studyTime'
 import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
@@ -87,6 +88,8 @@ export function CheckPage() {
 
   const { getCheckIn, saveCheckIn } = useCheckIns()
   const { getPlans } = usePlans()
+  // 타이머가 저장해 둔 진짜 공부 기록입니다. 기록이 없으면 빈 목록이라 어제 순공은 0분으로 보입니다.
+  const { sessions } = useStudySessions()
   const { suggestions } = useSuggestions()
   const { getCheck, saveCheck } = useSuggestionChecks()
 
@@ -138,12 +141,11 @@ export function CheckPage() {
   const yesterdayPlans = getPlans(yesterdayKey)
   const targetMinutes = yesterdayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
 
-  // 실제 공부 기록 저장(#20)은 아직 develop 에 머지되지 않아서, 지금은 예시 기록(mockSessions)으로 계산합니다.
-  // #20 이 머지되면 이 부분을 실제 기록을 불러오는 코드로 바꿔야 합니다.
+  // 어제 시작한 공부 기록의 순공시간(일시정지한 시간은 뺌)을 더합니다.
   const actualMinutes = Math.round(
-    mockSessions
+    sessions
       .filter((session) => toDateKey(new Date(session.startedAt)) === yesterdayKey)
-      .reduce((sum, session) => sum + (session.endedAt - session.startedAt) / 60000, 0),
+      .reduce((sum, session) => sum + getStudyMs(session) / 60000, 0),
   )
 
   const achievementRate = targetMinutes === 0 ? 0 : (actualMinutes / targetMinutes) * 100

@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/cn'
+import { missReasonOptions } from '@/lib/missReasons'
 import type { MissReason } from '@/types'
 
 /** 고른 이유. '기타' 를 골랐을 때만 note 에 한 줄을 적습니다. (이유 이름은 공통 타입 MissReason 입니다) */
@@ -12,17 +13,6 @@ export interface MissReasonValue {
 
 // '기타' 에 적을 수 있는 최대 글자 수
 const NOTE_MAX_LENGTH = 50
-
-// 버튼은 이 순서대로 보입니다.
-const reasonOptions: { key: MissReason; label: string }[] = [
-  { key: 'tired', label: '피곤·수면' },
-  { key: 'event', label: '약속·행사' },
-  { key: 'phone', label: '폰·SNS' },
-  { key: 'tooMuch', label: '계획 과다' },
-  { key: 'unwilling', label: '하기 싫음' },
-  { key: 'sick', label: '아픔' },
-  { key: 'etc', label: '기타' },
-]
 
 interface MissReasonPickerProps {
   /** 어제 계획 달성률 (0 ~ 100). 100 이상이면 아무것도 보여주지 않습니다. */
@@ -75,7 +65,8 @@ export function MissReasonPicker({
 
       {/* 글자 수가 제각각인 버튼이라 flex-wrap 으로 넘치면 다음 줄로 보냅니다. */}
       <div className="flex flex-wrap gap-2">
-        {reasonOptions.map((option) => {
+        {/* 버튼 목록은 타이머의 "그만하는 이유" 와 같이 씁니다. (lib/missReasons.ts) */}
+        {missReasonOptions.map((option) => {
           const isSelected = value?.reason === option.key
           return (
             <button
