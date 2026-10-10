@@ -12,7 +12,7 @@ import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
 import { loadInitialPlan } from '@/lib/initialPlan'
-import { getUnansweredSteps } from '@/lib/onboardingSteps'
+import { getUnansweredSteps, loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
@@ -47,7 +47,7 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 시험, 일기가 전부 사라져요. 과목과 로그인 정보는 그대로 남아요.',
+      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 주간 회고, 개선안, 시험, 일기, AI 메시지가 전부 사라져요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
@@ -85,9 +85,7 @@ export function SettingsPage() {
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
   const [initialPlan] = useState(loadInitialPlan)
   // 온보딩 답. "내 정보 더 알려주기" 에서 남은 질문 수를 세는 데 씁니다. (#239)
-  const [onboardingAnswers] = useState(() =>
-    loadData<Record<string, string> | null>('onboarding-answers', null),
-  )
+  const [onboardingAnswers] = useState(loadOnboardingAnswers)
 
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)

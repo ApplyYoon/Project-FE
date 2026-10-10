@@ -11,9 +11,10 @@ import {
   createRoutineDraft,
   loadInitialPlan,
 } from '@/lib/initialPlan'
-import { mockSubjects } from '@/lib/mock'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { loadSubjects } from '@/lib/subjects'
 import { ROUTINES_KEY, formatWeekdays, loadRoutines, markRoutinesFilled } from '@/lib/routines'
-import { loadData, saveData } from '@/lib/storage'
+import { saveData } from '@/lib/storage'
 import type { InitialPlan, Subject } from '@/types'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
@@ -29,7 +30,7 @@ const DEFAULT_SUBJECT_COUNT = 3
  * (같은 것을 두 번 묻지 않으려고 미리 골라 둡니다. 여기서 바꿀 수 있습니다)
  */
 function getDefaultDailyHours(): number {
-  const answers = loadData<Record<string, string> | null>('onboarding-answers', null)
+  const answers = loadOnboardingAnswers()
   const hours = Math.round(Number(answers?.dailyAvailableMinutes) / 60)
   return DAILY_HOUR_OPTIONS.includes(hours) ? hours : DEFAULT_DAILY_HOURS
 }
@@ -63,7 +64,7 @@ export function OnboardingPlanPage() {
   // 이미 세운 처음 계획. 없으면 null 입니다.
   const [savedPlan] = useState(loadInitialPlan)
   // 계획 화면에서 저장한 과목 목록 (저장된 게 없으면 예시 과목)
-  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects] = useState<Subject[]>(loadSubjects)
 
   const [dailyHours, setDailyHours] = useState(getDefaultDailyHours)
   const [daysPerWeek, setDaysPerWeek] = useState(DEFAULT_DAYS_PER_WEEK)

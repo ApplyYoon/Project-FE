@@ -9,7 +9,7 @@ import {
   toQuietHours,
 } from '@/lib/notifications'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
-import { loadData, saveData } from '@/lib/storage'
+import { loadData, loadList, saveData } from '@/lib/storage'
 import { useEffect } from 'react'
 
 // 한 번 알림을 보낸 메시지의 id 를 저장해 두는 키. 새로고침하거나 다른 페이지로 가도
@@ -54,10 +54,12 @@ export function useAiMessageNotifications(): void {
       quietHours: toQuietHours(settings),
     })
 
-    const notifiedIds = new Set(loadData<string[]>(NOTIFIED_IDS_KEY, []))
-    const savedSent = loadData<SentToday>(SENT_TODAY_KEY, { date: today, count: 0 })
-    // 날짜가 지났으면 0 부터 다시 셉니다.
-    let sentCount = savedSent.date === today ? savedSent.count : 0
+    const notifiedIds = new Set(loadList<string>(NOTIFIED_IDS_KEY))
+    // 저장된 값이 깨져 있을 수 있어서 모양을 확인하고 씁니다.
+    const savedSent = loadData<Partial<SentToday> | null>(SENT_TODAY_KEY, null)
+    const hasTodayCount = savedSent?.date === today && typeof savedSent.count === 'number'
+    // 날짜가 지났으면(또는 값이 없으면) 0 부터 다시 셉니다.
+    let sentCount = hasTodayCount ? (savedSent.count ?? 0) : 0
 
     const newlyNotifiedIds: string[] = []
     for (const message of messages) {

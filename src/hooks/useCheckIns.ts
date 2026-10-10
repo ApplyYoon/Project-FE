@@ -1,4 +1,4 @@
-import { loadData, saveData } from '@/lib/storage'
+import { loadRecord, saveData } from '@/lib/storage'
 import type { CheckIn } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -18,7 +18,7 @@ const STORAGE_KEY = 'checkins'
 export function useCheckIns() {
   // 처음 한 번만 저장소에서 불러옵니다. 저장된 게 없으면 빈 객체({})라서 체크인한 날이 없는 상태입니다.
   const [checkInsByDate, setCheckInsByDate] = useState<CheckInsByDate>(() =>
-    loadData(STORAGE_KEY, {}),
+    loadRecord<CheckIn>(STORAGE_KEY),
   )
 
   // 체크인이 바뀔 때마다 저장합니다.

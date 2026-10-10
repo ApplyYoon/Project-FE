@@ -17,7 +17,7 @@ import { scalePlanMinutes } from '@/lib/goalAdjust'
 import { getTodayCareDecision } from '@/lib/careInputs'
 import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
-import { mockSubjects } from '@/lib/mock'
+import { loadSubjects } from '@/lib/subjects'
 import { getPlanProgress, getPlayProgress } from '@/lib/planProgress'
 import { copyPlans, getFrequentPlans, type FrequentPlan } from '@/lib/planShortcuts'
 import {
@@ -960,7 +960,7 @@ export function PlannerPage() {
   }, [view])
 
   // 새로고침해도 과목 목록이 유지되도록 localStorage 에서 불러옵니다. (처음 한 번은 예시 과목으로 시작)
-  const [subjects, setSubjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects, setSubjects] = useState<Subject[]>(loadSubjects)
 
   useEffect(() => {
     saveData('subjects', subjects)

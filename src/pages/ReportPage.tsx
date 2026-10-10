@@ -12,7 +12,7 @@ import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
 import { getInsightsToShow } from '@/lib/insights'
-import { loadData } from '@/lib/storage'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
 import type { StudyPlan, StudySession, WeeklyReview } from '@/types'
 import { useState, type FormEvent } from 'react'
@@ -493,7 +493,7 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
 
   // 예상 성장 곡선(#71). "지금까지 전체" 기준이라 보고 있는 4주 구간과 상관없이 항상 같은 값입니다.
   // D-day 와 시험 이름은 온보딩(#58)에서 받습니다. 온보딩을 아직 안 했으면 둘 다 빈 글자입니다.
-  const onboardingAnswers = loadData<Record<string, string>>('onboarding-answers', {})
+  const onboardingAnswers = loadOnboardingAnswers() ?? {}
   const examDateKey = onboardingAnswers.targetExamDate || null
   const examLabel = onboardingAnswers.targetExam || '시험일'
   const growthCurve =

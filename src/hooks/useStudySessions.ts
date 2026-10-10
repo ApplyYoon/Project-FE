@@ -1,4 +1,5 @@
-import { loadData, saveData } from '@/lib/storage'
+import { loadAllSessions } from '@/lib/dailyRecords'
+import { saveData } from '@/lib/storage'
 import type { StudySession } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -16,7 +17,8 @@ const STORAGE_KEY = 'sessions'
  */
 export function useStudySessions() {
   // 저장소에는 공부 기록과 노는 기록이 같이 들어 있습니다.
-  const [allSessions, setAllSessions] = useState<StudySession[]>(() => loadData(STORAGE_KEY, []))
+  // loadAllSessions: 저장된 값이 깨져 있거나 모양이 틀린 기록은 걸러서 불러옵니다. (lib/dailyRecords.ts)
+  const [allSessions, setAllSessions] = useState<StudySession[]>(loadAllSessions)
 
   useEffect(() => {
     saveData(STORAGE_KEY, allSessions)

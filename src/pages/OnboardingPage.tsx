@@ -10,6 +10,7 @@ import {
   getDaysUntil,
   getUnansweredSteps,
   isAnswerValid,
+  loadOnboardingAnswers,
   parseMultiAnswer,
   toChoiceOption,
   toggleMultiAnswer,
@@ -215,7 +216,7 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   const navigate = useNavigate()
   const isMore = mode === 'more'
   // 저장된 답. 설문을 한 번도 안 했으면 null 입니다.
-  const [savedAnswers] = useState(() => loadData<Record<string, string> | null>(STORAGE_KEY, null))
+  const [savedAnswers] = useState(loadOnboardingAnswers)
   // 이번에 물어볼 질문들. 화면이 처음 그려질 때 한 번만 정합니다.
   // (답할 때마다 목록이 줄어들면 "3 / 12" 같은 번호가 흔들리기 때문입니다)
   const [steps] = useState(() => (isMore ? getUnansweredSteps(savedAnswers ?? {}) : firstSteps))

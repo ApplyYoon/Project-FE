@@ -30,7 +30,7 @@ import {
 import { toDateKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { missReasonOptions } from '@/lib/missReasons'
-import { mockSubjects } from '@/lib/mock'
+import { loadSubjects } from '@/lib/subjects'
 import { getPlanProgress } from '@/lib/planProgress'
 import {
   BREAK_MINUTES,
@@ -84,7 +84,7 @@ export function TimerPage() {
   const { sessions, allSessions, addSession } = useStudySessions()
 
   // 계획 화면에서 저장한 과목 목록을 그대로 불러옵니다. (저장된 게 없으면 가짜 데이터)
-  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects] = useState<Subject[]>(loadSubjects)
   // 고른 과목도 저장해 둡니다. 새로고침했는데 과목만 사라지면 "공부 중인데 무슨 과목인지 모르는" 상태가 되기 때문입니다.
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(() =>
     loadData<string | null>('timer-subject', null),

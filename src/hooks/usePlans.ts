@@ -1,6 +1,6 @@
 import { toDateKey } from '@/lib/date'
 import { loadRoutines, takeRoutinePlans } from '@/lib/routines'
-import { loadData, saveData } from '@/lib/storage'
+import { loadRecord, saveData } from '@/lib/storage'
 import type { Routine, StudyPlan } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -15,7 +15,8 @@ const STORAGE_KEY = 'plans'
  * 앱을 어느 화면으로 열든(홈·타이머·계획) 오늘의 루틴 계획이 보이도록, 계획을 처음 읽는 이곳에서 채웁니다.
  */
 function loadPlansWithTodayRoutines(): PlansByDate {
-  const saved = loadData<PlansByDate>(STORAGE_KEY, {})
+  // loadRecord: 저장된 값이 깨져 있으면(객체가 아니면) 빈 객체로 시작합니다.
+  const saved: PlansByDate = loadRecord<StudyPlan[]>(STORAGE_KEY)
   const todayKey = toDateKey(new Date())
   const newPlans = takeRoutinePlans(todayKey, todayKey, loadRoutines())
   if (newPlans.length === 0) return saved

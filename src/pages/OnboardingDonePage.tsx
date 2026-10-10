@@ -4,13 +4,12 @@ import { CALL_TIME_STORAGE_KEY } from '@/lib/callReminder'
 import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
 import { getMessageSettings } from '@/lib/messageSettings'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { loadData } from '@/lib/storage'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 // 온보딩 설문 답을 저장한 이름. OnboardingPage 와 같은 값이어야 합니다. (답이 있으면 = 온보딩을 마친 사람)
-const ANSWERS_KEY = 'onboarding-answers'
-
 /** 관리 강도 단계 이름. 배열 번호 = 단계 (0~4). lib/careLevel.ts 의 설명과 같습니다. */
 const careLevelNames = ['회복', '당근', '넛지', '심리적 채찍', '강제적 채찍']
 
@@ -44,7 +43,7 @@ function formatKoreanTime(time: string | undefined): string | null {
  */
 export function OnboardingDonePage() {
   const navigate = useNavigate()
-  const [answers] = useState(() => loadData<Record<string, string> | null>(ANSWERS_KEY, null))
+  const [answers] = useState(loadOnboardingAnswers)
   // 설정 화면과 같은 함수로 읽어서, 설정 화면에 보이는 값과 똑같이 나오게 합니다.
   const [limits] = useState(getCareLimits) // 관리 강도·독설 수위 (#59)
   const [messageSettings] = useState(getMessageSettings) // 연락 금지 시간 (#60)

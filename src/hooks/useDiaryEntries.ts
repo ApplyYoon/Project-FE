@@ -1,4 +1,4 @@
-import { loadData, saveData } from '@/lib/storage'
+import { loadRecord, saveData } from '@/lib/storage'
 import type { DiaryEntry } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -17,7 +17,9 @@ const STORAGE_KEY = 'diary'
  */
 export function useDiaryEntries() {
   // 처음 한 번만 저장소에서 불러옵니다. 저장된 게 없으면 빈 객체({})라서 쓴 일기가 없는 상태입니다.
-  const [entriesByDate, setEntriesByDate] = useState<EntriesByDate>(() => loadData(STORAGE_KEY, {}))
+  const [entriesByDate, setEntriesByDate] = useState<EntriesByDate>(() =>
+    loadRecord<DiaryEntry>(STORAGE_KEY),
+  )
 
   // 일기가 바뀔 때마다 저장합니다.
   useEffect(() => {

@@ -1,3 +1,5 @@
+import { loadData } from '@/lib/storage'
+
 /**
  * 온보딩 설문의 질문(단계) 목록입니다.
  *
@@ -281,6 +283,16 @@ export const onboardingSteps: OnboardingStep[] = [
     maxLength: 50,
   },
 ]
+
+/**
+ * 저장해 둔 온보딩 답을 불러옵니다. 설문을 한 번도 안 했으면 null 입니다.
+ * 저장된 값이 { 질문 이름: 답 } 모양이 아니면(깨졌으면) 설문을 안 한 것으로 봅니다.
+ */
+export function loadOnboardingAnswers(): Record<string, string> | null {
+  const saved = loadData<unknown>('onboarding-answers', null)
+  if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return null
+  return saved as Record<string, string>
+}
 
 /** 처음 온보딩에서 묻는 질문들 (first: true 인 것만). 이것만 답해도 앱을 쓸 수 있습니다. (#239) */
 export const firstSteps: OnboardingStep[] = onboardingSteps.filter((step) => step.first === true)

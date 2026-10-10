@@ -1,5 +1,5 @@
 import { mockSuggestions } from '@/lib/mock'
-import { loadData, saveData } from '@/lib/storage'
+import { loadList, saveData } from '@/lib/storage'
 import type { Suggestion } from '@/types'
 import { useEffect, useState } from 'react'
 
@@ -25,7 +25,7 @@ function todayKey(): string {
  */
 export function useSuggestions() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>(() =>
-    loadData(STORAGE_KEY, mockSuggestions),
+    loadList(STORAGE_KEY, mockSuggestions),
   )
 
   useEffect(() => {

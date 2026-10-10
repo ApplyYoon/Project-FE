@@ -1,4 +1,4 @@
-import { loadData, saveData } from '@/lib/storage'
+import { loadData, loadRecord, saveData } from '@/lib/storage'
 import type { Routine, StudyPlan } from '@/types'
 
 /**
@@ -94,16 +94,23 @@ export function getRoutinePlansToAdd(
     }))
 }
 
-/** 저장된 루틴 목록을 불러옵니다. 없으면 빈 목록입니다. */
+/** 저장소에서 꺼낸 값이 루틴 모양이 맞는지 확인합니다. (요일 목록이 없는 깨진 값이 섞이면 화면이 멈춥니다) */
+function isRoutine(value: unknown): value is Routine {
+  if (typeof value !== 'object' || value === null) return false
+  const routine = value as Record<string, unknown>
+  return typeof routine.id === 'string' && Array.isArray(routine.weekdays)
+}
+
+/** 저장된 루틴 목록을 불러옵니다. 없으면 빈 목록이고, 모양이 틀린 것은 빼고 돌려줍니다. */
 export function loadRoutines(): Routine[] {
   const saved = loadData<unknown>(ROUTINES_KEY, [])
-  return Array.isArray(saved) ? (saved as Routine[]) : []
+  return Array.isArray(saved) ? saved.filter(isRoutine) : []
 }
 
 /** 그 날짜에 "이미 넣었다" 고 루틴 id 들을 적어 둡니다. */
 export function markRoutinesFilled(dateKey: string, routineIds: string[]): void {
   if (routineIds.length === 0) return
-  const filled = loadData<FilledByDate>(ROUTINE_FILLED_KEY, {})
+  const filled: FilledByDate = loadRecord<string[]>(ROUTINE_FILLED_KEY)
   const already = filled[dateKey] ?? []
   saveData(ROUTINE_FILLED_KEY, { ...filled, [dateKey]: [...already, ...routineIds] })
 }
@@ -119,7 +126,7 @@ export function takeRoutinePlans(
   todayKey: string,
   routines: Routine[],
 ): StudyPlan[] {
-  const filled = loadData<FilledByDate>(ROUTINE_FILLED_KEY, {})
+  const filled: FilledByDate = loadRecord<string[]>(ROUTINE_FILLED_KEY)
   const newPlans = getRoutinePlansToAdd(
     routines,
     filled[dateKey] ?? [],
