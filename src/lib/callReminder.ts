@@ -2,9 +2,12 @@
  * 매일 정해 둔 시간에 AI 전화를 알려주는 기능에 필요한 계산과 브라우저 알림 도우미입니다.
  * (정하는 화면은 SettingsPage, 시간을 지켜보는 곳은 hooks/useCallReminder.ts)
  *
+ * 알림 권한을 묻고 확인하는 함수는 AI 메시지 알림(#62)과 같이 쓰려고 @/lib/notifications 의 것을 씁니다.
+ *
  * ⚠️ 이 기능은 **앱(웹 페이지)이 열려 있을 때만** 동작합니다.
  *    앱이 닫혀 있을 때 알림을 보내려면 서버가 보내는 웹 푸시와 서비스 워커(#105)가 필요합니다.
  */
+import { getNotificationPermission } from '@/lib/notifications'
 
 // 저장소에 넣는 이름들입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다)
 /** 전화 받을 시간. 'HH:MM' 글자 (예: '22:00'). 아직 안 정했으면 저장돼 있지 않습니다. */
@@ -81,30 +84,6 @@ export function shouldRingNow(now: Date, savedTime: unknown, lastRingAt: unknown
   return true
 }
 
-/** 브라우저 알림 권한 상태. unsupported 는 이 브라우저에 알림 기능이 아예 없다는 뜻입니다. */
-export type NotificationState = 'default' | 'granted' | 'denied' | 'unsupported'
-
-/** 지금 알림 권한이 어떤지 알려줍니다. (default = 아직 안 물어봄, granted = 허용, denied = 거부) */
-export function getNotificationState(): NotificationState {
-  if (typeof Notification === 'undefined') return 'unsupported'
-  return Notification.permission
-}
-
-/**
- * 알림 허용을 브라우저에 묻습니다. 사용자가 버튼을 직접 누른 순간에 불러야 합니다. (아이폰은 특히 그렇습니다)
- * 허용·거부를 고른 뒤의 상태를 돌려줍니다.
- */
-export async function requestNotificationPermission(): Promise<NotificationState> {
-  if (typeof Notification === 'undefined') return 'unsupported'
-
-  try {
-    return await Notification.requestPermission()
-  } catch {
-    // 오래된 브라우저에서 권한 요청이 실패해도 앱이 멈추지 않게 지금 상태를 돌려줍니다.
-    return getNotificationState()
-  }
-}
-
 /**
  * 아이폰·아이패드이면서 아직 "홈 화면에 추가" 를 안 한 상태인지 알려줍니다.
  * 아이폰은 홈 화면에 추가한 앱만 알림을 받을 수 있어서, 이 경우에만 안내를 보여줍니다.
@@ -127,7 +106,7 @@ export function isIosWithoutInstall(): boolean {
  * 참고: 안드로이드 크롬은 서비스 워커 없이는 이 방식의 알림을 못 띄웁니다. (#105 에서 서비스 워커를 만든 뒤 지원)
  */
 export function showCallNotification(onClick: () => void): void {
-  if (getNotificationState() !== 'granted') return
+  if (getNotificationPermission() !== 'granted') return
 
   try {
     const notification = new Notification('AI 선생님에게 전화가 왔어요', {

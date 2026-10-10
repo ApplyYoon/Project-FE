@@ -6,16 +6,18 @@
  * React 를 쓰지 않는 순수 함수라서 같은 입력이면 항상 같은 결과가 나옵니다.
  *
  * 입력 중 이행 판정(#66)과 효과 판정(#92)은 각 파일의 타입을 그대로 가져다 씁니다.
- * ⚠️ 미달 원인(MissCause)만 아직 임시로 여기서 정의합니다. (미달 원인 이름이 팀 안에서 정리되면 맞추세요)
+ * ⚠️ 미달 원인(MissCause)만 아직 여기서 따로 정의합니다. 값 이름은 미달 원인 버튼(MissReasonPicker)과 같습니다.
+ *    공통 타입(#78, PR #131)이 merge 되면 그쪽 MissReason 을 가져다 쓰도록 바꾸세요.
  */
 import type { ExperimentResult } from '@/lib/experimentJudge'
 import type { SuggestionGrade } from '@/lib/suggestionRate'
 
 /**
  * 어제 계획을 못 채운 주요 원인 (#26). 미달 원인 버튼 7개(MissReasonPicker)의 값과 같습니다.
- * tired 피곤 / event 약속·행사 / phone 폰·SNS / overplan 계획 과다 / lazy 하기 싫음 / sick 아픔 / etc 기타
+ * tired 피곤 / event 약속·행사 / phone 폰·SNS / tooMuch 계획 과다 / unwilling 하기 싫음 / sick 아픔 / etc 기타
+ * (전에는 계획 과다가 overplan, 하기 싫음이 lazy 였습니다. #172 에서 공통 이름으로 바뀌었습니다)
  */
-export type MissCause = 'tired' | 'event' | 'phone' | 'overplan' | 'lazy' | 'sick' | 'etc'
+export type MissCause = 'tired' | 'event' | 'phone' | 'tooMuch' | 'unwilling' | 'sick' | 'etc'
 
 export interface CareDecisionInput {
   /**
@@ -65,9 +67,9 @@ export interface CareDecision {
 const RECOVERY_MISS_DAYS = 3
 
 // 못 채운 원인 중 "계획이나 몸 상태 때문"인 것들 → 사람을 다그치지 않고 목표를 낮춥니다.
-const GOAL_DOWN_CAUSES: MissCause[] = ['overplan', 'tired', 'sick', 'event']
+const GOAL_DOWN_CAUSES: MissCause[] = ['tooMuch', 'tired', 'sick', 'event']
 // 못 채운 원인 중 "행동 습관 때문"인 것들 → 채찍(한도 안에서 한 단계씩)
-const WHIP_CAUSES: MissCause[] = ['phone', 'lazy']
+const WHIP_CAUSES: MissCause[] = ['phone', 'unwilling']
 
 /**
  * 대응을 정합니다. 위에서부터 차례로 따지고, 먼저 맞는 줄에서 끝냅니다.
