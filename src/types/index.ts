@@ -62,6 +62,9 @@ export interface StudySession {
   endedAt: number
 }
 
+/** 뽀모도로의 구간 — study: 공부, break: 휴식 */
+export type PomodoroPhase = 'study' | 'break'
+
 /** AI 의 태도 — kind: 친절, normal: 보통, cynical: 냉소 */
 export type AiMood = 'kind' | 'normal' | 'cynical'
 
