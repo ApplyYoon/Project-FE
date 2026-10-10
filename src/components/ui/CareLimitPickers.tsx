@@ -6,7 +6,7 @@ import type { CareLevel } from '@/lib/careLevel'
  * 관리 강도 최대 한도와 독설 허용 수위를 고르는 화면 조각입니다. (#59)
  * 설정 화면과 온보딩 "관리 설정" 단계에서 같이 씁니다.
  * 고르기만 하고 저장은 하지 않습니다. 저장은 쓰는 쪽에서 합니다.
- * (설정 화면은 "높이면 내일부터" 규칙으로 바로 저장하고, 온보딩은 "완료" 때 처음 값으로 저장합니다)
+ * (설정 화면은 고르는 즉시 저장하고, 온보딩은 "완료" 때 처음 값으로 저장합니다)
  *
  *   <CareLevelPicker value={limits.maxCareLevel} onChange={handleChangeLevel} />
  *   <HarshnessPicker value={limits.maxHarshness} onChange={handleChangeHarshness} />

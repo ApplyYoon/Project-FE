@@ -8,6 +8,8 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
+import type { CareLevel } from '@/lib/careLevel'
+import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
@@ -54,15 +56,29 @@ interface DeleteMessage {
   isSuccess: boolean
 }
 
-/** 'YYYY-MM-DD' 를 'M월 D일' 로 바꿔줍니다. */
-function formatDateLabel(dateKey: string) {
-  const [, month, day] = dateKey.split('-').map(Number)
-  return `${month}월 ${day}일`
-}
+// 관리 강도 한도를 이 단계 이상으로 "올릴" 때는 바로 바꾸지 않고 확인창으로 한 번 더 묻습니다. (4 = 강제적 채찍)
+const CONFIRM_CARE_LEVEL = 4
 
 export function SettingsPage() {
   // 처음 열 때 한 번 불러옵니다. (불러오면서 예약된 한도 상향이 있으면 날짜가 지났는지도 같이 확인합니다)
   const [limits, setLimits] = useState(() => getCareLimits())
+  // 확인창에서 "올릴까요?" 하고 묻고 있는 단계. null 이면 확인창이 닫혀 있습니다.
+  const [confirmCareLevel, setConfirmCareLevel] = useState<CareLevel | null>(null)
+
+  function handleChangeCareLevel(level: CareLevel) {
+    // 센 단계로 올릴 때만 한 번 더 묻습니다. 낮추는 건 언제나 바로 바꿉니다.
+    if (level >= CONFIRM_CARE_LEVEL && level > limits.maxCareLevel) {
+      setConfirmCareLevel(level)
+      return
+    }
+    setLimits(setMaxCareLevel(level))
+  }
+
+  function handleConfirmCareLevel() {
+    if (confirmCareLevel === null) return
+    setLimits(setMaxCareLevel(confirmCareLevel))
+    setConfirmCareLevel(null)
+  }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
 
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
@@ -134,18 +150,13 @@ export function SettingsPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
           <Card title="관리 강도 최대 한도">
-            <p className="text-sm text-slate-500">한도를 낮추면 바로, 높이면 내일부터 적용돼요.</p>
-
-            {limits.pendingMaxCareLevel !== null && limits.pendingEffectiveDate !== null && (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                {formatDateLabel(limits.pendingEffectiveDate)}부터 {limits.pendingMaxCareLevel}
-                단계로 올라가요. 그때까지는 지금 한도({limits.maxCareLevel}단계)가 유지돼요.
-              </p>
-            )}
+            <p className="text-sm text-slate-500">
+              고르면 바로 적용돼요. 언제든 다시 바꿀 수 있어요.
+            </p>
 
             <CareLevelPicker
               value={limits.maxCareLevel}
-              onChange={(level) => setLimits(setMaxCareLevel(level))}
+              onChange={handleChangeCareLevel}
               className="mt-4"
             />
           </Card>
@@ -373,6 +384,42 @@ export function SettingsPage() {
           </Card>
         </div>
       </div>
+
+      {/* 관리 강도 한도를 센 단계로 올리기 전에 한 번 더 물어봅니다. 올리면 바로 적용되기 때문입니다. */}
+      <Modal
+        isOpen={confirmCareLevel !== null}
+        onClose={() => setConfirmCareLevel(null)}
+        title="정말 올릴까요?"
+      >
+        {confirmCareLevel !== null && (
+          <>
+            <p className="font-medium text-slate-900">
+              최대 한도를 {confirmCareLevel} {careLevelInfos[confirmCareLevel].name} 단계로
+              올릴까요?
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {careLevelInfos[confirmCareLevel].description}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              올리면 바로 적용돼요. 힘들면 언제든 다시 낮출 수 있어요.
+            </p>
+
+            <div className="mt-5 flex gap-3">
+              <Button
+                variant="secondary"
+                size="lg"
+                className="flex-1"
+                onClick={() => setConfirmCareLevel(null)}
+              >
+                취소
+              </Button>
+              <Button size="lg" className="flex-1" onClick={handleConfirmCareLevel}>
+                올리기
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       {/* 지우기 전에 한 번 더 물어봅니다. 확인 버튼은 위험한 일이라는 걸 알리려고 빨간색입니다. */}
       <Modal
