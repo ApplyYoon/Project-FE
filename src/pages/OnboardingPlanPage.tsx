@@ -114,7 +114,8 @@ export function OnboardingPlanPage() {
       )
     }
 
-    navigate(exitPath)
+    // 처음 세웠을 때는 "처음의 나에게 한마디"(#241)를 남기러 갑니다. 다시 세울 때는 설정으로 돌아갑니다.
+    navigate(isRedo ? exitPath : '/onboarding/voice')
   }
 
   return (

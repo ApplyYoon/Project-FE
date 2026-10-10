@@ -6,6 +6,7 @@ import { InsightCard } from '@/components/ui/InsightCard'
 import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
 import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
@@ -27,6 +28,7 @@ import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
+import { loadVoicePledge } from '@/lib/voicePledge'
 import { loadWeeklyReviews } from '@/lib/weeklyReview'
 import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
 import { useState } from 'react'
@@ -423,6 +425,8 @@ interface FirstMeCardProps {
  * 처음의 마음은 시간이 지나면 흐려지기 때문에, 가장 잘 보이는 홈 위쪽에 둡니다.
  */
 function FirstMeCard({ firstMe, initialPlan }: FirstMeCardProps) {
+  // 처음에 남긴 다짐(목소리·글). 없으면 null 입니다. (#241)
+  const [voicePledge] = useState(loadVoicePledge)
   const hasReason = firstMe.reason !== ''
   const isEmpty = firstMe.daysUntilExam === null && !hasReason
 
@@ -448,6 +452,15 @@ function FirstMeCard({ firstMe, initialPlan }: FirstMeCardProps) {
         <p className="mt-3 text-sm text-slate-600">
           처음 계획: 하루 {formatMinutes(initialPlan.dailyMinutes)} · 주 {initialPlan.daysPerWeek}일
         </p>
+      )}
+
+      {/* 처음의 내가 녹음해 둔 한마디. 녹음이 있을 때만 보입니다. (#241) */}
+      {voicePledge?.audioDataUrl && (
+        <VoicePledgePlayButton
+          audioDataUrl={voicePledge.audioDataUrl}
+          seconds={voicePledge.seconds}
+          className="mt-3 border border-slate-200"
+        />
       )}
 
       {isEmpty && (

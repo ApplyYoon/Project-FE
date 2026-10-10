@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
+import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import type { CareLevel } from '@/lib/careLevel'
@@ -33,6 +34,7 @@ import {
   requestNotificationPermission,
 } from '@/lib/notifications'
 import { loadData, removeData, saveData } from '@/lib/storage'
+import { loadVoicePledge, removeVoicePledge } from '@/lib/voicePledge'
 
 // 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
 const DIARY_ENABLED_KEY = 'diary-enabled'
@@ -84,6 +86,13 @@ export function SettingsPage() {
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
   const [initialPlan] = useState(loadInitialPlan)
+  // 처음의 다짐(목소리·글). 없으면 null 입니다. 여기서 지울 수 있어서 바꿀 수 있는 상태로 둡니다. (#241)
+  const [voicePledge, setVoicePledge] = useState(loadVoicePledge)
+
+  function handleRemoveVoicePledge() {
+    // 정말 지워졌을 때만 화면에서도 없앱니다.
+    if (removeVoicePledge()) setVoicePledge(null)
+  }
   // 온보딩 답. "내 정보 더 알려주기" 에서 남은 질문 수를 세는 데 씁니다. (#239)
   const [onboardingAnswers] = useState(loadOnboardingAnswers)
 
@@ -212,6 +221,52 @@ export function SettingsPage() {
                   <Link to="/onboarding/plan?redo=1" className={secondaryLinkClass}>
                     다시 세우기
                   </Link>
+                </>
+              )}
+            </div>
+
+            {/* 처음의 다짐: 내 목소리와 글 한마디. 이 기기에만 저장됩니다. (#241) */}
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <h4 className="text-sm font-semibold text-slate-900">처음의 다짐</h4>
+              {voicePledge === null ? (
+                <>
+                  <p className="mt-1 text-sm break-keep text-slate-500">
+                    아직 남긴 다짐이 없어요. 그만두고 싶을 때 다시 들을 한마디를 남겨 보세요.
+                  </p>
+                  <Link to="/onboarding/voice?from=settings" className={secondaryLinkClass}>
+                    한마디 남기기
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm break-keep text-slate-500">
+                    {voicePledge.recordedDate} 에 남김 · 이 기기에만 저장돼요
+                  </p>
+                  {voicePledge.text !== '' && (
+                    <p className="mt-2 text-sm font-medium break-words text-slate-900">
+                      “{voicePledge.text}”
+                    </p>
+                  )}
+                  {/* flex-wrap: 좁은 화면에서는 버튼이 다음 줄로 넘어갑니다. */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {voicePledge.audioDataUrl && (
+                      <VoicePledgePlayButton
+                        audioDataUrl={voicePledge.audioDataUrl}
+                        seconds={voicePledge.seconds}
+                        label="듣기"
+                        className="border border-slate-200"
+                      />
+                    )}
+                    <Link
+                      to="/onboarding/voice?from=settings"
+                      className={cn(secondaryLinkClass, 'mt-0')}
+                    >
+                      다시 남기기
+                    </Link>
+                    <Button variant="ghost" onClick={handleRemoveVoicePledge}>
+                      지우기
+                    </Button>
+                  </div>
                 </>
               )}
             </div>

@@ -19,6 +19,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
+import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
 import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
@@ -125,6 +126,16 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <OnboardingPlanPage />
+      </RequireAuth>
+    ),
+  },
+  // 처음의 나에게 한마디(목소리·글) 남기기. 처음 계획 다음, "준비 끝" 앞에 나옵니다. (#241)
+  {
+    path: '/onboarding/voice',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingVoicePage />
       </RequireAuth>
     ),
   },
