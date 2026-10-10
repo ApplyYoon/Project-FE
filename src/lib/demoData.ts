@@ -1,4 +1,5 @@
 import { toDateKey } from '@/lib/dailyRecords'
+import { toDayDate } from '@/lib/date'
 import { mockSubjects } from '@/lib/mock'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, StudySession, Subject } from '@/types'
@@ -127,7 +128,8 @@ export function addDemoData(): void {
   const plansByDate = loadData<PlansByDate>('plans', {})
   const sessions = loadData<StudySession[]>('sessions', [])
 
-  const today = new Date()
+  // 하루의 기준(새벽 4시)으로 "오늘" 을 정합니다. 새벽 2시에 넣어도 오늘 칸에 계획이 생깁니다.
+  const today = toDayDate(Date.now())
   for (let daysAgo = DEMO_DAYS - 1; daysAgo >= 0; daysAgo -= 1) {
     // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다.
     const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysAgo)

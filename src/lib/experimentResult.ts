@@ -8,7 +8,7 @@
  * 효과 판정과 이행 판정은 careInputs.ts 의 함수를 그대로 씁니다. (같은 기준으로 판단하려고)
  */
 import { BASELINE_DAYS, getEffectResult, listDates, type DatedSuggestion } from '@/lib/careInputs'
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { moveDateKey, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import type { ExperimentResult } from '@/lib/experimentJudge'
 import { getSuggestionRate, type SuggestionRate } from '@/lib/suggestionRate'
@@ -24,7 +24,7 @@ export function splitActiveExperiments(
   suggestions: Suggestion[],
   today: Date = new Date(),
 ): { ongoing: DatedSuggestion[]; finished: DatedSuggestion[] } {
-  const todayKey = toDateKey(today)
+  const todayKey = toDayKey(today)
   const ongoing: DatedSuggestion[] = []
   const finished: DatedSuggestion[] = []
 
@@ -160,7 +160,7 @@ export function getExperimentProgress(
   suggestionChecks: SuggestionCheck[],
   today: Date = new Date(),
 ): ExperimentProgress {
-  const todayKey = toDateKey(today)
+  const todayKey = toDayKey(today)
   const resultDate = moveDateKey(suggestion.startDate, suggestion.days)
 
   // 시작일부터 오늘까지 며칠이 지났는지 날짜끼리 셉니다. (오늘이 시작일이면 1일째)
@@ -219,7 +219,7 @@ export function buildManualItem(
     id: `manual-${suggestion.id}`,
     category: 'effectiveMethod',
     title: `만약 ${suggestion.ifText} → ${suggestion.thenText}`,
-    confirmedDate: toDateKey(today),
+    confirmedDate: toDayKey(today),
     evidence,
   }
 }

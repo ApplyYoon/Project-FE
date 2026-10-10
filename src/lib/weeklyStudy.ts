@@ -1,4 +1,5 @@
 import { toDateKey } from '@/lib/dailyRecords'
+import { toDayDate } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import type { StudySession } from '@/types'
 
@@ -54,11 +55,17 @@ export function formatHoursMinutes(totalMinutes: number): string {
  */
 export function getWeeklyStudy(sessions: StudySession[], today: Date = new Date()): WeeklyStudy {
   const days: Omit<WeeklyStudyDay, 'percent'>[] = []
+  // 하루의 기준(새벽 4시)으로 "오늘" 을 정합니다. 새벽 2시면 아직 어제입니다.
+  const todayDate = toDayDate(today)
 
   // 6일 전부터 오늘까지 순서대로 만듭니다.
   for (let daysAgo = DAY_COUNT - 1; daysAgo >= 0; daysAgo -= 1) {
     // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (일 - 6 = 6일 전)
-    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysAgo)
+    const date = new Date(
+      todayDate.getFullYear(),
+      todayDate.getMonth(),
+      todayDate.getDate() - daysAgo,
+    )
     const dateKey = toDateKey(date)
 
     days.push({
