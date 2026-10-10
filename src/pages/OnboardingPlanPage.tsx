@@ -2,7 +2,7 @@ import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { cn } from '@/lib/cn'
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import {
   DAILY_HOUR_OPTIONS,
   DAYS_PER_WEEK_OPTIONS,
@@ -93,7 +93,7 @@ export function OnboardingPlanPage() {
 
   function handleStart() {
     const now = Date.now()
-    const todayKey = toDateKey(new Date())
+    const todayKey = getTodayKey()
     const newRoutines = createRoutineDraft(selectedSubjects, dailyMinutes, daysPerWeek, now)
 
     // 전에 처음 계획이 만든 루틴은 빼고(다시 세울 때), 내가 직접 만든 루틴은 그대로 둡니다.

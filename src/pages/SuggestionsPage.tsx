@@ -6,6 +6,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
+import { getTodayKey, toDayDate } from '@/lib/date'
 import { getExperimentProgress, splitActiveExperiments } from '@/lib/experimentResult'
 import type { Suggestion, SuggestionLevel } from '@/types'
 
@@ -24,14 +25,6 @@ const levelBadgeStyles: Record<SuggestionLevel, string> = {
   hard: 'bg-red-50 text-red-600',
 }
 
-/** 오늘 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function todayKey() {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
 /** 'YYYY-MM-DD' 날짜에 days 일을 더한 뒤 'M월 D일' 로 바꿔줍니다. */
 function formatEndDate(startDateKey: string, days: number) {
   const [year, month, day] = startDateKey.split('-').map(Number)
@@ -43,7 +36,8 @@ function formatEndDate(startDateKey: string, days: number) {
 function daysElapsed(startDateKey: string) {
   const [year, month, day] = startDateKey.split('-').map(Number)
   const start = new Date(year, month - 1, day)
-  const today = new Date()
+  // 오늘 날짜(새벽 4시 기준)의 0시입니다. 새벽 2시면 아직 어제로 셉니다. (lib/date.ts)
+  const today = toDayDate(Date.now())
   today.setHours(0, 0, 0, 0)
   const diffDays = Math.floor((today.getTime() - start.getTime()) / (24 * 60 * 60 * 1000))
   return diffDays + 1
@@ -113,7 +107,7 @@ export function SuggestionsPage() {
           {activeSuggestions.map((suggestion) => {
             // startDate·days 는 도전을 시작할 때 같이 저장돼서 여기선 항상 값이 있습니다.
             const totalDays = suggestion.days ?? 0
-            const elapsed = Math.min(daysElapsed(suggestion.startDate ?? todayKey()), totalDays)
+            const elapsed = Math.min(daysElapsed(suggestion.startDate ?? getTodayKey()), totalDays)
             const percent = totalDays > 0 ? (elapsed / totalDays) * 100 : 0
             // 진행 중인 실험이면 지금까지의 이행률을 구합니다. (홈의 실험 카드와 같은 계산)
             const dated = ongoing.find((item) => item.id === suggestion.id)
@@ -243,7 +237,7 @@ export function SuggestionsPage() {
 
           <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
             실험 중에는 바꿀 수 없어요. 끝까지 해야 효과를 알 수 있어요.{' '}
-            {formatEndDate(todayKey(), days)}에 결과를 같이 봐요.
+            {formatEndDate(getTodayKey(), days)}에 결과를 같이 봐요.
           </p>
 
           <Button size="lg" className="mt-4 w-full" onClick={handleStart}>

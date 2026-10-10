@@ -1,3 +1,4 @@
+import { getTodayKey } from './date'
 import { loadData, saveData } from './storage'
 import type { CareLevel } from '@/lib/careLevel'
 
@@ -33,14 +34,6 @@ const defaultLimits: CareLimits = {
   allowFocusMode: false,
   pendingMaxCareLevel: null,
   pendingEffectiveDate: null,
-}
-
-/** 오늘 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function todayKey(): string {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
 }
 
 /** 값이 관리 강도(0 ~ 4 의 정수)가 맞는지 확인합니다. */
@@ -83,7 +76,7 @@ export function getCareLimits(): CareLimits {
   const canApplyPending =
     saved.pendingMaxCareLevel !== null &&
     saved.pendingEffectiveDate !== null &&
-    saved.pendingEffectiveDate <= todayKey()
+    saved.pendingEffectiveDate <= getTodayKey()
 
   if (!canApplyPending) return saved
 

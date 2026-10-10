@@ -9,6 +9,7 @@ import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
 import { usePlans } from '@/hooks/usePlans'
 import { cn } from '@/lib/cn'
 import { loadStudySessions } from '@/lib/dailyRecords'
+import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { getFacts } from '@/lib/facts'
@@ -57,7 +58,8 @@ function countDays(fromKey: string, toKey: string): number {
 
 /** weeksAgo 번째 이전 주의 월요일 날짜를 돌려줍니다. (0 = 이번 주) */
 function getMondayKey(weeksAgo: number): string {
-  const date = new Date()
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. 월요일 새벽 2시면 아직 일요일(지난주)입니다. (lib/date.ts)
+  const date = toDayDate(Date.now())
   // getDay(): 일요일 0, 월요일 1 ... 토요일 6. 월요일에서 며칠 지났는지 계산합니다. (일요일은 6일 지난 것으로 봅니다)
   const daysFromMonday = (date.getDay() + 6) % 7
   date.setDate(date.getDate() - daysFromMonday - weeksAgo * 7)
@@ -192,7 +194,7 @@ function formatStartDelta(
 function countRecordDays(plans: StudyPlan[], sessions: StudySession[], todayKey: string): number {
   const recordDates = [
     ...plans.map((plan) => plan.date),
-    ...sessions.map((session) => toDateKey(new Date(session.startedAt))),
+    ...sessions.map((session) => toDayKey(session.startedAt)),
   ]
   if (recordDates.length === 0) return 0
   const firstRecordKey = [...recordDates].sort()[0]
@@ -316,11 +318,11 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
   // 첫 기록 날짜 = 계획과 공부 기록을 통틀어 가장 이른 날짜. 기록이 하나도 없으면 null 입니다.
   const recordDates = [
     ...allPlans.map((plan) => plan.date),
-    ...sessions.map((session) => toDateKey(new Date(session.startedAt))),
+    ...sessions.map((session) => toDayKey(session.startedAt)),
   ]
   const firstRecordKey = recordDates.length === 0 ? null : [...recordDates].sort()[0]
   const daysSinceFirstRecord =
-    firstRecordKey === null ? 0 : countDays(firstRecordKey, toDateKey(new Date()))
+    firstRecordKey === null ? 0 : countDays(firstRecordKey, getTodayKey())
   // 이번 주를 보는 중이고, 아직 14일치 기록이 안 쌓였으면 리포트 대신 카운트다운을 보여줍니다.
   // (예전 주로 넘겨 보는 중이면 그 주의 기록을 그대로 보여줍니다)
   const isBeforeFirstReport =
@@ -537,7 +539,7 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
   // 0 = 가장 최근 4주, 1 = 그 전 4주 ...
   const [monthWeeksAgo, setMonthWeeksAgo] = useState(0)
 
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   const recordDays = countRecordDays(allPlans, sessions, todayKey)
 
   if (recordDays < MIN_DAYS_FOR_MONTHLY) {

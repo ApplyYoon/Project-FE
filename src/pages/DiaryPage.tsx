@@ -4,6 +4,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useDiaryEntries } from '@/hooks/useDiaryEntries'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
+import { getTodayKey } from '@/lib/date'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -24,13 +25,6 @@ const MOOD_OPTIONS = [
 
 // 일기를 처음 쓸 때 기분 버튼이 가리킬 기본값 (가운데 값)
 const DEFAULT_MOOD = 3
-
-/** Date 를 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString() 은 영국 시간 기준이라 쓰지 않습니다) */
-function toDateKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
 
 /** 'YYYY-MM-DD' 날짜를 한국어로 보여줍니다. */
 function formatDateLabel(dateKey: string, options: Intl.DateTimeFormatOptions): string {
@@ -81,7 +75,7 @@ function loadTodayDraft(todayKey: string): DiaryDraft | null {
 
 export function DiaryPage() {
   const navigate = useNavigate()
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   const { allEntries, getEntry, saveEntry } = useDiaryEntries()
   const { allEntries: allReflectionEntries } = useReflectionEntries()
 

@@ -1,6 +1,6 @@
 import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
 import { getCareLimits } from '@/lib/careLimits'
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { getMessageSettings } from '@/lib/messageSettings'
 import {
@@ -47,7 +47,7 @@ export function useAiMessageNotifications(): void {
 
     const settings = getMessageSettings()
     const limits = getCareLimits()
-    const today = toDateKey(new Date())
+    const today = getTodayKey()
 
     // 체크인·일기·성찰 일기에 저장된 글과 기분을 모두 안전 브레이크 입력으로 씁니다.
     const { texts, moods } = loadSavedWritings()

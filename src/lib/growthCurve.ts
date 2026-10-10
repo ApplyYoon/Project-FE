@@ -1,5 +1,6 @@
 import type { StudyPlan, StudySession } from '@/types'
 import { getDaySummary } from './daySummary'
+import { toDayKey } from './date'
 
 /** 그래프 한 점 — 그 날짜까지의 누적 순공시간(분) */
 export interface GrowthPoint {
@@ -99,7 +100,7 @@ export function getGrowthCurve(
 ): GrowthCurve {
   const recordDates = [
     ...plans.map((plan) => plan.date),
-    ...sessions.map((session) => toDateKey(new Date(session.startedAt))),
+    ...sessions.map((session) => toDayKey(session.startedAt)),
   ]
   if (recordDates.length === 0) return EMPTY_RESULT
 

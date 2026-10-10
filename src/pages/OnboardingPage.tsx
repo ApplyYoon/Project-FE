@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
 import {
@@ -164,7 +164,7 @@ function StepInput({ step, value, onChange }: StepInputProps) {
           type="date"
           aria-label={step.title}
           // min: 달력에서 오늘보다 앞의 날짜를 고를 수 없게 합니다. (지난 시험 날짜는 D-day 를 셀 수 없습니다)
-          min={toDateKey(new Date())}
+          min={getTodayKey()}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           error={hasPassed ? '오늘 이후 날짜를 골라 주세요.' : undefined}
