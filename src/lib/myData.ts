@@ -11,7 +11,7 @@ import { removeData } from '@/lib/storage'
 const DIARY_KEYS = ['diary', 'reflection-entries']
 
 /**
- * 모든 기록의 저장 키 = 공부 계획 · 공부 기록 · 타이머 기록 · 딴짓 기록 · 일기
+ * 모든 기록의 저장 키 = 공부 계획 · 공부 기록 · 타이머 기록 · 딴짓 기록 · 시험 · 일기
  * 아직 없는 기능의 키도 미리 적어 둡니다. (없는 키를 지우는 건 아무 일도 안 일어납니다)
  *
  * 일부러 넣지 않은 것(= 지우지 않고 남김)
@@ -30,6 +30,8 @@ const RECORD_KEYS = [
   // 딴짓(탭 이탈) 기록과, 나갔다가 아직 돌아오지 않은 임시 기록 (#22)
   'away-records',
   'away-pending',
+  // 시험 목록과 예상 점수 (#80)
+  'exams',
   ...DIARY_KEYS,
 ]
 
