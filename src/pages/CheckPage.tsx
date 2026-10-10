@@ -9,6 +9,7 @@ import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { mockSessions } from '@/lib/mock'
+import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
 import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
@@ -126,6 +127,13 @@ export function CheckPage() {
     setKeptById((prev) => ({ ...prev, [suggestionId]: kept }))
   }
 
+  // 휴대폰 집중 모드 확인 (#106). 안내 화면에서 "체크인에서 확인받기" 를 켠 사람에게만 묻습니다.
+  // 이미 답한 체크인이면 그 답으로 시작하고, 아직 안 골랐으면 null 입니다.
+  const [isPhoneFocusAsked] = useState(getPhoneFocusEnabled)
+  const [phoneFocusKept, setPhoneFocusKept] = useState<boolean | null>(
+    existingCheckIn?.phoneFocusKept ?? null,
+  )
+
   // 어제 계획 달성률 = 어제 실제로 공부한 시간 ÷ 어제 계획한 목표 시간
   const yesterdayPlans = getPlans(yesterdayKey)
   const targetMinutes = yesterdayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
@@ -158,6 +166,10 @@ export function CheckPage() {
       if (missReason.reason === 'etc' && note !== '') {
         checkIn.missReasonNote = note
       }
+    }
+    // 물어봤고 답을 골랐을 때만 저장합니다. 안 골랐으면 "안 켰다" 가 아니라 "모름" 이라 남기지 않습니다.
+    if (isPhoneFocusAsked && phoneFocusKept !== null) {
+      checkIn.phoneFocusKept = phoneFocusKept
     }
     saveCheckIn(checkIn)
 
@@ -313,6 +325,34 @@ export function CheckPage() {
               )
             })}
           </ul>
+        </Card>
+      )}
+
+      {/* 휴대폰 집중 모드 확인을 켠 사람에게만 보여줍니다. (#106) */}
+      {isPhoneFocusAsked && (
+        <Card title="어제 휴대폰 집중 모드 켰어?" className="rounded-2xl">
+          {/* 켰어 / 못 켰어 중 하나만 고릅니다. 다시 누르면 다른 쪽으로 바꿀 수 있습니다. */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-pressed={phoneFocusKept === true}
+              onClick={() => setPhoneFocusKept(true)}
+              className={cn(CHIP_BASE, phoneFocusKept === true ? CHIP_SELECTED : CHIP_UNSELECTED)}
+            >
+              켰어
+            </button>
+            <button
+              type="button"
+              aria-pressed={phoneFocusKept === false}
+              onClick={() => setPhoneFocusKept(false)}
+              className={cn(CHIP_BASE, phoneFocusKept === false ? CHIP_SELECTED : CHIP_UNSELECTED)}
+            >
+              못 켰어
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-slate-500">
+            내가 답한 대로만 기록해요. 정말 켰는지는 확인하지 않아요.
+          </p>
         </Card>
       )}
 
