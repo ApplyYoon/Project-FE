@@ -29,7 +29,9 @@ export function useStudySessions() {
 
   /** 새 기록을 목록 맨 뒤에 붙입니다. (공부 기록, 노는 기록 모두) */
   function addSession(session: StudySession) {
-    setAllSessions((prev) => [...prev, session])
+    // 붙이기 직전에 저장소를 다시 읽습니다. 다른 탭에서 그 사이에 저장한 기록이 있으면 같이 살리기 위해서입니다.
+    // (처음 읽어 둔 목록에만 붙이면, 두 탭에서 타이머를 쓸 때 서로의 기록을 덮어써서 지웁니다)
+    setAllSessions(() => [...loadAllSessions(), session])
   }
 
   return { sessions, allSessions, addSession }
