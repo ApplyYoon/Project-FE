@@ -796,10 +796,12 @@ export function TimerPage() {
             </Button>
           )}
           {/* 목표를 채운 뒤에는 "마치기" 가 됩니다. 누르면 기록이 저장됩니다. */}
+          {/* 시작하기 전에는 멈출 것이 없어서 눌리지 않습니다. */}
           <Button
             variant={isTargetDone ? 'primary' : 'danger'}
             size="lg"
             className="w-full sm:w-40"
+            disabled={!isStarted}
             onClick={handleStopClick}
           >
             {isTargetDone ? '마치기' : '정지'}
@@ -1095,13 +1097,13 @@ function WeeklySubjectRatio({ subjects, sessions }: WeeklySubjectRatioProps) {
   // 과목마다 이번 주에 공부한 시간(분)을 더합니다.
   const rows = subjects
     .map((subject) => {
-      let minutes = 0
+      // 기록마다 반올림하면 합계가 어긋납니다. 밀리초로 모두 더한 뒤 마지막에 한 번만 분으로 바꿉니다.
+      // (기록 화면 lib/dailyRecords.ts 와 같은 규칙이라 두 화면의 숫자가 같아집니다)
+      let totalMs = 0
       for (const session of thisWeekSessions) {
-        if (session.subjectId === subject.id) {
-          minutes += Math.round(getStudyMs(session) / 60000)
-        }
+        if (session.subjectId === subject.id) totalMs += getStudyMs(session)
       }
-      return { subject, minutes }
+      return { subject, minutes: Math.round(totalMs / 60000) }
     })
     .filter((row) => row.minutes > 0)
     // 많이 공부한 과목이 위로 오게 정렬합니다.
