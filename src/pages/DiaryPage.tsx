@@ -6,7 +6,8 @@ import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
-import { mockReflectionPrescription } from '@/lib/mock'
+import { loadStudySessions } from '@/lib/dailyRecords'
+import { getReflectionPrescription } from '@/lib/reflectionPrescription'
 import type { DiaryEntry } from '@/types'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -68,11 +69,13 @@ export function DiaryPage() {
   const [content, setContent] = useState(existingEntry?.content ?? '')
   const [savedMessage, setSavedMessage] = useState('')
 
-  // 성찰 일기 처방(#70). AI 가 실제로 내려주는 서버가 아직 없어서 지금은 예시 처방 하나로 동작합니다.
-  const prescription = mockReflectionPrescription
-  const prescriptionDayIndex = countDays(prescription.startDate, todayKey)
+  // 성찰 일기 처방(#70). 지금 내려진 처방이 없으면 null 이고, 처방 카드는 보이지 않습니다.
+  // (서버가 생기기 전까지 진짜 사용자에게는 처방이 없습니다. lib/reflectionPrescription.ts)
+  const [prescription] = useState(() => getReflectionPrescription(loadStudySessions()))
+  const prescriptionDayIndex =
+    prescription === null ? 0 : countDays(prescription.startDate, todayKey)
   const isPrescriptionActive =
-    prescriptionDayIndex >= 1 && prescriptionDayIndex <= prescription.days
+    prescription !== null && prescriptionDayIndex >= 1 && prescriptionDayIndex <= prescription.days
 
   // "지난 일기" 목록에는 오늘 것만 빼고, 일반 일기와 성찰 일기를 날짜 기준으로 합쳐서 보여줍니다.
   // (오늘 것은 위 "오늘 일기" 칸에 있으니까요)
