@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { ApiError } from '@/lib/api'
 import { exchangeSnsCode } from '@/lib/authApi'
+import { markSignupDone } from '@/lib/signup'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -68,6 +69,8 @@ export function AuthCallbackPage() {
       .then((result) => {
         // 토큰 저장은 useAuth 가 합니다. (새로고침해도 유지됨)
         login(result.user, result.token)
+        // 기존 회원은 이 기기에 가입 정보가 없어도 가입 화면을 다시 거치지 않게 표시해 둡니다.
+        if (!result.isNewUser) markSignupDone()
         // replace: 지금 주소(일회용 코드가 붙어 있음)를 기록에 남기지 않고 바꿉니다. 뒤로가기로 돌아오지 못합니다.
         // 처음 온 사람은 회원가입 추가 정보로, 기존 회원은 홈으로 갑니다.
         if (isMounted.current) navigate(result.isNewUser ? '/signup' : '/', { replace: true })

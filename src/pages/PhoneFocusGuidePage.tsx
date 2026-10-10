@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui/Card'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import {
   getPhoneFocusEnabled,
@@ -20,7 +21,14 @@ function guessPhoneKind(): PhoneKind {
  * 아이폰·갤럭시를 탭으로 나누고, 체크인에서 "켰어?" 를 물을지 고를 수 있습니다.
  */
 export function PhoneFocusGuidePage() {
-  const [selectedKind, setSelectedKind] = useState<PhoneKind>(guessPhoneKind)
+  // 아이폰·갤럭시 탭은 주소에 둡니다. (/phone-focus?phone=android)
+  // 주소에 없을 때는 지금 쓰는 기기를 짐작해서 엽니다.
+  const [guessedKind] = useState<PhoneKind>(guessPhoneKind)
+  const [kindParam, setSelectedKind] = useQueryParam('phone', guessedKind)
+  // 주소는 누구나 고칠 수 있어서, 안내 목록에 없는 값이면 짐작한 기기로 봅니다.
+  const selectedKind = phoneFocusGuides.some((item) => item.kind === kindParam)
+    ? kindParam
+    : guessedKind
   const [isCheckinOn, setIsCheckinOn] = useState(getPhoneFocusEnabled)
 
   const guide = phoneFocusGuides.find((item) => item.kind === selectedKind) ?? phoneFocusGuides[0]

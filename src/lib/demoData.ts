@@ -1,6 +1,7 @@
+import { loadAiMessages, saveAiMessages } from '@/lib/aiMessages'
 import { toDateKey } from '@/lib/dailyRecords'
 import { toDayDate } from '@/lib/date'
-import { mockSubjects } from '@/lib/mock'
+import { mockAiMessages, mockSubjects } from '@/lib/mock'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, StudySession, Subject } from '@/types'
 
@@ -15,6 +16,7 @@ import type { StudyPlan, StudySession, Subject } from '@/types'
  *   - 오래된 날일수록 공부를 적게, 늦게 시작하고 → 최근일수록 많이, 일찍 시작합니다. (리포트의 ↑↓ 가 보이도록)
  *   - 일요일과 가끔 하루는 쉽니다. (빈 날이 있어야 진짜 기록처럼 보입니다)
  *   - 오늘은 계획만 넣고 공부 기록은 넣지 않습니다. 아직 오지 않은 시각의 기록이 생기면 안 되기 때문입니다.
+ *   - 알림 화면에 보일 예시 메시지 7개도 같이 넣습니다. 예시 메시지는 이때만 보입니다. (#255)
  */
 
 /** 가상 데이터 id 앞에 붙는 글자. 지울 때 이걸로 골라냅니다. */
@@ -146,6 +148,13 @@ export function addDemoData(): void {
   saveData('plans', plansByDate)
   saveData('sessions', sessions)
 
+  // 예시 메시지도 id 앞에 'demo-' 를 붙여서 넣습니다. 그래야 뺄 때 진짜 알림은 남습니다.
+  const demoMessages = mockAiMessages.map((message) => ({
+    ...message,
+    id: `${DEMO_ID_PREFIX}${message.id}`,
+  }))
+  saveAiMessages([...loadAiMessages(), ...demoMessages])
+
   const onboardingAnswers = loadData<Record<string, string>>('onboarding-answers', {})
   if (!onboardingAnswers.targetExamDate) {
     const examDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 60)
@@ -162,7 +171,7 @@ export function hasDemoData(sessions: StudySession[]): boolean {
   return sessions.some((session) => session.id.startsWith(DEMO_ID_PREFIX))
 }
 
-/** 'demo-' 로 시작하는 가상 계획·공부 기록만 지웁니다. 온보딩에 넣어 준 시험 날짜는 남겨 둡니다. */
+/** 'demo-' 로 시작하는 가상 계획·공부 기록·예시 메시지만 지웁니다. 온보딩에 넣어 준 시험 날짜는 남겨 둡니다. */
 export function removeDemoData(): void {
   const plansByDate = loadData<PlansByDate>('plans', {})
   const nextPlans: PlansByDate = {}
@@ -178,4 +187,6 @@ export function removeDemoData(): void {
     'sessions',
     sessions.filter((session) => !session.id.startsWith(DEMO_ID_PREFIX)),
   )
+
+  saveAiMessages(loadAiMessages().filter((message) => !message.id.startsWith(DEMO_ID_PREFIX)))
 }

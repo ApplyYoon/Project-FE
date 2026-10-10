@@ -21,17 +21,19 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 
 ## 1. 기술 스택 (임의로 바꾸지 말 것)
 
-| 구분          | 사용 기술                         |
-| ------------- | --------------------------------- |
-| 프레임워크    | React 19 + TypeScript             |
-| 빌드 도구     | Vite 8                            |
-| 스타일        | Tailwind CSS v4 (+ `cn()` 유틸)   |
-| 라우팅        | React Router v7                   |
-| 린트/포맷     | oxlint + Prettier                 |
-| 패키지 매니저 | **pnpm** — `npm`/`yarn` 사용 금지 |
+| 구분          | 사용 기술                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| 프레임워크    | React 19 + TypeScript                                                                               |
+| 빌드 도구     | Vite 8                                                                                              |
+| 스타일        | Tailwind CSS v4 (+ `cn()` 유틸)                                                                     |
+| 라우팅        | React Router v7                                                                                     |
+| 서버 데이터   | TanStack Query v5 (`queryOptions` + `useSuspenseQuery`) + Suspense(스켈레톤) + react-error-boundary |
+| 린트/포맷     | oxlint + Prettier                                                                                   |
+| 패키지 매니저 | **pnpm** — `npm`/`yarn` 사용 금지                                                                   |
 
 **새 라이브러리 설치는 반드시 허락을 받고 하세요.** "이거 쓰면 편한데 설치할까요?" 라고 먼저 묻습니다.
-특히 상태관리(zustand/redux), 데이터패칭(react-query), UI킷(MUI 등)은 팀이 합의해야 합니다.
+특히 상태관리(zustand/redux), UI킷(MUI 등)은 팀이 합의해야 합니다.
+(데이터패칭은 2026-10-10 에 TanStack Query 로 정했습니다. 다른 데이터패칭 라이브러리를 더하지 않습니다.)
 **라이브러리를 늘리는 것보다, 지금 있는 것으로 만드는 법을 알려주는 게 이 프로젝트의 목적입니다.**
 
 ---
@@ -67,10 +69,12 @@ src/
 - `className` 을 합칠 때는 **항상 `cn()`** (`@/lib/cn`). 문자열 템플릿으로 붙이면 Tailwind 충돌이 안 잡힙니다.
 - `cn()` 에서 **`className` props 는 맨 마지막**. 그래야 쓰는 쪽에서 덮어쓸 수 있습니다.
 - import 는 **`@/` 별칭**. `../../` 금지.
+- **탭·날짜·단계처럼 "지금 무엇을 보고 있는지" 는 주소에 둔다.** `useState` 대신 `useQueryParam`(`@/hooks/useQueryParam`)을 쓰면 새로고침해도 유지되고 뒤로 가기가 자연스럽습니다. 주소에서 받은 값은 쓰기 전에 꼭 확인하고, 비밀번호·이름 같은 개인 내용은 주소에 담지 않습니다.
 - 컴포넌트·페이지는 **PascalCase + named export**. 훅·유틸은 **camelCase**.
 - props 타입은 `interface XxxProps` 로 명시.
 - 이벤트 핸들러는 `handleXxx`, props 로 받는 함수는 `onXxx`.
 - 조금이라도 헷갈릴 코드에는 **한국어 주석 한 줄**.
+- **서버에서 받아오는 데이터는 TanStack Query 로.** 쿼리 설정은 `lib/` 에 `queryOptions` 로 두고, 화면에서는 `useSuspenseQuery` 로 받아온 뒤 바깥을 `AsyncBoundary`(스켈레톤 + 실패 안내)로 감쌉니다. `useEffect` 안에서 `fetch` 하지 않습니다. → [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)
 
 ### 금지
 
@@ -282,16 +286,17 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 
 ## 8. 참고 문서
 
-| 문서                                                   | 내용                             |
-| ------------------------------------------------------ | -------------------------------- |
-| [README.md](./README.md)                               | 설치·실행 방법, 명령어           |
-| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약                   |
-| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표             |
-| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트        |
-| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문                  |
-| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법           |
-| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                   |
-| [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림) |
+| 문서                                                   | 내용                                  |
+| ------------------------------------------------------ | ------------------------------------- |
+| [README.md](./README.md)                               | 설치·실행 방법, 명령어                |
+| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약                        |
+| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표                  |
+| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트             |
+| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문                       |
+| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법                |
+| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                        |
+| [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)       | 서버 데이터 받아오기 (TanStack Query) |
+| [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림)      |
 
 스킬(`.claude/skills/`): `github-flow` · `new-page` · `new-component` · `responsive-ui`
 명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/check` `/sync` `/run` `/fix`

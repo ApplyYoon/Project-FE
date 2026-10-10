@@ -23,7 +23,8 @@ export function Layout() {
   useCallReminder()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  // 로그인 전(로그인 화면·SNS 콜백)에는 메뉴와 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
+  // 로그인 전(로그인 화면·SNS 콜백)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
+  // (헤더는 로그인 전이면 스스로 "로그인 · 회원가입" 만 보여줍니다. Header.tsx)
   const { isLoggedIn } = useAuth()
 
   // 집중 모드(#69). 켜진 동안 설정·안전 브레이크를 계속 확인해서, 필요하면 자동으로 풉니다.
@@ -35,7 +36,7 @@ export function Layout() {
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
     <div className={cn('flex min-h-screen flex-col', isLoggedIn && 'pb-14 sm:pb-0')}>
-      <Header hideNav={!isLoggedIn} />
+      <Header />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}

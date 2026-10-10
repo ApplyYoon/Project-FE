@@ -7,8 +7,9 @@ import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
-import { getTodayKey, moveDateKey } from '@/lib/date'
+import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
 import { usePlans } from '@/hooks/usePlans'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { useRoutines } from '@/hooks/useRoutines'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
@@ -990,13 +991,24 @@ export function PlannerPage() {
   // sessions: 공부 기록만 / allSessions: 노는 기록까지.
   // 계획별 실제 시간은 노는 계획에도 보여야 해서 allSessions 로 구합니다. (#238)
   const { sessions, allSessions } = useStudySessions()
-  const [selectedDate, setSelectedDate] = useState(todayKey)
-  // 목록으로 볼지 플래너로 볼지. 고른 보기를 저장해 두어서 다음에 열 때도 그대로입니다. (#237)
-  const [view, setView] = useState<PlannerView>(loadPlannerView)
+  // 보고 있는 날짜는 주소에 둡니다. (/planner = 오늘, /planner?date=2026-10-11 = 그날)
+  // replace: ◀ ▶ 를 여러 번 눌러도 뒤로 가기 한 번이면 계획 화면을 떠납니다.
+  const [dateParam, setSelectedDate] = useQueryParam('date', todayKey, { replace: true })
+  // 주소는 누구나 고칠 수 있어서, 진짜 날짜가 아니면 오늘로 봅니다.
+  const selectedDate = isDateKey(dateParam) ? dateParam : todayKey
 
-  useEffect(() => {
-    saveData('planner-view', view)
-  }, [view])
+  // 목록으로 볼지 플래너로 볼지도 주소에 둡니다. (/planner?view=timeline) (#237)
+  // 주소에 없을 때는 지난번에 고른 보기(저장해 둔 값)로 엽니다.
+  const [savedView] = useState<PlannerView>(loadPlannerView)
+  const [viewParam, setViewParam] = useQueryParam('view', savedView)
+  const view: PlannerView =
+    viewParam === 'timeline' ? 'timeline' : viewParam === 'list' ? 'list' : savedView
+
+  /** 보기를 바꿉니다. 주소를 바꾸고, 다음에 열 때도 그대로이도록 저장해 둡니다. */
+  function handleChangeView(nextView: PlannerView) {
+    saveData('planner-view', nextView)
+    setViewParam(nextView)
+  }
 
   // 새로고침해도 과목 목록이 유지되도록 localStorage 에서 불러옵니다. (처음 한 번은 예시 과목으로 시작)
   const [subjects, setSubjects] = useState<Subject[]>(loadSubjects)
@@ -1186,7 +1198,7 @@ export function PlannerPage() {
                 key={option.view}
                 type="button"
                 aria-pressed={view === option.view}
-                onClick={() => setView(option.view)}
+                onClick={() => handleChangeView(option.view)}
                 className={cn(
                   'h-10 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
                   view === option.view

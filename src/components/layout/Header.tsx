@@ -1,5 +1,7 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
-import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
+import { useAiMessages } from '@/hooks/useAiMessages'
+import { useAuth } from '@/hooks/useAuth'
+import { countUnreadAiMessages } from '@/lib/aiMessages'
 import { cn } from '@/lib/cn'
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -11,13 +13,22 @@ interface HeaderProps {
   action?: ReactNode
 }
 
+/*
+ * 헤더 오른쪽에는 셋 중 하나가 보입니다.
+ *   로그인 전          -> "로그인 · 회원가입" 두 개만 (메뉴를 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다)
+ *   로그인 + hideNav   -> action (온보딩의 "나중에 하기" 등)
+ *   로그인             -> 메뉴와 알림 종
+ */
+
 export function Header({ hideNav = false, action }: HeaderProps) {
-  // 주소가 바뀔 때마다 헤더가 다시 그려지면서 안 읽은 메시지 수를 새로 셉니다.
+  const { isLoggedIn } = useAuth()
   const { pathname } = useLocation()
-  // 메시지함을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
-  const unreadCount = pathname === '/messages' ? 0 : countUnreadAiMessages(loadAiMessages())
-  // 화면을 읽어 주는 프로그램이 "메시지함, 안 읽은 메시지 3개" 처럼 개수까지 읽어 줍니다.
-  const bellLabel = unreadCount > 0 ? `메시지함, 안 읽은 메시지 ${unreadCount}개` : '메시지함'
+  // 새 알림이 쌓이면 화면을 옮기지 않아도 바로 다시 그려져서 빨간 점이 뜹니다. (hooks/useAiMessages.ts)
+  const messages = useAiMessages()
+  // 알림 화면을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
+  const unreadCount = pathname === '/notifications' ? 0 : countUnreadAiMessages(messages)
+  // 화면을 읽어 주는 프로그램이 "알림, 안 읽은 알림 3개" 처럼 개수까지 읽어 줍니다.
+  const bellLabel = unreadCount > 0 ? `알림, 안 읽은 알림 ${unreadCount}개` : '알림'
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
@@ -27,8 +38,18 @@ export function Header({ hideNav = false, action }: HeaderProps) {
           STARFLOW
         </NavLink>
 
-        {/* 메뉴를 숨기는 화면(온보딩 등)에서는 종 아이콘도 숨기고 action 만 보여줍니다. */}
-        {hideNav ? (
+        {!isLoggedIn ? (
+          // 로그인 전에는 로그인·회원가입만 보여줍니다. 모바일에서도 그대로 보입니다. (하단 탭이 없어서)
+          <nav aria-label="로그인 메뉴" className="flex items-center gap-1">
+            <NavLink to="/login" className={guestLinkClass}>
+              로그인
+            </NavLink>
+            <NavLink to="/signup" className={guestLinkClass}>
+              회원가입
+            </NavLink>
+          </nav>
+        ) : hideNav ? (
+          // 메뉴를 숨기는 화면(온보딩 등)에서는 종 아이콘도 숨기고 action 만 보여줍니다.
           action
         ) : (
           <div className="flex items-center gap-2">
@@ -48,8 +69,8 @@ export function Header({ hideNav = false, action }: HeaderProps) {
               ))}
             </nav>
 
-            {/* 메시지함 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
-            <NavLink to="/messages" aria-label={bellLabel} className={bellLinkClass}>
+            {/* 알림 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
+            <NavLink to="/notifications" aria-label={bellLabel} className={bellLinkClass}>
               <BellIcon />
               {unreadCount > 0 && (
                 <span
@@ -92,7 +113,15 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
   )
 }
 
-/* 종 버튼도 메뉴와 같은 방법으로, /messages 에 있으면 선택된 모양(연보라 배경)이 됩니다. */
+/* 로그인 전에 보이는 "로그인 · 회원가입" 링크. 손가락으로 누르기 쉽게 높이 40px(h-10) 입니다. */
+function guestLinkClass({ isActive }: { isActive: boolean }) {
+  return cn(
+    'flex h-10 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors',
+    isActive ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100',
+  )
+}
+
+/* 종 버튼도 메뉴와 같은 방법으로, /notifications 에 있으면 선택된 모양(연보라 배경)이 됩니다. */
 function bellLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
     'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors',

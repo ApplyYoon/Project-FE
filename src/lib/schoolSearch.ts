@@ -5,6 +5,7 @@
  * 인증키 없이 부르면 한 번에 5곳까지만 알려 주는데, 학교 이름을 조금만 더 적으면 5곳 안에 들어와서 지금은 충분합니다.
  * 인증키를 FE 에 넣으면 누구나 볼 수 있어서 넣지 않습니다. 더 많이 보여주려면 서버를 거쳐야 합니다.
  */
+import { queryOptions } from '@tanstack/react-query'
 
 /** 검색으로 찾은 학교 한 곳 */
 export interface School {
@@ -141,4 +142,24 @@ export async function searchHighSchools(query: string): Promise<SchoolSearchResu
   const result = parseSchoolResponse(await response.json())
   if (result === null) throw new Error('학교 검색 응답 모양이 올바르지 않습니다')
   return result
+}
+
+/**
+ * 학교 검색의 "쿼리 설정" 입니다. 화면에서는 이 설정을 useSuspenseQuery 에 넘겨서 받아옵니다. (docs/DATA-FETCHING.md)
+ *
+ *   const { data } = useSuspenseQuery(schoolSearchQuery('디지털'))
+ *   data.schools -> 찾은 학교들
+ *
+ * - queryKey: 이 데이터의 이름표입니다. 이름표가 같으면 같은 데이터로 보고, 보관해 둔 것을 다시 씁니다.
+ *   검색어를 다듬어서(띄어쓰기 제거) 넣기 때문에 '한국 디지털' 과 '한국디지털' 은 같은 이름표입니다.
+ * - queryFn: 실제로 받아오는 함수입니다.
+ * - staleTime: 학교 목록은 거의 바뀌지 않아서, 한 번 받으면 10분 동안은 다시 받지 않습니다.
+ */
+export function schoolSearchQuery(query: string) {
+  const normalized = normalizeSchoolQuery(query)
+  return queryOptions({
+    queryKey: ['schools', normalized],
+    queryFn: () => searchHighSchools(normalized),
+    staleTime: 10 * 60 * 1000,
+  })
 }

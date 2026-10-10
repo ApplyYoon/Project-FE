@@ -8,6 +8,7 @@ import { PlayBadge } from '@/components/ui/PlayBadge'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAwayDetection } from '@/hooks/useAwayDetection'
 import { useFocusMode } from '@/hooks/useFocusMode'
 import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
@@ -44,6 +45,7 @@ import { getStudyMs } from '@/lib/studyTime'
 import { getTargetRecommendation, type TargetRecommendation } from '@/lib/targetRecommend'
 import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode, type TimerMode } from '@/lib/timerDisplay'
+import { loadVoicePledge } from '@/lib/voicePledge'
 import type {
   AwayRecord,
   MissReason,
@@ -1018,6 +1020,10 @@ function StopConfirmModal({
   onQuit,
   onFinish,
 }: StopConfirmModalProps) {
+  // 처음에 녹음해 둔 다짐. 있으면 그만두기 전에 다시 들을 수 있게 합니다. (#241)
+  // 훅(useState)은 아래의 return 보다 위에 있어야 해서 맨 위에 둡니다.
+  const [voicePledge] = useState(loadVoicePledge)
+
   if (step === 'reason') {
     return (
       // 창을 닫으면(✕·바깥·ESC) 그만두지 않고 계속하는 것으로 봅니다.
@@ -1070,6 +1076,14 @@ function StopConfirmModal({
           <Button variant="secondary" size="lg" className="w-full" onClick={onQuit}>
             그만하기
           </Button>
+          {/* 녹음해 둔 다짐이 있을 때만 보입니다. 시키는 말이 아니라, 처음의 내가 한 말을 들려줍니다. */}
+          {voicePledge?.audioDataUrl && (
+            <VoicePledgePlayButton
+              audioDataUrl={voicePledge.audioDataUrl}
+              seconds={voicePledge.seconds}
+              className="w-full"
+            />
+          )}
         </div>
       </div>
     </Modal>

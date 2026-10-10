@@ -14,11 +14,12 @@ import { ExamsPage } from '@/pages/ExamsPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ManualPage } from '@/pages/ManualPage'
-import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { NotificationsPage } from '@/pages/NotificationsPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
+import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
 import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
@@ -29,7 +30,7 @@ import { SignupPage } from '@/pages/SignupPage'
 import { SuggestionsPage } from '@/pages/SuggestionsPage'
 import { SupportPage } from '@/pages/SupportPage'
 import { TimerPage } from '@/pages/TimerPage'
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 /**
  * 페이지(주소)를 추가하려면 children 배열에 한 줄 추가하면 됩니다.
@@ -69,7 +70,9 @@ export const router = createBrowserRouter([
       { path: 'manual', element: <ManualPage /> },
       { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
-      { path: 'messages', element: <MessagesPage /> },
+      { path: 'notifications', element: <NotificationsPage /> },
+      // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
+      { path: 'messages', element: <Navigate to="/notifications" replace /> },
       { path: 'login', element: <LoginPage /> },
       // SNS 로그인을 마치고 돌아오는 주소. 주소에 ?code=... 가 붙어서 옵니다.
       // 로그인 전에 열려야 해서 lib/authRedirect.ts 의 PUBLIC_PATHS 에 이미 적혀 있습니다. (RequireAuth 가 막지 않습니다)
@@ -125,6 +128,16 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <OnboardingPlanPage />
+      </RequireAuth>
+    ),
+  },
+  // 처음의 나에게 한마디(목소리·글) 남기기. 처음 계획 다음, "준비 끝" 앞에 나옵니다. (#241)
+  {
+    path: '/onboarding/voice',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingVoicePage />
       </RequireAuth>
     ),
   },
