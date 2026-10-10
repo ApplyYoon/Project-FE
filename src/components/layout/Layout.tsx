@@ -2,10 +2,12 @@ import { BackToRecordsLink } from '@/components/layout/BackToRecordsLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
 import { RecordsSubNav } from '@/components/layout/RecordsSubNav'
+import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
 import { useCallReminder } from '@/hooks/useCallReminder'
+import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { isRecordsCardPath, isRecordsTabPath } from '@/lib/recordsMenu'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 /**
  * 모든 페이지가 공통으로 쓰는 껍데기입니다.
@@ -17,6 +19,13 @@ export function Layout() {
   // 정해 둔 "전화 받을 시간" 이 되면 알림을 띄우고 전화 수신 화면으로 보냅니다. (앱이 열려 있을 때만)
   useCallReminder()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+
+  // 집중 모드(#69). 켜진 동안 설정·안전 브레이크를 계속 확인해서, 필요하면 자동으로 풉니다.
+  const focusMode = useFocusMode()
+  const focusAutoUnlock = useFocusModeAutoUnlock(focusMode.isOn)
+  // 집중 모드 중에 타이머가 아닌 주소로 가려고 하면(뒤로 가기·주소 직접 입력 등) 해제 화면을 먼저 보여줍니다.
+  const isBlockedByFocusMode = focusMode.isOn && pathname !== '/timer'
 
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다.
@@ -27,7 +36,29 @@ export function Layout() {
         {/* 기록 아래 화면에는 맨 위에 하위 탭 막대(기록·리포트·사용설명서)나 "‹ 기록" 돌아가기 링크를 둡니다. (#101) */}
         {isRecordsTabPath(pathname) && <RecordsSubNav />}
         {isRecordsCardPath(pathname) && <BackToRecordsLink />}
-        <Outlet />
+
+        {/* 집중 모드가 자동으로 풀렸을 때(설정을 껐거나 안전 브레이크) 한 번 알려 줍니다. */}
+        {focusAutoUnlock.message && (
+          <div
+            role="status"
+            className="mb-6 flex items-center justify-between gap-3 rounded-lg bg-sky-50 px-4 py-2 text-sm break-keep text-sky-800"
+          >
+            <p>{focusAutoUnlock.message}</p>
+            <button
+              type="button"
+              onClick={focusAutoUnlock.dismiss}
+              className="h-10 shrink-0 cursor-pointer rounded-md px-3 font-medium hover:bg-sky-100"
+            >
+              확인
+            </button>
+          </div>
+        )}
+
+        {isBlockedByFocusMode ? (
+          <FocusUnlockScreen onStay={() => navigate('/timer')} onUnlock={focusMode.unlock} />
+        ) : (
+          <Outlet />
+        )}
       </main>
 
       <footer className="border-t border-slate-200 py-6 text-center text-sm text-slate-500">
