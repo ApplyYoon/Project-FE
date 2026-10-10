@@ -87,16 +87,25 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * AI 메시지를 브라우저 알림으로 띄웁니다. 권한이 없으면 아무 일도 하지 않습니다.
  * (메시지 자체는 이 함수와 상관없이 메시지함에 이미 저장되어 있습니다)
  * 알림을 누르면 메시지함(/messages)으로 이동합니다.
+ *
+ * 알림을 띄우지 못하면 에러를 내지 않고 null 을 돌려줍니다.
+ * 안드로이드 크롬은 `new Notification()` 을 막아 두어서 권한을 허용해도 TypeError 를 냅니다.
+ * 이 에러를 잡지 않으면 앱 전체가 에러 화면이 되기 때문에, 알림만 포기하고 앱은 계속 돌아가게 합니다.
+ * (전화 알림 lib/callReminder.ts 도 같은 방식입니다)
  */
 export function showAiMessageNotification(message: AiMessage): Notification | null {
   if (getNotificationPermission() !== 'granted') return null
 
-  // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
-  const notification = new Notification('AI 메시지', { body: message.text, tag: message.id })
-  notification.onclick = () => {
-    window.focus()
-    window.location.assign('/messages')
-    notification.close()
+  try {
+    // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
+    const notification = new Notification('AI 메시지', { body: message.text, tag: message.id })
+    notification.onclick = () => {
+      window.focus()
+      window.location.assign('/messages')
+      notification.close()
+    }
+    return notification
+  } catch {
+    return null
   }
-  return notification
 }

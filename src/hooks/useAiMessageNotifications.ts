@@ -70,8 +70,9 @@ export function useAiMessageNotifications(): void {
         maxCareLevel: limits.maxCareLevel,
       })
       if (hasRoomToday && canSend) {
-        showAiMessageNotification(message)
-        sentCount += 1
+        // 실제로 알림이 뜬 것만 "오늘 보낸 개수" 로 셉니다. (권한이 없거나 브라우저가 막으면 null 이 옵니다)
+        const notification = showAiMessageNotification(message)
+        if (notification !== null) sentCount += 1
       }
       // 보냈든 조건에 걸려 건너뛰었든, 같은 메시지를 또 검사하지 않도록 기록해 둡니다.
       newlyNotifiedIds.push(message.id)
