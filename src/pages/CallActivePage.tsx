@@ -232,8 +232,11 @@ export function CallActivePage() {
     let isCancelled = false
     let hasDisconnected = false
     let call: RealtimeCall | null = null
+    // 연결하는 도중에 화면을 떠나면 기다리던 요청을 멈추고 마이크를 끄라고 알리는 신호입니다.
+    const controller = new AbortController()
 
     startRealtimeCall({
+      signal: controller.signal,
       // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
       onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
       // 연결이 끊어지면 마이크를 끄고, 안내 화면을 보여줍니다.
@@ -269,6 +272,8 @@ export function CallActivePage() {
     return () => {
       isCancelled = true
       callRef.current = null
+      // 아직 연결 중이면 기다리던 요청을 멈춥니다. (이미 연결됐으면 아래 close 가 정리합니다)
+      controller.abort()
       call?.close()
     }
   }, [attempt])
@@ -294,7 +299,12 @@ export function CallActivePage() {
     return () => clearInterval(timerId)
   }, [isPreview])
 
+  // 통화 시간은 실제로 연결된 동안에만 셉니다. (연결 중이거나 실패 화면일 때는 세지 않습니다)
+  // 연습 화면 보기(개발용)는 연결 없이 통화 화면을 보는 것이라 같이 셉니다.
+  const isCounting = connection === 'connected' || isPreview
   useEffect(() => {
+    if (!isCounting) return
+
     const startedAt = Date.now()
 
     // 1초마다 +1 하면 탭이 백그라운드일 때 느려질 수 있어서, 시작 시각과의 차이로 계산합니다.
@@ -302,9 +312,9 @@ export function CallActivePage() {
       setSeconds(Math.floor((Date.now() - startedAt) / 1000))
     }, 1000)
 
-    // 화면을 떠나면 타이머를 꼭 멈춥니다.
+    // 연결이 끊기거나 화면을 떠나면 타이머를 꼭 멈춥니다.
     return () => clearInterval(timerId)
-  }, [])
+  }, [isCounting])
 
   function handleToggleMute() {
     setIsMuted((prev) => !prev)
@@ -313,12 +323,16 @@ export function CallActivePage() {
   function handleHangUp() {
     // 화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다.
     // replace: 이 화면을 방문 기록에서 지웁니다. 결과 화면에서 뒤로가기를 눌러도 통화가 다시 걸리지 않습니다.
-    navigate('/call/result', { replace: true })
+    // 통화가 연결된 적이 없으면 평가할 내용이 없어서, 결과 화면 대신 홈으로 갑니다.
+    navigate(isCounting ? '/call/result' : '/', { replace: true })
   }
 
   // 다시 시도: "연결 중"으로 돌려놓고 attempt 를 올리면 위 useEffect 가 새로 연결합니다.
   function handleRetry() {
     setConnection('connecting')
+    // 새 통화라서 통화 시간과 지난 대화 말풍선을 처음으로 돌립니다.
+    setSeconds(0)
+    setMessages([])
     setAttempt((prev) => prev + 1)
   }
 
