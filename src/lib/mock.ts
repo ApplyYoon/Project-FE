@@ -1,4 +1,4 @@
-import type { Evaluation, StudyPlan, StudySession, Subject } from '@/types'
+import type { AiMessage, Evaluation, Insight, StudyPlan, StudySession, Subject } from '@/types'
 
 /**
  * 백엔드가 생기기 전까지 화면에 보여줄 가짜 데이터입니다.
@@ -24,6 +24,15 @@ function dateDaysAgo(daysAgo: number): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/** n일 뒤 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
+function dateDaysFromNow(daysFromNow: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() + daysFromNow)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 /** n일 전 hour시 minute분을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function timeDaysAgo(daysAgo: number, hour: number, minute: number): number {
   const date = new Date()
@@ -38,13 +47,21 @@ interface SessionInput {
   daysAgo: number // 며칠 전인지 (1 = 어제)
   start: string // 시작 시각 'HH:MM'
   minutes: number // 공부한 시간(분)
+  pauseCount?: number // 일시정지한 횟수 (안 적으면 0)
 }
 
 /** 읽기 쉬운 입력을 받아 StudySession 하나를 만듭니다. */
-function makeSession({ id, subjectId, daysAgo, start, minutes }: SessionInput): StudySession {
+function makeSession({
+  id,
+  subjectId,
+  daysAgo,
+  start,
+  minutes,
+  pauseCount = 0,
+}: SessionInput): StudySession {
   const [hour, minute] = start.split(':').map(Number)
   const startedAt = timeDaysAgo(daysAgo, hour, minute)
-  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE }
+  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount }
 }
 
 /* ---------- 가짜 데이터 ---------- */
@@ -143,5 +160,112 @@ export const mockEvaluations: Evaluation[] = [
     score: 55,
     mood: 'normal',
     summary: '절반은 해냈어요. 내일은 수학 시간을 조금 늘려 봐요.',
+  },
+]
+
+/**
+ * 인사이트 2개 (#73)
+ * 계산은 서버(AI)가 하고 FE 는 결과만 보여주므로, 서버가 생기기 전까지 예시로 둡니다.
+ */
+export const mockInsights: Insight[] = [
+  {
+    id: 'insight-1',
+    sentence: '스스로 밤형이라고 했지만, 오전 세션은 일시정지가 밤의 절반이야.',
+    // 비교하는 두 조건(오전/밤) 중 하나가 아직 5일 미만이라 "가설" 배지가 붙습니다.
+    evidenceDates: [dateDaysAgo(1), dateDaysAgo(2), dateDaysAgo(3), dateDaysAgo(4)],
+    isHypothesis: true,
+  },
+  {
+    id: 'insight-2',
+    sentence: '공부 시간을 매일 평균 1시간 20분 높게 예상해. 계획을 예상의 75%로 잡아보자.',
+    evidenceDates: [
+      dateDaysAgo(1),
+      dateDaysAgo(2),
+      dateDaysAgo(3),
+      dateDaysAgo(4),
+      dateDaysAgo(5),
+      dateDaysAgo(6),
+    ],
+    isHypothesis: false,
+  },
+]
+
+/**
+ * 목표 시험 날짜 예시 (#71 예상 성장 곡선의 D-day)
+ * 온보딩(#58)이 아직 없어서 임시로 둡니다. 온보딩이 생기면
+ * OnboardingAnswers.targetExamDate 를 실제로 받아서 써야 합니다.
+ */
+export const mockTargetExamDate = dateDaysFromNow(39)
+
+/** 지금으로부터 n분 전 시각을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
+function minutesAgo(minutes: number): number {
+  return Date.now() - minutes * MINUTE
+}
+
+/**
+ * 메시지함에 보여줄 AI 메시지 7개 (어제 4개 + 최근 3개)
+ * 최근 메시지는 "n분 전" 으로 만들었습니다. 오늘 시각을 정해 두면
+ * 아침에 열었을 때 아직 오지 않은 시각의 메시지가 생기기 때문입니다.
+ * 마지막 3개는 안 읽은 메시지입니다.
+ */
+export const mockAiMessages: AiMessage[] = [
+  {
+    id: 'message-1',
+    sentAt: timeDaysAgo(1, 7, 30),
+    careLevel: 2,
+    kind: 'regular',
+    text: '좋은 아침! 오늘 계획은 4시간이야. 첫 과목은 수학 어때?',
+    read: true,
+  },
+  {
+    id: 'message-2',
+    sentAt: timeDaysAgo(1, 19, 10),
+    careLevel: 2,
+    kind: 'event',
+    eventLabel: '계획 시간 지남',
+    text: '계획 시간 10분 지났어. 타이머부터 켜 볼까?',
+    read: true,
+  },
+  {
+    id: 'message-3',
+    sentAt: timeDaysAgo(1, 21, 35),
+    careLevel: 1,
+    kind: 'event',
+    eventLabel: '목표 달성',
+    text: '오늘 목표 달성! 첫 시작이 그저께보다 25분 빨랐어.',
+    read: true,
+  },
+  {
+    id: 'message-4',
+    sentAt: minutesAgo(180),
+    careLevel: 2,
+    kind: 'regular',
+    text: '어제 순공 3시간 10분, 계획의 80%야. 폰은 다른 방에 두기 5일째!',
+    read: true,
+  },
+  {
+    id: 'message-5',
+    sentAt: minutesAgo(90),
+    careLevel: 1,
+    kind: 'regular',
+    text: '점심 먹고 20분만 영어 단어 어때? 어제 약속 지킨 거 멋있었어.',
+    read: false,
+  },
+  {
+    id: 'message-6',
+    sentAt: minutesAgo(30),
+    careLevel: 3,
+    kind: 'event',
+    eventLabel: '계획 시간 지남',
+    text: '벌써 40분 지났는데 아직 시작 안 했네. 오늘도 폰이야?',
+    read: false,
+  },
+  {
+    id: 'message-7',
+    sentAt: minutesAgo(5),
+    careLevel: 2,
+    kind: 'regular',
+    text: '지금 25분만 해 보자. 끝나면 칭찬해 줄게.',
+    read: false,
   },
 ]
