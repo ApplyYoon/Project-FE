@@ -1,3 +1,4 @@
+import { toDayDate } from '@/lib/date'
 import type {
   AiMessage,
   Evaluation,
@@ -27,7 +28,8 @@ const MINUTE = 60 * 1000 // 1분 = 60,000 밀리초
  * toISOString() 은 영국 시간 기준이라 한국 새벽에는 날짜가 하루 밀려서, 직접 만듭니다.
  */
 function dateDaysAgo(daysAgo: number): string {
-  const date = new Date()
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. (lib/date.ts)
+  const date = toDayDate(Date.now())
   date.setDate(date.getDate() - daysAgo)
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
@@ -36,7 +38,7 @@ function dateDaysAgo(daysAgo: number): string {
 
 /** n일 전 hour시 minute분을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function timeDaysAgo(daysAgo: number, hour: number, minute: number): number {
-  const date = new Date()
+  const date = toDayDate(Date.now())
   date.setDate(date.getDate() - daysAgo)
   date.setHours(hour, minute, 0, 0)
   return date.getTime()
@@ -180,6 +182,7 @@ export const mockReflectionPrescription: ReflectionPrescription = {
 /**
  * 폰·SNS 때문에 계획을 못 채운 사람에게 맞춘 개선안 3개 (쉬움·보통·강함)
  * 원인별 분기(#91)가 생기기 전까지는 이 세트 하나만 보여줍니다.
+ * 누구에게나 똑같이 보여주는 예시라서, reason 에 "내 기록을 분석한 것 같은" 말은 쓰지 않습니다.
  */
 export const mockSuggestions: Suggestion[] = [
   {
@@ -197,7 +200,7 @@ export const mockSuggestions: Suggestion[] = [
     level: 'normal',
     ifText: '학원에서 돌아오면',
     thenText: '폰을 가방에 넣고 시작한다',
-    reason: '학원 다음이 제일 약한 시간이었어.',
+    reason: '집에 오자마자가 제일 흔들리기 쉬운 시간이야.',
     status: 'suggested',
   },
   {

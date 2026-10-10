@@ -1,5 +1,5 @@
 import { cn } from '@/lib/cn'
-import { useEffect, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react'
 
 interface ModalProps {
   isOpen: boolean
@@ -27,6 +27,26 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
 
+  // 팝업 상자. 열릴 때 키보드 포커스를 여기로 옮기는 데 씁니다.
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // 팝업이 열리면 포커스를 팝업으로 옮기고, 뒤 화면이 스크롤되지 않게 막습니다. 닫히면 원래대로 돌립니다.
+  // (포커스가 뒤 화면에 남아 있으면 키보드·스크린리더 사용자가 팝업이 뜬 줄 모릅니다)
+  // [isOpen] 만 지켜봅니다. onClose 까지 넣으면 부모가 다시 그려질 때마다 포커스를 다시 빼앗습니다.
+  useEffect(() => {
+    if (!isOpen) return
+
+    // 팝업을 열기 전에 포커스가 있던 곳(보통 팝업을 연 버튼)을 기억해 둡니다.
+    const previousFocus = document.activeElement
+    dialogRef.current?.focus()
+    document.body.classList.add('overflow-hidden')
+
+    return () => {
+      document.body.classList.remove('overflow-hidden')
+      if (previousFocus instanceof HTMLElement) previousFocus.focus()
+    }
+  }, [isOpen])
+
   // 훅(useEffect)은 항상 이 줄보다 위에 있어야 합니다. (return 뒤에 훅을 두면 에러)
   if (!isOpen) return null
 
@@ -41,12 +61,16 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
     >
       <div
+        ref={dialogRef}
+        // tabIndex -1: 탭 키로는 안 오지만 코드로 포커스를 줄 수 있게 합니다.
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         // max-h-full + overflow-y-auto: 내용이 길어도 화면 밖으로 넘치지 않고 안에서 스크롤됩니다.
+        // outline-none: 상자 전체에 포커스 테두리가 그려지지 않게 합니다. (안의 버튼들은 그대로 테두리가 보입니다)
         className={cn(
-          'max-h-full w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-lg',
+          'max-h-full w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-lg outline-none',
           className,
         )}
       >

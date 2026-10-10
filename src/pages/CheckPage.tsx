@@ -8,23 +8,15 @@ import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
+import { MOOD_OPTIONS } from '@/lib/quickCheckIn'
 import { getStudyMs } from '@/lib/studyTime'
 import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
 /** 컨디션 버튼에 쓰는 숫자 (1 최악 ~ 5 최고) */
 const CONDITION_OPTIONS = [1, 2, 3, 4, 5]
-
-/** 기분 버튼. 이모지 + 한국어 설명으로 보여줍니다. */
-const MOOD_OPTIONS = [
-  { value: 1, emoji: '😞', label: '많이 처짐' },
-  { value: 2, emoji: '🙁', label: '처짐' },
-  { value: 3, emoji: '😐', label: '보통' },
-  { value: 4, emoji: '🙂', label: '좋음' },
-  { value: 5, emoji: '😄', label: '아주 좋음' },
-]
 
 /** 오늘 예상 순공시간 버튼. 분 단위로 저장합니다. */
 const EXPECTED_MINUTES_OPTIONS = [
@@ -83,7 +75,7 @@ function getEncouragement(targetMinutes: number, rate: number): string {
 }
 
 export function CheckPage() {
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   const yesterdayKey = moveDateKey(todayKey, -1)
 
   const { getCheckIn, saveCheckIn } = useCheckIns()
@@ -138,20 +130,27 @@ export function CheckPage() {
   )
 
   // 어제 계획 달성률 = 어제 실제로 공부한 시간 ÷ 어제 계획한 목표 시간
-  const yesterdayPlans = getPlans(yesterdayKey)
+  // 노는 계획은 공부 목표가 아니라서 뺍니다. (#238)
+  const yesterdayPlans = getPlans(yesterdayKey).filter((plan) => plan.kind !== 'play')
   const targetMinutes = yesterdayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
 
   // 어제 시작한 공부 기록의 순공시간(일시정지한 시간은 뺌)을 더합니다.
   const actualMinutes = Math.round(
     sessions
-      .filter((session) => toDateKey(new Date(session.startedAt)) === yesterdayKey)
+      .filter((session) => toDayKey(session.startedAt) === yesterdayKey)
       .reduce((sum, session) => sum + getStudyMs(session) / 60000, 0),
   )
 
-  const achievementRate = targetMinutes === 0 ? 0 : (actualMinutes / targetMinutes) * 100
+  // 달성률은 소수점을 버립니다. (99.5% 를 100% 로 보여주면서 "다 못 채웠어?" 를 묻는 일이 없게)
+  // lib/daySummary.ts 의 규칙 5 와 같습니다.
+  const achievementRate =
+    targetMinutes === 0 ? 0 : Math.min(100, Math.floor((actualMinutes * 100) / targetMinutes))
 
   // 계획이 있었는데 다 못 채운 날에만 "왜 못 했어?" 를 묻습니다. (계획이 없던 날은 못 채운 게 아닙니다)
   const needsMissReason = targetMinutes > 0 && achievementRate < 100
+
+  // 방금 저장했는지. 버튼 위에 "저장했어요" 를 보여주는 데 씁니다.
+  const [isSaved, setIsSaved] = useState(false)
 
   function handleSubmit() {
     const checkIn: CheckIn = {
@@ -182,21 +181,24 @@ export function CheckPage() {
         saveCheck({ suggestionId: suggestion.id, date: yesterdayKey, kept })
       }
     }
+    setIsSaved(true)
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">매일 체크인</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">자세히 체크인</h1>
           {isCheckedInToday && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-600">
               ✓ 오늘 체크인 완료
             </span>
           )}
         </div>
-        <p className="mt-2 text-slate-600">
-          버튼만 누르면 30초 안에 끝나요. 전화를 못 받은 날은 여기서 해요.
+        {/* 기분은 앱을 열 때 1탭으로 이미 받았습니다. (#242) 이 화면은 더 적고 싶은 날에만 씁니다. */}
+        <p className="mt-2 break-keep text-slate-600">
+          오늘 기분은 앱을 열 때 이미 골랐어요. 컨디션·예상 시간·약속까지 적고 싶은 날에만 하면
+          돼요.
         </p>
       </div>
 
@@ -208,7 +210,7 @@ export function CheckPage() {
           </div>
           <div>
             <p className="text-sm text-slate-500">계획 달성률</p>
-            <p className="text-xl font-bold text-slate-900">{Math.round(achievementRate)}%</p>
+            <p className="text-xl font-bold text-slate-900">{achievementRate}%</p>
           </div>
         </div>
 
@@ -356,6 +358,13 @@ export function CheckPage() {
             내가 답한 대로만 기록해요. 정말 켰는지는 확인하지 않아요.
           </p>
         </Card>
+      )}
+
+      {/* 저장한 직후에 버튼 바로 위에 알려 줍니다. (모바일은 맨 위의 "체크인 완료" 표시가 화면 밖이라 안 보입니다) */}
+      {isSaved && (
+        <p role="status" className="text-center text-sm font-medium text-emerald-700">
+          저장했어요. 내용을 고치고 다시 저장할 수도 있어요.
+        </p>
       )}
 
       <Button

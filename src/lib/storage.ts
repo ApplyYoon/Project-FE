@@ -72,3 +72,30 @@ export function removeData(key: string): boolean {
     return false
   }
 }
+
+/**
+ * 저장해 둔 "목록(배열)" 을 불러옵니다. 저장된 값이 배열이 아니면(없거나 깨졌으면) fallback 을 돌려줍니다.
+ *
+ * loadData 는 저장된 값의 모양을 확인하지 않습니다. 그래서 배열이어야 하는 곳에 다른 값이 들어 있으면
+ * `.map` · `.filter` 에서 에러가 나서 화면 전체가 멈춥니다. 목록을 읽을 때는 이 함수를 쓰세요.
+ *
+ * 사용 예:
+ *   const checks = loadList<SuggestionCheck>('suggestion-checks')
+ */
+export function loadList<T>(key: string, fallback: T[] = []): T[] {
+  const saved = loadData<unknown>(key, fallback)
+  return Array.isArray(saved) ? (saved as T[]) : fallback
+}
+
+/**
+ * 저장해 둔 "{ 이름: 값 }" 모양의 객체를 불러옵니다. (날짜별 기록처럼 { '2026-10-10': … } 로 저장하는 곳에서 씁니다)
+ * 저장된 값이 그런 객체가 아니면(없거나, null 이거나, 배열 · 글자 · 숫자면) 빈 객체를 돌려줍니다.
+ *
+ * 사용 예:
+ *   const checkInsByDate = loadRecord<CheckIn>('checkins')
+ */
+export function loadRecord<T>(key: string): Record<string, T> {
+  const saved = loadData<unknown>(key, {})
+  if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return {}
+  return saved as Record<string, T>
+}

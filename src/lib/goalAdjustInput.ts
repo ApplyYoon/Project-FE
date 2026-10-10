@@ -5,7 +5,7 @@
  * 여기서는 "연속 미달 일수" 와 "최근 평균 공부 시간" 을 계산합니다.
  * 이행·효과 판정, 기분, 미달 원인까지 모아서 오늘의 대응을 정하는 일은 lib/careInputs.ts 가 합니다. (#205)
  */
-import { toDateKey } from '@/lib/dailyRecords'
+import { moveDateKey, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import type { StudyPlan, StudySession } from '@/types'
 
@@ -17,8 +17,8 @@ const MAX_MISS_LOOKBACK_DAYS = 30
 
 /** 기준 날짜에서 n 일 전의 날짜('YYYY-MM-DD')를 돌려줍니다. */
 function daysAgoKey(today: Date, n: number): string {
-  const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - n)
-  return toDateKey(date)
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. (lib/date.ts)
+  return moveDateKey(toDayKey(today), -n)
 }
 
 /**
@@ -71,7 +71,8 @@ export function countConsecutiveMissDays(
     if (!hasPlan) break
 
     const { achievementRate } = getDaySummary(date, plans, sessions)
-    if (achievementRate >= 100) break
+    // null 은 달성률을 계산할 수 없는 날(목표 시간이 0)이라, 계획이 없던 날처럼 여기서 멈춥니다.
+    if (achievementRate === null || achievementRate >= 100) break
 
     missDays += 1
   }

@@ -1,3 +1,6 @@
+import { toDayDate } from '@/lib/date'
+import { loadData } from '@/lib/storage'
+
 /**
  * 온보딩 설문의 질문(단계) 목록입니다.
  *
@@ -9,7 +12,11 @@
  *   2. key 는 #78 의 OnboardingAnswers 필드 이름과 똑같이 씁니다. 답이 그 이름으로 저장됩니다.
  *   3. 아래 모양(choice, text, date, time)으로 안 되는 질문이면
  *      (예: 여러 개 고르기) 위에 Step 모양을 하나 더 만들고, OnboardingPage 의 StepInput 에도 한 줄 더하세요.
- *      답이 글자 하나가 아닌 단계(careLimits, messageSettings)는 OnboardingPage 가 StepInput 대신 따로 그립니다.
+ *
+ * ■ 처음에 묻는 질문과 나중에 묻는 질문 (#239)
+ *   질문이 19개면 시작도 하기 전에 지칩니다. 그래서 꼭 필요한 질문에만 first: true 를 붙여서 처음에 묻고,
+ *   나머지는 설정의 "내 정보 더 알려주기" 에서 천천히 답하게 했습니다. (아래 firstSteps, getUnansweredSteps)
+ *   관리 강도 한도와 메시지 설정은 묻지 않고 기본값으로 시작합니다. 설정 화면에서 언제든 바꿉니다.
  */
 
 /** 모든 단계가 같이 가지는 정보 */
@@ -24,6 +31,8 @@ interface BaseStep {
   description?: string
   /** true 면 비워 두고 넘어갈 수 있습니다. */
   optional?: boolean
+  /** true 면 처음 온보딩에서 묻습니다. 없으면 나중에 "내 정보 더 알려주기" 에서 묻습니다. (#239) */
+  first?: boolean
 }
 
 /**
@@ -69,30 +78,7 @@ interface TimeStep extends BaseStep {
   type: 'time'
 }
 
-/**
- * AI 메시지 횟수·연락 금지 시간을 고르는 단계. 설정 화면과 같은 입력칸(MessageSettingsFields)을 씁니다.
- * 답은 온보딩 답이 아니라 메시지 설정(lib/messageSettings)으로 "완료" 때 저장됩니다.
- */
-interface MessageSettingsStep extends BaseStep {
-  type: 'messageSettings'
-}
-
-/**
- * 관리 강도 최대 한도·독설 허용 수위를 고르는 단계 (#59). 설정 화면과 같은 화면 조각(CareLimitPickers)을 씁니다.
- * 답은 온보딩 답이 아니라 관리 한도(lib/careLimits)로 "완료" 때 저장되고, 바로 적용됩니다.
- */
-interface CareLimitsStep extends BaseStep {
-  type: 'careLimits'
-}
-
-export type OnboardingStep =
-  | ChoiceStep
-  | MultiChoiceStep
-  | TextStep
-  | DateStep
-  | TimeStep
-  | CareLimitsStep
-  | MessageSettingsStep
+export type OnboardingStep = ChoiceStep | MultiChoiceStep | TextStep | DateStep | TimeStep
 
 /** 쉼표로 이은 여러 개 고르기 답을 값 목록으로 자릅니다. 빈 글자면 빈 목록입니다.  'weekend,phone' -> ['weekend', 'phone'] */
 export function parseMultiAnswer(answer: string): string[] {
@@ -123,6 +109,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'grade',
     group: '기본 정보',
+    first: true,
     type: 'choice',
     title: '지금 몇 학년이야?',
     description: '학년에 맞춰서 공부 시간을 추천해 줄게요.',
@@ -131,6 +118,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'targetExam',
     group: '기본 정보',
+    first: true,
     type: 'text',
     title: '어떤 시험을 준비하고 있어?',
     description: '가장 가까운 큰 시험 하나만 적어 주세요.',
@@ -140,6 +128,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'targetExamDate',
     group: '기본 정보',
+    first: true,
     type: 'date',
     title: '그 시험은 언제야?',
     description: '날짜를 고르면 시험까지 남은 날(D-day)을 계산해 줄게요.',
@@ -258,6 +247,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'dailyAvailableMinutes',
     group: '자기 인식',
+    first: true,
     type: 'choice',
     title: '하루에 공부할 수 있는 시간은?',
     description: '학교·학원 시간을 뺀, 내가 쓸 수 있는 시간이에요.',
@@ -275,6 +265,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'motivationReason',
     group: '동기',
+    first: true,
     type: 'text',
     optional: true,
     title: '공부하는 이유가 뭐야?',
@@ -292,23 +283,36 @@ export const onboardingSteps: OnboardingStep[] = [
     placeholder: '예) 친구들이랑 여행 가기',
     maxLength: 50,
   },
-
-  /* ---------- 관리 설정 ---------- */
-  {
-    key: 'careLimits',
-    group: '관리 설정',
-    type: 'careLimits',
-    title: 'AI 가 얼마나 세게 챙겨도 돼?',
-    description: '정한 한도는 절대 넘지 않아요. 나중에 설정에서 언제든 바꿀 수 있어요.',
-  },
-  {
-    key: 'messageSettings',
-    group: '관리 설정',
-    type: 'messageSettings',
-    title: 'AI 연락은 언제, 얼마나 받을래?',
-    description: '나중에 설정에서 언제든 바꿀 수 있어요.',
-  },
 ]
+
+/**
+ * 저장해 둔 온보딩 답을 불러옵니다. 설문을 한 번도 안 했으면 null 입니다.
+ * 저장된 값이 { 질문 이름: 답 } 모양이 아니면(깨졌으면) 설문을 안 한 것으로 봅니다.
+ */
+export function loadOnboardingAnswers(): Record<string, string> | null {
+  const saved = loadData<unknown>('onboarding-answers', null)
+  if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return null
+  return saved as Record<string, string>
+}
+
+/** 처음 온보딩에서 묻는 질문들 (first: true 인 것만). 이것만 답해도 앱을 쓸 수 있습니다. (#239) */
+export const firstSteps: OnboardingStep[] = onboardingSteps.filter((step) => step.first === true)
+
+/**
+ * 아직 답하지 않은 질문들을 돌려줍니다. 설정의 "내 정보 더 알려주기" 가 이 질문들을 이어서 묻습니다. (#239)
+ *
+ * "답한 질문" = 저장된 답(answers)에 그 질문의 이름(key)이 있는 질문입니다.
+ * 건너뛴 선택 질문은 빈 글자('')로 저장해 두어서, 이름이 있으니 다시 묻지 않습니다.
+ *
+ * ■ 예시
+ *   getUnansweredSteps({ grade: '고2', targetExam: '수능', targetExamDate: '2026-11-18', dailyAvailableMinutes: '180' })
+ *     -> 처음 질문 중 안 답한 '공부하는 이유' + 나중 질문 12개 = 13개
+ *   getUnansweredSteps({ ...위의 답, motivationReason: '', wakeUpTime: '07:00' })
+ *     -> 11개  (이유는 건너뛴 것으로 저장됐고, 기상 시각은 답했음)
+ */
+export function getUnansweredSteps(answers: Record<string, string>): OnboardingStep[] {
+  return onboardingSteps.filter((step) => !(step.key in answers))
+}
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
@@ -318,16 +322,19 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
  *
  * now 는 "오늘이 언제인지" 입니다. 평소엔 비워 두면 되고, 확인할 때 날짜를 바꿔 넣을 수 있습니다.
  *
- *   getDaysUntil('2026-10-15', new Date(2026, 9, 10))  ->  5
- *   getDaysUntil('2026-10-10', new Date(2026, 9, 10))  ->  0
- *   getDaysUntil('2026-10-09', new Date(2026, 9, 10))  ->  -1
+ *   (아래 now 는 10월 10일 낮 12시입니다)
+ *   getDaysUntil('2026-10-15', new Date(2026, 9, 10, 12))  ->  5
+ *   getDaysUntil('2026-10-10', new Date(2026, 9, 10, 12))  ->  0
+ *   getDaysUntil('2026-10-09', new Date(2026, 9, 10, 12))  ->  -1
  */
 export function getDaysUntil(dateText: string, now: Date = new Date()): number {
   const [year, month, day] = dateText.split('-').map(Number)
   // 'YYYY-MM-DD' 글자를 그대로 new Date 에 넣으면 영국 시간으로 읽혀서 하루가 어긋납니다. 년·월·일을 쪼개서 만듭니다.
   const target = new Date(year, month - 1, day)
   // 오늘도 시각을 버리고 날짜만 남깁니다. (오후 3시에 봐도 오늘 = 0 이 되도록)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. 새벽 2시면 아직 어제입니다. (lib/date.ts)
+  const todayDate = toDayDate(now)
+  const today = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate())
   return Math.round((target.getTime() - today.getTime()) / MS_PER_DAY)
 }
 
@@ -343,9 +350,6 @@ export function isAnswerValid(
   value: string,
   now: Date = new Date(),
 ): boolean {
-  // 관리 한도·메시지 설정은 처음 값이 들어 있어서 그대로 넘어가도 됩니다.
-  // (관리 한도 2단계·독설 3, 메시지 하루 3번·23:00 ~ 07:00)
-  if (step.type === 'careLimits' || step.type === 'messageSettings') return true
   if (value.trim() === '') return step.optional === true
   if (step.type === 'date') return getDaysUntil(value, now) >= 0
   return true

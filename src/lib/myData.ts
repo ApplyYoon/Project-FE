@@ -7,8 +7,8 @@ import { removeData } from '@/lib/storage'
  * 안 그러면 "모든 기록 지우기" 를 눌러도 그 데이터가 남습니다.
  */
 
-/** 일기 데이터의 저장 키. (일기 #63, 성찰 일기 #70) */
-const DIARY_KEYS = ['diary', 'reflection-entries']
+/** 일기 데이터의 저장 키. (일기 #63, 성찰 일기 #70, 저장 전에 쓰던 일기) */
+const DIARY_KEYS = ['diary', 'reflection-entries', 'diary-draft']
 
 /**
  * 모든 기록의 저장 키 = 공부 계획 · 공부 기록 · 타이머 기록 · 딴짓 기록 · 시험 · 일기
@@ -16,12 +16,18 @@ const DIARY_KEYS = ['diary', 'reflection-entries']
  *
  * 일부러 넣지 않은 것(= 지우지 않고 남김)
  *   subjects    과목. 기록이 아니라 내가 정한 설정이라 남깁니다.
+ *   initial-plan  온보딩 마지막에 세운 처음 계획(하루 목표 · 주당 일수). 기록이 아니라 내가 한 약속이고, 나중에 지금과 비교하는 기준이라 남깁니다. (#240)
  *   routines    루틴(요일마다 반복되는 계획의 틀). 과목처럼 내가 정한 설정이라 남깁니다. (#236)
+ *   planner-view  계획 화면을 목록으로 볼지 플래너로 볼지 고른 값. 이것도 설정이라 남깁니다. (#237)
  *   timer-mode, timer-target  고른 타이머 방식(목표 정하기·뽀모도로·목표 없이)과 목표 시간. 이것도 설정입니다.
+ *   onboarding-draft  온보딩 설문을 끝내기 전에 고르던 답(임시). 설문을 끝내면 스스로 지워집니다. 아래 onboarding-answers 와 같은 이유로 남깁니다.
  *   onboarding-answers  온보딩 설문 답. 기록이 아니라 내 정보이고, 지우면 설문을 처음부터 다시 하게 되어서 남깁니다.
  *   signup-info  가입 때 정한 닉네임과 동의 내역. 기록이 아니라 계정 정보이고, 동의한 기록은 남겨 두어야 해서 남깁니다.
  *   call-time, call-last-ring  전화 받을 시간과 마지막으로 울린 시각. 내가 정한 설정이라 남깁니다.
  *   phone-focus-enabled  체크인에서 휴대폰 집중 모드를 확인받을지 정한 설정(#106). 기록이 아니라 설정이라 남깁니다.
+ *   care-limits, message-settings  관리 강도 한도 · 독설 수위 · 메시지 횟수 · 연락 금지 시간. 내가 정한 설정이라 남깁니다.
+ *   diary-enabled  일기 쓰기를 켰는지. 설정이라 남깁니다.
+ *   ios-install-guide-dismissed  아이폰 "홈 화면에 추가" 안내를 닫았는지. 기록이 아니라서 남깁니다.
  *   auth        로그인 정보. 지우면 로그아웃되어 버립니다.
  */
 const RECORD_KEYS = [
@@ -45,6 +51,20 @@ const RECORD_KEYS = [
   'manual-items',
   // 날짜마다 "이미 계획으로 넣은 루틴" 표시. 계획을 지우면 이 표시도 같이 지워야 루틴이 다시 채워집니다. (#236)
   'routine-filled',
+  // 타이머가 재고 있던 계획 (timer-subject 와 같이 지웁니다)
+  'timer-plan',
+  // 매일 체크인(기분 · 컨디션 · 약속 · 못 채운 이유)과 주간 회고
+  'checkins',
+  'weekly-reviews',
+  // 개선안과 도전 상태. 이행 기록(suggestion-checks)만 지우고 이것을 남기면 "도전 중" 인데 기록이 0 인 상태가 됩니다.
+  'suggestions',
+  // 목표 조정 제안을 거절한 날짜, 수락한 날짜
+  'goal-adjust-declined',
+  'goal-adjust-accepted',
+  // 받은 AI 메시지와, 알림을 보낸 기록
+  'ai-messages',
+  'ai-message-notified-ids',
+  'ai-message-sent-today',
   ...DIARY_KEYS,
 ]
 

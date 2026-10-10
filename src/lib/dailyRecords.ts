@@ -1,3 +1,4 @@
+import { toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { loadData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
@@ -92,19 +93,29 @@ export function isStudySession(value: unknown): value is StudySession {
 }
 
 /**
- * 타이머가 저장해 둔 공부 기록을 불러옵니다. 저장된 게 없으면 빈 목록입니다. (예시 기록으로 채우지 않습니다)
+ * 타이머가 저장해 둔 기록을 전부(공부 + 놀기) 불러옵니다. 저장된 게 없으면 빈 목록입니다.
  * 모양이 틀린 기록은 걸러냅니다.
- *
- *   const sessions = loadStudySessions()
+ * 계획별 실제 시간(`32 / 50분`)처럼 노는 기록도 필요한 곳에서만 씁니다.
  */
-export function loadStudySessions(): StudySession[] {
+export function loadAllSessions(): StudySession[] {
   const saved = loadData<unknown>('sessions', [])
   return Array.isArray(saved) ? saved.filter(isStudySession) : []
 }
 
 /**
+ * 타이머가 저장해 둔 공부 기록을 불러옵니다. 저장된 게 없으면 빈 목록입니다. (예시 기록으로 채우지 않습니다)
+ * 노는 기록(kind 가 'play')은 공부가 아니라서 뺍니다. 순공 · 달성률 · 인사이트 계산에는 이 함수를 씁니다. (#238)
+ *
+ *   const sessions = loadStudySessions()
+ */
+export function loadStudySessions(): StudySession[] {
+  return loadAllSessions().filter((session) => session.kind !== 'play')
+}
+
+/**
  * 공부 기록을 날짜별로 묶어서, 최근 날짜가 맨 앞에 오도록 돌려줍니다.
  * 날짜는 공부를 "시작한" 날짜로 정합니다. (밤 11시에 시작해서 다음 날 넘어가도 시작한 날 기록입니다)
+ * 하루는 새벽 4시에 바뀝니다. 새벽 2시에 시작한 공부는 전날 기록입니다. (lib/date.ts 의 toDayKey)
  *
  *   const days = groupSessionsByDate(sessions)   // days[0] 이 가장 최근 날짜
  */
@@ -113,7 +124,7 @@ export function groupSessionsByDate(sessions: StudySession[]): DailyRecord[] {
   const byDate = new Map<string, Map<string, StudySession[]>>()
 
   for (const session of sessions) {
-    const date = toDateKey(new Date(session.startedAt))
+    const date = toDayKey(session.startedAt)
     const bySubject = byDate.get(date) ?? new Map<string, StudySession[]>()
     bySubject.set(session.subjectId, [...(bySubject.get(session.subjectId) ?? []), session])
     byDate.set(date, bySubject)

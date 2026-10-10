@@ -13,7 +13,7 @@
  * 기간이 끝난 개선안이 없으면 판정할 재료가 없어서 결정을 하지 않습니다. (null)
  */
 import { decideCareAction, type CareDecision, type MissCause } from '@/lib/careDecision'
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { moveDateKey, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { judgeExperiment, type DayMetric, type ExperimentResult } from '@/lib/experimentJudge'
 import { countConsecutiveMissDays } from '@/lib/goalAdjustInput'
@@ -65,7 +65,7 @@ export function pickFinishedSuggestion(
   suggestions: Suggestion[],
   today: Date = new Date(),
 ): DatedSuggestion | null {
-  const todayKey = toDateKey(today)
+  const todayKey = toDayKey(today)
 
   const finished = suggestions.flatMap((suggestion) => {
     if (suggestion.status !== 'active') return []
@@ -116,7 +116,8 @@ function toDayMetrics(dates: string[], plans: StudyPlan[], sessions: StudySessio
     const summary = getDaySummary(date, plans, sessions)
     const hasRecord = summary.studyMinutes > 0 || plans.some((plan) => plan.date === date)
     return hasRecord
-      ? [{ studyMinutes: summary.studyMinutes, achievementRate: summary.achievementRate }]
+      ? // 계획 없이 공부만 한 날(달성률 null)은 지금까지처럼 0 으로 넣습니다.
+        [{ studyMinutes: summary.studyMinutes, achievementRate: summary.achievementRate ?? 0 }]
       : []
   })
 }
@@ -138,7 +139,7 @@ export function getEffectResult(
  * (체크인은 하루 한 번이라, 오늘 아직 안 했으면 어제 것을 봅니다)
  */
 function findLatestCheckIn(checkIns: Record<string, CheckIn>, today: Date): CheckIn | null {
-  const todayKey = toDateKey(today)
+  const todayKey = toDayKey(today)
   return checkIns[todayKey] ?? checkIns[moveDateKey(todayKey, -1)] ?? null
 }
 

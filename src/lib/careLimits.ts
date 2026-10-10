@@ -1,3 +1,4 @@
+import { getTodayKey } from './date'
 import { loadData, saveData } from './storage'
 import type { CareLevel } from '@/lib/careLevel'
 
@@ -35,12 +36,33 @@ const defaultLimits: CareLimits = {
   pendingEffectiveDate: null,
 }
 
-/** 오늘 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function todayKey(): string {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+/** 값이 관리 강도(0 ~ 4 의 정수)가 맞는지 확인합니다. */
+function isCareLevel(value: unknown): value is CareLevel {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 4
+}
+
+/**
+ * 저장소에서 꺼낸 값을 한도 모양으로 맞춥니다. 모양이 틀린 칸은 기본값으로 채웁니다.
+ * (저장된 값이 깨져 있으면 설정 · 홈 · 타이머 화면이 통째로 멈추기 때문에, 칸마다 확인합니다)
+ */
+function toCareLimits(saved: unknown): CareLimits {
+  if (typeof saved !== 'object' || saved === null) return defaultLimits
+  const value = saved as Record<string, unknown>
+
+  const harshness = value.maxHarshness
+  const isValidHarshness =
+    typeof harshness === 'number' && Number.isInteger(harshness) && harshness >= 1 && harshness <= 5
+
+  return {
+    maxCareLevel: isCareLevel(value.maxCareLevel) ? value.maxCareLevel : defaultLimits.maxCareLevel,
+    maxHarshness: isValidHarshness ? harshness : defaultLimits.maxHarshness,
+    // 허용 여부는 true 라고 분명히 저장된 것만 허용으로 봅니다.
+    allowOffHoursCall: value.allowOffHoursCall === true,
+    allowFocusMode: value.allowFocusMode === true,
+    pendingMaxCareLevel: isCareLevel(value.pendingMaxCareLevel) ? value.pendingMaxCareLevel : null,
+    pendingEffectiveDate:
+      typeof value.pendingEffectiveDate === 'string' ? value.pendingEffectiveDate : null,
+  }
 }
 
 /**
@@ -49,12 +71,12 @@ function todayKey(): string {
  * (지금은 한도를 올려도 바로 적용돼서 새로 예약되는 일은 없습니다. 예전에 저장된 예약을 위한 코드입니다)
  */
 export function getCareLimits(): CareLimits {
-  const saved = loadData(STORAGE_KEY, defaultLimits)
+  const saved = toCareLimits(loadData<unknown>(STORAGE_KEY, null))
 
   const canApplyPending =
     saved.pendingMaxCareLevel !== null &&
     saved.pendingEffectiveDate !== null &&
-    saved.pendingEffectiveDate <= todayKey()
+    saved.pendingEffectiveDate <= getTodayKey()
 
   if (!canApplyPending) return saved
 

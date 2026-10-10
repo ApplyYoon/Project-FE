@@ -19,16 +19,18 @@ import type { AiMessage } from '@/types'
 const WHIP_CARE_LEVEL = 3
 
 /**
- * 메시지 설정의 연락 금지 시간('HH:MM')을 안전 브레이크가 받는 시(0~23)로 바꿉니다.
- *   예) { quietStart: '23:00', quietEnd: '07:00' } -> { startHour: 23, endHour: 7 }
- * 안전 브레이크는 "시" 단위만 받아서, 분은 버립니다. ('07:30' 은 7시로 계산되어 30분 일찍 풀립니다)
+ * 메시지 설정의 연락 금지 시간('HH:MM')을 안전 브레이크가 받는 모양(시 · 분)으로 바꿉니다.
+ *   예) { quietStart: '22:30', quietEnd: '07:00' } -> { startHour: 22, startMinute: 30, endHour: 7, endMinute: 0 }
  */
 export function toQuietHours(
   settings: Pick<MessageSettings, 'quietStart' | 'quietEnd'>,
 ): QuietHours {
+  // 'HH:MM' 에서 앞 두 글자가 시, 뒤 두 글자가 분입니다.
   return {
     startHour: Number(settings.quietStart.slice(0, 2)),
+    startMinute: Number(settings.quietStart.slice(3, 5)),
     endHour: Number(settings.quietEnd.slice(0, 2)),
+    endMinute: Number(settings.quietEnd.slice(3, 5)),
   }
 }
 
@@ -87,16 +89,25 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * AI 메시지를 브라우저 알림으로 띄웁니다. 권한이 없으면 아무 일도 하지 않습니다.
  * (메시지 자체는 이 함수와 상관없이 메시지함에 이미 저장되어 있습니다)
  * 알림을 누르면 메시지함(/messages)으로 이동합니다.
+ *
+ * 알림을 띄우지 못하면 에러를 내지 않고 null 을 돌려줍니다.
+ * 안드로이드 크롬은 `new Notification()` 을 막아 두어서 권한을 허용해도 TypeError 를 냅니다.
+ * 이 에러를 잡지 않으면 앱 전체가 에러 화면이 되기 때문에, 알림만 포기하고 앱은 계속 돌아가게 합니다.
+ * (전화 알림 lib/callReminder.ts 도 같은 방식입니다)
  */
 export function showAiMessageNotification(message: AiMessage): Notification | null {
   if (getNotificationPermission() !== 'granted') return null
 
-  // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
-  const notification = new Notification('AI 메시지', { body: message.text, tag: message.id })
-  notification.onclick = () => {
-    window.focus()
-    window.location.assign('/messages')
-    notification.close()
+  try {
+    // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
+    const notification = new Notification('AI 메시지', { body: message.text, tag: message.id })
+    notification.onclick = () => {
+      window.focus()
+      window.location.assign('/messages')
+      notification.close()
+    }
+    return notification
+  } catch {
+    return null
   }
-  return notification
 }

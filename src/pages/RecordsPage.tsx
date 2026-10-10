@@ -22,7 +22,8 @@ import {
   sessionMinutes,
   toDateKey,
 } from '@/lib/dailyRecords'
-import { mockSubjects } from '@/lib/mock'
+import { getTodayKey, toDayDate } from '@/lib/date'
+import { loadSubjects } from '@/lib/subjects'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
@@ -36,7 +37,8 @@ function formatDateLabel(dateKey: string): string {
   const date = new Date(year, month - 1, day)
   const text = `${month}월 ${day}일 (${weekdayNames[date.getDay()]})`
 
-  const today = new Date()
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. 새벽 2시면 아직 어제입니다. (lib/date.ts)
+  const today = toDayDate(Date.now())
   if (dateKey === toDateKey(today)) return `오늘 · ${text}`
 
   // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (-1 = 어제)
@@ -50,7 +52,9 @@ function formatDateLabel(dateKey: string): string {
 function loadSessions(): StudySession[] {
   const saved = loadData<unknown>('sessions', [])
   // 배열이 아니거나 모양이 틀린 기록은 걸러냅니다.
-  return Array.isArray(saved) ? saved.filter(isStudySession) : []
+  const sessions: StudySession[] = Array.isArray(saved) ? saved.filter(isStudySession) : []
+  // 노는 기록(kind 가 'play')은 공부 기록이 아니라서 이 화면에 보여주지 않습니다. (#238)
+  return sessions.filter((session) => session.kind !== 'play')
 }
 
 interface SubjectTagProps {
@@ -76,7 +80,7 @@ export function RecordsPage() {
 
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
-  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects] = useState<Subject[]>(loadSubjects)
 
   // 최근 날짜가 맨 앞에 오도록 날짜별로 묶습니다.
   const days = groupSessionsByDate(sessions)
@@ -510,11 +514,11 @@ interface StudyCalendarProps {
 
 /** 한 달 달력. 공부한 날을 색으로 칠하고, 날짜를 누르면 그날 기록을 아래에 보여줍니다. */
 function StudyCalendar({ days, subjects }: StudyCalendarProps) {
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
 
   // 지금 보고 있는 달. month 는 0(1월) ~ 11(12월) 입니다. (Date 의 규칙과 같습니다)
   const [view, setView] = useState(() => {
-    const today = new Date()
+    const today = toDayDate(Date.now())
     return { year: today.getFullYear(), month: today.getMonth() }
   })
   // 누른 날짜 'YYYY-MM-DD'. 처음에는 오늘을 골라 둡니다.
@@ -553,7 +557,8 @@ function StudyCalendar({ days, subjects }: StudyCalendarProps) {
   const selectedRecord = selectedDate ? recordByDate.get(selectedDate) : undefined
 
   return (
-    <Card>
+    // p-3: 375px 화면에서 달력 칸(7칸)이 40px 보다 작아지지 않게 모바일에서는 안쪽 여백을 줄입니다.
+    <Card className="p-3 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold text-slate-900">
           {view.year}년 {view.month + 1}월

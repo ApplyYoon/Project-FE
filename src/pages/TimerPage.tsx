@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
+import { PlayBadge } from '@/components/ui/PlayBadge'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
@@ -26,10 +27,10 @@ import {
   getCountdownStatus,
   normalizeTargetMinutes,
 } from '@/lib/countdown'
-import { toDateKey } from '@/lib/date'
+import { DAY_START_HOUR, getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { missReasonOptions } from '@/lib/missReasons'
-import { mockSubjects } from '@/lib/mock'
+import { loadSubjects } from '@/lib/subjects'
 import { getPlanProgress } from '@/lib/planProgress'
 import {
   BREAK_MINUTES,
@@ -39,6 +40,7 @@ import {
 } from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
+import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode, type TimerMode } from '@/lib/timerDisplay'
 import type {
   AwayRecord,
@@ -71,17 +73,28 @@ function formatTotalMinutes(totalMinutes: number) {
 
 /** 그 기록이 오늘 시작한 기록인지 확인합니다. */
 function isToday(session: StudySession) {
-  return new Date(session.startedAt).toDateString() === new Date().toDateString()
+  return toDayKey(session.startedAt) === getTodayKey()
 }
 
 export function TimerPage() {
   // startedAt·pauseCount 는 새로고침해도 이어져야 해서 useStopwatch 안에서 같이 저장합니다.
-  const { seconds, isRunning, isStarted, startedAt, pauseCount, getPausedMs, start, pause, stop } =
-    useStopwatch()
-  const { sessions, addSession } = useStudySessions()
+  const {
+    seconds,
+    isRunning,
+    isStarted,
+    startedAt,
+    pauseCount,
+    getPausedMs,
+    start,
+    pause,
+    autoPause,
+    stop,
+  } = useStopwatch()
+  // sessions: 공부 기록만 (오늘 총 공부 시간 등) / allSessions: 노는 기록까지 (계획별 실제 시간)
+  const { sessions, allSessions, addSession } = useStudySessions()
 
   // 계획 화면에서 저장한 과목 목록을 그대로 불러옵니다. (저장된 게 없으면 가짜 데이터)
-  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+  const [subjects] = useState<Subject[]>(loadSubjects)
   // 고른 과목도 저장해 둡니다. 새로고침했는데 과목만 사라지면 "공부 중인데 무슨 과목인지 모르는" 상태가 되기 때문입니다.
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(() =>
     loadData<string | null>('timer-subject', null),
@@ -183,19 +196,27 @@ export function TimerPage() {
     sessions.filter(isToday).reduce((sum, session) => sum + getStudyMs(session), 0) / 60000,
   )
 
+  const { allPlans, getPlans, completePlan } = usePlans()
+  const todayPlans = getPlans(getTodayKey())
+  // 하는 중인 계획. 계획 없이 공부 중이거나 계획이 지워졌으면 undefined 입니다.
+  const activePlan = allPlans.find((plan) => plan.id === activePlanId)
+  // 노는 계획으로 타이머를 켠 상태인지. 노는 중에는 딴짓 감지 · 화면 켜 두기 · 그만하기 확인을 하지 않습니다. (#238)
+  const isPlay = isStarted && activePlan?.kind === 'play'
+
   // 타이머가 흐르는 동안에는 휴대폰 화면이 자동으로 꺼지지 않게 합니다. (#234)
-  // 책을 보느라 화면을 안 만져서 꺼지는 것까지 "나갔다" 로 세지 않기 위해서입니다.
-  useKeepScreenOn(isRunning)
+  // 책을 보느라 화면을 안 만져서 꺼지는 것까지 "나갔다" 로 세지 않기 위해서입니다. (노는 중에는 필요 없습니다)
+  useKeepScreenOn(isRunning && !isPlay)
 
   // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
   // 30분 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. (#234)
-  // 뽀모도로 휴식 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
+  // 뽀모도로 휴식 중이거나 노는 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
   const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({
     isStarted,
     isRunning,
-    isResting: isBreak,
+    isResting: isBreak || isPlay,
     subjectId: selectedSubjectId,
-    pause,
+    // 저절로 멈출 때는 일시정지 횟수를 올리지 않는 autoPause 를 씁니다. (횟수는 내가 직접 멈춘 것만 셉니다)
+    pause: autoPause,
     start,
   })
 
@@ -207,12 +228,41 @@ export function TimerPage() {
   // 집중 모드를 켜지 못했을 때 보여줄 안내
   const [focusNotice, setFocusNotice] = useState<string | null>(null)
 
-  const { allPlans, getPlans, completePlan } = usePlans()
-  const todayPlans = getPlans(toDateKey(new Date()))
-  // 하는 중인 계획. 계획 없이 공부 중이거나 계획이 지워졌으면 undefined 입니다.
-  const activePlan = allPlans.find((plan) => plan.id === activePlanId)
   // 타이머에서 바로 시작할 수 있는 계획 = 오늘 계획 중 아직 안 끝난 것
   const startablePlans = todayPlans.filter((plan) => !plan.done)
+
+  // 노는 시간이 끝났을 때 권할 다음 공부 계획 = 오늘의 안 끝난 공부 계획 중 "지금 할 순서" 의 맨 앞 (lib/timeline.ts)
+  // 노는 시간이 끝났을 때만 필요해서 그때만 구합니다. 없으면 undefined 입니다.
+  const clockNow = new Date()
+  const nextStudyPlan =
+    isPlay && isTargetDone
+      ? sortPlansForNow(
+          todayPlans.filter((plan) => !plan.done && plan.kind !== 'play'),
+          clockNow.getHours() * 60 + clockNow.getMinutes(),
+        )[0]
+      : undefined
+  const nextSubject = subjects.find((subject) => subject.id === nextStudyPlan?.subjectId)
+
+  // 타이머 위의 상태 표시(공부 중 · 휴식 중 · 노는 중)에 쓸 글자와 색
+  let statusLabel = '공부 중'
+  let statusClass = 'bg-emerald-50 text-emerald-600'
+  let statusDotClass = 'bg-emerald-500'
+  if (isBreak) {
+    statusLabel = '휴식 중'
+    statusClass = 'bg-sky-50 text-sky-600'
+    statusDotClass = 'bg-sky-500'
+  }
+  if (isPlay) {
+    statusLabel = '노는 중'
+    statusClass = 'bg-slate-100 text-slate-600'
+    statusDotClass = 'bg-slate-500'
+  }
+
+  // 다른 탭·앱에 다녀올 때 어떻게 되는지 알려주는 문구
+  let awayHelp =
+    '공부 중에는 화면이 꺼지지 않아요. 다른 탭이나 앱에 다녀오면 그 시간은 빼고 이어서 재요.'
+  if (isBreak) awayHelp = '쉬는 중에는 다른 탭에 가도 괜찮아요.'
+  if (isPlay) awayHelp = '노는 중에는 다른 탭이나 앱에 가도 괜찮아요. 시간은 계속 흘러요.'
 
   // 집중 화면에 보여줄 오늘 계획: 고른 과목의 오늘 계획 내용과 목표 시간
   const todaySubjectPlans = todayPlans.filter((plan) => plan.subjectId === selectedSubjectId)
@@ -230,7 +280,8 @@ export function TimerPage() {
   if (isTarget) {
     helpMessage = `시작하면 ${formatCountdown(targetMinutes * 60)} 에서 0 으로 줄어들어요.`
   }
-  if (!selectedSubject) helpMessage = '공부할 과목을 먼저 골라 주세요.'
+  if (isPlay) helpMessage = '노는 시간도 계획이에요. 끝나면 다음 공부를 한 번에 시작할 수 있어요.'
+  else if (!selectedSubject) helpMessage = '공부할 과목을 먼저 골라 주세요.'
   else if (isStudying)
     helpMessage = '공부 중에는 과목·방식·목표 시간을 바꿀 수 없어요. 바꾸려면 정지를 눌러 주세요.'
 
@@ -268,15 +319,24 @@ export function TimerPage() {
       )
       return
     }
-    if (!subjects.some((subject) => subject.id === plan.subjectId)) {
+    beginPlan(plan)
+  }
+
+  /**
+   * 그 계획으로 타이머를 시작합니다. 지금 재는 중인지는 여기서 확인하지 않습니다. (부르는 쪽에서 먼저 정리합니다)
+   * 노는 계획은 과목이 없어서 과목 없이 시작합니다. (#238)
+   */
+  function beginPlan(plan: StudyPlan) {
+    const isPlayPlan = plan.kind === 'play'
+    if (!isPlayPlan && !subjects.some((subject) => subject.id === plan.subjectId)) {
       setPlanNotice('이 계획의 과목이 지워졌어요. 아래에서 과목을 골라 시작해 주세요.')
       return
     }
 
-    const progress = getPlanProgress(plan, sessions)
+    const progress = getPlanProgress(plan, allSessions)
     setPlanNotice(null)
     setMode('target')
-    setSelectedSubjectId(plan.subjectId)
+    setSelectedSubjectId(isPlayPlan ? null : plan.subjectId)
     // 전에 하다 만 계획이면 남은 시간만큼만, 처음이면 계획한 시간 그대로 약속합니다.
     setTargetMinutes(
       normalizeTargetMinutes(
@@ -308,7 +368,8 @@ export function TimerPage() {
   function handleStopClick() {
     // 묻는 경우: 목표 정하기로 재는 중이고, 아직 목표를 못 채웠고, 1분 넘게 한 경우
     // (목표를 채웠거나 목표 없이 재는 중이면 바로 저장하고, 1분 미만이면 지금처럼 저장 없이 끝냅니다)
-    if (isTarget && !isTargetDone && seconds >= MIN_SAVE_SECONDS) {
+    // 노는 타이머는 일찍 끝내도 묻지 않습니다. (덜 논 것을 말릴 이유가 없습니다)
+    if (isTarget && !isTargetDone && seconds >= MIN_SAVE_SECONDS && !isPlay) {
       setStopStep('confirm')
       return
     }
@@ -325,11 +386,12 @@ export function TimerPage() {
     const breakSeconds = isPomodoro ? getPomodoroBreakSeconds(seconds) : 0
     const studySeconds = seconds - breakSeconds
 
-    // 1분 미만 공부는 실수로 누른 것으로 보고 저장하지 않습니다.
-    if (selectedSubject && startedAt !== null && studySeconds >= MIN_SAVE_SECONDS) {
+    // 1분 미만은 실수로 누른 것으로 보고 저장하지 않습니다. (노는 기록은 과목이 없어도 저장합니다)
+    if ((selectedSubject || isPlay) && startedAt !== null && studySeconds >= MIN_SAVE_SECONDS) {
       const newSession: StudySession = {
         id: `session-${endedAt}`,
-        subjectId: selectedSubject.id,
+        // 노는 기록은 과목이 없어서 빈 글자입니다.
+        subjectId: selectedSubject?.id ?? '',
         startedAt,
         endedAt,
         pauseCount,
@@ -341,12 +403,14 @@ export function TimerPage() {
         ...(activePlan ? { planId: activePlan.id } : {}),
         // 목표 전에 그만두면서 이유를 골랐으면 같이 남깁니다. (다음 날 체크인에서 다시 묻지 않기 위해서입니다)
         ...(stopReason ? { stopReason } : {}),
+        // 노는 기록이라는 표시입니다. 이 표시가 있으면 순공 · 달성률 계산에서 빠집니다. (#238)
+        ...(isPlay ? { kind: 'play' as const } : {}),
       }
       addSession(newSession)
 
       // 이 계획으로 공부한 시간이 목표를 채웠으면 계획을 자동으로 완료로 바꿉니다. (계획 화면에서 손으로 다시 풀 수 있습니다)
       if (activePlan && !activePlan.done) {
-        const progress = getPlanProgress(activePlan, [...sessions, newSession])
+        const progress = getPlanProgress(activePlan, [...allSessions, newSession])
         if (progress.isReached) completePlan(activePlan.id)
       }
     }
@@ -359,6 +423,12 @@ export function TimerPage() {
     setStopStep('closed')
     dismissAwayNotice()
     stop()
+  }
+
+  /** 노는 시간이 끝난 뒤 [바로 시작] 을 눌렀을 때. 노는 기록을 저장하고 곧바로 다음 계획을 시작합니다. */
+  function handleStartNextPlan(plan: StudyPlan) {
+    finishSession()
+    beginPlan(plan)
   }
 
   function handleStartFocus() {
@@ -456,7 +526,7 @@ export function TimerPage() {
             <ul className="flex flex-col gap-2">
               {startablePlans.map((plan) => {
                 const subject = subjects.find((item) => item.id === plan.subjectId)
-                const progress = getPlanProgress(plan, sessions)
+                const progress = getPlanProgress(plan, allSessions)
                 return (
                   <li key={plan.id}>
                     <button
@@ -471,6 +541,8 @@ export function TimerPage() {
                           className="shrink-0"
                         />
                       )}
+                      {/* 노는 계획은 과목 대신 회색 "놀기" 태그를 보여줍니다. */}
+                      {plan.kind === 'play' && <PlayBadge className="shrink-0" />}
                       {/* min-w-0 + break-words: 긴 내용이 가로 스크롤을 만들지 않게 합니다. */}
                       <span className="min-w-0 flex-1 font-medium break-words text-slate-900">
                         {plan.content}
@@ -555,6 +627,7 @@ export function TimerPage() {
               className="px-3 py-1 text-sm"
             />
           )}
+          {isPlay && <PlayBadge className="px-3 py-1 text-sm" />}
           {/* 계획에서 시작했으면 어떤 계획을 하는 중인지 같이 보여줍니다. */}
           {isStudying && activePlan && (
             <span className="text-sm font-medium break-words text-slate-900">
@@ -565,24 +638,73 @@ export function TimerPage() {
             <span
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium',
-                isBreak ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600',
+                statusClass,
               )}
             >
-              <span
-                className={cn('h-2 w-2 rounded-full', isBreak ? 'bg-sky-500' : 'bg-emerald-500')}
-              />
-              {isBreak ? '휴식 중' : '공부 중'}
+              <span className={cn('h-2 w-2 rounded-full', statusDotClass)} />
+              {statusLabel}
             </span>
           )}
           {isTargetDone && (
             <span className="bg-brand-light text-brand inline-flex items-center rounded-full px-3 py-1 text-sm font-medium">
-              목표 달성
+              {isPlay ? '노는 시간 끝' : '목표 달성'}
             </span>
           )}
         </div>
 
-        {/* 목표 시간을 채우면 나오는 안내. 소리·진동은 playAlarm 이 따로 냅니다. */}
-        {isTargetNoticeOpen && (
+        {/* 노는 시간이 끝나면 나오는 안내. 놀다가 공부로 돌아오는 순간이 가장 어려워서, 다음 공부를 한 번에 시작하게 합니다. (#238) */}
+        {/* 누르기 전까지는 타이머가 계속 흘러서, 계획보다 더 논 시간이 + 로 세어집니다. */}
+        {isPlay && isTargetDone && (
+          <div
+            role="status"
+            className="border-brand flex w-full flex-col gap-3 rounded-lg border-2 bg-white p-4"
+          >
+            <p className="text-base font-semibold break-keep text-slate-900">
+              노는 시간 끝! 계획한 {targetMinutes}분을 다 놀았어요.
+            </p>
+            {nextStudyPlan ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-slate-500">다음 계획</span>
+                  {nextSubject && (
+                    <SubjectBadge
+                      name={nextSubject.name}
+                      color={nextSubject.color}
+                      className="shrink-0"
+                    />
+                  )}
+                  <span className="min-w-0 font-medium break-words text-slate-900">
+                    {nextStudyPlan.content}
+                  </span>
+                  <span className="shrink-0 text-slate-500 tabular-nums">
+                    {nextStudyPlan.startTime && `${nextStudyPlan.startTime} · `}
+                    {nextStudyPlan.targetMinutes}분
+                  </span>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full"
+                  onClick={() => handleStartNextPlan(nextStudyPlan)}
+                >
+                  ▶ 바로 시작
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm break-keep text-slate-600">
+                오늘 남은 공부 계획이 없어요. 마치기를 누르면 노는 시간이 기록돼요.
+              </p>
+            )}
+            <Link
+              to="/planner"
+              className="text-brand inline-flex h-10 items-center self-center text-sm font-medium underline underline-offset-4"
+            >
+              계획 화면에서 고르기
+            </Link>
+          </div>
+        )}
+
+        {/* 목표 시간을 채우면 나오는 안내. 소리·진동은 playAlarm 이 따로 냅니다. (노는 타이머는 위의 안내를 씁니다) */}
+        {isTargetNoticeOpen && !isPlay && (
           <div
             role="status"
             className="flex w-full items-center justify-between gap-3 rounded-lg bg-indigo-50 px-4 py-2 text-sm font-medium break-keep text-indigo-800"
@@ -661,7 +783,8 @@ export function TimerPage() {
         {isTarget && isStudying && (
           <div className="flex w-full max-w-xs flex-col items-center gap-2">
             <p className="text-sm font-medium text-slate-700">
-              {targetMinutes}분 중 {Math.min(targetMinutes, Math.floor(seconds / 60))}분 했어요
+              {targetMinutes}분 중 {Math.min(targetMinutes, Math.floor(seconds / 60))}분{' '}
+              {isPlay ? '놀았어요' : '했어요'}
             </p>
             <ProgressBar value={countdown.percent} />
           </div>
@@ -673,29 +796,31 @@ export function TimerPage() {
               일시정지
             </Button>
           ) : (
-            // 과목을 안 고르면 시작 버튼을 누를 수 없습니다.
+            // 과목을 안 고르면 시작 버튼을 누를 수 없습니다. (노는 중에는 과목이 없어도 이어서 할 수 있습니다)
             <Button
               size="lg"
               className="w-full sm:w-40"
-              disabled={!selectedSubject}
+              disabled={!selectedSubject && !isPlay}
               onClick={handleStart}
             >
               시작
             </Button>
           )}
           {/* 목표를 채운 뒤에는 "마치기" 가 됩니다. 누르면 기록이 저장됩니다. */}
+          {/* 시작하기 전에는 멈출 것이 없어서 눌리지 않습니다. */}
           <Button
             variant={isTargetDone ? 'primary' : 'danger'}
             size="lg"
             className="w-full sm:w-40"
+            disabled={!isStarted}
             onClick={handleStopClick}
           >
             {isTargetDone ? '마치기' : '정지'}
           </Button>
         </div>
 
-        {/* 집중 모드는 허용한 사람만, 휴식 구간이 없는 방식(목표 정하기·목표 없이)에서만 켤 수 있습니다. */}
-        {canUseFocus && !isPomodoro && (
+        {/* 집중 모드는 허용한 사람만, 휴식 구간이 없는 방식(목표 정하기·목표 없이)에서만 켤 수 있습니다. (노는 중에는 안 보입니다) */}
+        {canUseFocus && !isPomodoro && !isPlay && (
           <div className="flex w-full flex-col items-center gap-2">
             <Button
               variant="secondary"
@@ -717,11 +842,7 @@ export function TimerPage() {
         {/* break-keep: 한글이 단어 중간에서 끊기지 않게 합니다. */}
         <div className="flex flex-col gap-1 text-center text-sm break-keep text-slate-500">
           <p>{helpMessage}</p>
-          <p>
-            {isBreak
-              ? '쉬는 중에는 다른 탭에 가도 괜찮아요.'
-              : '공부 중에는 화면이 꺼지지 않아요. 다른 탭이나 앱에 다녀오면 그 시간은 빼고 이어서 재요.'}
-          </p>
+          <p>{awayHelp}</p>
         </div>
       </Card>
 
@@ -965,13 +1086,14 @@ function formatMinutes(totalMinutes: number) {
   return `${hours}시간 ${minutes}분`
 }
 
-// 이번 주 월요일 0시 0분을 밀리초 숫자로 돌려줍니다.
+// 이번 주 월요일이 시작되는 순간(새벽 4시)을 밀리초 숫자로 돌려줍니다. (하루의 기준은 lib/date.ts)
 function getThisMondayStart() {
-  const date = new Date()
+  // 새벽 4시 전이면 아직 어제라서, 하루의 기준만큼 되돌린 날짜로 요일을 봅니다.
+  const date = toDayDate(Date.now())
   // getDay(): 일요일 0, 월요일 1 ... 토요일 6. 월요일에서 며칠 지났는지 계산합니다. (일요일은 6일)
   const daysFromMonday = (date.getDay() + 6) % 7
   date.setDate(date.getDate() - daysFromMonday)
-  date.setHours(0, 0, 0, 0)
+  date.setHours(DAY_START_HOUR, 0, 0, 0)
   return date.getTime()
 }
 
@@ -987,13 +1109,13 @@ function WeeklySubjectRatio({ subjects, sessions }: WeeklySubjectRatioProps) {
   // 과목마다 이번 주에 공부한 시간(분)을 더합니다.
   const rows = subjects
     .map((subject) => {
-      let minutes = 0
+      // 기록마다 반올림하면 합계가 어긋납니다. 밀리초로 모두 더한 뒤 마지막에 한 번만 분으로 바꿉니다.
+      // (기록 화면 lib/dailyRecords.ts 와 같은 규칙이라 두 화면의 숫자가 같아집니다)
+      let totalMs = 0
       for (const session of thisWeekSessions) {
-        if (session.subjectId === subject.id) {
-          minutes += Math.round(getStudyMs(session) / 60000)
-        }
+        if (session.subjectId === subject.id) totalMs += getStudyMs(session)
       }
-      return { subject, minutes }
+      return { subject, minutes: Math.round(totalMs / 60000) }
     })
     .filter((row) => row.minutes > 0)
     // 많이 공부한 과목이 위로 오게 정렬합니다.

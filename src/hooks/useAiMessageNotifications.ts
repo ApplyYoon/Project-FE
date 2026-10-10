@@ -1,15 +1,16 @@
 import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
 import { getCareLimits } from '@/lib/careLimits'
-import { toDateKey } from '@/lib/date'
+import { getTodayKey } from '@/lib/date'
 import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { getMessageSettings } from '@/lib/messageSettings'
 import {
   canSendAiMessageNotification,
+  getNotificationPermission,
   showAiMessageNotification,
   toQuietHours,
 } from '@/lib/notifications'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
-import { loadData, saveData } from '@/lib/storage'
+import { loadData, loadList, saveData } from '@/lib/storage'
 import { useEffect } from 'react'
 
 // 한 번 알림을 보낸 메시지의 id 를 저장해 두는 키. 새로고침하거나 다른 페이지로 가도
@@ -37,12 +38,16 @@ interface SentToday {
  */
 export function useAiMessageNotifications(): void {
   useEffect(() => {
+    // 알림 권한이 없으면 아무것도 하지 않습니다.
+    // (예전에는 권한이 없어도 "이미 알린 메시지" 로 적어 두어서, 나중에 알림을 켜도 그 메시지는 영영 알림이 안 왔습니다)
+    if (getNotificationPermission() !== 'granted') return
+
     const messages = loadAiMessages()
     if (countUnreadAiMessages(messages) === 0) return
 
     const settings = getMessageSettings()
     const limits = getCareLimits()
-    const today = toDateKey(new Date())
+    const today = getTodayKey()
 
     // 체크인·일기·성찰 일기에 저장된 글과 기분을 모두 안전 브레이크 입력으로 씁니다.
     const { texts, moods } = loadSavedWritings()
@@ -54,10 +59,12 @@ export function useAiMessageNotifications(): void {
       quietHours: toQuietHours(settings),
     })
 
-    const notifiedIds = new Set(loadData<string[]>(NOTIFIED_IDS_KEY, []))
-    const savedSent = loadData<SentToday>(SENT_TODAY_KEY, { date: today, count: 0 })
-    // 날짜가 지났으면 0 부터 다시 셉니다.
-    let sentCount = savedSent.date === today ? savedSent.count : 0
+    const notifiedIds = new Set(loadList<string>(NOTIFIED_IDS_KEY))
+    // 저장된 값이 깨져 있을 수 있어서 모양을 확인하고 씁니다.
+    const savedSent = loadData<Partial<SentToday> | null>(SENT_TODAY_KEY, null)
+    const hasTodayCount = savedSent?.date === today && typeof savedSent.count === 'number'
+    // 날짜가 지났으면(또는 값이 없으면) 0 부터 다시 셉니다.
+    let sentCount = hasTodayCount ? (savedSent.count ?? 0) : 0
 
     const newlyNotifiedIds: string[] = []
     for (const message of messages) {
@@ -70,8 +77,9 @@ export function useAiMessageNotifications(): void {
         maxCareLevel: limits.maxCareLevel,
       })
       if (hasRoomToday && canSend) {
-        showAiMessageNotification(message)
-        sentCount += 1
+        // 실제로 알림이 뜬 것만 "오늘 보낸 개수" 로 셉니다. (권한이 없거나 브라우저가 막으면 null 이 옵니다)
+        const notification = showAiMessageNotification(message)
+        if (notification !== null) sentCount += 1
       }
       // 보냈든 조건에 걸려 건너뛰었든, 같은 메시지를 또 검사하지 않도록 기록해 둡니다.
       newlyNotifiedIds.push(message.id)

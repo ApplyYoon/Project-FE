@@ -8,7 +8,7 @@
  * "목표" 는 오늘 계획들의 목표 시간(분) 합계입니다. (StudyPlan.targetMinutes)
  */
 import type { CareAction } from '@/lib/careDecision'
-import { toDateKey } from '@/lib/dailyRecords'
+import { toDayKey } from '@/lib/date'
 import type { StudyPlan } from '@/types'
 
 // ─── 숫자 상수: 규칙을 바꾸고 싶으면 여기 숫자만 고치면 됩니다. ───
@@ -82,8 +82,8 @@ export function isDeclineSnoozed(declinedDate: string | null, today: Date = new 
   const declined = new Date(`${declinedDate}T00:00:00`)
   if (Number.isNaN(declined.getTime())) return false
 
-  // 오늘 0시 기준으로 몇 일이 지났는지 셉니다. (시각 차이로 하루가 어긋나지 않게 날짜 문자열로 다시 만듭니다)
-  const todayStart = new Date(`${toDateKey(today)}T00:00:00`)
+  // 오늘 날짜(새벽 4시 기준)의 0시로 맞춰서 몇 일이 지났는지 셉니다. (시각 차이로 하루가 어긋나지 않게 날짜 문자열로 다시 만듭니다)
+  const todayStart = new Date(`${toDayKey(today)}T00:00:00`)
   const MS_PER_DAY = 24 * 60 * 60 * 1000
   const passedDays = Math.round((todayStart.getTime() - declined.getTime()) / MS_PER_DAY)
 
@@ -99,14 +99,18 @@ export function isDeclineSnoozed(declinedDate: string | null, today: Date = new 
  * - 각 계획은 반올림하므로 합계가 1~2분 어긋날 수 있습니다.
  * - 계획이 하나라도 0분이 되면 안 되므로 최소 1분으로 둡니다.
  * - 원래 합계가 0 이하면 비율을 구할 수 없어서 그대로 돌려줍니다.
+ * - 노는 계획(kind 가 'play')은 공부 목표가 아니라서 합계에 넣지 않고, 시간도 바꾸지 않습니다. (#238)
  */
 export function scalePlanMinutes(plans: StudyPlan[], newTotalMinutes: number): StudyPlan[] {
-  const oldTotal = plans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
+  const oldTotal = plans
+    .filter((plan) => plan.kind !== 'play')
+    .reduce((sum, plan) => sum + plan.targetMinutes, 0)
   if (oldTotal <= 0 || newTotalMinutes <= 0) return plans
 
   const ratio = newTotalMinutes / oldTotal
-  return plans.map((plan) => ({
-    ...plan,
-    targetMinutes: Math.max(1, Math.round(plan.targetMinutes * ratio)),
-  }))
+  return plans.map((plan) =>
+    plan.kind === 'play'
+      ? plan
+      : { ...plan, targetMinutes: Math.max(1, Math.round(plan.targetMinutes * ratio)) },
+  )
 }

@@ -11,12 +11,17 @@
  * ⚠️ OpenAI API 키(sk-...)는 절대 이 코드나 .env 에 넣지 않습니다.
  *    브라우저는 서버가 만들어 준 짧게 쓰고 버리는 임시 키만 씁니다.
  */
+import { api } from '@/lib/api'
 import { createConnectionWatcher } from '@/lib/connectionWatch'
 import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
-// 우리 서버에서 임시 키를 받는 주소입니다. ⚠️ 임시 값입니다. BE 와 정한 실제 주소로 바꾸세요.
+// 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
+// ⚠️ 경로는 임시 값입니다. BE 와 정한 실제 경로로 바꾸세요.
 // 서버는 { "value": "임시 키" } 모양으로 응답해야 합니다. (OpenAI 문서의 예시와 같은 모양)
-const TOKEN_URL = '/realtime/token'
+const TOKEN_PATH = '/realtime/token'
+
+// 이 시간 안에 연결이 안 되면 그만둡니다. (응답이 멈췄는데 "연결 중…" 에서 끝없이 기다리지 않게)
+const CONNECT_TIMEOUT_MS = 15_000
 
 // OpenAI 와 SDP 를 주고받는 주소입니다. (문서의 현재 주소. 버전이 바뀌면 문서를 다시 확인하세요)
 const OPENAI_CALLS_URL = 'https://api.openai.com/v1/realtime/calls'
@@ -77,13 +82,15 @@ export function unlockCallAudio(): void {
   })
 }
 
-/** 서버에서 임시 키를 받습니다. */
-async function fetchEphemeralKey(): Promise<string> {
+/**
+ * 서버에서 임시 키를 받습니다.
+ * api() 로 부르기 때문에 서버 주소와 로그인 토큰이 자동으로 붙습니다.
+ * (예전에는 주소를 그냥 적어서 화면을 띄운 서버로 요청이 가고, 통화가 항상 실패했습니다)
+ * signal 이 "그만" 을 알리면 요청을 멈춥니다.
+ */
+async function fetchEphemeralKey(signal: AbortSignal): Promise<string> {
   try {
-    const response = await fetch(TOKEN_URL)
-    if (!response.ok) throw new Error(`status ${response.status}`)
-
-    const data: unknown = await response.json()
+    const data = await api<unknown>(TOKEN_PATH, { signal })
     const value =
       typeof data === 'object' && data !== null ? (data as { value?: unknown }).value : null
     if (typeof value !== 'string' || value === '') throw new Error('임시 키가 없습니다')
@@ -126,6 +133,11 @@ export interface StartCallOptions {
    * false 면 처음부터 연결이 안 된 것입니다. (직접 close() 한 뒤에는 불리지 않습니다)
    */
   onDisconnect?: (wasConnected: boolean) => void
+  /**
+   * 연결을 그만두라는 신호입니다. 연결하는 도중에 화면을 떠나면 abort() 를 불러 주세요.
+   * 기다리던 요청을 멈추고, 이미 켠 마이크를 끕니다.
+   */
+  signal?: AbortSignal
 }
 
 /**
@@ -133,8 +145,29 @@ export interface StartCallOptions {
  * 중간에 실패하면 이미 켠 마이크·연결을 모두 정리하고 RealtimeCallError 를 던집니다.
  */
 export async function startRealtimeCall(options: StartCallOptions = {}): Promise<RealtimeCall> {
-  const ephemeralKey = await fetchEphemeralKey()
-  const microphone = await openMicrophone()
+  // "그만" 신호를 하나로 모읍니다. 화면을 떠났거나(options.signal), 15초 안에 연결이 안 되면 멈춥니다.
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS)
+  if (options.signal?.aborted) controller.abort()
+  options.signal?.addEventListener('abort', () => controller.abort())
+  const signal = controller.signal
+
+  let ephemeralKey: string
+  let microphone: MediaStream
+  try {
+    ephemeralKey = await fetchEphemeralKey(signal)
+    microphone = await openMicrophone()
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+
+  // 마이크 허락을 기다리는 사이에 그만두라는 신호가 왔으면, 방금 켠 마이크를 바로 끄고 멈춥니다.
+  if (signal.aborted) {
+    clearTimeout(timeoutId)
+    microphone.getTracks().forEach((track) => track.stop())
+    throw new RealtimeCallError('connect', 'AI 와 연결하지 못했어요')
+  }
 
   const peerConnection = new RTCPeerConnection()
   // 화면에는 안 보이고 소리만 나는 오디오 태그입니다. (unlockCallAudio 가 미리 만들어 둔 것과 같은 태그입니다)
@@ -204,6 +237,8 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     const answerResponse = await fetch(OPENAI_CALLS_URL, {
       method: 'POST',
       body: offer.sdp,
+      // 그만두라는 신호가 오면 이 요청도 멈춥니다. (멈추면 아래 catch 가 마이크와 연결을 정리합니다)
+      signal,
       headers: {
         Authorization: `Bearer ${ephemeralKey}`,
         'Content-Type': 'application/sdp',
@@ -215,6 +250,9 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
   } catch {
     close()
     throw new RealtimeCallError('connect', 'AI 와 연결하지 못했어요')
+  } finally {
+    // 연결이 됐든 실패했든 제한 시간 타이머는 끕니다.
+    clearTimeout(timeoutId)
   }
 
   // 마이크 트랙의 enabled 를 false 로 하면 연결은 그대로 두고 소리만 무음으로 바뀝니다.

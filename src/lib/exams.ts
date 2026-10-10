@@ -2,7 +2,7 @@
  * 시험 화면(#80)에서 쓰는 순수 함수들을 모아 둔 파일입니다.
  * React 를 쓰지 않아서 같은 입력이면 항상 같은 결과가 나옵니다.
  */
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { moveDateKey, toDayKey } from '@/lib/date'
 import { loadData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
 import type { Exam, ExamSubjectScore, ExamType, StudySession } from '@/types'
@@ -33,10 +33,11 @@ export function getExamTypeLabel(type: ExamType): string {
 /**
  * 오늘부터 시험 날짜까지 며칠 남았는지 셉니다. (오늘이면 0, 내일이면 1, 어제면 -1)
  * 시각이 아니라 날짜끼리 비교해서, 밤 11시에 봐도 "내일 시험"은 1 입니다.
+ * 오늘은 하루의 기준(새벽 4시)으로 정합니다. 새벽 2시에는 아직 어제라서 "오늘 시험"도 1 입니다.
  */
 export function getDaysUntil(examDate: string, today: Date = new Date()): number {
   const [year, month, day] = examDate.split('-').map(Number)
-  const [todayYear, todayMonth, todayDay] = toDateKey(today).split('-').map(Number)
+  const [todayYear, todayMonth, todayDay] = toDayKey(today).split('-').map(Number)
   const msPerDay = 24 * 60 * 60 * 1000
   const examTime = new Date(year, month - 1, day).getTime()
   const todayTime = new Date(todayYear, todayMonth - 1, todayDay).getTime()
@@ -205,7 +206,7 @@ export function getStudyMinutesBeforeExam(
   const totalMs = sessions
     .filter((session) => {
       if (session.subjectId !== subjectId) return false
-      const startedDate = toDateKey(new Date(session.startedAt))
+      const startedDate = toDayKey(session.startedAt)
       return startedDate >= fromDate && startedDate <= toDate
     })
     .reduce((sum, session) => sum + getStudyMs(session), 0)
