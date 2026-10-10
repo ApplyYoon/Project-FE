@@ -57,33 +57,71 @@ export const careThemes: Record<CareLevel, CareTheme> = {
   },
 }
 
+/** 인사말 한 개. harshness 는 이 말이 얼마나 센지(1~5)입니다. */
+export interface Greeting {
+  text: string
+  /**
+   * 독설 수위. 설정 화면(#59)의 "독설 허용 수위"와 같은 기준입니다.
+   * 1 부드럽게 / 2 담백하게 / 3 따끔하게 / 4 세게 / 5 제일 세게
+   */
+  harshness: number
+}
+
 /*
  * 단계별 첫 인사말입니다. 이 중 하나가 랜덤으로 나옵니다.
  *
  * 문구 규칙 (이슈 #32)
- * - 외모·성적·능력을 깎아내리는 말, 다른 사람과 비교하는 말은 쓰지 않습니다.
- * - 3단계는 #59 "독설 허용 수위(1~5)" 설정이 아직 없어서, 가장 순한 수준만 골랐습니다.
- *   수위 설정이 생기면 문구마다 수위를 달아서 그 이하만 고르게 바꿔야 합니다.
+ * - 외모·성적·능력을 깎아내리는 말, 다른 사람과 비교하는 말은 쓰지 않습니다. 지적은 행동에만 합니다.
+ * - 새 문구를 추가할 때는 수위(harshness)를 꼭 정직하게 답니다. 허용 수위보다 센 문구는 나오지 않습니다.
+ * - 아직 수위 4~5 문구는 없습니다. 허용 수위를 4~5 로 올려도 3 이하 문구만 나옵니다.
  * - 숫자(40분, 10분 등)는 예시입니다. 실제 기록을 연결하면 그 값으로 바꿉니다.
  */
-export const careGreetings: Record<CareLevel, string[]> = {
-  0: ['오늘은 10분만 해볼까?', '괜찮아, 천천히 시작하자.', '오늘은 가볍게 한 가지만 해보자.'],
-  1: [
-    '어제보다 첫 시작이 40분 빨랐어!',
-    '어제 계획을 거의 다 해냈네, 잘했어!',
-    '꾸준히 하는 모습이 보기 좋아.',
+export const careGreetings: Record<CareLevel, Greeting[]> = {
+  0: [
+    { text: '오늘은 10분만 해볼까?', harshness: 1 },
+    { text: '괜찮아, 천천히 시작하자.', harshness: 1 },
+    { text: '오늘은 가볍게 한 가지만 해보자.', harshness: 1 },
   ],
-  2: ['계획 시간 10분 지났어', '오늘 첫 계획 시작할 시간이야.', '타이머 켤 시간이야.'],
+  1: [
+    { text: '어제보다 첫 시작이 40분 빨랐어!', harshness: 1 },
+    { text: '어제 계획을 거의 다 해냈네, 잘했어!', harshness: 1 },
+    { text: '꾸준히 하는 모습이 보기 좋아.', harshness: 1 },
+  ],
+  2: [
+    { text: '계획 시간 10분 지났어', harshness: 1 },
+    { text: '오늘 첫 계획 시작할 시간이야.', harshness: 1 },
+    { text: '타이머 켤 시간이야.', harshness: 1 },
+  ],
   3: [
-    '오늘 계획, 아직 시작 전이네.',
-    '요즘 계속 미뤄지는 것 같아서 걱정돼.',
-    '계획이 3일째 그대로야. 오늘도 미룰 거야?',
-    '독촉이 안 통하는 것 같으니 당분간 연락 안 할게.',
+    { text: '요즘 계속 미뤄지는 것 같아서 걱정돼.', harshness: 1 }, // 걱정
+    { text: '오늘 계획, 아직 시작 전이네.', harshness: 2 }, // 담백
+    { text: '독촉이 안 통하는 것 같으니 당분간 연락 안 할게.', harshness: 2 }, // 마무리
+    { text: '계획이 3일째 그대로야. 오늘도 미룰 거야?', harshness: 3 }, // 팩폭
+    { text: '이번 주 계획이 계속 비어 있어. 오늘은 뭐부터 할 거야?', harshness: 3 }, // 팩폭
   ],
 }
 
-/** 그 단계의 인사말 중 하나를 랜덤으로 고릅니다. (random 은 테스트할 때 값을 고정하려고 받습니다) */
-export function pickGreeting(level: CareLevel, random: () => number = Math.random) {
+/**
+ * 그 단계의 인사말 중 하나를 랜덤으로 고릅니다.
+ * maxHarshness(허용 수위)보다 센 문구는 고르지 않습니다. 고를 수 있는 게 하나도 없으면
+ * 가장 순한 문구 중에서 고릅니다. (random 은 테스트할 때 값을 고정하려고 받습니다)
+ *
+ * maxHarshness 기본값 3 은 설정 화면(#59)의 처음 값과 같습니다.
+ * 사용자가 정한 값을 쓰려면 getCareLimits().maxHarshness 를 넘기세요.
+ */
+export function pickGreeting(
+  level: CareLevel,
+  maxHarshness = 3,
+  random: () => number = Math.random,
+) {
   const greetings = careGreetings[level]
-  return greetings[Math.floor(random() * greetings.length)]
+
+  const allowed = greetings.filter((greeting) => greeting.harshness <= maxHarshness)
+  let candidates = allowed
+  if (candidates.length === 0) {
+    const lowest = Math.min(...greetings.map((greeting) => greeting.harshness))
+    candidates = greetings.filter((greeting) => greeting.harshness === lowest)
+  }
+
+  return candidates[Math.floor(random() * candidates.length)].text
 }

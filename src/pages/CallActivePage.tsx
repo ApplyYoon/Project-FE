@@ -1,8 +1,17 @@
 import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
+import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
+import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+
+/** 수신 화면이 넘겨준 인사말을 꺼냅니다. 없거나 모양이 다르면 null 입니다. */
+function readGreeting(state: unknown): string | null {
+  if (typeof state !== 'object' || state === null) return null
+  const greeting = (state as { greeting?: unknown }).greeting
+  return typeof greeting === 'string' ? greeting : null
+}
 
 /** 연결 실패를 학생(사용자)이 이해할 수 있는 문구로 바꿉니다. */
 function getFailMessage(error: unknown) {
@@ -13,15 +22,8 @@ function getFailMessage(error: unknown) {
   return 'AI 와 연결하지 못했어요. 끊고 다시 시도해 주세요.'
 }
 
-/** 자막 말풍선 한 개. speaker 가 'ai' 면 왼쪽, 'me' 면 오른쪽에 보입니다. */
-interface SubtitleMessage {
-  id: number
-  speaker: 'ai' | 'me'
-  text: string
-}
-
-// 지금은 AI 와 연결되기 전이라(#34) 미리 적어 둔 대화를 3초마다 하나씩 보여줍니다.
-// 연결되면 이 목록과 아래 useEffect 대신, 실제로 받은 글자를 messages 에 추가하면 됩니다.
+// 개발 중에 서버가 없어서 AI 와 연결이 안 될 때, 말풍선 모양을 확인하려고 쓰는 연습용 대화입니다.
+// 개발 서버(pnpm run dev)에서만 쓰이고, 실제로 배포한 화면에서는 절대 나오지 않습니다.
 const sampleConversation: Omit<SubtitleMessage, 'id'>[] = [
   { speaker: 'ai', text: '어제 순공 3시간 10분, 계획의 80%야.' },
   { speaker: 'me', text: '응… 폰 때문에 좀 늦게 시작했어.' },
@@ -44,7 +46,8 @@ function SubtitleList({ messages }: SubtitleListProps) {
     if (!list) return
     // 목록 안쪽만 맨 아래로 내립니다. (scrollIntoView 는 화면 전체가 같이 움직일 수 있어서 쓰지 않습니다)
     list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
-  }, [messages.length])
+    // messages 전체를 지켜봅니다. AI 말이 조금씩 이어 붙어서 말풍선이 길어질 때도 따라 내려가야 하기 때문입니다.
+  }, [messages])
 
   return (
     // role="log": 새 글자가 생기면 화면을 읽어 주는 프로그램이 알려 줍니다.
@@ -120,25 +123,35 @@ function formatCallTime(totalSeconds: number) {
  */
 export function CallActivePage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [seconds, setSeconds] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
-  // 지금은 단계를 정하는 함수(#28)가 없어서 고정값입니다. 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
-  const careLevel: CareLevel = 1
+  // 오늘의 관리 강도입니다. 아직 진짜 값이 없어서 고정값이에요. (자세한 건 todayCare.ts)
+  // 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
+  const careLevel = getTodayCareLevel()
   const theme = careThemes[careLevel]
-  // useState 안에서 한 번만 고릅니다. (그냥 호출하면 1초마다 화면이 다시 그려질 때 인사말이 바뀝니다)
-  const [greeting] = useState(() => pickGreeting(careLevel))
+  // 수신 화면에서 보여준 인사말을 그대로 이어서 씁니다. (없으면 새로 고릅니다)
+  // useState 안에서 한 번만 정합니다. (그냥 호출하면 1초마다 화면이 다시 그려질 때 인사말이 바뀝니다)
+  const [greeting] = useState(
+    () => readGreeting(location.state) ?? pickGreeting(careLevel, getTodayMaxHarshness()),
+  )
   // AI 와의 연결 상태. 연결 중 → 연결됨, 실패하면 error 와 안내 문구
   const [connection, setConnection] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const [errorMessage, setErrorMessage] = useState('')
   // 연결된 통화를 들고 있습니다. 음소거 버튼이 이 통화의 마이크를 끄고 켜야 해서 useEffect 밖에서도 접근합니다.
   const callRef = useRef<RealtimeCall | null>(null)
+  // 화면에 보이는 자막 말풍선들. AI 와 내 말이 오는 대로 쌓입니다.
+  const [messages, setMessages] = useState<SubtitleMessage[]>([])
 
   // 화면이 열리면 AI 와 음성 연결을 시작하고, 화면을 떠나면(끊기·뒤로가기) 연결과 마이크를 정리합니다.
   useEffect(() => {
     let isCancelled = false
     let call: RealtimeCall | null = null
 
-    startRealtimeCall()
+    startRealtimeCall({
+      // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
+      onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
+    })
       .then((startedCall) => {
         // 연결되는 사이에 이미 화면을 떠났다면 바로 정리합니다.
         if (isCancelled) {
@@ -168,19 +181,20 @@ export function CallActivePage() {
     callRef.current?.setMuted(isMuted)
   }, [isMuted, connection])
 
-  const [messages, setMessages] = useState<SubtitleMessage[]>([])
-
-  // 연습용: 3초마다 미리 적어 둔 말을 하나씩 추가합니다. (AI 연결 후 실제 글자로 바꿀 때까지만 사용)
+  // 연습용: 개발 서버에서 AI 연결에 실패했을 때만, 미리 적어 둔 말을 3초마다 하나씩 보여줍니다.
+  // (import.meta.env.DEV 는 배포한 화면에서는 false 라서 실제 사용자에게는 보이지 않습니다)
   useEffect(() => {
+    if (!import.meta.env.DEV || connection !== 'error') return
+
     const timerId = setInterval(() => {
       setMessages((prev) => {
         if (prev.length >= sampleConversation.length) return prev
-        return [...prev, { id: prev.length, ...sampleConversation[prev.length] }]
+        return [...prev, { id: `sample-${prev.length}`, ...sampleConversation[prev.length] }]
       })
     }, 3000)
 
     return () => clearInterval(timerId)
-  }, [])
+  }, [connection])
 
   useEffect(() => {
     const startedAt = Date.now()
