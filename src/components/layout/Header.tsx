@@ -1,6 +1,7 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
+import { useAiMessages } from '@/hooks/useAiMessages'
 import { useAuth } from '@/hooks/useAuth'
-import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
+import { countUnreadAiMessages } from '@/lib/aiMessages'
 import { cn } from '@/lib/cn'
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -16,17 +17,18 @@ interface HeaderProps {
  * 헤더 오른쪽에는 셋 중 하나가 보입니다.
  *   로그인 전          -> "로그인 · 회원가입" 두 개만 (메뉴를 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다)
  *   로그인 + hideNav   -> action (온보딩의 "나중에 하기" 등)
- *   로그인             -> 메뉴와 메시지함 종
+ *   로그인             -> 메뉴와 알림 종
  */
 
 export function Header({ hideNav = false, action }: HeaderProps) {
   const { isLoggedIn } = useAuth()
-  // 주소가 바뀔 때마다 헤더가 다시 그려지면서 안 읽은 메시지 수를 새로 셉니다.
   const { pathname } = useLocation()
-  // 메시지함을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
-  const unreadCount = pathname === '/messages' ? 0 : countUnreadAiMessages(loadAiMessages())
-  // 화면을 읽어 주는 프로그램이 "메시지함, 안 읽은 메시지 3개" 처럼 개수까지 읽어 줍니다.
-  const bellLabel = unreadCount > 0 ? `메시지함, 안 읽은 메시지 ${unreadCount}개` : '메시지함'
+  // 새 알림이 쌓이면 화면을 옮기지 않아도 바로 다시 그려져서 빨간 점이 뜹니다. (hooks/useAiMessages.ts)
+  const messages = useAiMessages()
+  // 알림 화면을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
+  const unreadCount = pathname === '/messages' ? 0 : countUnreadAiMessages(messages)
+  // 화면을 읽어 주는 프로그램이 "알림, 안 읽은 알림 3개" 처럼 개수까지 읽어 줍니다.
+  const bellLabel = unreadCount > 0 ? `알림, 안 읽은 알림 ${unreadCount}개` : '알림'
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
@@ -67,7 +69,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
               ))}
             </nav>
 
-            {/* 메시지함 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
+            {/* 알림 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
             <NavLink to="/messages" aria-label={bellLabel} className={bellLinkClass}>
               <BellIcon />
               {unreadCount > 0 && (

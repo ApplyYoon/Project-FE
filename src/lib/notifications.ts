@@ -87,8 +87,8 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 
 /**
  * AI 메시지를 브라우저 알림으로 띄웁니다. 권한이 없으면 아무 일도 하지 않습니다.
- * (메시지 자체는 이 함수와 상관없이 메시지함에 이미 저장되어 있습니다)
- * 알림을 누르면 메시지함(/messages)으로 이동합니다.
+ * (메시지 자체는 이 함수와 상관없이 알림 화면에 이미 저장되어 있습니다)
+ * 알림을 누르면 알림 화면(/messages)으로 이동합니다.
  *
  * 알림을 띄우지 못하면 에러를 내지 않고 null 을 돌려줍니다.
  * 안드로이드 크롬은 `new Notification()` 을 막아 두어서 권한을 허용해도 TypeError 를 냅니다.

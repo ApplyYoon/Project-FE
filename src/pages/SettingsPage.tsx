@@ -483,7 +483,7 @@ export function SettingsPage() {
                     {notificationPermission === 'granted' &&
                       '알림이 켜져 있어요. 새 메시지나 전화가 오면 브라우저 알림으로도 알려줄게요.'}
                     {notificationPermission === 'denied' &&
-                      '알림이 거부되어 있어요. 메시지는 메시지함에 그대로 쌓이고, 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
+                      '브라우저 알림이 거부되어 있어요. 알림은 종 아이콘의 알림 화면에 그대로 쌓이고, 브라우저 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
                     {notificationPermission === 'default' &&
                       '알림을 켜면 앱을 안 보고 있어도 새 메시지나 전화를 브라우저 알림으로 알려줘요.'}
                   </p>
@@ -495,7 +495,8 @@ export function SettingsPage() {
                 </>
               ) : (
                 <p className="text-sm text-slate-500">
-                  이 브라우저는 알림 기능을 지원하지 않아요. 메시지는 메시지함에 그대로 쌓여요.
+                  이 브라우저는 브라우저 알림을 지원하지 않아요. 알림은 종 아이콘의 알림 화면에
+                  그대로 쌓여요.
                 </p>
               )}
             </div>

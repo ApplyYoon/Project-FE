@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { loadAiMessages, markAllAiMessagesRead } from '@/lib/aiMessages'
+import { useAiMessages } from '@/hooks/useAiMessages'
+import { countUnreadAiMessages, loadAiMessages, markAllAiMessagesRead } from '@/lib/aiMessages'
 import type { CareLevel } from '@/lib/careLevel'
 import { cn } from '@/lib/cn'
 import type { AiMessage } from '@/types'
@@ -69,17 +70,25 @@ function formatDayLabel(time: number): string {
   return monthDay
 }
 
+/**
+ * 알림 화면입니다. (주소: /messages · 헤더의 종 아이콘)
+ * AI 가 보낸 메시지와 앱이 만든 알림을 한 목록에 시간 순서로 보여줍니다. (#61, #255)
+ * 예전 이름은 "메시지함" 이었습니다. 주소와 파일 이름은 그대로 두었습니다.
+ */
 export function MessagesPage() {
-  const [messages] = useState<AiMessage[]>(() => loadAiMessages())
+  // 이 화면을 보는 동안 새 알림이 쌓여도 바로 목록에 보입니다. (hooks/useAiMessages.ts)
+  const messages = useAiMessages()
 
-  // "여기부터 안 읽음" 선을 그을 첫 번째 안 읽은 메시지.
+  // "여기부터 안 읽음" 선을 그을 첫 번째 안 읽은 알림.
   // 화면을 연 순간의 값을 기억해 두어야, 아래에서 읽음 처리를 해도 선이 사라지지 않습니다.
   const [firstUnreadId] = useState(() => messages.find((message) => !message.read)?.id)
 
-  // 메시지함을 열었으면 전부 읽은 것으로 저장합니다. (헤더의 빨간 점이 사라집니다)
+  // 알림 화면을 열었으면 전부 읽은 것으로 저장합니다. (헤더의 빨간 점이 사라집니다)
+  // 안 읽은 것이 있을 때만 저장합니다. 저장하면 화면이 다시 그려지는데, 그때는 0개라서 다시 저장하지 않습니다.
+  const unreadCount = countUnreadAiMessages(messages)
   useEffect(() => {
-    markAllAiMessagesRead(messages)
-  }, [messages])
+    if (unreadCount > 0) markAllAiMessagesRead(loadAiMessages())
+  }, [unreadCount])
 
   // 메시지에 나오는 관리 강도만 범례에 보여줍니다. (작은 단계부터)
   const usedLevels = [...new Set(messages.map((message) => message.careLevel))].sort(
@@ -89,9 +98,9 @@ export function MessagesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">메시지함</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          AI 선생님이 보낸 메시지야. 하루 3번 + 이벤트 알림
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">알림</h1>
+        <p className="mt-1 text-sm break-keep text-slate-500">
+          앱에서 생긴 일과 AI 선생님이 보낸 메시지가 여기에 쌓여.
         </p>
       </div>
 
@@ -110,7 +119,7 @@ export function MessagesPage() {
       )}
 
       {messages.length === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">아직 받은 메시지가 없어요.</p>
+        <p className="py-10 text-center text-sm text-slate-500">아직 온 알림이 없어요.</p>
       ) : (
         <ol className="flex flex-col gap-5">
           {messages.map((message, index) => {
@@ -166,17 +175,22 @@ interface MessageBubbleProps {
   message: AiMessage
 }
 
-/** AI 아바타 + 말풍선 + 보낸 시각 */
+/** 아바타 + 말풍선 + 보낸 시각 · 종류 */
 function MessageBubble({ message }: MessageBubbleProps) {
   const style = careLevelStyles[message.careLevel]
+  // 앱이 정해 둔 문장으로 만든 알림인지, AI 가 쓴 메시지인지. 아바타와 아래 글자로 구분해 줍니다.
+  const isAppAlert = message.source === 'app'
 
   return (
     <div className="flex items-start gap-2.5 sm:gap-3">
       <div
         aria-hidden
-        className="bg-brand-light text-brand flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+        className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+          isAppAlert ? 'bg-slate-100 text-slate-600' : 'bg-brand-light text-brand',
+        )}
       >
-        AI
+        {isAppAlert ? '앱' : 'AI'}
       </div>
 
       {/* min-w-0: 긴 글자가 있어도 화면 밖으로 밀려나지 않게 합니다. */}
@@ -194,7 +208,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
             <time dateTime={new Date(message.sentAt).toISOString()}>
               {formatTime(message.sentAt)}
             </time>
-            {` · ${style.name}`}
+            {` · ${style.name} · ${isAppAlert ? '앱 알림' : 'AI 메시지'}`}
           </span>
           {message.kind === 'event' && message.eventLabel && (
             <span className={cn('font-semibold', style.eventText)}>{message.eventLabel}</span>
