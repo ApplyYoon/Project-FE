@@ -88,7 +88,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 /**
  * AI 메시지를 브라우저 알림으로 띄웁니다. 권한이 없으면 아무 일도 하지 않습니다.
  * (메시지 자체는 이 함수와 상관없이 알림 화면에 이미 저장되어 있습니다)
- * 알림을 누르면 알림 화면(/messages)으로 이동합니다.
+ * 알림을 누르면 알림 화면(/notifications)으로 이동합니다.
  *
  * 알림을 띄우지 못하면 에러를 내지 않고 null 을 돌려줍니다.
  * 안드로이드 크롬은 `new Notification()` 을 막아 두어서 권한을 허용해도 TypeError 를 냅니다.
@@ -100,10 +100,12 @@ export function showAiMessageNotification(message: AiMessage): Notification | nu
 
   try {
     // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
-    const notification = new Notification('AI 메시지', { body: message.text, tag: message.id })
+    // 앱이 정해 둔 문장으로 만든 알림에는 "AI 메시지" 라고 붙이지 않습니다. (AI 가 쓴 글이 아닙니다)
+    const title = message.source === 'app' ? 'STARFLOW 알림' : 'AI 메시지'
+    const notification = new Notification(title, { body: message.text, tag: message.id })
     notification.onclick = () => {
       window.focus()
-      window.location.assign('/messages')
+      window.location.assign('/notifications')
       notification.close()
     }
     return notification
