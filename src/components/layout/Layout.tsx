@@ -5,6 +5,7 @@ import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
 import { RecordsSubNav } from '@/components/layout/RecordsSubNav'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
+import { useAppAlerts } from '@/hooks/useAppAlerts'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
@@ -19,6 +20,8 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 export function Layout() {
   // 앱이 열려 있는 동안 안 읽은 AI 메시지를 브라우저 알림으로 띄웁니다. (#62)
   useAiMessageNotifications()
+  // 앱 안에서 생긴 일(계획 시각이 지남, 목표를 채움 등)을 알림 화면에 쌓습니다. (#255)
+  useAppAlerts()
   // 정해 둔 "전화 받을 시간" 이 되면 알림을 띄우고 전화 수신 화면으로 보냅니다. (앱이 열려 있을 때만)
   useCallReminder()
   const { pathname } = useLocation()
