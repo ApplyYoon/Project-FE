@@ -555,7 +555,8 @@ function StudyCalendar({ days, subjects }: StudyCalendarProps) {
   const selectedRecord = selectedDate ? recordByDate.get(selectedDate) : undefined
 
   return (
-    <Card>
+    // p-3: 375px 화면에서 달력 칸(7칸)이 40px 보다 작아지지 않게 모바일에서는 안쪽 여백을 줄입니다.
+    <Card className="p-3 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold text-slate-900">
           {view.year}년 {view.month + 1}월
