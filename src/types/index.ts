@@ -63,6 +63,8 @@ export interface StudySession {
   startedAt: number
   /** 공부를 끝낸 시각 (Date.now() 값) */
   endedAt: number
+  /** 공부하는 동안 일시정지를 누른 횟수 */
+  pauseCount: number
 }
 
 /** 공부 중에 다른 탭·앱으로 나갔다 돌아온 기록 (딴짓 한 번) */
