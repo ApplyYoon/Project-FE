@@ -17,6 +17,7 @@ import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { formatDday } from '@/lib/exams'
 import { getFirstMe, type FirstMe } from '@/lib/firstMe'
+import { isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { loadInitialPlan } from '@/lib/initialPlan'
 import { getInsightsToShow } from '@/lib/insights'
 import { getCareLimits } from '@/lib/careLimits'
@@ -27,6 +28,16 @@ import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
+import { getMondayKey, getWeeklyFacts } from '@/lib/weeklyFacts'
+import {
+  getWeeklyGoalCandidates,
+  getWeeklyGoalProgress,
+  getWeeklyGoalReason,
+  getWeeklyGoalTitle,
+  loadWeeklyGoalChoices,
+  saveWeeklyGoalChoice,
+  type WeeklyGoalChoice,
+} from '@/lib/weeklyGoal'
 import { loadWeeklyReviews } from '@/lib/weeklyReview'
 import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
 import { useState } from 'react'
@@ -204,6 +215,9 @@ export function HomePage() {
             </Link>
           }
         />
+
+        {/* 이번 주 목표 (#247). 지난주 팩트로 하나 제안하고, 달성했는지는 타이머 기록으로 정해집니다. */}
+        <WeeklyGoalCard plans={allPlans} sessions={sessions} />
 
         <Card title="어제 한 줄">
           {hasYesterdayRecord && hasYesterdayPlan && yesterdaySummary.achievementRate !== null ? (
@@ -464,6 +478,140 @@ function FirstMeCard({ firstMe, initialPlan }: FirstMeCardProps) {
           </Link>
         </>
       )}
+    </Card>
+  )
+}
+
+interface WeeklyGoalCardProps {
+  plans: StudyPlan[]
+  sessions: StudySession[]
+}
+
+/**
+ * 이번 주 목표 카드입니다. (#247 · 규칙은 lib/weeklyGoal.ts)
+ *
+ *   아직 안 골랐다 → 지난주 팩트로 만든 목표 하나를 제안합니다. [이걸로 할게] [다른 걸로] [이번 주는 쉴게]
+ *   목표를 골랐다 → 지금 숫자와 진행 막대를 보여줍니다. 달성했는지는 팩트 숫자로 자동으로 정해집니다.
+ *   쉬기로 했다   → 쉬어 간다는 한 줄만 보여줍니다.
+ *
+ * 회복 모드이거나 안전 브레이크가 켜져 있으면 새 목표를 권하지 않습니다. (카드가 보이지 않습니다)
+ */
+function WeeklyGoalCard({ plans, sessions }: WeeklyGoalCardProps) {
+  const today = new Date()
+  const mondayKey = getMondayKey(today)
+  const { thisWeek, lastWeek } = getWeeklyFacts(plans, sessions, mondayKey, toDateKey(today))
+
+  // 이번 주에 이미 고른 것(목표 또는 쉬기). 아직 안 골랐으면 null 입니다.
+  const [choice, setChoice] = useState<WeeklyGoalChoice | null>(
+    () => loadWeeklyGoalChoices().find((item) => item.mondayKey === mondayKey) ?? null,
+  )
+  // "다른 걸로" 를 누른 횟수. 후보 중 몇 번째를 보여줄지 정합니다.
+  const [skipCount, setSkipCount] = useState(0)
+  // 회복 모드(관리 강도 0)이거나 안전 브레이크가 켜져 있으면 새 목표를 권하지 않습니다. 처음 그릴 때 한 번만 확인합니다.
+  const [canSuggest] = useState(() => getTodayCareLevel() !== 0 && !isSafetyBrakeOnNow())
+
+  function handleChoose(nextChoice: WeeklyGoalChoice) {
+    saveWeeklyGoalChoice(nextChoice)
+    setChoice(nextChoice)
+  }
+
+  /* ---------- 쉬기로 한 주 ---------- */
+  if (choice?.type === 'rest') {
+    return (
+      <Card title="이번 주 목표">
+        <p className="text-sm break-keep text-slate-600">
+          이번 주는 목표 없이 쉬어 가요. 다음 주에 다시 제안할게요.
+        </p>
+      </Card>
+    )
+  }
+
+  /* ---------- 목표를 고른 주 ---------- */
+  if (choice?.type === 'goal') {
+    const progress = getWeeklyGoalProgress(choice, thisWeek)
+    const unit = choice.kind === 'startDelay' ? '분' : '%'
+
+    // 지금 숫자 옆에 붙이는 설명. 몇 개의 기록으로 계산했는지 같이 보여줍니다.
+    let detail = ''
+    if (choice.kind === 'startDelay') {
+      detail = `계획 ${thisWeek.startDelayMinutes.sampleCount}개 기준`
+    } else if (choice.kind !== 'planRate') {
+      detail = `${thisWeek.completionRate.sampleCount}번 중 ${thisWeek.completedCount}번 완주`
+    }
+
+    return (
+      <Card title="이번 주 목표">
+        <p className="text-lg font-bold break-keep text-slate-900">{getWeeklyGoalTitle(choice)}</p>
+        <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+          {progress.current === null ? (
+            <p className="text-slate-600">아직 이번 주 기록이 없어요</p>
+          ) : (
+            <p className="min-w-0 break-keep text-slate-600">
+              지금{' '}
+              <strong className="font-semibold text-slate-900">
+                {choice.kind === 'startDelay' && '평균 '}
+                {progress.current}
+                {unit}
+              </strong>
+              {detail !== '' && ` · ${detail}`}
+            </p>
+          )}
+          <p className="shrink-0 text-slate-500">
+            목표 {choice.target}
+            {unit}
+          </p>
+        </div>
+        <ProgressBar value={progress.percent} className="mt-2" />
+        <p className="mt-2 text-sm break-keep text-slate-500">
+          {progress.status === 'achieved' && (
+            <span className="font-semibold text-emerald-600">지금은 달성 중 · </span>
+          )}
+          달성했는지는 타이머 기록으로 자동으로 정해져요.
+        </p>
+      </Card>
+    )
+  }
+
+  /* ---------- 아직 안 고른 주 ---------- */
+  if (!canSuggest) return null
+
+  const candidates = getWeeklyGoalCandidates(lastWeek)
+  if (candidates.length === 0) {
+    return (
+      <Card title="이번 주 목표">
+        <p className="text-sm break-keep text-slate-600">
+          목표를 정한 타이머 기록이 한 주에 5번 이상 쌓이면, 다음 주에 해볼 만한 목표를 하나
+          제안할게요.
+        </p>
+      </Card>
+    )
+  }
+
+  // 후보를 돌아가며 보여줍니다. 마지막 후보 다음에는 처음으로 돌아옵니다. (% 는 나눈 나머지)
+  const candidate = candidates[skipCount % candidates.length]
+
+  return (
+    <Card title="이번 주 목표 제안">
+      <p className="text-lg font-bold break-keep text-slate-900">{getWeeklyGoalTitle(candidate)}</p>
+      <p className="mt-1 text-sm break-keep text-slate-600">{getWeeklyGoalReason(candidate)}</p>
+      <p className="mt-1 text-sm break-keep text-slate-500">
+        달성했는지는 타이머 기록으로 자동으로 정해져요.
+      </p>
+      {/* flex-wrap: 좁은 화면에서는 버튼이 다음 줄로 넘어갑니다. */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button onClick={() => handleChoose({ ...candidate, type: 'goal', mondayKey })}>
+          이걸로 할게
+        </Button>
+        {/* 후보가 하나뿐이면 바꿀 것이 없어서 보여주지 않습니다. */}
+        {candidates.length > 1 && (
+          <Button variant="secondary" onClick={() => setSkipCount((prev) => prev + 1)}>
+            다른 걸로
+          </Button>
+        )}
+        <Button variant="ghost" onClick={() => handleChoose({ type: 'rest', mondayKey })}>
+          이번 주는 쉴게
+        </Button>
+      </div>
     </Card>
   )
 }
