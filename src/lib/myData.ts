@@ -32,6 +32,8 @@ const RECORD_KEYS = [
   'away-pending',
   // 시험 목록과 예상 점수 (#80)
   'exams',
+  // 개선안을 날마다 지켰는지 적은 기록 (#65)
+  'suggestion-checks',
   ...DIARY_KEYS,
 ]
 
