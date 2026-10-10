@@ -2,6 +2,7 @@ import type {
   AiMessage,
   Evaluation,
   Insight,
+  ManualItem,
   ReflectionPrescription,
   StudyPlan,
   StudySession,
@@ -307,5 +308,48 @@ export const mockAiMessages: AiMessage[] = [
     kind: 'regular',
     text: '지금 25분만 해 보자. 끝나면 칭찬해 줄게.',
     read: false,
+  },
+]
+
+/**
+ * 나 사용설명서(#87)에 보여줄 검증된 사실 5개.
+ * 4가지 분류가 다 나오고, "효과 있는 방법" 은 2개라서 한 분류에 여러 개가 묶이는 모습도 볼 수 있습니다.
+ * 나중에는 실험 결과(#93)에서 효과가 확인된 것만 여기에 올라옵니다.
+ */
+export const mockManualItems: ManualItem[] = [
+  {
+    id: 'manual-1',
+    category: 'rhythm',
+    title: '오전 집중형',
+    confirmedDate: '2026-10-02',
+    evidence: '오전 세션은 일시정지가 밤의 절반이야. 기록 18일 (온보딩 때는 "밤형" 이라고 했어)',
+  },
+  {
+    id: 'manual-2',
+    category: 'cautionDay',
+    title: '학원 늦게 끝난 다음 날',
+    confirmedDate: '2026-10-04',
+    evidence: '그다음 날 미달이 세 배 많아. 비교한 날 각각 6일',
+  },
+  {
+    id: 'manual-3',
+    category: 'effectiveMethod',
+    title: '책상에 앉으면 → 타이머 켜고 쉬운 문제 1개',
+    confirmedDate: '2026-10-04',
+    evidence: '2주 실험: 첫 시작 40분 빨라짐, 하루 순공 35분 늘어남 (이행률 79%)',
+  },
+  {
+    id: 'manual-4',
+    category: 'effectiveMethod',
+    title: '폰을 다른 방에 두기',
+    confirmedDate: '2026-09-20',
+    evidence: '2주 실험: 순공 +35분',
+  },
+  {
+    id: 'manual-5',
+    category: 'careStyle',
+    title: '독촉에 잘 반응',
+    confirmedDate: '2026-09-28',
+    evidence: '칭찬받은 주보다 독촉받은 주에 공부 시작이 25분 빨랐어. 당근 2주와 독촉 2주 비교',
   },
 ]
