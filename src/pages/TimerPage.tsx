@@ -1083,9 +1083,16 @@ function FocusModeScreen({
 const barColorStyles: Record<SubjectColor, string> = {
   red: 'bg-red-500',
   orange: 'bg-orange-500',
+  yellow: 'bg-yellow-500',
+  lime: 'bg-lime-500',
   green: 'bg-green-500',
+  teal: 'bg-teal-500',
+  sky: 'bg-sky-500',
   blue: 'bg-blue-500',
+  indigo: 'bg-indigo-500',
   purple: 'bg-purple-500',
+  pink: 'bg-pink-500',
+  slate: 'bg-slate-500',
 }
 
 // 분 단위 숫자를 '2시간 14분', '40분' 처럼 바꿔줍니다.
