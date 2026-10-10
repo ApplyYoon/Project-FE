@@ -79,3 +79,13 @@ export interface Evaluation {
   /** AI 가 남긴 한마디 요약 */
   summary: string
 }
+
+/** 자유롭게 쓰는 일기 (하루에 하나, #63) */
+export interface DiaryEntry {
+  /** 쓴 날짜 (예: '2026-09-28') */
+  date: string
+  /** 오늘 기분 (1 ~ 5, 체크인과 같은 척도) */
+  mood: number
+  /** 일기 내용 (원문은 본인만 봅니다) */
+  content: string
+}

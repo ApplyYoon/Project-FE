@@ -4,6 +4,7 @@ import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
 import { CheckPage } from '@/pages/CheckPage'
+import { DiaryPage } from '@/pages/DiaryPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
       { path: 'planner', element: <PlannerPage /> },
       { path: 'timer', element: <TimerPage /> },
       { path: 'check', element: <CheckPage /> },
+      { path: 'diary', element: <DiaryPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'settings', element: <SettingsPage /> },
