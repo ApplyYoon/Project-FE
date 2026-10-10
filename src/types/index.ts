@@ -13,6 +13,14 @@ export interface Post {
   body: string
 }
 
+/** 로그인한 사람 정보 */
+export interface AuthUser {
+  /** 사람을 구분하는 고유 값 (서버가 정해 줍니다) */
+  id: string
+  /** 화면에 보이는 이름 */
+  name: string
+}
+
 /** 과목 태그에 쓸 수 있는 색 */
 export type SubjectColor = 'red' | 'orange' | 'green' | 'blue' | 'purple'
 
