@@ -68,3 +68,33 @@ export interface Evaluation {
   /** AI 가 남긴 한마디 요약 */
   summary: string
 }
+
+/** 어제 계획을 못 채운 이유 (#26 에서 버튼으로 고릅니다) */
+export type MissReason =
+  | 'tired' // 피곤·수면
+  | 'event' // 약속·행사
+  | 'phone' // 폰·SNS
+  | 'tooMuch' // 계획 과다
+  | 'unwilling' // 하기 싫음
+  | 'sick' // 아픔
+  | 'etc' // 기타
+
+/** 매일 체크인 (하루에 하나) */
+export interface CheckIn {
+  /** 체크인한 날짜 (예: '2026-09-28') */
+  date: string
+  /** 오늘 컨디션 (1 ~ 5) */
+  condition: number
+  /** 오늘 기분 (1 ~ 5) */
+  mood: number
+  /** 어제 계획을 다 못 채운 날에만 고르는 미달 원인 (#26) */
+  missReason?: MissReason
+  /** 오늘 예상 순공시간(분) */
+  expectedMinutes: number
+  /** 도전 중인 개선안을 어제 지켰는지 (#65) */
+  keptSuggestion?: boolean
+  /** 오늘의 약속 "만약 ~하면" (#79) */
+  promiseIf?: string
+  /** 오늘의 약속 "~한다" (#79) */
+  promiseThen?: string
+}
