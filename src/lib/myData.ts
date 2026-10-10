@@ -34,6 +34,8 @@ const RECORD_KEYS = [
   'exams',
   // 인사이트 카드에 누른 반응 (#84)
   'insight-responses',
+  // 개선안을 날마다 지켰는지 적은 기록 (#65)
+  'suggestion-checks',
   ...DIARY_KEYS,
 ]
 

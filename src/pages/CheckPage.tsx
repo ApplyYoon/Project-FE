@@ -4,10 +4,12 @@ import { MissReasonPicker, type MissReasonValue } from '@/components/ui/MissReas
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useCheckIns } from '@/hooks/useCheckIns'
 import { usePlans } from '@/hooks/usePlans'
+import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
+import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { mockSessions } from '@/lib/mock'
-import type { CheckIn } from '@/types'
+import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
 /** 컨디션 버튼에 쓰는 숫자 (1 최악 ~ 5 최고) */
@@ -55,6 +57,20 @@ function formatMinutes(totalMinutes: number): string {
   return `${hours}시간 ${minutes}분`
 }
 
+/**
+ * 그 날짜에 도전 중이던 개선안인지 알려줍니다.
+ * 도전을 시작한 날(startDate)부터 실험 기간(days)이 끝나기 전날까지가 도전 기간입니다.
+ *   예) 10월 1일 시작, 14일 → 10월 1일 ~ 10월 14일
+ * 오늘 막 고른 개선안은 "어제" 가 도전 기간이 아니라서 묻지 않습니다.
+ */
+function isActiveOn(suggestion: Suggestion, dateKey: string): boolean {
+  if (suggestion.status !== 'active' || suggestion.startDate === undefined) return false
+  // 'YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다.
+  if (dateKey < suggestion.startDate) return false
+  if (suggestion.days === undefined) return true
+  return dateKey < moveDateKey(suggestion.startDate, suggestion.days)
+}
+
 /** 어제 달성률에 맞춰 짧은 응원 한마디를 보여줍니다. (계획이 없던 날은 달성률 대신 안내만 합니다) */
 function getEncouragement(targetMinutes: number, rate: number): string {
   if (targetMinutes === 0) return '어제는 계획이 없었어요. 오늘부터 다시 시작해 봐요 🙂'
@@ -70,6 +86,13 @@ export function CheckPage() {
 
   const { getCheckIn, saveCheckIn } = useCheckIns()
   const { getPlans } = usePlans()
+  const { suggestions } = useSuggestions()
+  const { getCheck, saveCheck } = useSuggestionChecks()
+
+  // 어제 도전 중이던 개선안 (최대 2개). 이 개선안들만 "어제 지켰어?" 를 묻습니다.
+  const yesterdaySuggestions = suggestions.filter((suggestion) =>
+    isActiveOn(suggestion, yesterdayKey),
+  )
 
   const existingCheckIn = getCheckIn(todayKey)
   const isCheckedInToday = existingCheckIn !== undefined
@@ -87,6 +110,21 @@ export function CheckPage() {
       ? { reason: existingCheckIn.missReason, note: existingCheckIn.missReasonNote ?? '' }
       : null,
   )
+
+  // 개선안마다 고른 답. { 'suggestion-1': true } 처럼 개선안 id → 지켰는지 입니다.
+  // 이미 적어 둔 기록이 있으면 그 답으로 시작해서, 잘못 눌렀으면 다시 골라 고칠 수 있습니다.
+  const [keptById, setKeptById] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    for (const suggestion of yesterdaySuggestions) {
+      const saved = getCheck(suggestion.id, yesterdayKey)
+      if (saved) initial[suggestion.id] = saved.kept
+    }
+    return initial
+  })
+
+  function handleSelectKept(suggestionId: string, kept: boolean) {
+    setKeptById((prev) => ({ ...prev, [suggestionId]: kept }))
+  }
 
   // 어제 계획 달성률 = 어제 실제로 공부한 시간 ÷ 어제 계획한 목표 시간
   const yesterdayPlans = getPlans(yesterdayKey)
@@ -122,6 +160,14 @@ export function CheckPage() {
       }
     }
     saveCheckIn(checkIn)
+
+    // 답한 개선안만 저장합니다. 답하지 않은 개선안은 기록을 남기지 않습니다. ("못 지킴" 이 아니라 "모름")
+    for (const suggestion of yesterdaySuggestions) {
+      const kept = keptById[suggestion.id]
+      if (kept !== undefined) {
+        saveCheck({ suggestionId: suggestion.id, date: yesterdayKey, kept })
+      }
+    }
   }
 
   return (
@@ -231,6 +277,44 @@ export function CheckPage() {
           ))}
         </div>
       </Card>
+
+      {/* 어제 도전 중이던 개선안이 있을 때만 보여줍니다. */}
+      {yesterdaySuggestions.length > 0 && (
+        <Card title="도전 중인 개선안, 어제 지켰어?" className="rounded-2xl">
+          <ul className="flex flex-col gap-4">
+            {yesterdaySuggestions.map((suggestion) => {
+              const kept = keptById[suggestion.id]
+              return (
+                <li key={suggestion.id}>
+                  <p className="text-sm font-medium break-keep text-slate-800 sm:text-base">
+                    <span className="text-brand">만약</span> {suggestion.ifText} →{' '}
+                    {suggestion.thenText}
+                  </p>
+                  {/* 지켰어 / 못 지켰어 중 하나만 고릅니다. 다시 누르면 다른 쪽으로 바꿀 수 있습니다. */}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      aria-pressed={kept === true}
+                      onClick={() => handleSelectKept(suggestion.id, true)}
+                      className={cn(CHIP_BASE, kept === true ? CHIP_SELECTED : CHIP_UNSELECTED)}
+                    >
+                      지켰어
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={kept === false}
+                      onClick={() => handleSelectKept(suggestion.id, false)}
+                      className={cn(CHIP_BASE, kept === false ? CHIP_SELECTED : CHIP_UNSELECTED)}
+                    >
+                      못 지켰어
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
+      )}
 
       <Button
         size="lg"
