@@ -25,6 +25,9 @@ const DIARY_KEYS = ['diary', 'reflection-entries']
  *   signup-info  가입 때 정한 닉네임과 동의 내역. 기록이 아니라 계정 정보이고, 동의한 기록은 남겨 두어야 해서 남깁니다.
  *   call-time, call-last-ring  전화 받을 시간과 마지막으로 울린 시각. 내가 정한 설정이라 남깁니다.
  *   phone-focus-enabled  체크인에서 휴대폰 집중 모드를 확인받을지 정한 설정(#106). 기록이 아니라 설정이라 남깁니다.
+ *   care-limits, message-settings  관리 강도 한도 · 독설 수위 · 메시지 횟수 · 연락 금지 시간. 내가 정한 설정이라 남깁니다.
+ *   diary-enabled  일기 쓰기를 켰는지. 설정이라 남깁니다.
+ *   ios-install-guide-dismissed  아이폰 "홈 화면에 추가" 안내를 닫았는지. 기록이 아니라서 남깁니다.
  *   auth        로그인 정보. 지우면 로그아웃되어 버립니다.
  */
 const RECORD_KEYS = [
@@ -48,6 +51,19 @@ const RECORD_KEYS = [
   'manual-items',
   // 날짜마다 "이미 계획으로 넣은 루틴" 표시. 계획을 지우면 이 표시도 같이 지워야 루틴이 다시 채워집니다. (#236)
   'routine-filled',
+  // 타이머가 재고 있던 계획 (timer-subject 와 같이 지웁니다)
+  'timer-plan',
+  // 매일 체크인(기분 · 컨디션 · 약속 · 못 채운 이유)과 주간 회고
+  'checkins',
+  'weekly-reviews',
+  // 개선안과 도전 상태. 이행 기록(suggestion-checks)만 지우고 이것을 남기면 "도전 중" 인데 기록이 0 인 상태가 됩니다.
+  'suggestions',
+  // 목표 조정 제안을 거절한 날짜
+  'goal-adjust-declined',
+  // 받은 AI 메시지와, 알림을 보낸 기록
+  'ai-messages',
+  'ai-message-notified-ids',
+  'ai-message-sent-today',
   ...DIARY_KEYS,
 ]
 
