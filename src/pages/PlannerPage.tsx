@@ -8,6 +8,7 @@ import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { usePlans } from '@/hooks/usePlans'
+import { useRoutines } from '@/hooks/useRoutines'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
@@ -18,8 +19,15 @@ import { loadCheckInsByDate } from '@/lib/insightEvidence'
 import { mockSubjects } from '@/lib/mock'
 import { getPlanProgress } from '@/lib/planProgress'
 import { copyPlans, getFrequentPlans, type FrequentPlan } from '@/lib/planShortcuts'
+import {
+  WEEKDAY_ORDER,
+  formatWeekdays,
+  getWeekday,
+  getWeekdayName,
+  markRoutinesFilled,
+} from '@/lib/routines'
 import { loadData, saveData } from '@/lib/storage'
-import type { StudyPlan, Subject, SubjectColor } from '@/types'
+import type { Routine, StudyPlan, Subject, SubjectColor } from '@/types'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -51,18 +59,47 @@ interface PlanAddFormProps {
   subjects: Subject[]
   /** 최근에 자주 쓴 계획. 버튼으로 보여주고, 누르면 바로 추가합니다. */
   frequentPlans: FrequentPlan[]
-  /** 입력 검사를 통과했을 때, 새 계획에 들어갈 값을 부모에게 넘깁니다. */
-  onAdd: (subjectId: string, content: string, targetMinutes: number) => void
+  /** 지금 보고 있는 날짜의 요일 (0 = 일요일 … 6 = 토요일). "매주 반복" 을 켤 때 이 요일을 미리 골라 둡니다. */
+  defaultWeekday: number
+  /**
+   * 입력 검사를 통과했을 때, 새 계획에 들어갈 값을 부모에게 넘깁니다.
+   * repeatWeekdays: "매주 반복" 으로 고른 요일들. 반복하지 않으면 빈 배열입니다.
+   */
+  onAdd: (
+    subjectId: string,
+    content: string,
+    targetMinutes: number,
+    repeatWeekdays: number[],
+  ) => void
 }
 
-/** 새 계획을 입력하는 폼입니다. (자주 쓰는 계획 · 과목 · 내용 · 목표 시간) */
-function PlanAddForm({ subjects, frequentPlans, onAdd }: PlanAddFormProps) {
+/** 새 계획을 입력하는 폼입니다. (자주 쓰는 계획 · 과목 · 내용 · 목표 시간 · 매주 반복) */
+function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAddFormProps) {
   // 첫 과목을 미리 골라 둡니다. 과목이 하나도 없으면 빈 값입니다.
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [content, setContent] = useState('')
   // 목표 시간은 버튼으로 고릅니다. 고른 값은 다음 계획을 넣을 때도 그대로 남습니다.
   const [minutes, setMinutes] = useState(DEFAULT_PLAN_MINUTES)
   const [contentError, setContentError] = useState('')
+  // "매주 반복" 을 켰는지와, 반복할 요일들 (0 = 일요일 … 6 = 토요일)
+  const [isRepeat, setIsRepeat] = useState(false)
+  const [repeatWeekdays, setRepeatWeekdays] = useState<number[]>([])
+  const [repeatError, setRepeatError] = useState('')
+
+  function handleToggleRepeat() {
+    // 켤 때 아직 고른 요일이 없으면, 지금 보고 있는 날짜의 요일을 미리 골라 둡니다.
+    if (!isRepeat && repeatWeekdays.length === 0) setRepeatWeekdays([defaultWeekday])
+    setIsRepeat(!isRepeat)
+    setRepeatError('')
+  }
+
+  function handleToggleWeekday(weekday: number) {
+    // 이미 골랐으면 빼고, 아니면 더합니다.
+    setRepeatWeekdays((prev) =>
+      prev.includes(weekday) ? prev.filter((day) => day !== weekday) : [...prev, weekday],
+    )
+    setRepeatError('')
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // 폼의 기본 동작(페이지 새로고침)을 막습니다.
@@ -77,10 +114,18 @@ function PlanAddForm({ subjects, frequentPlans, onAdd }: PlanAddFormProps) {
       return
     }
 
-    onAdd(subjectId, trimmedContent, minutes)
+    // 반복을 켰는데 요일을 하나도 안 골랐으면 추가하지 않습니다.
+    if (isRepeat && repeatWeekdays.length === 0) {
+      setRepeatError('반복할 요일을 하나 이상 골라 주세요.')
+      return
+    }
+
+    onAdd(subjectId, trimmedContent, minutes, isRepeat ? repeatWeekdays : [])
 
     // 추가했으면 내용 칸을 비웁니다. (고른 과목과 목표 시간은 그대로 둡니다)
     setContent('')
+    // 반복은 꺼 둡니다. 켜 둔 채로 다음 계획을 넣다가 루틴이 실수로 생기지 않게 하기 위해서입니다.
+    setIsRepeat(false)
   }
 
   return (
@@ -97,7 +142,7 @@ function PlanAddForm({ subjects, frequentPlans, onAdd }: PlanAddFormProps) {
                 <button
                   key={`${plan.subjectId}|${plan.content}|${plan.targetMinutes}`}
                   type="button"
-                  onClick={() => onAdd(plan.subjectId, plan.content, plan.targetMinutes)}
+                  onClick={() => onAdd(plan.subjectId, plan.content, plan.targetMinutes, [])}
                   // max-w-full + min-w-0: 내용이 길어도 버튼이 카드 밖으로 나가지 않게 합니다.
                   className="flex min-h-10 max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-slate-400 bg-slate-50 px-3 py-1 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
                 >
@@ -163,10 +208,129 @@ function PlanAddForm({ subjects, frequentPlans, onAdd }: PlanAddFormProps) {
           onChange={setMinutes}
         />
 
+        {/* 매주 반복: 켜면 이 계획이 루틴으로 저장되어, 고른 요일마다 자동으로 들어옵니다. (#236) */}
+        <div className="flex flex-col gap-2">
+          {/* label 로 감싸서 글자를 눌러도 체크됩니다. min-h-10 으로 누르는 영역을 40px 로 맞춥니다. */}
+          <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={isRepeat}
+              onChange={handleToggleRepeat}
+              className="accent-brand h-5 w-5 cursor-pointer"
+            />
+            매주 반복 (루틴으로 저장)
+          </label>
+
+          {isRepeat && (
+            <>
+              {/* 요일 버튼 7개가 375px 에서도 한 줄에 들어갑니다. */}
+              <div role="group" aria-label="반복할 요일" className="grid grid-cols-7 gap-1.5">
+                {WEEKDAY_ORDER.map((weekday) => {
+                  const isSelected = repeatWeekdays.includes(weekday)
+                  return (
+                    <button
+                      key={weekday}
+                      type="button"
+                      aria-pressed={isSelected}
+                      aria-label={`${getWeekdayName(weekday)}요일`}
+                      onClick={() => handleToggleWeekday(weekday)}
+                      className={cn(
+                        'h-10 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
+                        isSelected
+                          ? 'border-brand bg-brand-light text-brand'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                      )}
+                    >
+                      {getWeekdayName(weekday)}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-sm break-keep text-slate-500">
+                고른 요일마다 이 계획이 자동으로 들어와요.
+              </p>
+              {repeatError && <p className="text-xs text-red-600">{repeatError}</p>}
+            </>
+          )}
+        </div>
+
         <Button type="submit" className="w-full">
           추가하기
         </Button>
       </form>
+    </Card>
+  )
+}
+
+interface RoutineListProps {
+  /** 저장된 루틴 목록 */
+  routines: Routine[]
+  /** 과목 이름과 색을 찾을 때 쓰는 과목 목록 */
+  subjects: Subject[]
+  /** 루틴을 방금 저장했을 때 보여줄 안내. 없으면 null */
+  notice: string | null
+  /** 루틴의 삭제 버튼을 눌렀을 때 호출됩니다. */
+  onDelete: (routine: Routine) => void
+}
+
+/** "내 루틴" 카드. 요일마다 반복되는 계획의 틀을 보고 지울 수 있습니다. (#236) */
+function RoutineList({ routines, subjects, notice, onDelete }: RoutineListProps) {
+  return (
+    <Card title="내 루틴">
+      <div className="flex flex-col gap-3">
+        {notice && (
+          <p role="status" className="text-sm font-medium break-keep text-indigo-700">
+            {notice}
+          </p>
+        )}
+
+        {routines.length === 0 ? (
+          <p className="text-sm break-keep text-slate-500">
+            아직 루틴이 없어요. 계획을 추가할 때 &quot;매주 반복&quot; 을 켜면 루틴이 돼요.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {routines.map((routine) => {
+              const subject = subjects.find((item) => item.id === routine.subjectId)
+              return (
+                <li key={routine.id} className="flex items-center gap-2 py-1">
+                  {/* flex-wrap: 좁은 화면에서는 요일·과목·내용이 두 줄로 나뉩니다. */}
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-sm">
+                    <span className="shrink-0 font-semibold text-slate-900">
+                      {formatWeekdays(routine.weekdays)}
+                    </span>
+                    {subject && (
+                      <span
+                        className={cn(
+                          'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
+                          subjectColorStyles[subject.color],
+                        )}
+                      >
+                        {subject.name}
+                      </span>
+                    )}
+                    <span className="min-w-0 break-words text-slate-900">{routine.content}</span>
+                    <span className="shrink-0 text-slate-500">{routine.targetMinutes}분</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    onClick={() => onDelete(routine)}
+                    aria-label={`${routine.content} 루틴 삭제`}
+                    className="shrink-0 px-3 text-slate-500 hover:text-red-600"
+                  >
+                    삭제
+                  </Button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        <p className="text-sm break-keep text-slate-500">
+          루틴은 고른 요일의 계획에 자동으로 들어와요. 그날 계획을 고치거나 지워도 루틴은
+          그대로예요.
+        </p>
+      </div>
     </Card>
   )
 }
@@ -273,14 +437,6 @@ function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
   )
 }
 
-const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
-
-/** 'YYYY-MM-DD' 날짜의 요일 이름을 돌려줍니다. 예: '2026-10-10' -> '토' */
-function getWeekdayName(dateKey: string): string {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  return WEEKDAY_NAMES[new Date(year, month - 1, day).getDay()]
-}
-
 /** 보고 있는 날짜의 바로 전날을 부르는 이름입니다. 오늘을 보고 있으면 '어제', 내일을 보고 있으면 '오늘', 그 밖에는 '전날' */
 function getDayBeforeLabel(dateKey: string, todayKey: string): string {
   if (dateKey === todayKey) return '어제'
@@ -292,8 +448,20 @@ export function PlannerPage() {
   const todayKey = toDateKey(new Date())
 
   // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
-  const { allPlans, getPlans, addPlan, addPlans, toggleDone, deletePlan, replaceDayPlans } =
-    usePlans()
+  const {
+    allPlans,
+    getPlans,
+    addPlan,
+    addPlans,
+    fillRoutines,
+    toggleDone,
+    deletePlan,
+    replaceDayPlans,
+  } = usePlans()
+  // 루틴 = 요일마다 반복되는 계획의 틀 (#236)
+  const { routines, addRoutine, deleteRoutine } = useRoutines()
+  // 루틴을 방금 저장했을 때 보여줄 안내
+  const [routineNotice, setRoutineNotice] = useState<string | null>(null)
   const { sessions } = useStudySessions()
   const [selectedDate, setSelectedDate] = useState(todayKey)
 
@@ -303,6 +471,12 @@ export function PlannerPage() {
   useEffect(() => {
     saveData('subjects', subjects)
   }, [subjects])
+
+  // 보고 있는 날짜에 아직 안 넣은 루틴이 있으면 계획으로 넣습니다. (오늘과 앞으로의 날짜만, 한 날짜에 한 번만)
+  // [selectedDate, routines]: 날짜를 옮기거나 루틴이 바뀔 때 다시 확인합니다.
+  useEffect(() => {
+    fillRoutines(selectedDate, routines)
+  }, [selectedDate, routines])
 
   // 화면에는 고른 날짜의 계획만 보여 줍니다.
   const plans = getPlans(selectedDate)
@@ -316,7 +490,10 @@ export function PlannerPage() {
   // 계획이 비어 있는 날에 보여줄 "가져오기" 후보: 바로 전날과 지난주 같은 요일
   const importSources = [
     { label: getDayBeforeLabel(selectedDate, todayKey), date: moveDateKey(selectedDate, -1) },
-    { label: `지난주 ${getWeekdayName(selectedDate)}요일`, date: moveDateKey(selectedDate, -7) },
+    {
+      label: `지난주 ${getWeekdayName(getWeekday(selectedDate))}요일`,
+      date: moveDateKey(selectedDate, -7),
+    },
   ]
     .map((source) => ({
       ...source,
@@ -367,18 +544,53 @@ export function PlannerPage() {
   }
 
   // 폼에서 받은 값으로 새 계획을 만들어 저장합니다. 지금 보고 있는 날짜의 계획이 됩니다.
-  function handleAdd(subjectId: string, content: string, targetMinutes: number) {
+  // repeatWeekdays 가 비어 있지 않으면 "매주 반복" 을 켠 것입니다. 루틴도 같이 저장합니다.
+  function handleAdd(
+    subjectId: string,
+    content: string,
+    targetMinutes: number,
+    repeatWeekdays: number[],
+  ) {
+    const now = Date.now()
     const newPlan: StudyPlan = {
       // 추가한 시각(밀리초)을 붙여서 다른 계획과 겹치지 않는 id 를 만듭니다.
-      id: `plan-${Date.now()}`,
+      id: `plan-${now}`,
       date: selectedDate,
       subjectId,
       content,
       targetMinutes,
       done: false,
     }
+
+    if (repeatWeekdays.length > 0) {
+      const routine: Routine = {
+        id: `routine-${now}`,
+        weekdays: repeatWeekdays,
+        kind: 'study',
+        subjectId,
+        content,
+        targetMinutes,
+      }
+      addRoutine(routine)
+      // 이 날짜는 아래에서 직접 넣거나(요일이 맞을 때) 넣지 않기로 한 것이라, 루틴이 같은 계획을 또 넣지 않게 표시해 둡니다.
+      markRoutinesFilled(selectedDate, [routine.id])
+      setRoutineNotice(`루틴을 저장했어요. ${formatWeekdays(repeatWeekdays)}마다 계획에 들어와요.`)
+
+      // 고른 요일에 지금 보고 있는 날짜가 없으면, 이 날짜에는 계획을 넣지 않습니다.
+      if (!repeatWeekdays.includes(getWeekday(selectedDate))) return
+      newPlan.routineId = routine.id
+    }
+
     // 그날 목록의 맨 뒤에 붙습니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
     addPlan(newPlan)
+  }
+
+  // 루틴을 지웁니다. 이미 만들어진 날의 계획은 그대로 남습니다.
+  function handleDeleteRoutine(target: Routine) {
+    const message = `"${target.content}" 루틴을 지울까요? 이미 들어간 계획은 그대로 남아요.`
+    if (!window.confirm(message)) return
+    deleteRoutine(target.id)
+    setRoutineNotice(null)
   }
 
   // 다른 날의 계획을 지금 보고 있는 날짜로 가져옵니다. 완료 표시는 지우고, 원래 날의 계획은 그대로 둡니다.
@@ -509,6 +721,13 @@ export function PlannerPage() {
                         {plan.content}
                       </span>
 
+                      {/* 루틴이 넣어 준 계획이라는 표시 */}
+                      {plan.routineId && (
+                        <span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-indigo-700">
+                          반복
+                        </span>
+                      )}
+
                       {/* 오늘의 안 끝난 계획만 바로 시작할 수 있습니다. 누르면 타이머가 이 계획의 과목·목표 시간으로 시작됩니다. */}
                       {isToday && !plan.done && (
                         <Link
@@ -544,8 +763,20 @@ export function PlannerPage() {
           )}
         </Card>
 
-        <PlanAddForm subjects={subjects} frequentPlans={frequentPlans} onAdd={handleAdd} />
+        <PlanAddForm
+          subjects={subjects}
+          frequentPlans={frequentPlans}
+          defaultWeekday={getWeekday(selectedDate)}
+          onAdd={handleAdd}
+        />
       </div>
+
+      <RoutineList
+        routines={routines}
+        subjects={subjects}
+        notice={routineNotice}
+        onDelete={handleDeleteRoutine}
+      />
 
       <SubjectManager subjects={subjects} onAdd={handleAddSubject} onDelete={handleDeleteSubject} />
 

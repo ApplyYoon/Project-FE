@@ -1,5 +1,7 @@
+import { toDateKey } from '@/lib/date'
+import { loadRoutines, takeRoutinePlans } from '@/lib/routines'
 import { loadData, saveData } from '@/lib/storage'
-import type { StudyPlan } from '@/types'
+import type { Routine, StudyPlan } from '@/types'
 import { useEffect, useState } from 'react'
 
 /** 날짜('YYYY-MM-DD')마다 그날의 계획 목록을 따로 모아 둔 모양입니다. */
@@ -7,6 +9,22 @@ type PlansByDate = Record<string, StudyPlan[]>
 
 // 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-plans' 가 됩니다)
 const STORAGE_KEY = 'plans'
+
+/**
+ * 저장된 계획을 불러옵니다. 그리고 오늘 요일의 루틴 중 아직 안 넣은 것이 있으면 오늘 계획에 넣습니다. (#236)
+ * 앱을 어느 화면으로 열든(홈·타이머·계획) 오늘의 루틴 계획이 보이도록, 계획을 처음 읽는 이곳에서 채웁니다.
+ */
+function loadPlansWithTodayRoutines(): PlansByDate {
+  const saved = loadData<PlansByDate>(STORAGE_KEY, {})
+  const todayKey = toDateKey(new Date())
+  const newPlans = takeRoutinePlans(todayKey, todayKey, loadRoutines())
+  if (newPlans.length === 0) return saved
+
+  const next = { ...saved, [todayKey]: [...(saved[todayKey] ?? []), ...newPlans] }
+  // "넣었다" 는 표시는 takeRoutinePlans 가 이미 저장했습니다. 계획도 지금 바로 저장해서 둘이 어긋나지 않게 합니다.
+  saveData(STORAGE_KEY, next)
+  return next
+}
 
 /**
  * 공부 계획을 날짜별로 들고 있고, 바뀔 때마다 localStorage 에 저장합니다.
@@ -17,7 +35,8 @@ const STORAGE_KEY = 'plans'
  */
 export function usePlans() {
   // 처음 한 번만 저장소에서 불러옵니다. 저장된 게 없으면 빈 객체({})라서 목록이 비어 있습니다.
-  const [plansByDate, setPlansByDate] = useState<PlansByDate>(() => loadData(STORAGE_KEY, {}))
+  // 불러오면서 오늘 요일의 루틴도 오늘 계획에 넣습니다. (하루에 한 번만 들어갑니다)
+  const [plansByDate, setPlansByDate] = useState<PlansByDate>(loadPlansWithTodayRoutines)
 
   // 계획이 바뀔 때마다 저장합니다.
   useEffect(() => {
@@ -46,6 +65,15 @@ export function usePlans() {
       }
       return next
     })
+  }
+
+  /**
+   * 그 날짜에 아직 안 넣은 루틴이 있으면 계획으로 넣습니다. 오늘과 앞으로의 날짜만 채웁니다.
+   * 계획 화면에서 다른 날짜로 옮겨 갈 때 씁니다. (오늘 것은 처음 불러올 때 이미 채웁니다)
+   */
+  function fillRoutines(date: string, routines: Routine[]) {
+    const newPlans = takeRoutinePlans(date, toDateKey(new Date()), routines)
+    if (newPlans.length > 0) addPlans(newPlans)
   }
 
   /** 그 계획의 done 만 뒤집습니다. (나머지는 그대로) */
@@ -94,6 +122,7 @@ export function usePlans() {
     getPlans,
     addPlan,
     addPlans,
+    fillRoutines,
     toggleDone,
     completePlan,
     deletePlan,
