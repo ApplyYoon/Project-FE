@@ -1,3 +1,18 @@
+/** 로그인 안 해도 열려야 하는 주소들입니다. RequireAuth 는 이 목록에 없는 주소를 모두 막습니다. */
+const PUBLIC_PATHS = ['/login', '/signup', '/auth/callback']
+
+/**
+ * 로그인 없이 열어도 되는 주소인지 알려 줍니다.
+ *
+ * 새 페이지를 만들면 이 목록에 따로 적을 필요가 없습니다. 자동으로 막힙니다.
+ * 로그인하러 가는 길(로그인·회원가입·SNS 콜백)만 PUBLIC_PATHS 에 적어 둡니다.
+ */
+export function isPublicPath(pathname: string): boolean {
+  // 라우터는 대문자·소문자와 끝의 '/' 를 구분하지 않고 같은 주소로 보기 때문에, 여기서도 똑같이 맞춰서 비교합니다.
+  const normalized = pathname.toLowerCase().replace(/\/+$/, '')
+  return PUBLIC_PATHS.includes(normalized)
+}
+
 /** 로그인 화면으로 보낼 때 함께 넘겨 두는 쪽지의 모양입니다. (RequireAuth 가 쓰고, LoginPage 가 읽습니다) */
 export interface LoginRedirectState {
   /** 로그인한 뒤 돌아갈 주소. 예: '/records?date=2026-10-01' */
