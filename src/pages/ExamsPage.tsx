@@ -20,7 +20,7 @@ import {
 import { loadSubjects } from '@/lib/subjects'
 import type { Exam, ExamSubjectScore, ExamType, Subject } from '@/types'
 import { useRef, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 /** 시험 추가·수정 폼에 적는 값. 점수는 입력 도중 빈 칸일 수 있어서 글자로 들고 있습니다. */
 interface ExamFormState {
@@ -367,6 +367,18 @@ export function ExamsPage() {
                 <p className="mt-1 text-sm text-slate-500">
                   솔직하게 적을수록 &apos;나를 아는 정도&apos;를 정확히 알려줄 수 있어.
                 </p>
+                {/* 과목이 하나도 없으면 점수 칸이 없어서 시험을 추가할 수 없습니다. 이유와 갈 곳을 알려 줍니다. */}
+                {subjects.length === 0 && (
+                  <p className="mt-3 text-sm break-keep text-slate-600">
+                    과목이 없어서 점수를 적을 수 없어요.{' '}
+                    <Link
+                      to="/planner"
+                      className="text-brand inline-flex h-10 items-center font-medium underline underline-offset-4"
+                    >
+                      계획 화면에서 과목 추가하기
+                    </Link>
+                  </p>
+                )}
                 <ul className="mt-3 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
                   {subjects.map((subject) => (
                     <li key={subject.id} className="flex items-center gap-2">
@@ -429,8 +441,11 @@ export function ExamsPage() {
         {deleteTarget !== null && (
           <>
             <p className="font-medium break-words text-slate-900">{deleteTarget.name}</p>
-            <p className="mt-2 text-sm text-slate-600">
-              적어 둔 예상 점수도 함께 사라지고, 되돌릴 수 없어요.
+            {/* 결과(실제 점수·회고)까지 적은 시험이면, 그것도 같이 사라진다고 알려 줍니다. */}
+            <p className="mt-2 text-sm break-keep text-slate-600">
+              {hasExamResult(deleteTarget)
+                ? '적어 둔 예상 점수와 실제 점수·회고도 함께 사라지고, 되돌릴 수 없어요.'
+                : '적어 둔 예상 점수도 함께 사라지고, 되돌릴 수 없어요.'}
             </p>
 
             <div className="mt-5 flex gap-3">
