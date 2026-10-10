@@ -111,17 +111,14 @@ export interface Suggestion {
   days?: number
 }
 
-/** AI 의 태도 — kind: 친절, normal: 보통, cynical: 냉소 */
-export type AiMood = 'kind' | 'normal' | 'cynical'
-
 /** 하루가 끝난 뒤 AI 가 내린 평가 (날짜마다 하나) */
 export interface Evaluation {
   /** 평가한 날짜 (예: '2026-09-28') */
   date: string
   /** 하루 점수 (0 ~ 100) */
   score: number
-  /** 점수에 따라 정해진 AI 태도 */
-  mood: AiMood
+  /** 그날 정해진 AI 의 관리 강도 (0 회복 ~ 4 강제적 채찍) */
+  careLevel: CareLevel
   /** AI 가 남긴 한마디 요약 */
   summary: string
 }

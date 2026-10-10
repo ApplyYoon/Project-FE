@@ -11,12 +11,12 @@ import type { CareLevel } from '@/lib/careTheme'
 
 /**
  * 오늘의 관리 강도 (0~3).
- * TODO(#28): getCareLevel({ yesterdayLevel, branch, maxLevel, isSafetyBrakeOn }) 의 결과로 바꾸기
+ * TODO(#28): getCareLevel({ yesterdayLevel, action, maxLevel, isSafetyBrakeOn }) 의 결과로 바꾸기
  *   - yesterdayLevel: 어제 단계를 저장해 둔 곳이 아직 없습니다
- *   - branch: 어제 결과 분기. #91 의 decideCareAction 결과(CareAction)가 있지만, getCareLevel 의
- *     입력(success/fail/adjust)과 아직 맞지 않고, decideCareAction 에 넣을 기록(체크인 #24, 이행 체크 #65)도 없습니다
+ *   - action: #91 decideCareAction 결과의 action(CareAction)을 그대로 넣으면 됩니다. 다만 decideCareAction 에
+ *     넣을 기록(체크인 #24, 이행 체크 #65)이 아직 없습니다
  *   - maxLevel: getCareLimits().maxCareLevel (#59)
- *   - isSafetyBrakeOn: getSafetyBrakeResult(#95) 가 있지만, 넣을 기록(최근 글·기분·시험)이 아직 없습니다
+ *   - isSafetyBrakeOn: getSafetyBrakeResult(#95) 결과로 brake.stopWhip || brake.recoveryMode. 다만 넣을 기록(최근 글·기분·시험)이 아직 없습니다
  * (getCareLevel 은 0~4 를 돌려주는데 색 테마는 0~3 까지만 있어서, 4 는 집중 모드 화면(#69)으로 보내거나 맞춰야 합니다)
  */
 export function getTodayCareLevel(): CareLevel {

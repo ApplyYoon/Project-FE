@@ -140,25 +140,25 @@ export const mockSessions: StudySession[] = [
 
 /**
  * 지난 3일의 AI 평가 3개
- * 태도는 #28 의 예시 기준을 따릅니다. (70점 이상 kind, 40~69 normal, 40 미만 cynical)
+ * 관리 강도는 점수에 맞춰 임의로 정한 예시입니다. (예전 친절→1 당근, 보통→2 넛지, 냉소→3 심리적 채찍)
  */
 export const mockEvaluations: Evaluation[] = [
   {
     date: dateDaysAgo(1),
     score: 85,
-    mood: 'kind',
+    careLevel: 1,
     summary: '계획을 거의 다 지켰어요! 이대로만 하면 됩니다.',
   },
   {
     date: dateDaysAgo(2),
     score: 30,
-    mood: 'cynical',
+    careLevel: 3,
     summary: '40분 공부하고 하루를 끝냈네요. 계획표는 장식인가요?',
   },
   {
     date: dateDaysAgo(3),
     score: 55,
-    mood: 'normal',
+    careLevel: 2,
     summary: '절반은 해냈어요. 내일은 수학 시간을 조금 늘려 봐요.',
   },
 ]
