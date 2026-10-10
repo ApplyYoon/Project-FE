@@ -1,5 +1,5 @@
 import { loadData, saveData } from './storage'
-import type { CareLevel } from '@/types'
+import type { CareLevel } from '@/lib/careLevel'
 
 /**
  * 사용자가 정한, AI 가 절대 넘으면 안 되는 한도입니다.

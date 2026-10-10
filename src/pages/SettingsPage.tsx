@@ -11,7 +11,7 @@ import {
   setMaxHarshness,
 } from '@/lib/careLimits'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
-import type { CareLevel } from '@/types'
+import type { CareLevel } from '@/lib/careLevel'
 
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
