@@ -27,13 +27,14 @@ import {
   type SignupInfo,
 } from '@/lib/signup'
 import { saveData } from '@/lib/storage'
+import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument } from '@/lib/terms'
 import { testUser } from '@/lib/testLogin'
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 /*
- * ⚠️ 이 화면의 동의 문구(약관 전문, "쓰는 곳" 안내)는 임시입니다.
- *    동의 문구는 Tmax-IT-Hope-School/Project#8 검토 뒤에 확정되니, 그때 아래 글자를 바꾸세요.
+ * ⚠️ 이 화면의 동의 문구("쓰는 곳" 안내)와 "보기" 로 여는 약관 전문(lib/terms.ts)은 초안입니다.
+ *    동의 문구는 Tmax-IT-Hope-School/Project#8 검토 뒤에 확정되니, 그때 글자를 바꾸세요.
  *    (이름·이메일·학교를 받게 되면서 "무엇을 모으나요?" 의 내용이 바뀌었습니다. 이 부분도 같이 검토받아야 합니다)
  */
 
@@ -45,8 +46,8 @@ interface ConsentItem {
   isRequired: boolean
   /** 라벨 아래 작은 설명 (없어도 됩니다) */
   description?: string
-  /** "보기" 를 눌렀을 때 팝업에 보여줄 글 */
-  detail: string
+  /** "보기" 를 눌렀을 때 팝업에 보여줄 안내문 (lib/terms.ts) */
+  terms: TermsDocument
 }
 
 // 동의 항목. 이 순서대로 보입니다.
@@ -55,21 +56,20 @@ const consentItems: ConsentItem[] = [
     key: 'terms',
     label: '서비스 이용약관',
     isRequired: true,
-    detail: '서비스 이용약관 전문은 문구가 확정되면 이곳에서 볼 수 있어요.',
+    terms: serviceTerms,
   },
   {
     key: 'privacy',
     label: '개인정보 수집·이용',
     isRequired: true,
-    detail:
-      '무엇을 모으는지는 가입 화면의 "무엇을 모으나요?" 에서 볼 수 있어요. 전문은 문구가 확정되면 이곳에서 볼 수 있어요.',
+    terms: privacyConsent,
   },
   {
     key: 'diaryAnalysis',
     label: '일기·감정 기록을 분석에 쓰기',
     isRequired: false,
     description: '안 해도 앱을 쓸 수 있어요. 일기 원문은 나만 봐요.',
-    detail: '일기·감정 기록을 분석에 쓰는 방법은 문구가 확정되면 이곳에서 볼 수 있어요.',
+    terms: diaryAnalysisConsent,
   },
 ]
 
@@ -113,6 +113,30 @@ function SignupSteps() {
         </li>
       ))}
     </ol>
+  )
+}
+
+interface TermsViewProps {
+  terms: TermsDocument
+}
+
+/** 약관·동의 안내문 한 편을 보여줍니다. 글이 길면 팝업(Modal) 안에서 스크롤됩니다. */
+function TermsView({ terms }: TermsViewProps) {
+  return (
+    <div className="flex flex-col gap-4 text-sm break-keep text-slate-700">
+      <p>{terms.intro}</p>
+      {terms.sections.map((section) => (
+        <section key={section.title}>
+          <h3 className="font-semibold text-slate-900">{section.title}</h3>
+          <ul className="mt-1.5 flex list-disc flex-col gap-1.5 pl-5">
+            {section.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      <p className="text-xs text-slate-500">마지막으로 고친 날: {terms.updatedAt}</p>
+    </div>
   )
 }
 
@@ -566,7 +590,7 @@ export function SignupPage() {
         onClose={() => setOpenedKey(null)}
         title={openedItem?.label}
       >
-        <p className="break-keep text-slate-700">{openedItem?.detail}</p>
+        {openedItem && <TermsView terms={openedItem.terms} />}
         <Button className="mt-5 w-full" onClick={() => setOpenedKey(null)}>
           닫기
         </Button>
