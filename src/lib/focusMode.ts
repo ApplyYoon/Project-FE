@@ -1,5 +1,5 @@
 import type { CareLimits } from '@/lib/careLimits'
-import { loadSavedWritings } from '@/lib/diarySafety'
+import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, saveData } from '@/lib/storage'
 
@@ -91,7 +91,7 @@ export function getAutoUnlockReason(input: {
 
 /**
  * 지금 안전 브레이크(#95)가 켜져 있는지 확인합니다.
- * 체크인·일기·성찰 일기에 저장된 글과 기분으로 판정합니다. (시험 목록 #80 은 아직 없어서 빈 배열)
+ * 체크인·일기·성찰 일기에 저장된 글과 기분, 등록한 시험 날짜(#80)로 판정합니다.
  * 관리 강도(#28)와 같은 기준으로 stopWhip 또는 recoveryMode 면 켜진 것으로 봅니다.
  */
 export function isSafetyBrakeOnNow(): boolean {
@@ -100,7 +100,7 @@ export function isSafetyBrakeOnNow(): boolean {
     now: new Date(),
     recentTexts: texts,
     recentMoods: moods,
-    exams: [],
+    exams: loadExamDates(),
   })
   return brake.stopWhip || brake.recoveryMode
 }
