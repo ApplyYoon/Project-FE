@@ -48,14 +48,17 @@ export function TodoPage() {
 
 ## 3. 라우터에 연결 (이걸 빼먹으면 화면이 안 나옵니다)
 
-`src/router.tsx` 에서 `element: <RequireAuth />` 가 달린 `children` 배열(로그인해야 볼 수 있는 곳)에 한 줄 추가:
+`src/router.tsx` 의 `children` 배열에 한 줄 추가:
 
 ```tsx
 { path: 'todo', element: <TodoPage /> },
 ```
 
-로그인·회원가입처럼 **로그인 없이 열려야 하는 화면**만 `RequireAuth` 바깥(`login`, `signup` 옆)에 넣습니다.
+로그인 안 한 사람은 `RequireAuth` 가 알아서 `/login` 으로 보내므로, **새 페이지는 따로 할 일이 없습니다.** 자동으로 막힙니다.
+로그인·회원가입·SNS 콜백처럼 **로그인 없이 열려야 하는 화면**만 `src/lib/authRedirect.ts` 의 `PUBLIC_PATHS` 에 주소를 적습니다.
 헷갈리면 사용자에게 "로그인 안 한 사람도 봐야 하는 화면인가요?" 라고 한 번 물어보세요.
+
+Layout 밖에 두는 화면(전화·온보딩처럼 헤더·탭이 없는 화면)은 `element` 를 `<RequireAuth>…</RequireAuth>` 로 감싸 주세요.
 
 ⚠️ `{ path: '*', element: <NotFoundPage /> }` 는 **항상 맨 마지막**에 있어야 합니다.
 그 뒤에 추가하면 새 페이지가 404로 빠집니다.

@@ -60,14 +60,15 @@ src/pages/TodoPage.tsx   →   http://localhost:5173/todo
 **페이지를 추가하면 `router.tsx` 수정을 잊지 마세요.** 안 하면 화면이 안 뜹니다.
 
 ```tsx
-// src/router.tsx — <RequireAuth> 안쪽 children 에 넣습니다 (로그인해야 볼 수 있는 곳)
+// src/router.tsx
 { path: 'todo', element: <TodoPage /> },
 // ...
 { path: '*', element: <NotFoundPage /> },   // ← 이건 항상 맨 마지막!
 ```
 
-로그인 안 한 사람이 `RequireAuth` 안쪽 주소에 들어오면 `/login` 으로 보내고, 로그인하면 원래 가려던 주소로 돌아옵니다.
-로그인·회원가입처럼 **로그인 없이 열려야 하는 화면**만 `RequireAuth` 바깥에 둡니다.
+로그인 안 한 사람이 들어오면 `RequireAuth` 가 `/login` 으로 보내고, 로그인하면 원래 가려던 주소로 돌아옵니다.
+그래서 새 페이지는 따로 할 일이 없습니다. 자동으로 막힙니다.
+로그인·회원가입처럼 **로그인 없이 열려야 하는 화면**만 `src/lib/authRedirect.ts` 의 `PUBLIC_PATHS` 에 주소를 적습니다.
 
 ### 🧩 `components/ui/` — 어디서나 쓰는 조각
 
