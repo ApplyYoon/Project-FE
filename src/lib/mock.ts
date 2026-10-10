@@ -24,15 +24,6 @@ function dateDaysAgo(daysAgo: number): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
-/** n일 뒤 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function dateDaysFromNow(daysFromNow: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() + daysFromNow)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
 /** n일 전 hour시 minute분을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function timeDaysAgo(daysAgo: number, hour: number, minute: number): number {
   const date = new Date()
@@ -189,13 +180,6 @@ export const mockInsights: Insight[] = [
     isHypothesis: false,
   },
 ]
-
-/**
- * 목표 시험 날짜 예시 (#71 예상 성장 곡선의 D-day)
- * 온보딩(#58)이 아직 없어서 임시로 둡니다. 온보딩이 생기면
- * OnboardingAnswers.targetExamDate 를 실제로 받아서 써야 합니다.
- */
-export const mockTargetExamDate = dateDaysFromNow(39)
 
 /** 지금으로부터 n분 전 시각을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function minutesAgo(minutes: number): number {
