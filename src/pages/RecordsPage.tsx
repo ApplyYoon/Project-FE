@@ -2,7 +2,16 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Modal } from '@/components/ui/Modal'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { usePlans } from '@/hooks/usePlans'
+import {
+  buildCallSummaries,
+  loadCheckInsByDate,
+  loadEvaluationsByDate,
+  type CallSummary,
+} from '@/lib/callSummary'
+import { careThemes } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import {
   type DailyRecord,
@@ -17,7 +26,7 @@ import { mockSubjects } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
-import type { StudySession, Subject } from '@/types'
+import type { CareLevel, StudySession, Subject } from '@/types'
 
 const weekdayNames = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -71,6 +80,12 @@ export function RecordsPage() {
 
   // 최근 날짜가 맨 앞에 오도록 날짜별로 묶습니다.
   const days = groupSessionsByDate(sessions)
+
+  // 지난 통화 요약: 통화에서 나온 값은 체크인에 저장되므로, 체크인을 날짜별로 꺼내 어제 공부 기록과 합칩니다. (#45)
+  const { allPlans } = usePlans()
+  const [checkIns] = useState(loadCheckInsByDate)
+  const [evaluations] = useState(loadEvaluationsByDate)
+  const callSummaries = buildCallSummaries(checkIns, allPlans, sessions, evaluations)
 
   // 지금 펼쳐 둔 날짜. null 이면 전부 접혀 있습니다. 같은 날짜를 다시 누르면 접힙니다.
   const [openDate, setOpenDate] = useState<string | null>(null)
@@ -216,6 +231,140 @@ export function RecordsPage() {
           )}
         </Card>
       </div>
+
+      <CallSummaryCard summaries={callSummaries} />
+    </div>
+  )
+}
+
+// 처음에 보여줄 통화 요약 개수입니다. 더 있으면 "더 보기" 로 펼칩니다.
+const INITIAL_SUMMARY_COUNT = 5
+
+/** 관리 강도 이름(색 점 옆에 적는 글자) */
+const careLevelNames = ['회복', '당근', '넛지', '심리적 채찍', '강제적 채찍'] as const
+
+/**
+ * 그날의 관리 강도를 색 점 + 이름으로 보여줍니다. 색만으로 구분하지 않고 이름도 함께 적습니다.
+ * 강도를 저장해 둔 곳이 아직 없어서, 지금은 보통 null(표시 없음)입니다.
+ */
+function getCareBadge(level: CareLevel | null): { name: string; dotClass: string } | null {
+  if (level === null) return null
+  // 4(강제적 채찍)는 집중 모드(#69)가 나오기 전이라 색 테마가 없어서 진한 빨강으로 따로 정합니다.
+  if (level === 4) return { name: careLevelNames[4], dotClass: 'bg-red-900' }
+  return { name: careThemes[level].name, dotClass: careThemes[level].avatarBackground }
+}
+
+interface CareBadgeProps {
+  level: CareLevel | null
+}
+
+/** 관리 강도 색 점 + 이름. 강도를 모르면 아무것도 그리지 않습니다. */
+function CareBadge({ level }: CareBadgeProps) {
+  const badge = getCareBadge(level)
+  if (badge === null) return null
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600">
+      <span aria-hidden className={cn('h-2.5 w-2.5 shrink-0 rounded-full', badge.dotClass)} />
+      {badge.name}
+    </span>
+  )
+}
+
+interface CallSummaryCardProps {
+  summaries: CallSummary[]
+}
+
+/** "지난 통화 요약": 날짜별 목록(최근 것이 위)과, 눌렀을 때 그날 카드를 자세히 보는 팝업 */
+function CallSummaryCard({ summaries }: CallSummaryCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  // 지금 팝업으로 보고 있는 요약. null 이면 팝업이 닫혀 있습니다.
+  const [selected, setSelected] = useState<CallSummary | null>(null)
+
+  const visibleSummaries = isExpanded ? summaries : summaries.slice(0, INITIAL_SUMMARY_COUNT)
+
+  return (
+    <Card title="지난 통화 요약">
+      {summaries.length === 0 ? (
+        <p className="py-6 text-center text-sm break-keep text-slate-500">
+          아직 통화 요약이 없어요. 매일 체크인을 하면 여기에 쌓여요.
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {visibleSummaries.map((summary) => (
+            <li key={summary.date}>
+              {/* 줄 전체가 버튼입니다. min-h-12(48px)라서 손가락으로 누르기 편합니다. */}
+              <button
+                type="button"
+                onClick={() => setSelected(summary)}
+                className="flex min-h-12 w-full cursor-pointer flex-col gap-1 py-3 text-left"
+              >
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                  {formatDateLabel(summary.date)}
+                  <CareBadge level={summary.careLevel} />
+                </span>
+                {/* break-words: 긴 문장도 화면 폭을 넘지 않고 줄바꿈됩니다. */}
+                <span className="text-sm font-semibold break-words text-slate-900">
+                  {summary.headline}
+                </span>
+                {summary.promise && (
+                  <span className="text-brand text-sm break-words">약속: {summary.promise}</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {summaries.length > INITIAL_SUMMARY_COUNT && (
+        <Button
+          variant="ghost"
+          className="mt-2 w-full"
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((current) => !current)}
+        >
+          {isExpanded ? '접기' : `더 보기 (${summaries.length - INITIAL_SUMMARY_COUNT}개)`}
+        </Button>
+      )}
+
+      <Modal
+        isOpen={selected !== null}
+        onClose={() => setSelected(null)}
+        title={selected ? `${formatDateLabel(selected.date)} 통화 요약` : undefined}
+      >
+        {selected && (
+          <dl className="flex flex-col gap-3">
+            <CareBadge level={selected.careLevel} />
+            <SummaryRow label="어제 요약" value={selected.headline} />
+            <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
+            <SummaryRow
+              label="오늘 예상 순공시간"
+              value={formatMinutes(selected.expectedMinutes)}
+            />
+            <SummaryRow label="오늘의 약속" value={selected.promise} emptyText="정하지 않았어요" />
+            <SummaryRow label="AI 한마디" value={selected.aiComment} emptyText="아직 없어요" />
+          </dl>
+        )}
+      </Modal>
+    </Card>
+  )
+}
+
+interface SummaryRowProps {
+  label: string
+  /** 보여줄 내용. null 이면 emptyText 를 흐린 글씨로 보여줍니다. */
+  value: string | null
+  emptyText?: string
+}
+
+/** 팝업 안의 "이름 / 내용" 한 줄 */
+function SummaryRow({ label, value, emptyText }: SummaryRowProps) {
+  return (
+    <div>
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={cn('mt-0.5 text-sm break-words', value ? 'text-slate-900' : 'text-slate-400')}>
+        {value ?? emptyText}
+      </dd>
     </div>
   )
 }
