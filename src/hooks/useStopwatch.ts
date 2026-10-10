@@ -52,7 +52,7 @@ function loadState(): StopwatchState {
  *   (지금 - 시작 시각 - 일시정지했던 시간)
  * 으로 계산합니다. setInterval 은 화면을 다시 그리는 용도로만 씁니다.
  *
- *   const { seconds, isRunning, isStarted, startedAt, pauseCount, start, pause, stop } = useStopwatch()
+ *   const { seconds, isRunning, isStarted, startedAt, pauseCount, getPausedMs, start, pause, stop } = useStopwatch()
  */
 export function useStopwatch() {
   const [state, setState] = useState<StopwatchState>(loadState)
@@ -121,12 +121,24 @@ export function useStopwatch() {
     setState(idleState)
   }
 
+  /**
+   * 시작한 뒤 at 시각까지 일시정지해 있던 시간(밀리초)을 돌려줍니다.
+   * 지금 일시정지 중이면, 멈춘 순간부터 at 까지도 더합니다. (일시정지한 채로 정지를 누르는 경우)
+   * 공부 기록을 저장할 때 이 값을 같이 저장해야 순공시간에서 뺄 수 있습니다.
+   */
+  const getPausedMs = (at: number) => {
+    if (state.startedAt === null) return 0
+    const currentPauseMs = state.pausedAt === null ? 0 : Math.max(0, at - state.pausedAt)
+    return state.pausedTotalMs + currentPauseMs
+  }
+
   return {
     seconds,
     isRunning,
     isStarted,
     startedAt: state.startedAt,
     pauseCount: state.pauseCount,
+    getPausedMs,
     start,
     pause,
     stop,

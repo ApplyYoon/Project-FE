@@ -1,4 +1,5 @@
 import { getDaySummary } from '@/lib/daySummary'
+import { getStudyMs } from '@/lib/studyTime'
 import type { StudySession } from '@/types'
 
 /**
@@ -8,6 +9,7 @@ import type { StudySession } from '@/types'
  * ■ 시간 계산 규칙 (하루 요약 getDaySummary 와 같은 규칙입니다. 같은 날이 화면마다 다르게 보이면 안 되기 때문입니다)
  *   - 기록 길이(밀리초)를 먼저 모두 더하고, 마지막에 한 번만 분으로 반올림합니다.
  *     기록마다 반올림하지 않습니다. (30초짜리 10개 = 5분. 하나씩 반올림하면 10분이 됩니다)
+ *   - 기록 하나의 길이는 순공시간(끝 − 시작 − 일시정지한 시간)입니다. getStudyMs 가 계산합니다.
  *   - 끝이 시작보다 빠른 잘못된 기록은 0분으로 칩니다.
  *   - 날짜는 공부를 "시작한" 날로 정합니다.
  *   - 그래서 과목별 시간을 더한 값이 하루 합계와 1~2분 다를 수 있습니다. (각각 한 번씩 반올림하기 때문입니다)
@@ -62,15 +64,12 @@ export function formatMinutes(totalMinutes: number): string {
  * 합계를 낼 때는 이 값을 더하지 말고 sumMinutes 를 쓰세요. (기록마다 반올림하면 합계가 어긋납니다)
  */
 export function sessionMinutes(session: StudySession): number {
-  return Math.max(0, Math.round((session.endedAt - session.startedAt) / 60000))
+  return Math.round(getStudyMs(session) / 60000)
 }
 
 /** 기록들의 시간을 밀리초로 모두 더한 뒤, 마지막에 한 번만 분으로 반올림합니다. 이상한 기록(끝이 시작보다 빠름)은 0 으로 칩니다. */
 function sumMinutes(sessions: StudySession[]): number {
-  const totalMs = sessions.reduce(
-    (sum, session) => sum + Math.max(0, session.endedAt - session.startedAt),
-    0,
-  )
+  const totalMs = sessions.reduce((sum, session) => sum + getStudyMs(session), 0)
   return Math.round(totalMs / 60000)
 }
 

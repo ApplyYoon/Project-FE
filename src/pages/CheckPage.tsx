@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn'
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { mockSessions } from '@/lib/mock'
 import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
+import { getStudyMs } from '@/lib/studyTime'
 import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
@@ -143,7 +144,7 @@ export function CheckPage() {
   const actualMinutes = Math.round(
     mockSessions
       .filter((session) => toDateKey(new Date(session.startedAt)) === yesterdayKey)
-      .reduce((sum, session) => sum + (session.endedAt - session.startedAt) / 60000, 0),
+      .reduce((sum, session) => sum + getStudyMs(session) / 60000, 0),
   )
 
   const achievementRate = targetMinutes === 0 ? 0 : (actualMinutes / targetMinutes) * 100

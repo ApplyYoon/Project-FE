@@ -1,14 +1,15 @@
+import { getStudyMs } from '@/lib/studyTime'
 import type { StudyPlan, StudySession } from '@/types'
 
 /** 하루 기록으로 계산한 기본 지표입니다. */
 export interface DaySummary {
-  /** 순공시간 (분). 그날 시작한 세션의 길이를 모두 더한 값 */
+  /** 순공시간 (분). 그날 시작한 세션의 순공(끝 − 시작 − 일시정지한 시간)을 모두 더한 값 */
   studyMinutes: number
   /** 계획 달성률 (0 ~ 100 정수). 순공시간 ÷ 그날 계획 목표 시간의 합계 */
   achievementRate: number
   /** 그날 가장 먼저 공부를 시작한 시각 (Date.now() 값). 공부 기록이 없으면 null */
   firstStartAt: number | null
-  /** 세션 하나의 평균 길이 (분). 공부 기록이 없으면 0 */
+  /** 세션 하나의 평균 순공시간 (분). 공부 기록이 없으면 0 */
   averageSessionMinutes: number
   /** 일시정지를 누른 횟수의 합계. 그날 시작한 세션들의 pauseCount 를 더한 값. 공부 기록이 없으면 0 */
   pauseCount: number
@@ -36,8 +37,9 @@ function toDateKey(date: Date): string {
  * 2. 자정을 넘긴 세션은 "시작한 날"의 기록으로 셉니다.
  *    세션 전체 시간을 시작한 날에 넣고, 다음 날에는 0분으로 칩니다.
  *    (공부 연속일을 세는 getStudyStreak 도 시작한 날 기준이라 서로 맞습니다.)
- * 3. 순공시간(분)은 세션 길이(밀리초)를 모두 더한 뒤 마지막에 한 번만 반올림합니다.
+ * 3. 순공시간(분)은 세션의 순공(밀리초)을 모두 더한 뒤 마지막에 한 번만 반올림합니다.
  *    세션마다 반올림하지 않습니다.
+ *    세션의 순공 = 끝 − 시작 − 일시정지한 시간(pausedMs). 계산은 lib/studyTime.ts 의 getStudyMs 가 합니다. (규칙 9)
  * 4. 평균 세션 길이(분)도 (전체 길이 ÷ 세션 수) 를 마지막에 한 번만 반올림합니다.
  * 5. 달성률 = 순공시간 ÷ 계획 목표 시간 합계 × 100, 소수점은 버립니다.
  *    100 을 넘으면 100 으로 맞춥니다. 반올림하지 않는 이유는, 99.6% 가 100% 로 보이면
@@ -47,6 +49,8 @@ function toDateKey(date: Date): string {
  * 7. 끝 시각이 시작 시각보다 빠른 잘못된 세션은 길이를 0분으로 칩니다.
  * 8. 일시정지 횟수(pauseCount)는 그날 시작한 세션들의 pauseCount 를 모두 더합니다. (규칙 2 처럼 시작한 날에 셉니다)
  *    pauseCount 가 없거나(옛 기록) 0 이상의 정수가 아닌 이상한 값이면 그 세션은 0번으로 칩니다.
+ * 9. 일시정지해 있던 시간(pausedMs)은 순공에서 뺍니다. 뽀모도로의 휴식 시간도 pausedMs 에 들어 있습니다.
+ *    pausedMs 가 없는 옛 기록은 0 으로 보고, 음수이거나 (끝 − 시작)보다 큰 이상한 값도 0 으로 칩니다.
  *
  * ■ 예시 (입력 → 결과)
  *
@@ -83,6 +87,10 @@ function toDateKey(date: Date): string {
  *   예9) 일시정지 횟수가 이상한 기록이 섞인 경우 (규칙 8)
  *        그날 세션 3개의 pauseCount 가 [2, 없음(옛 기록), -1] 이면
  *        -> pauseCount: 2   (없는 값과 음수는 0번으로 칩니다)
+ *
+ *   예10) 일시정지한 시간을 빼는 경우 (규칙 9) — 계획 60분,
+ *        19:00 시작 → 19:20 일시정지 → 20:00 다시 시작 → 20:10 정지 (끝 − 시작 70분, pausedMs 40분, 일시정지 1번)
+ *        -> { studyMinutes: 30, achievementRate: 50, firstStartAt: (19:00), averageSessionMinutes: 30, pauseCount: 1 }
  */
 export function getDaySummary(
   date: string,
@@ -98,8 +106,8 @@ export function getDaySummary(
   let firstStartAt: number | null = null
   let pauseCount = 0
   for (const session of daySessions) {
-    // 끝이 시작보다 빠른 잘못된 기록은 0 으로 칩니다. (규칙 7)
-    totalMs += Math.max(0, session.endedAt - session.startedAt)
+    // 일시정지한 시간을 뺀 순공입니다. 끝이 시작보다 빠른 잘못된 기록은 0 으로 칩니다. (규칙 7, 9)
+    totalMs += getStudyMs(session)
 
     if (firstStartAt === null || session.startedAt < firstStartAt) {
       firstStartAt = session.startedAt

@@ -4,6 +4,7 @@
  */
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { loadData } from '@/lib/storage'
+import { getStudyMs } from '@/lib/studyTime'
 import type { Exam, ExamSubjectScore, ExamType, StudySession } from '@/types'
 
 /** 시험 후 회고 ②③ 한 줄 글의 최대 글자 수 (#81) */
@@ -207,7 +208,7 @@ export function getStudyMinutesBeforeExam(
       const startedDate = toDateKey(new Date(session.startedAt))
       return startedDate >= fromDate && startedDate <= toDate
     })
-    .reduce((sum, session) => sum + Math.max(0, session.endedAt - session.startedAt), 0)
+    .reduce((sum, session) => sum + getStudyMs(session), 0)
 
   return Math.round(totalMs / 60000)
 }

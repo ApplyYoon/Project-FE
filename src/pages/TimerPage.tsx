@@ -15,8 +15,14 @@ import { cn } from '@/lib/cn'
 import { toDateKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { mockSubjects } from '@/lib/mock'
-import { BREAK_MINUTES, STUDY_MINUTES, getPomodoroStatus } from '@/lib/pomodoro'
+import {
+  BREAK_MINUTES,
+  STUDY_MINUTES,
+  getPomodoroBreakSeconds,
+  getPomodoroStatus,
+} from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
+import { getStudyMs } from '@/lib/studyTime'
 import type { AwayRecord, PomodoroPhase, StudySession, Subject, SubjectColor } from '@/types'
 
 // 1분 미만은 실수로 누른 것으로 보고 기록을 저장하지 않습니다.
@@ -57,7 +63,7 @@ function isToday(session: StudySession) {
 
 export function TimerPage() {
   // startedAt·pauseCount 는 새로고침해도 이어져야 해서 useStopwatch 안에서 같이 저장합니다.
-  const { seconds, isRunning, isStarted, startedAt, pauseCount, start, pause, stop } =
+  const { seconds, isRunning, isStarted, startedAt, pauseCount, getPausedMs, start, pause, stop } =
     useStopwatch()
   const { sessions, addSession } = useStudySessions()
 
@@ -110,11 +116,9 @@ export function TimerPage() {
   // (뽀모도로의 휴식 구간도 같은 공부 흐름 안에 있어서 포함합니다.)
   const isStudying = isStarted
 
-  // 오늘 저장된 기록만 모아서 분 단위로 더합니다.
+  // 오늘 저장된 기록만 모아서 분 단위로 더합니다. (일시정지한 시간은 뺀 순공시간입니다)
   const todayTotalMinutes = Math.floor(
-    sessions
-      .filter(isToday)
-      .reduce((sum, session) => sum + (session.endedAt - session.startedAt), 0) / 60000,
+    sessions.filter(isToday).reduce((sum, session) => sum + getStudyMs(session), 0) / 60000,
   )
 
   // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
@@ -147,7 +151,7 @@ export function TimerPage() {
     Math.floor(
       sessions
         .filter((session) => isToday(session) && session.subjectId === selectedSubjectId)
-        .reduce((sum, session) => sum + (session.endedAt - session.startedAt), 0) / 60000,
+        .reduce((sum, session) => sum + getStudyMs(session), 0) / 60000,
     ) + Math.floor(seconds / 60)
 
   // 버튼 아래에 보여줄 안내 문구
@@ -175,14 +179,21 @@ export function TimerPage() {
   }
 
   function handleStop() {
+    const endedAt = Date.now()
+    // 뽀모도로의 휴식 구간은 공부한 시간이 아니라서 뺍니다. (일반 모드에는 휴식 구간이 없어서 0 입니다)
+    const breakSeconds = isPomodoro ? getPomodoroBreakSeconds(seconds) : 0
+    const studySeconds = seconds - breakSeconds
+
     // 1분 미만 공부는 실수로 누른 것으로 보고 저장하지 않습니다.
-    if (selectedSubject && startedAt !== null && seconds >= MIN_SAVE_SECONDS) {
+    if (selectedSubject && startedAt !== null && studySeconds >= MIN_SAVE_SECONDS) {
       addSession({
-        id: `session-${Date.now()}`,
+        id: `session-${endedAt}`,
         subjectId: selectedSubject.id,
         startedAt,
-        endedAt: Date.now(),
+        endedAt,
         pauseCount,
+        // 순공시간에서 빠질 시간 = 일시정지해 있던 시간 + 뽀모도로 휴식 시간
+        pausedMs: getPausedMs(endedAt) + breakSeconds * 1000,
       })
     }
 
@@ -592,7 +603,7 @@ function WeeklySubjectRatio({ subjects, sessions }: WeeklySubjectRatioProps) {
       let minutes = 0
       for (const session of thisWeekSessions) {
         if (session.subjectId === subject.id) {
-          minutes += Math.round((session.endedAt - session.startedAt) / 60000)
+          minutes += Math.round(getStudyMs(session) / 60000)
         }
       }
       return { subject, minutes }
