@@ -4,13 +4,17 @@ import { Card } from '@/components/ui/Card'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useAwayDetection } from '@/hooks/useAwayDetection'
 import { useStopwatch } from '@/hooks/useStopwatch'
+import { useStudySessions } from '@/hooks/useStudySessions'
 import { playAlarm } from '@/lib/alarm'
 import { formatAwayDuration, formatClock } from '@/lib/away'
 import { cn } from '@/lib/cn'
-import { mockSessions, mockSubjects } from '@/lib/mock'
+import { mockSubjects } from '@/lib/mock'
 import { BREAK_MINUTES, STUDY_MINUTES, getPomodoroStatus } from '@/lib/pomodoro'
 import { loadData, saveData } from '@/lib/storage'
 import type { PomodoroPhase, StudySession, Subject, SubjectColor } from '@/types'
+
+// 1분 미만은 실수로 누른 것으로 보고 기록을 저장하지 않습니다.
+const MIN_SAVE_SECONDS = 60
 
 // normal: 일반(흐른 시간이 늘어남), pomodoro: 뽀모도로(남은 시간이 줄어듦)
 type TimerMode = 'normal' | 'pomodoro'
@@ -31,8 +35,25 @@ function formatTime(totalSeconds: number) {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
 }
 
+// 오늘 하루 공부한 시간(분)을 '2시간 14분' / '40분' 형태로 바꿔줍니다.
+function formatTotalMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours === 0) return `${minutes}분`
+  return `${hours}시간 ${minutes}분`
+}
+
+/** 그 기록이 오늘 시작한 기록인지 확인합니다. */
+function isToday(session: StudySession) {
+  return new Date(session.startedAt).toDateString() === new Date().toDateString()
+}
+
 export function TimerPage() {
-  const { seconds, isRunning, isStarted, start, pause, stop } = useStopwatch()
+  // startedAt·pauseCount 는 새로고침해도 이어져야 해서 useStopwatch 안에서 같이 저장합니다.
+  const { seconds, isRunning, isStarted, startedAt, pauseCount, start, pause, stop } =
+    useStopwatch()
+  const { sessions, addSession } = useStudySessions()
 
   // 계획 화면에서 저장한 과목 목록을 그대로 불러옵니다. (저장된 게 없으면 가짜 데이터)
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
@@ -83,6 +104,13 @@ export function TimerPage() {
   // (뽀모도로의 휴식 구간도 같은 공부 흐름 안에 있어서 포함합니다.)
   const isStudying = isStarted
 
+  // 오늘 저장된 기록만 모아서 분 단위로 더합니다.
+  const todayTotalMinutes = Math.floor(
+    sessions
+      .filter(isToday)
+      .reduce((sum, session) => sum + (session.endedAt - session.startedAt), 0) / 60000,
+  )
+
   // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
   // 뽀모도로 휴식 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
   const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({
@@ -119,6 +147,17 @@ export function TimerPage() {
   }
 
   function handleStop() {
+    // 1분 미만 공부는 실수로 누른 것으로 보고 저장하지 않습니다.
+    if (selectedSubject && startedAt !== null && seconds >= MIN_SAVE_SECONDS) {
+      addSession({
+        id: `session-${Date.now()}`,
+        subjectId: selectedSubject.id,
+        startedAt,
+        endedAt: Date.now(),
+        pauseCount,
+      })
+    }
+
     // 정지하면 구간 끝 안내와 딴짓 안내도 함께 지웁니다.
     setEndedPhase(null)
     dismissAwayNotice()
@@ -301,7 +340,13 @@ export function TimerPage() {
         </div>
       </Card>
 
-      <WeeklySubjectRatio subjects={subjects} />
+      <Card title="오늘 총 공부 시간">
+        <p className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+          {formatTotalMinutes(todayTotalMinutes)}
+        </p>
+      </Card>
+
+      <WeeklySubjectRatio subjects={subjects} sessions={sessions} />
     </div>
   )
 }
@@ -338,12 +383,10 @@ function getThisMondayStart() {
 
 interface WeeklySubjectRatioProps {
   subjects: Subject[]
+  sessions: StudySession[]
 }
 
-function WeeklySubjectRatio({ subjects }: WeeklySubjectRatioProps) {
-  // 저장된 공부 기록을 불러옵니다. (#20 에서 저장 기능이 생기기 전까지는 가짜 데이터)
-  const [sessions] = useState<StudySession[]>(() => loadData('sessions', mockSessions))
-
+function WeeklySubjectRatio({ subjects, sessions }: WeeklySubjectRatioProps) {
   const mondayStart = getThisMondayStart()
   const thisWeekSessions = sessions.filter((session) => session.startedAt >= mondayStart)
 

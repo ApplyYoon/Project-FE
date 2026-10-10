@@ -1,12 +1,14 @@
-import { navItems } from '@/components/layout/navItems'
+import { isNavItemSelected, navItems } from '@/components/layout/navItems'
 import { cn } from '@/lib/cn'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
 /**
  * 모바일 화면 아래에 고정되는 탭 메뉴입니다.
  * PC(sm 이상)에서는 숨기고, 대신 헤더 메뉴를 보여줍니다.
  */
 export function BottomTabNav() {
+  const { pathname } = useLocation()
+
   return (
     <nav
       aria-label="하단 메뉴"
@@ -16,7 +18,13 @@ export function BottomTabNav() {
       <ul className="grid grid-cols-5">
         {navItems.map((item) => (
           <li key={item.to}>
-            <NavLink to={item.to} className={tabLinkClass}>
+            <NavLink
+              to={item.to}
+              className={({ isActive }) =>
+                // 기록 아래 화면(리포트·사용설명서 등)에서도 "기록" 이 선택된 모양이 되게 합니다.
+                tabLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
+              }
+            >
               {item.label}
             </NavLink>
           </li>
