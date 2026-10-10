@@ -157,7 +157,11 @@ export function DiaryPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link to="/records" className="text-sm text-slate-500 hover:text-slate-700">
+        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
+        <Link
+          to="/records"
+          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
+        >
           ‹ 기록
         </Link>
         <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">일기</h1>
@@ -175,7 +179,7 @@ export function DiaryPage() {
             </p>
             <Link
               to="/diary/reflection"
-              className="text-brand text-sm font-semibold hover:underline"
+              className="text-brand inline-flex h-10 items-center text-sm font-semibold hover:underline"
             >
               오늘 성찰 쓰기
             </Link>

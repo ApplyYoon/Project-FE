@@ -76,7 +76,11 @@ export function ReflectionPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link to="/diary" className="text-sm text-slate-500 hover:text-slate-700">
+        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
+        <Link
+          to="/diary"
+          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
+        >
           ‹ 일기
         </Link>
         <p className="text-brand mt-2 text-sm font-semibold">AI 선생님이 처방한 성찰 일기</p>
