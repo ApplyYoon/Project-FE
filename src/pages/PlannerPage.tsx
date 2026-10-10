@@ -553,7 +553,9 @@ function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
                   type="button"
                   onClick={() => onDelete(subject)}
                   aria-label={`${subject.name} 삭제`}
-                  className="cursor-pointer text-sm leading-none opacity-70 hover:opacity-100"
+                  // h-10 w-8: 글자(×)는 작아도 누르는 영역은 40px 로 둡니다.
+                  // -my-2.5 -mr-2: 누르는 영역만 넓히고 태그의 크기는 그대로 두려고, 넓어진 만큼 바깥 여백을 뺍니다.
+                  className="-my-2.5 -mr-2 inline-flex h-10 w-8 cursor-pointer items-center justify-center text-sm leading-none opacity-70 hover:opacity-100"
                 >
                   ×
                 </button>
@@ -655,6 +657,12 @@ function PlanRow({
 
         {/* 노는 계획은 과목 대신 회색 "놀기" 태그를 보여줍니다. (#238) */}
         {plan.kind === 'play' && <PlayBadge className="shrink-0" />}
+        {/* 과목을 지운 뒤에 남은 계획은, 무슨 과목이었는지 알 수 없어서 "삭제된 과목" 으로 표시합니다. */}
+        {!subject && plan.kind !== 'play' && (
+          <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+            삭제된 과목
+          </span>
+        )}
         {subject && (
           <span
             className={cn(
@@ -1117,7 +1125,7 @@ export function PlannerPage() {
     const relatedCount = allPlans.filter((plan) => plan.subjectId === target.id).length
     const message =
       relatedCount > 0
-        ? `"${target.name}" 과목으로 등록된 계획이 ${relatedCount}개 있어요. 그래도 삭제할까요?`
+        ? `"${target.name}" 과목으로 등록된 계획이 ${relatedCount}개 있어요. 계획은 남고 "삭제된 과목" 으로 표시돼요. 그래도 삭제할까요?`
         : `"${target.name}" 과목을 삭제할까요?`
 
     if (!window.confirm(message)) return
