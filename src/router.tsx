@@ -12,6 +12,7 @@ import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SignupPage } from '@/pages/SignupPage'
+import { SuggestionsPage } from '@/pages/SuggestionsPage'
 import { TimerPage } from '@/pages/TimerPage'
 import { createBrowserRouter } from 'react-router-dom'
 
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'check', element: <CheckPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
+      { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'signup', element: <SignupPage /> },
