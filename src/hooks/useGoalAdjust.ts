@@ -1,5 +1,5 @@
 import type { CareAction } from '@/lib/careDecision'
-import { toDateKey } from '@/lib/dailyRecords'
+import { getTodayKey } from '@/lib/date'
 import { isDeclineSnoozed, proposeGoalAdjust, type GoalAdjustProposal } from '@/lib/goalAdjust'
 import { loadData, saveData } from '@/lib/storage'
 import { useState } from 'react'
@@ -47,7 +47,7 @@ export function useGoalAdjust({
   )
   // 이번 화면에서 이미 답했는지 (수락했으면 목표가 바뀌어 같은 제안이 또 나오는 것을 막습니다)
   const [isAnswered, setIsAnswered] = useState(false)
-  const isAcceptedToday = acceptedDate === toDateKey(new Date())
+  const isAcceptedToday = acceptedDate === getTodayKey()
 
   const proposal: GoalAdjustProposal | null =
     action === null || isAnswered || isAcceptedToday || isDeclineSnoozed(declinedDate)
@@ -58,7 +58,7 @@ export function useGoalAdjust({
   function accept() {
     if (proposal === null) return
     onAccept(proposal.toMinutes)
-    const today = toDateKey(new Date())
+    const today = getTodayKey()
     saveData(ACCEPTED_KEY, today)
     setAcceptedDate(today)
     setIsAnswered(true)
@@ -66,7 +66,7 @@ export function useGoalAdjust({
 
   /** 거절: 오늘 날짜를 기억해서 며칠 동안 다시 묻지 않습니다. */
   function decline() {
-    const today = toDateKey(new Date())
+    const today = getTodayKey()
     saveData(STORAGE_KEY, today)
     setDeclinedDate(today)
     setIsAnswered(true)

@@ -1,3 +1,4 @@
+import { getTodayKey } from '@/lib/date'
 import { mockSuggestions } from '@/lib/mock'
 import { loadList, saveData } from '@/lib/storage'
 import type { Suggestion } from '@/types'
@@ -8,14 +9,6 @@ const STORAGE_KEY = 'suggestions'
 
 // 동시에 도전할 수 있는 개선안은 최대 2개입니다.
 const MAX_ACTIVE_COUNT = 2
-
-/** 오늘 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
-function todayKey(): string {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
 
 /**
  * 개선안 목록을 들고 있고, 바뀔 때마다 localStorage 에 저장합니다.
@@ -43,7 +36,7 @@ export function useSuggestions() {
     setSuggestions((prev) =>
       prev.map((suggestion) =>
         suggestion.id === id
-          ? { ...suggestion, status: 'active', startDate: todayKey(), days }
+          ? { ...suggestion, status: 'active', startDate: getTodayKey(), days }
           : suggestion,
       ),
     )

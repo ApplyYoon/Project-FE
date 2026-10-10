@@ -1,3 +1,5 @@
+import { toDayKey } from '@/lib/date'
+
 /** 딴짓(자리 비움) 안내에 쓰는, React 와 상관없는 작은 함수들입니다. */
 
 /** 밀리초를 '12분', '45초', '1시간 5분' 처럼 읽기 쉬운 글자로 바꿉니다. */
@@ -24,10 +26,7 @@ export function formatClock(ms: number): string {
   })
 }
 
-/** 시각(밀리초)을 'YYYY-MM-DD' 로 바꿉니다. (toISOString 은 한국 시간이 아니라서 직접 만듭니다) */
+/** 시각(밀리초)이 몇 월 며칠에 속하는지 'YYYY-MM-DD' 로 바꿉니다. 새벽 4시 전은 전날입니다. (lib/date.ts 의 toDayKey) */
 export function toDateString(ms: number): string {
-  const date = new Date(ms)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+  return toDayKey(ms)
 }

@@ -27,7 +27,7 @@ import {
   getCountdownStatus,
   normalizeTargetMinutes,
 } from '@/lib/countdown'
-import { toDateKey } from '@/lib/date'
+import { DAY_START_HOUR, getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { missReasonOptions } from '@/lib/missReasons'
 import { loadSubjects } from '@/lib/subjects'
@@ -73,7 +73,7 @@ function formatTotalMinutes(totalMinutes: number) {
 
 /** 그 기록이 오늘 시작한 기록인지 확인합니다. */
 function isToday(session: StudySession) {
-  return new Date(session.startedAt).toDateString() === new Date().toDateString()
+  return toDayKey(session.startedAt) === getTodayKey()
 }
 
 export function TimerPage() {
@@ -197,7 +197,7 @@ export function TimerPage() {
   )
 
   const { allPlans, getPlans, completePlan } = usePlans()
-  const todayPlans = getPlans(toDateKey(new Date()))
+  const todayPlans = getPlans(getTodayKey())
   // 하는 중인 계획. 계획 없이 공부 중이거나 계획이 지워졌으면 undefined 입니다.
   const activePlan = allPlans.find((plan) => plan.id === activePlanId)
   // 노는 계획으로 타이머를 켠 상태인지. 노는 중에는 딴짓 감지 · 화면 켜 두기 · 그만하기 확인을 하지 않습니다. (#238)
@@ -1086,13 +1086,14 @@ function formatMinutes(totalMinutes: number) {
   return `${hours}시간 ${minutes}분`
 }
 
-// 이번 주 월요일 0시 0분을 밀리초 숫자로 돌려줍니다.
+// 이번 주 월요일이 시작되는 순간(새벽 4시)을 밀리초 숫자로 돌려줍니다. (하루의 기준은 lib/date.ts)
 function getThisMondayStart() {
-  const date = new Date()
+  // 새벽 4시 전이면 아직 어제라서, 하루의 기준만큼 되돌린 날짜로 요일을 봅니다.
+  const date = toDayDate(Date.now())
   // getDay(): 일요일 0, 월요일 1 ... 토요일 6. 월요일에서 며칠 지났는지 계산합니다. (일요일은 6일)
   const daysFromMonday = (date.getDay() + 6) % 7
   date.setDate(date.getDate() - daysFromMonday)
-  date.setHours(0, 0, 0, 0)
+  date.setHours(DAY_START_HOUR, 0, 0, 0)
   return date.getTime()
 }
 

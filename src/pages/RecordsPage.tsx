@@ -22,6 +22,7 @@ import {
   sessionMinutes,
   toDateKey,
 } from '@/lib/dailyRecords'
+import { getTodayKey, toDayDate } from '@/lib/date'
 import { loadSubjects } from '@/lib/subjects'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
@@ -36,7 +37,8 @@ function formatDateLabel(dateKey: string): string {
   const date = new Date(year, month - 1, day)
   const text = `${month}월 ${day}일 (${weekdayNames[date.getDay()]})`
 
-  const today = new Date()
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. 새벽 2시면 아직 어제입니다. (lib/date.ts)
+  const today = toDayDate(Date.now())
   if (dateKey === toDateKey(today)) return `오늘 · ${text}`
 
   // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (-1 = 어제)
@@ -512,11 +514,11 @@ interface StudyCalendarProps {
 
 /** 한 달 달력. 공부한 날을 색으로 칠하고, 날짜를 누르면 그날 기록을 아래에 보여줍니다. */
 function StudyCalendar({ days, subjects }: StudyCalendarProps) {
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
 
   // 지금 보고 있는 달. month 는 0(1월) ~ 11(12월) 입니다. (Date 의 규칙과 같습니다)
   const [view, setView] = useState(() => {
-    const today = new Date()
+    const today = toDayDate(Date.now())
     return { year: today.getFullYear(), month: today.getMonth() }
   })
   // 누른 날짜 'YYYY-MM-DD'. 처음에는 오늘을 골라 둡니다.

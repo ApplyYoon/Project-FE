@@ -1,3 +1,4 @@
+import { toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { loadData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
@@ -114,6 +115,7 @@ export function loadStudySessions(): StudySession[] {
 /**
  * 공부 기록을 날짜별로 묶어서, 최근 날짜가 맨 앞에 오도록 돌려줍니다.
  * 날짜는 공부를 "시작한" 날짜로 정합니다. (밤 11시에 시작해서 다음 날 넘어가도 시작한 날 기록입니다)
+ * 하루는 새벽 4시에 바뀝니다. 새벽 2시에 시작한 공부는 전날 기록입니다. (lib/date.ts 의 toDayKey)
  *
  *   const days = groupSessionsByDate(sessions)   // days[0] 이 가장 최근 날짜
  */
@@ -122,7 +124,7 @@ export function groupSessionsByDate(sessions: StudySession[]): DailyRecord[] {
   const byDate = new Map<string, Map<string, StudySession[]>>()
 
   for (const session of sessions) {
-    const date = toDateKey(new Date(session.startedAt))
+    const date = toDayKey(session.startedAt)
     const bySubject = byDate.get(date) ?? new Map<string, StudySession[]>()
     bySubject.set(session.subjectId, [...(bySubject.get(session.subjectId) ?? []), session])
     byDate.set(date, bySubject)

@@ -8,7 +8,7 @@ import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
 import { cn } from '@/lib/cn'
-import { moveDateKey, toDateKey } from '@/lib/date'
+import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
 import { getStudyMs } from '@/lib/studyTime'
 import type { CheckIn, Suggestion } from '@/types'
@@ -83,7 +83,7 @@ function getEncouragement(targetMinutes: number, rate: number): string {
 }
 
 export function CheckPage() {
-  const todayKey = toDateKey(new Date())
+  const todayKey = getTodayKey()
   const yesterdayKey = moveDateKey(todayKey, -1)
 
   const { getCheckIn, saveCheckIn } = useCheckIns()
@@ -145,7 +145,7 @@ export function CheckPage() {
   // 어제 시작한 공부 기록의 순공시간(일시정지한 시간은 뺌)을 더합니다.
   const actualMinutes = Math.round(
     sessions
-      .filter((session) => toDateKey(new Date(session.startedAt)) === yesterdayKey)
+      .filter((session) => toDayKey(session.startedAt) === yesterdayKey)
       .reduce((sum, session) => sum + getStudyMs(session) / 60000, 0),
   )
 

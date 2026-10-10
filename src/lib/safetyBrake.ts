@@ -9,6 +9,8 @@
  * 타입을 지우고 그쪽을 바로 쓰도록 바꾸면 됩니다.
  */
 
+import { toDayKey } from '@/lib/date'
+
 /** 연락 금지 시간. 시작·끝 모두 0~23 시 */
 export interface QuietHours {
   /** 시작 시각 (시). 예: 23 */
@@ -212,7 +214,7 @@ function hasLowMoodStreak(todayKey: string, moods: MoodRecordInput[]): boolean {
  *   getCareLevel({ ..., isSafetyBrakeOn: brake.stopWhip || brake.recoveryMode })
  */
 export function getSafetyBrakeResult(input: SafetyBrakeInput): SafetyBrakeResult {
-  const todayKey = toDateKey(input.now)
+  const todayKey = toDayKey(input.now)
   const quietHours = input.quietHours ?? DEFAULT_QUIET_HOURS
 
   const crisisDetected = hasCrisisText(input.recentTexts)

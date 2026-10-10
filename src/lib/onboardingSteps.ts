@@ -1,3 +1,4 @@
+import { toDayDate } from '@/lib/date'
 import { loadData } from '@/lib/storage'
 
 /**
@@ -321,16 +322,19 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
  *
  * now 는 "오늘이 언제인지" 입니다. 평소엔 비워 두면 되고, 확인할 때 날짜를 바꿔 넣을 수 있습니다.
  *
- *   getDaysUntil('2026-10-15', new Date(2026, 9, 10))  ->  5
- *   getDaysUntil('2026-10-10', new Date(2026, 9, 10))  ->  0
- *   getDaysUntil('2026-10-09', new Date(2026, 9, 10))  ->  -1
+ *   (아래 now 는 10월 10일 낮 12시입니다)
+ *   getDaysUntil('2026-10-15', new Date(2026, 9, 10, 12))  ->  5
+ *   getDaysUntil('2026-10-10', new Date(2026, 9, 10, 12))  ->  0
+ *   getDaysUntil('2026-10-09', new Date(2026, 9, 10, 12))  ->  -1
  */
 export function getDaysUntil(dateText: string, now: Date = new Date()): number {
   const [year, month, day] = dateText.split('-').map(Number)
   // 'YYYY-MM-DD' 글자를 그대로 new Date 에 넣으면 영국 시간으로 읽혀서 하루가 어긋납니다. 년·월·일을 쪼개서 만듭니다.
   const target = new Date(year, month - 1, day)
   // 오늘도 시각을 버리고 날짜만 남깁니다. (오후 3시에 봐도 오늘 = 0 이 되도록)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  // 오늘은 하루의 기준(새벽 4시)으로 정합니다. 새벽 2시면 아직 어제입니다. (lib/date.ts)
+  const todayDate = toDayDate(now)
+  const today = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate())
   return Math.round((target.getTime() - today.getTime()) / MS_PER_DAY)
 }
 

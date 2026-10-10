@@ -1,3 +1,4 @@
+import { toDayKey } from '@/lib/date'
 import { getStudyMs } from '@/lib/studyTime'
 import type { StudyPlan, StudySession } from '@/types'
 
@@ -17,13 +18,6 @@ export interface DaySummary {
 
 const MS_PER_MINUTE = 60 * 1000
 
-/** Date 를 'YYYY-MM-DD' 모양으로 만듭니다. (toISOString 은 한국 시간이 아니라서 쓰지 않습니다) */
-function toDateKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
 /**
  * 하루치 계획과 공부 기록으로 그날의 기본 지표를 계산합니다.
  * (숫자는 코드가 계산하고, AI 는 그 숫자를 해석만 합니다.)
@@ -33,8 +27,9 @@ function toDateKey(date: Date): string {
  *
  * ■ 정해 둔 규칙 (BE 도 똑같이 만들어야 같은 결과가 나옵니다)
  *
- * 1. 날짜는 한국 시간 기준입니다. 하루는 00:00 에 바뀝니다.
- * 2. 자정을 넘긴 세션은 "시작한 날"의 기록으로 셉니다.
+ * 1. 날짜는 한국 시간 기준입니다. 하루는 새벽 4시에 바뀝니다. (lib/date.ts 의 toDayKey)
+ *    00:00 ~ 03:59 에 시작한 세션은 전날 기록입니다.
+ * 2. 새벽 4시를 넘긴 세션은 "시작한 날"의 기록으로 셉니다.
  *    세션 전체 시간을 시작한 날에 넣고, 다음 날에는 0분으로 칩니다.
  *    (공부 연속일을 세는 getStudyStreak 도 시작한 날 기준이라 서로 맞습니다.)
  * 3. 순공시간(분)은 세션의 순공(밀리초)을 모두 더한 뒤 마지막에 한 번만 반올림합니다.
@@ -78,9 +73,10 @@ function toDateKey(date: Date): string {
  *        239 ÷ 240 = 99.58...% 이지만 소수점을 버려서
  *        -> achievementRate: 99  (100 은 다 채웠을 때만 나옵니다)
  *
- *   예7) 자정을 넘긴 세션 — 10월 4일 23:30 ~ 10월 5일 00:30 (60분)
+ *   예7) 새벽 4시를 넘긴 세션 — 10월 5일 03:30 ~ 04:30 (60분)
  *        (이 세션에서 일시정지를 2번 눌렀다면)
- *        date '2026-10-04' -> studyMinutes: 60, firstStartAt: (10월 4일 23:30), pauseCount: 2
+ *        03:30 은 아직 10월 4일이라서, 60분 전부가 10월 4일 기록입니다.
+ *        date '2026-10-04' -> studyMinutes: 60, firstStartAt: (10월 5일 03:30), pauseCount: 2
  *        date '2026-10-05' -> studyMinutes: 0,  firstStartAt: null,             pauseCount: 0
  *
  *   예8) 다른 날 기록이 섞여 있는 경우
@@ -102,7 +98,7 @@ export function getDaySummary(
   // 그날의 계획과 그날 시작한 세션만 골라냅니다. 노는 계획·노는 기록은 뺍니다. (규칙 10)
   const dayPlans = plans.filter((plan) => plan.date === date && plan.kind !== 'play')
   const daySessions = sessions.filter(
-    (session) => toDateKey(new Date(session.startedAt)) === date && session.kind !== 'play',
+    (session) => toDayKey(session.startedAt) === date && session.kind !== 'play',
   )
 
   // 세션 길이를 모두 더하고, 가장 이른 시작 시각을 찾습니다.
