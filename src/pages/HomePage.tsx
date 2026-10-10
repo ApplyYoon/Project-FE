@@ -8,10 +8,9 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { usePlans } from '@/hooks/usePlans'
 import { useToggle } from '@/hooks/useToggle'
 import { cn } from '@/lib/cn'
-import { groupSessionsByDate, isStudySession } from '@/lib/dailyRecords'
+import { groupSessionsByDate, loadStudySessions } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
-import { mockInsights, mockSessions } from '@/lib/mock'
-import { loadData } from '@/lib/storage'
+import { getInsightsToShow } from '@/lib/insights'
 import { getCareLimits } from '@/lib/careLimits'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
@@ -55,16 +54,9 @@ function formatMinutes(totalMinutes: number): string {
   return `${hours}시간 ${minutes}분`
 }
 
-/** 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (기록 화면과 같은 방법) */
-function loadSessions(): StudySession[] {
-  const saved = loadData<unknown>('sessions', [])
-  // 배열이 아니거나 모양이 틀린 기록은 걸러냅니다.
-  return Array.isArray(saved) ? saved.filter(isStudySession) : []
-}
-
 /** 공부 기록으로 지금 나무 상태를 계산합니다. */
 function calculateTree(): TreeState {
-  const days = groupSessionsByDate(loadSessions())
+  const days = groupSessionsByDate(loadStudySessions())
   const totalStudyMinutes = days.reduce((sum, day) => sum + day.totalMinutes, 0)
   const today = days.find((day) => day.date === toDateKey(new Date()))
 
@@ -89,8 +81,10 @@ export function HomePage() {
   const [maxCareLevel] = useState(() => getCareLimits().maxCareLevel)
 
   const { allPlans } = usePlans()
-  // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 가짜 데이터를 씁니다. (#20 이 아직 머지 전입니다)
-  const [sessions] = useState<StudySession[]>(() => loadData('sessions', mockSessions))
+  // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
+  const [sessions] = useState<StudySession[]>(loadStudySessions)
+  // 인사이트는 가상 데이터를 넣었을 때만 예시로 보여줍니다. (lib/insights.ts)
+  const { insights, isExample: isExampleInsight } = getInsightsToShow(sessions)
 
   const todayKey = toDateKey(new Date())
   const yesterdayKey = moveDateKey(todayKey, -1)
@@ -184,14 +178,19 @@ export function HomePage() {
       {/* 아직 실제 홈 화면(#94 #68 #102 등)은 만들어지기 전이라, 인사이트 카드만 먼저 둡니다. (#73) */}
       <section>
         <h2 className="text-lg font-bold text-slate-900">이번 주 발견</h2>
-        {mockInsights.length === 0 ? (
+        {insights.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
             아직 데이터가 모자라요. 기록이 쌓이면 발견이 생겨요.
           </p>
         ) : (
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {mockInsights.slice(0, 2).map((insight) => (
-              <InsightCard key={insight.id} insight={insight} sessions={sessions} />
+            {insights.map((insight) => (
+              <InsightCard
+                key={insight.id}
+                insight={insight}
+                sessions={sessions}
+                isExample={isExampleInsight}
+              />
             ))}
           </div>
         )}

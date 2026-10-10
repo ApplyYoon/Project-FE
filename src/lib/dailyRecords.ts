@@ -1,4 +1,5 @@
 import { getDaySummary } from '@/lib/daySummary'
+import { loadData } from '@/lib/storage'
 import { getStudyMs } from '@/lib/studyTime'
 import type { StudySession } from '@/types'
 
@@ -88,6 +89,17 @@ export function isStudySession(value: unknown): value is StudySession {
     typeof item.endedAt === 'number' &&
     Number.isFinite(item.endedAt)
   )
+}
+
+/**
+ * 타이머가 저장해 둔 공부 기록을 불러옵니다. 저장된 게 없으면 빈 목록입니다. (예시 기록으로 채우지 않습니다)
+ * 모양이 틀린 기록은 걸러냅니다.
+ *
+ *   const sessions = loadStudySessions()
+ */
+export function loadStudySessions(): StudySession[] {
+  const saved = loadData<unknown>('sessions', [])
+  return Array.isArray(saved) ? saved.filter(isStudySession) : []
 }
 
 /**

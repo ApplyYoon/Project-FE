@@ -14,6 +14,8 @@ interface InsightCardProps {
   insight: Insight
   /** 근거 보기에서 날짜별 순공시간을 계산하는 데 쓰는 공부 기록 */
   sessions: StudySession[]
+  /** true 면 내 기록으로 만든 발견이 아니라 미리 보기용 예시입니다. "예시" 표시가 붙습니다. */
+  isExample?: boolean
   className?: string
 }
 
@@ -25,8 +27,9 @@ interface InsightCardProps {
  *   다시 눌러 바꿀 수 있습니다. 고른 반응은 저장됩니다.
  *
  * <InsightCard insight={insight} sessions={sessions} />
+ * <InsightCard insight={insight} sessions={sessions} isExample />   // 예시일 때
  */
-export function InsightCard({ insight, sessions, className }: InsightCardProps) {
+export function InsightCard({ insight, sessions, isExample = false, className }: InsightCardProps) {
   const evidenceId = useId()
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false)
   // 처음에는 저장해 둔 반응을 불러옵니다. 저장된 게 없으면 인사이트가 들고 온 반응, 그것도 없으면 아직 안 고른 상태입니다.
@@ -46,6 +49,12 @@ export function InsightCard({ insight, sessions, className }: InsightCardProps) 
   return (
     <Card className={className}>
       <div className="flex flex-wrap items-center gap-2">
+        {/* 예시는 내 기록으로 만든 문장이 아니라는 것을 먼저 알려줍니다. */}
+        {isExample && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+            예시
+          </span>
+        )}
         {insight.isHypothesis && (
           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
             가설
