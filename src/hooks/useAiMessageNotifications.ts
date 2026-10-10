@@ -1,6 +1,7 @@
 import { countUnreadAiMessages, loadAiMessages } from '@/lib/aiMessages'
 import { getCareLimits } from '@/lib/careLimits'
 import { toDateKey } from '@/lib/date'
+import { loadSavedWritings } from '@/lib/diarySafety'
 import { getMessageSettings } from '@/lib/messageSettings'
 import {
   canSendAiMessageNotification,
@@ -9,7 +10,6 @@ import {
 } from '@/lib/notifications'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, saveData } from '@/lib/storage'
-import type { CheckIn } from '@/types'
 import { useEffect } from 'react'
 
 // 한 번 알림을 보낸 메시지의 id 를 저장해 두는 키. 새로고침하거나 다른 페이지로 가도
@@ -32,10 +32,9 @@ interface SentToday {
  * 알림을 보내기 전에 아래 설정을 모두 지킵니다.
  * - 연락 금지 시간, 하루 메시지 수 (#60 메시지 설정)
  * - 관리 강도 최대 한도 (#59)
- * - 안전 브레이크 (#95): 최근 체크인의 기분·글로 판정합니다.
+ * - 안전 브레이크 (#95): 체크인·일기·성찰 일기에 저장된 기분과 글로 판정합니다.
  *
- * ⚠️ 일기 원문(#63)은 아직 develop 에 없어서 안전 브레이크에 넘기지 못합니다.
- * 일기가 생기면 recentTexts 에 일기 글도 같이 넣어 주세요. (시험 목록 #80 도 아직 없어서 빈 배열입니다)
+ * ⚠️ 시험 목록(#80)은 아직 없어서 안전 브레이크에 빈 배열로 넘깁니다.
  */
 export function useAiMessageNotifications(): void {
   useEffect(() => {
@@ -46,15 +45,12 @@ export function useAiMessageNotifications(): void {
     const limits = getCareLimits()
     const today = toDateKey(new Date())
 
-    // 체크인(#24)의 기분과 약속 글을 안전 브레이크 입력으로 씁니다.
-    const checkIns = Object.values(loadData<Record<string, CheckIn>>('checkins', {}))
+    // 체크인·일기·성찰 일기에 저장된 글과 기분을 모두 안전 브레이크 입력으로 씁니다.
+    const { texts, moods } = loadSavedWritings()
     const brake = getSafetyBrakeResult({
       now: new Date(),
-      recentTexts: checkIns.flatMap((checkIn) => [
-        checkIn.promiseIf ?? '',
-        checkIn.promiseThen ?? '',
-      ]),
-      recentMoods: checkIns.map((checkIn) => ({ date: checkIn.date, mood: checkIn.mood })),
+      recentTexts: texts,
+      recentMoods: moods,
       exams: [],
       quietHours: toQuietHours(settings),
     })
