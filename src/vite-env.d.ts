@@ -7,6 +7,8 @@
 interface ImportMetaEnv {
   /** BE 서버 주소 (예: http://localhost:8080/api/v1). 비워 두면 api.ts 의 기본값을 씁니다. */
   readonly VITE_API_BASE_URL?: string
+  /** 'false' 면 로그인 화면의 테스트 로그인을 숨깁니다. 비워 두면 보입니다. (lib/testLogin.ts) */
+  readonly VITE_TEST_LOGIN?: string
 }
 
 interface ImportMeta {

@@ -2,9 +2,10 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/hooks/useAuth'
-import { getReturnPath } from '@/lib/authRedirect'
+import { getAfterLoginPath, getReturnPath } from '@/lib/authRedirect'
 import { cn } from '@/lib/cn'
-import type { AuthUser } from '@/types'
+import { hasSignupInfo } from '@/lib/signup'
+import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
 import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
@@ -95,21 +96,26 @@ const snsProviders: SnsProvider[] = [
   },
 ]
 
-// 가짜 로그인에 쓰는 사람과 토큰입니다. 서버가 없는 지금, 로그인 상태가 잘 공유되는지 확인하는 용도입니다.
-const fakeUser: AuthUser = { id: 'test-user', name: '테스트 사용자' }
-const fakeToken = 'fake-token'
+// 테스트 로그인을 보여줄지. `.env` 값은 앱이 켜진 뒤에 바뀌지 않아서, 화면 밖에서 한 번만 정합니다.
+const isTestLoginOn = isTestLoginEnabled(import.meta.env.VITE_TEST_LOGIN)
+
+interface TestLoginPanelProps {
+  /** "테스트로 시작하기" 를 눌렀을 때 */
+  onStart: () => void
+}
 
 /**
- * 서버를 연결하기 전에 useAuth 를 눌러서 확인해 보는 테스트용 영역입니다.
- * 서버 로그인이 붙으면 이 영역은 지워 주세요. (가짜라서 누구나 "로그인" 할 수 있습니다)
+ * 서버 로그인이 준비되기 전에 앱을 끝까지 써 볼 수 있게 하는 테스트용 영역입니다. (lib/testLogin.ts)
+ * 가짜라서 누구나 "로그인" 할 수 있습니다. 진짜 로그인이 붙으면 VITE_TEST_LOGIN=false 로 끕니다.
  */
-function FakeLoginPanel() {
-  const { user, isLoggedIn, login, logout } = useAuth()
+function TestLoginPanel({ onStart }: TestLoginPanelProps) {
+  const { user, isLoggedIn, logout } = useAuth()
 
   return (
-    <Card title="테스트용 로그인" className="flex flex-col gap-3">
-      <p className="text-sm text-slate-500">
-        서버를 연결하기 전에 로그인 상태를 확인해 보는 가짜 로그인이에요.
+    <Card title="테스트 모드" className="flex flex-col gap-3">
+      <p className="text-sm break-keep text-slate-500">
+        SNS 로그인이 준비되기 전까지 테스트 계정으로 써 볼 수 있어요. 기록은 이 브라우저에만
+        저장돼요.
       </p>
 
       {isLoggedIn ? (
@@ -127,8 +133,8 @@ function FakeLoginPanel() {
           <p role="status" className="text-sm font-medium text-slate-900">
             로그인 안 됨
           </p>
-          <Button size="lg" className="w-full" onClick={() => login(fakeUser, fakeToken)}>
-            가짜 로그인
+          <Button size="lg" className="w-full" onClick={onStart}>
+            테스트로 시작하기
           </Button>
         </>
       )}
@@ -140,15 +146,24 @@ export function LoginPage() {
   // 누른 SNS 를 기억해 두면, 그 SNS 이름으로 "준비 중" 안내를 띄울 수 있습니다. null 이면 안내가 닫혀 있습니다.
   const [pendingProvider, setPendingProvider] = useState<SnsProvider | null>(null)
 
-  const { isLoggedIn } = useAuth()
+  // 방금 이 화면에서 로그인했는지. 이미 로그인한 채로 /login 을 직접 연 사람(로그아웃하러 온 사람)과 구분하려고 씁니다.
+  const [hasJustLoggedIn, setHasJustLoggedIn] = useState(false)
+
+  const { isLoggedIn, login } = useAuth()
   const location = useLocation()
   // 로그인 안 하고 막힌 페이지에 갔다가 여기로 왔다면, 가려던 주소가 들어 있습니다. (RequireAuth 가 넘겨줌)
   const returnPath = getReturnPath(location.state)
 
-  // 로그인이 되면 가려던 페이지로 돌아갑니다. replace: 로그인 화면을 기록에 남기지 않습니다.
-  // 가려던 주소 없이 직접 /login 에 온 사람은 그대로 둡니다. (로그아웃 버튼을 쓸 수 있어야 하기 때문입니다)
-  if (isLoggedIn && returnPath !== null) {
-    return <Navigate to={returnPath} replace />
+  function handleTestLogin() {
+    login(testUser, TEST_TOKEN)
+    setHasJustLoggedIn(true)
+  }
+
+  // 로그인이 되면 갈 곳으로 보냅니다. 처음 온 사람은 가입 화면, 가입을 마친 사람은 가려던 페이지(없으면 홈)입니다.
+  // replace: 로그인 화면을 기록에 남기지 않습니다.
+  // 가려던 주소 없이 /login 을 직접 연 "이미 로그인한 사람" 은 그대로 둡니다. (로그아웃 버튼을 쓸 수 있어야 하기 때문입니다)
+  if (isLoggedIn && (hasJustLoggedIn || returnPath !== null)) {
+    return <Navigate to={getAfterLoginPath(hasSignupInfo(), returnPath)} replace />
   }
 
   return (
@@ -176,7 +191,7 @@ export function LoginPage() {
         ))}
       </Card>
 
-      <FakeLoginPanel />
+      {isTestLoginOn && <TestLoginPanel onStart={handleTestLogin} />}
 
       {/* 지금은 실제 로그인 대신 안내만 보여 줍니다. (실제 연결은 콜백 처리 이슈에서) */}
       <Modal
