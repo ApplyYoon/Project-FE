@@ -18,6 +18,7 @@ import { getCareLimits } from '@/lib/careLimits'
 import { mockSubjects } from '@/lib/mock'
 import { getDayProgress, getPlanProgress } from '@/lib/planProgress'
 import { loadData } from '@/lib/storage'
+import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
 import { getTreeState, type TreeState } from '@/lib/tree'
@@ -115,7 +116,12 @@ export function HomePage() {
 
   // 오늘 계획과, 그중 아직 안 끝난 것입니다. 안 끝난 것의 맨 앞이 "지금 할 일" 입니다.
   const todayPlans = getPlans(todayKey)
-  const undonePlans = todayPlans.filter((plan) => !plan.done)
+  // 시작 시각이 된 계획 → 시각을 안 정한 계획 → 아직 시각이 안 된 계획 순서로 줄 세웁니다. (lib/timeline.ts)
+  const now = new Date()
+  const undonePlans = sortPlansForNow(
+    todayPlans.filter((plan) => !plan.done),
+    now.getHours() * 60 + now.getMinutes(),
+  )
 
   // 첫 기록 날짜 = 계획과 공부 기록을 통틀어 가장 이른 날짜. 기록이 하나도 없으면 null 입니다.
   const recordDates = [
