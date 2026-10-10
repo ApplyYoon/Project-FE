@@ -19,7 +19,6 @@ import {
   type MessageSettings,
 } from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
-import { loadData, saveData } from '@/lib/storage'
 import type { CareLevel } from '@/lib/careLevel'
 import {
   getNotificationPermission,
