@@ -94,6 +94,23 @@ export function setMaxCareLevel(nextLevel: CareLevel): CareLimits {
   return next
 }
 
+/**
+ * 온보딩에서 한도를 처음 정할 때 씁니다. 고른 값이 바로 적용됩니다.
+ * "높이면 내일부터" 규칙(setMaxCareLevel)은 쓰는 도중에 갑자기 세게 올리는 걸 막는 규칙이라,
+ * 처음 정하는 온보딩에는 쓰지 않습니다. (쓰면 3단계를 골라도 "준비 끝" 화면에 2단계로 보입니다)
+ */
+export function setInitialCareLimits(maxCareLevel: CareLevel, maxHarshness: number): CareLimits {
+  const next: CareLimits = {
+    ...getCareLimits(),
+    maxCareLevel,
+    maxHarshness,
+    pendingMaxCareLevel: null,
+    pendingEffectiveDate: null,
+  }
+  saveData(STORAGE_KEY, next)
+  return next
+}
+
 /** 독설 허용 수위(1~5)를 바꿉니다. 바로 적용됩니다. */
 export function setMaxHarshness(value: number): CareLimits {
   const next: CareLimits = { ...getCareLimits(), maxHarshness: value }
