@@ -6,10 +6,14 @@ import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useExams } from '@/hooks/useExams'
 import { cn } from '@/lib/cn'
 import {
+  examTypeOptions,
   formatDday,
+  formatExamDate,
+  getAverageDiff,
   getDaysUntil,
   getExamTypeLabel,
-  examTypeOptions,
+  getResultHeadline,
+  hasExamResult,
   parseScore,
   splitExams,
 } from '@/lib/exams'
@@ -17,6 +21,7 @@ import { mockSubjects } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
 import type { Exam, ExamSubjectScore, ExamType, Subject } from '@/types'
 import { useRef, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 /** 시험 추가·수정 폼에 적는 값. 점수는 입력 도중 빈 칸일 수 있어서 글자로 들고 있습니다. */
 interface ExamFormState {
@@ -29,14 +34,6 @@ interface ExamFormState {
 
 function createEmptyForm(): ExamFormState {
   return { type: 'mock', name: '', date: '', scores: {} }
-}
-
-/** 'YYYY-MM-DD' 를 '10월 17일 (금)' 처럼 보여줍니다. */
-function formatExamDate(dateKey: string): string {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  const date = new Date(year, month - 1, day)
-  const weekday = date.toLocaleDateString('ko-KR', { weekday: 'short' })
-  return `${month}월 ${day}일 (${weekday})`
 }
 
 interface ScoreListProps {
@@ -71,6 +68,7 @@ function ScoreList({ exam, subjects }: ScoreListProps) {
 }
 
 export function ExamsPage() {
+  const navigate = useNavigate()
   const { exams, addExam, updateExam, deleteExam } = useExams()
   // 과목은 계획 화면에서 저장한 목록을 읽기만 합니다. (처음 한 번은 예시 과목)
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
@@ -244,21 +242,47 @@ export function ExamsPage() {
               <p className="py-4 text-center text-sm text-slate-500">아직 지난 시험이 없어요.</p>
             ) : (
               <ul className="flex flex-col gap-3">
-                {past.map((exam) => (
-                  <li key={exam.id} className="rounded-lg bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold break-words text-slate-900">{exam.name}</p>
-                        <p className="text-sm text-slate-500">
-                          {formatExamDate(exam.date)} · {formatDday(getDaysUntil(exam.date))}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">실제 점수 입력은 곧 열려요.</p>
-                      </div>
-                      <div className="flex shrink-0 gap-1">
+                {past.map((exam) => {
+                  const hasResult = hasExamResult(exam)
+                  const averageDiff = getAverageDiff(exam.subjectScores)
+                  return (
+                    <li
+                      key={exam.id}
+                      className={cn(
+                        'rounded-lg border p-3',
+                        hasResult
+                          ? 'border-transparent bg-slate-50'
+                          : 'border-amber-200 bg-amber-50',
+                      )}
+                    >
+                      <p className="font-semibold break-words text-slate-900">{exam.name}</p>
+                      <p className="text-sm text-slate-500">
+                        {formatExamDate(exam.date)} · {formatDday(getDaysUntil(exam.date))}
+                      </p>
+                      <p
+                        className={cn(
+                          'mt-1 text-sm',
+                          hasResult ? 'text-slate-500' : 'text-amber-800',
+                        )}
+                      >
+                        {!hasResult
+                          ? '아직 결과를 안 넣었어요.'
+                          : averageDiff === null
+                            ? '회고를 저장했어요.'
+                            : getResultHeadline(averageDiff, true)}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Button
+                          variant={hasResult ? 'secondary' : 'primary'}
+                          className="h-11"
+                          onClick={() => navigate(`/exams/${exam.id}/result`)}
+                        >
+                          {hasResult ? '결과 보기' : '결과 입력'}
+                        </Button>
                         <Button
                           variant="ghost"
-                          size="md"
-                          className="px-3"
+                          className="h-11 px-3"
                           onClick={() => handleStartEdit(exam)}
                           aria-label={`${exam.name} 고치기`}
                         >
@@ -266,17 +290,16 @@ export function ExamsPage() {
                         </Button>
                         <Button
                           variant="ghost"
-                          size="md"
-                          className="px-3 text-slate-500 hover:text-red-600"
+                          className="h-11 px-3 text-slate-500 hover:text-red-600"
                           onClick={() => setDeleteTarget(exam)}
                           aria-label={`${exam.name} 지우기`}
                         >
                           지우기
                         </Button>
                       </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </Card>

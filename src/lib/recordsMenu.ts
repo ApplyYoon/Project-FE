@@ -32,8 +32,17 @@ export function isRecordsTabPath(pathname: string): boolean {
   return recordsTabs.some((tab) => isUnder(pathname, tab.to))
 }
 
-/** 지금 주소가 "‹ 기록" 돌아가기 링크를 보여줘야 하는 화면(시험·일기·개선안 고르기)인지 */
+/** 지금 주소가 시험 결과 입력 화면(/exams/<시험 id>/result)인지 */
+export function isExamResultPath(pathname: string): boolean {
+  return /^\/exams\/[^/]+\/result\/?$/.test(pathname)
+}
+
+/**
+ * 지금 주소가 "‹ 기록" 돌아가기 링크를 보여줘야 하는 화면(시험·일기·개선안 고르기)인지
+ * 시험 결과 화면은 "‹ 시험" 으로 돌아가는 링크를 화면 안에 따로 두어서, 여기서는 뺍니다.
+ */
 export function isRecordsCardPath(pathname: string): boolean {
+  if (isExamResultPath(pathname)) return false
   return recordsCardPaths.some((path) => isUnder(pathname, path))
 }
 
@@ -46,5 +55,5 @@ export function isRecordsCardPath(pathname: string): boolean {
  *   isRecordsPath('/planner')       -> false
  */
 export function isRecordsPath(pathname: string): boolean {
-  return isRecordsTabPath(pathname) || isRecordsCardPath(pathname)
+  return isRecordsTabPath(pathname) || isRecordsCardPath(pathname) || isExamResultPath(pathname)
 }
