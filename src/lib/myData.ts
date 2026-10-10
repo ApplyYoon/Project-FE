@@ -11,7 +11,7 @@ import { removeData } from '@/lib/storage'
 const DIARY_KEYS = ['diary']
 
 /**
- * 모든 기록의 저장 키 = 공부 계획 · 공부 기록 · 타이머 기록 · 일기
+ * 모든 기록의 저장 키 = 공부 계획 · 공부 기록 · 타이머 기록 · 딴짓 기록 · 일기
  * 아직 없는 기능의 키도 미리 적어 둡니다. (없는 키를 지우는 건 아무 일도 안 일어납니다)
  *
  * 일부러 넣지 않은 것(= 지우지 않고 남김)
@@ -20,7 +20,16 @@ const DIARY_KEYS = ['diary']
  *   onboarding-answers  온보딩 설문 답. 기록이 아니라 내 정보이고, 지우면 설문을 처음부터 다시 하게 되어서 남깁니다.
  *   auth        로그인 정보. 지우면 로그아웃되어 버립니다.
  */
-const RECORD_KEYS = ['plans', 'sessions', 'timer', 'timer-subject', ...DIARY_KEYS]
+const RECORD_KEYS = [
+  'plans',
+  'sessions',
+  'timer',
+  'timer-subject',
+  // 딴짓(탭 이탈) 기록과, 나갔다가 아직 돌아오지 않은 임시 기록 (#22)
+  'away-records',
+  'away-pending',
+  ...DIARY_KEYS,
+]
 
 /** diary: 일기만 / all: 모든 기록 */
 export type DeleteKind = 'diary' | 'all'

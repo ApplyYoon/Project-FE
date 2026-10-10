@@ -62,6 +62,22 @@ export interface StudySession {
   endedAt: number
 }
 
+/** 공부 중에 다른 탭·앱으로 나갔다 돌아온 기록 (딴짓 한 번) */
+export interface AwayRecord {
+  /** 기록을 구분하는 고유 값 */
+  id: string
+  /** 나간 날짜 (예: '2026-09-28'). 하루 단위로 모아서 셀 때 씁니다. */
+  date: string
+  /** 공부하던 과목 (Subject 의 id). 알 수 없으면 null */
+  subjectId: string | null
+  /** 나간 시각 (Date.now() 값) */
+  leftAt: number
+  /** 돌아온 시각 (Date.now() 값) */
+  returnedAt: number
+  /** 나가 있던 시간 (밀리초). returnedAt - leftAt 과 같습니다. */
+  awayMs: number
+}
+
 /** 뽀모도로의 구간 — study: 공부, break: 휴식 */
 export type PomodoroPhase = 'study' | 'break'
 
