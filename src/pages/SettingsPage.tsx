@@ -19,6 +19,11 @@ import {
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
 import { loadData, saveData } from '@/lib/storage'
 import type { CareLevel } from '@/lib/careLevel'
+import {
+  getNotificationPermission,
+  isNotificationSupported,
+  requestNotificationPermission,
+} from '@/lib/notifications'
 
 // 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
 const DIARY_ENABLED_KEY = 'diary-enabled'
@@ -76,6 +81,13 @@ export function SettingsPage() {
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
   const [message, setMessage] = useState<DeleteMessage | null>(null)
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>(getNotificationPermission)
+
+  async function handleRequestNotification() {
+    const permission = await requestNotificationPermission()
+    setNotificationPermission(permission)
+  }
 
   // 일기 기능을 켰는지. 켜면 기록 화면에 일기 메뉴가 보입니다. (기본은 꺼짐 — #63 "원할 때만 켜는 기능")
   const [isDiaryEnabled, setIsDiaryEnabled] = useState(() => loadData(DIARY_ENABLED_KEY, false))
@@ -260,6 +272,32 @@ export function SettingsPage() {
                   끄기
                 </Button>
               </div>
+            </div>
+          </Card>
+
+          <Card title="AI 메시지 알림">
+            <div className="flex flex-col gap-4">
+              {isNotificationSupported() ? (
+                <>
+                  <p className="text-sm text-slate-500">
+                    {notificationPermission === 'granted' &&
+                      '알림이 켜져 있어요. 안 읽은 메시지가 오면 브라우저 알림으로도 알려줄게요.'}
+                    {notificationPermission === 'denied' &&
+                      '알림이 거부되어 있어요. 메시지는 메시지함에 그대로 쌓이고, 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
+                    {notificationPermission === 'default' &&
+                      '알림을 켜면 앱을 안 보고 있어도 새 메시지를 브라우저 알림으로 알려줘요.'}
+                  </p>
+                  {notificationPermission === 'default' && (
+                    <Button className="h-11 w-full sm:w-auto" onClick={handleRequestNotification}>
+                      알림 켜기
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  이 브라우저는 알림 기능을 지원하지 않아요. 메시지는 메시지함에 그대로 쌓여요.
+                </p>
+              )}
             </div>
           </Card>
 
