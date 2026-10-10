@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
+import { useAuth } from '@/hooks/useAuth'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import type { CareLevel } from '@/lib/careLevel'
@@ -32,7 +33,9 @@ import {
   isNotificationSupported,
   requestNotificationPermission,
 } from '@/lib/notifications'
+import { loadSignupProfile } from '@/lib/signup'
 import { loadData, removeData, saveData } from '@/lib/storage'
+import { testUser } from '@/lib/testLogin'
 
 // 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
 const DIARY_ENABLED_KEY = 'diary-enabled'
@@ -62,6 +65,23 @@ interface DeleteMessage {
 const CONFIRM_CARE_LEVEL = 4
 
 export function SettingsPage() {
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+  // 계정 카드에 보여줄 닉네임·이메일·학교. 가입 정보가 이 기기에 없으면 null 입니다.
+  const [profile] = useState(loadSignupProfile)
+  // "로그아웃할까요?" 확인창이 열려 있는지
+  const [isLogoutOpen, setIsLogoutOpen] = useState(false)
+
+  // 닉네임이 있으면 닉네임, 없으면 로그인한 사람의 이름을 보여줍니다.
+  const accountName = profile?.nickname || user?.name || '사용자'
+
+  function handleLogout() {
+    // 로그인 화면으로 먼저 옮긴 뒤 로그인 정보를 지웁니다.
+    // (순서가 반대면 문지기(RequireAuth)가 "설정으로 돌아갈 것" 을 기억해서, 다음에 로그인하면 설정 화면이 뜹니다)
+    navigate('/login', { replace: true })
+    logout()
+  }
+
   // 처음 열 때 한 번 불러옵니다. (불러오면서 예약된 한도 상향이 있으면 날짜가 지났는지도 같이 확인합니다)
   const [limits, setLimits] = useState(() => getCareLimits())
   // 확인창에서 "올릴까요?" 하고 묻고 있는 단계. null 이면 확인창이 닫혀 있습니다.
@@ -160,6 +180,46 @@ export function SettingsPage() {
           AI 가 나를 얼마나 세게 챙길지 내가 정해요. 정한 한도는 절대 넘지 않아요.
         </p>
       </div>
+
+      {/* 계정: 지금 누구로 로그인했는지 보여주고, 여기서 로그아웃합니다. */}
+      <Card>
+        {/* 모바일은 프로필 아래에 로그아웃 버튼을 가득 채우고, PC(sm 이상)는 오른쪽에 나란히 둡니다. */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {/* 프로필 사진 대신 이름의 첫 글자를 동그라미에 넣습니다. 꾸밈이라 스크린리더는 읽지 않습니다. */}
+            <div
+              aria-hidden
+              className="bg-brand-light text-brand flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-bold"
+            >
+              {accountName.slice(0, 1)}
+            </div>
+            {/* min-w-0 + truncate: 긴 이메일이 칸을 밀어내지 않고 '...' 으로 줄어듭니다. */}
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2">
+                <span className="truncate text-base font-semibold text-slate-900">
+                  {accountName}
+                </span>
+                {user?.id === testUser.id && (
+                  <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                    테스트 계정
+                  </span>
+                )}
+              </p>
+              {profile?.email && <p className="truncate text-sm text-slate-500">{profile.email}</p>}
+              {profile?.schoolName && (
+                <p className="truncate text-sm text-slate-500">{profile.schoolName}</p>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            className="w-full shrink-0 sm:w-auto"
+            onClick={() => setIsLogoutOpen(true)}
+          >
+            로그아웃
+          </Button>
+        </div>
+      </Card>
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 왼쪽은 관리 강도 한도, 오른쪽은 내 데이터 등 그 밖의 설정입니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -490,6 +550,30 @@ export function SettingsPage() {
       </Modal>
 
       {/* 지우기 전에 한 번 더 물어봅니다. 확인 버튼은 위험한 일이라는 걸 알리려고 빨간색입니다. */}
+      {/* 로그아웃하기 전에 한 번 확인합니다. 잘못 눌러서 나가는 일을 막습니다. */}
+      <Modal isOpen={isLogoutOpen} onClose={() => setIsLogoutOpen(false)} title="로그아웃할까요?">
+        <p className="text-sm break-keep text-slate-600">
+          이 기기에 저장된 계획과 기록은 지워지지 않아요. 다시 로그인하면 이어서 볼 수 있어요.
+        </p>
+        <p className="mt-2 text-sm break-keep text-slate-500">
+          다른 사람과 같이 쓰는 기기라면, 아래 &quot;내 데이터 관리&quot; 에서 기록을 먼저 지워
+          주세요.
+        </p>
+        <div className="mt-5 flex gap-3">
+          <Button
+            variant="secondary"
+            size="lg"
+            className="flex-1"
+            onClick={() => setIsLogoutOpen(false)}
+          >
+            취소
+          </Button>
+          <Button size="lg" className="flex-1" onClick={handleLogout}>
+            로그아웃
+          </Button>
+        </div>
+      </Modal>
+
       <Modal
         isOpen={pendingKind !== null}
         onClose={() => setPendingKind(null)}

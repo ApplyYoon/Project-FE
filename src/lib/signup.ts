@@ -59,6 +59,33 @@ export function hasSignupInfo(): boolean {
   )
 }
 
+/** 설정의 계정 카드에 보여주는 내 정보입니다. 없는 칸은 빈 글자('')입니다. */
+export interface SignupProfile {
+  nickname: string
+  email: string
+  /** 고른 학교 이름. 안 골랐으면 빈 글자 */
+  schoolName: string
+}
+
+/**
+ * 이 기기에 저장해 둔 가입 정보에서 화면에 보여줄 것만 꺼냅니다. 가입 정보가 없으면 null 입니다.
+ * 저장소의 값은 모양이 다를 수 있어서(예전에 가입해 이메일이 없는 경우 등) 하나씩 확인하고, 없는 칸은 빈 글자로 둡니다.
+ *
+ *   loadSignupProfile() -> { nickname: '하늘', email: 'sky@example.com', schoolName: '한국디지털미디어고등학교' }
+ */
+export function loadSignupProfile(): SignupProfile | null {
+  const saved = loadData<unknown>(SIGNUP_STORAGE_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return null
+  const info = saved as Record<string, unknown>
+  const school = info.school as Record<string, unknown> | null | undefined
+
+  return {
+    nickname: typeof info.nickname === 'string' ? info.nickname : '',
+    email: typeof info.email === 'string' ? info.email : '',
+    schoolName: typeof school?.name === 'string' ? school.name : '',
+  }
+}
+
 /**
  * "이 사람은 이미 가입을 마쳤다" 고 적어 둡니다. 서버 로그인에 성공한 기존 회원에게 씁니다.
  * (다른 기기에서 가입한 사람이 이 기기에서 로그인했을 때, 가입 화면을 다시 거치지 않게 하려는 것입니다)
