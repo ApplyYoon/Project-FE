@@ -24,6 +24,15 @@ function dateDaysAgo(daysAgo: number): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/** n일 뒤 날짜를 'YYYY-MM-DD' 문자열로 돌려줍니다. */
+function dateDaysFromNow(daysFromNow: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() + daysFromNow)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 /** n일 전 hour시 minute분을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function timeDaysAgo(daysAgo: number, hour: number, minute: number): number {
   const date = new Date()
@@ -38,14 +47,21 @@ interface SessionInput {
   daysAgo: number // 며칠 전인지 (1 = 어제)
   start: string // 시작 시각 'HH:MM'
   minutes: number // 공부한 시간(분)
+  pauseCount?: number // 일시정지한 횟수 (안 적으면 0)
 }
 
 /** 읽기 쉬운 입력을 받아 StudySession 하나를 만듭니다. */
-function makeSession({ id, subjectId, daysAgo, start, minutes }: SessionInput): StudySession {
+function makeSession({
+  id,
+  subjectId,
+  daysAgo,
+  start,
+  minutes,
+  pauseCount = 0,
+}: SessionInput): StudySession {
   const [hour, minute] = start.split(':').map(Number)
   const startedAt = timeDaysAgo(daysAgo, hour, minute)
-  // 가짜 데이터라 일시정지는 안 한 것으로 둡니다.
-  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount: 0 }
+  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount }
 }
 
 /* ---------- 가짜 데이터 ---------- */
@@ -173,6 +189,13 @@ export const mockInsights: Insight[] = [
     isHypothesis: false,
   },
 ]
+
+/**
+ * 목표 시험 날짜 예시 (#71 예상 성장 곡선의 D-day)
+ * 온보딩(#58)이 아직 없어서 임시로 둡니다. 온보딩이 생기면
+ * OnboardingAnswers.targetExamDate 를 실제로 받아서 써야 합니다.
+ */
+export const mockTargetExamDate = dateDaysFromNow(39)
 
 /** 지금으로부터 n분 전 시각을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
 function minutesAgo(minutes: number): number {

@@ -18,6 +18,11 @@ import {
 } from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
 import type { CareLevel } from '@/lib/careLevel'
+import {
+  getNotificationPermission,
+  isNotificationSupported,
+  requestNotificationPermission,
+} from '@/lib/notifications'
 
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
@@ -72,6 +77,13 @@ export function SettingsPage() {
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
   const [message, setMessage] = useState<DeleteMessage | null>(null)
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>(getNotificationPermission)
+
+  async function handleRequestNotification() {
+    const permission = await requestNotificationPermission()
+    setNotificationPermission(permission)
+  }
 
   function handleChangeMessageSettings(next: MessageSettings) {
     setMessageSettings(next)
@@ -223,6 +235,32 @@ export function SettingsPage() {
         <div className="flex flex-col gap-6">
           <Card title="전화와 메시지">
             <MessageSettingsFields value={messageSettings} onChange={handleChangeMessageSettings} />
+          </Card>
+
+          <Card title="AI 메시지 알림">
+            <div className="flex flex-col gap-4">
+              {isNotificationSupported() ? (
+                <>
+                  <p className="text-sm text-slate-500">
+                    {notificationPermission === 'granted' &&
+                      '알림이 켜져 있어요. 안 읽은 메시지가 오면 브라우저 알림으로도 알려줄게요.'}
+                    {notificationPermission === 'denied' &&
+                      '알림이 거부되어 있어요. 메시지는 메시지함에 그대로 쌓이고, 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
+                    {notificationPermission === 'default' &&
+                      '알림을 켜면 앱을 안 보고 있어도 새 메시지를 브라우저 알림으로 알려줘요.'}
+                  </p>
+                  {notificationPermission === 'default' && (
+                    <Button className="h-11 w-full sm:w-auto" onClick={handleRequestNotification}>
+                      알림 켜기
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  이 브라우저는 알림 기능을 지원하지 않아요. 메시지는 메시지함에 그대로 쌓여요.
+                </p>
+              )}
+            </div>
           </Card>
 
           <Card title="내 데이터 관리">
