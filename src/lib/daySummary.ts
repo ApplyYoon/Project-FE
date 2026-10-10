@@ -10,6 +10,8 @@ export interface DaySummary {
   firstStartAt: number | null
   /** 세션 하나의 평균 길이 (분). 공부 기록이 없으면 0 */
   averageSessionMinutes: number
+  /** 일시정지를 누른 횟수의 합계. 그날 시작한 세션들의 pauseCount 를 더한 값. 공부 기록이 없으면 0 */
+  pauseCount: number
 }
 
 const MS_PER_MINUTE = 60 * 1000
@@ -43,23 +45,25 @@ function toDateKey(date: Date): string {
  * 6. 계획 목표 시간 합계가 0 (계획이 없거나 전부 0분) 이면 나눌 수 없으므로 달성률은 0 입니다.
  *    공부를 했어도 0 입니다.
  * 7. 끝 시각이 시작 시각보다 빠른 잘못된 세션은 길이를 0분으로 칩니다.
+ * 8. 일시정지 횟수(pauseCount)는 그날 시작한 세션들의 pauseCount 를 모두 더합니다. (규칙 2 처럼 시작한 날에 셉니다)
+ *    pauseCount 가 없거나(옛 기록) 0 이상의 정수가 아닌 이상한 값이면 그 세션은 0번으로 칩니다.
  *
  * ■ 예시 (입력 → 결과)
  *
  *   예1) 계획도 기록도 없는 날
  *        plans = [], sessions = []
- *        -> { studyMinutes: 0, achievementRate: 0, firstStartAt: null, averageSessionMinutes: 0 }
+ *        -> { studyMinutes: 0, achievementRate: 0, firstStartAt: null, averageSessionMinutes: 0, pauseCount: 0 }
  *
  *   예2) 계획만 있고 공부는 안 한 날 (수학 60분 계획, 기록 없음)
- *        -> { studyMinutes: 0, achievementRate: 0, firstStartAt: null, averageSessionMinutes: 0 }
+ *        -> { studyMinutes: 0, achievementRate: 0, firstStartAt: null, averageSessionMinutes: 0, pauseCount: 0 }
  *
  *   예3) 계획 목표가 0분인데 공부한 날 (0 으로 나누기)
- *        수학 0분 계획, 10:00~10:30 공부
- *        -> { studyMinutes: 30, achievementRate: 0, firstStartAt: (10:00), averageSessionMinutes: 30 }
+ *        수학 0분 계획, 10:00~10:30 공부 (일시정지 안 누름)
+ *        -> { studyMinutes: 30, achievementRate: 0, firstStartAt: (10:00), averageSessionMinutes: 30, pauseCount: 0 }
  *
- *   예4) 계획 240분 (수학 120 + 영어 120), 공부 두 번 (10:00~11:00, 14:00~16:10)
- *        순공 60 + 130 = 190분, 190 ÷ 240 = 79.1...%
- *        -> { studyMinutes: 190, achievementRate: 79, firstStartAt: (10:00), averageSessionMinutes: 95 }
+ *   예4) 계획 240분 (수학 120 + 영어 120), 공부 두 번 (10:00~11:00 일시정지 1번, 14:00~16:10 일시정지 2번)
+ *        순공 60 + 130 = 190분, 190 ÷ 240 = 79.1...%, 일시정지 1 + 2 = 3번
+ *        -> { studyMinutes: 190, achievementRate: 79, firstStartAt: (10:00), averageSessionMinutes: 95, pauseCount: 3 }
  *
  *   예5) 계획 60분인데 90분 공부 (100 을 넘는 경우)
  *        -> { studyMinutes: 90, achievementRate: 100, ... }
@@ -69,13 +73,16 @@ function toDateKey(date: Date): string {
  *        -> achievementRate: 99  (100 은 다 채웠을 때만 나옵니다)
  *
  *   예7) 자정을 넘긴 세션 — 10월 4일 23:30 ~ 10월 5일 00:30 (60분)
- *        date '2026-10-04' -> studyMinutes: 60, firstStartAt: (10월 4일 23:30)
- *        date '2026-10-05' -> studyMinutes: 0,  firstStartAt: null
+ *        (이 세션에서 일시정지를 2번 눌렀다면)
+ *        date '2026-10-04' -> studyMinutes: 60, firstStartAt: (10월 4일 23:30), pauseCount: 2
+ *        date '2026-10-05' -> studyMinutes: 0,  firstStartAt: null,             pauseCount: 0
  *
  *   예8) 다른 날 기록이 섞여 있는 경우
- *        date 가 '2026-10-05' 이면 10월 4일 계획과 세션은 모두 무시합니다.
+ *        date 가 '2026-10-05' 이면 10월 4일 계획과 세션은 모두 무시합니다. (일시정지 횟수도 10월 5일 세션만 셉니다)
  *
- * (일시정지 횟수 pauseCount 합계는 #78 이 머지된 뒤에 이 결과에 추가합니다.)
+ *   예9) 일시정지 횟수가 이상한 기록이 섞인 경우 (규칙 8)
+ *        그날 세션 3개의 pauseCount 가 [2, 없음(옛 기록), -1] 이면
+ *        -> pauseCount: 2   (없는 값과 음수는 0번으로 칩니다)
  */
 export function getDaySummary(
   date: string,
@@ -89,12 +96,18 @@ export function getDaySummary(
   // 세션 길이를 모두 더하고, 가장 이른 시작 시각을 찾습니다.
   let totalMs = 0
   let firstStartAt: number | null = null
+  let pauseCount = 0
   for (const session of daySessions) {
     // 끝이 시작보다 빠른 잘못된 기록은 0 으로 칩니다. (규칙 7)
     totalMs += Math.max(0, session.endedAt - session.startedAt)
 
     if (firstStartAt === null || session.startedAt < firstStartAt) {
       firstStartAt = session.startedAt
+    }
+
+    // 일시정지 횟수를 더합니다. 옛 기록에는 없을 수 있어서 0 이상의 정수일 때만 더합니다. (규칙 8)
+    if (Number.isInteger(session.pauseCount) && session.pauseCount > 0) {
+      pauseCount += session.pauseCount
     }
   }
 
@@ -110,5 +123,5 @@ export function getDaySummary(
     achievementRate = Math.min(100, Math.floor((studyMinutes * 100) / targetMinutes))
   }
 
-  return { studyMinutes, achievementRate, firstStartAt, averageSessionMinutes }
+  return { studyMinutes, achievementRate, firstStartAt, averageSessionMinutes, pauseCount }
 }
