@@ -14,6 +14,8 @@ function toDateKey(date: Date): string {
  * - 오늘 아직 안 했으면 어제부터 셉니다. (오늘은 아직 기회가 남아 있으니까 끊긴 게 아닙니다)
  * - 하루라도 빠진 날을 만나면 거기서 멈춥니다. 그래서 어제도 안 했으면 0 입니다.
  *
+ * - 노는 기록(kind 가 'play')만 있는 날은 공부한 날이 아닙니다. (#238)
+ *
  * today 는 "오늘이 언제인지" 입니다. 평소엔 비워 두면 되고, 확인할 때 날짜를 바꿔 넣을 수 있습니다.
  *
  *   기록 0개                       -> 0
@@ -24,6 +26,7 @@ export function getStudyStreak(sessions: StudySession[], today: Date = new Date(
   // 공부한 날짜만 모아 둡니다. 하루에 여러 번 공부해도 한 번으로 칩니다.
   const studiedDays = new Set<string>()
   for (const session of sessions) {
+    if (session.kind === 'play') continue
     studiedDays.add(toDateKey(new Date(session.startedAt)))
   }
 
@@ -43,8 +46,10 @@ export function getStudyStreak(sessions: StudySession[], today: Date = new Date(
   return streak
 }
 
-/** 오늘 공부 기록이 하나라도 있는지 알려줍니다. */
+/** 오늘 공부 기록이 하나라도 있는지 알려줍니다. (노는 기록은 세지 않습니다) */
 export function hasStudiedToday(sessions: StudySession[], today: Date = new Date()): boolean {
   const todayKey = toDateKey(today)
-  return sessions.some((session) => toDateKey(new Date(session.startedAt)) === todayKey)
+  return sessions.some(
+    (session) => session.kind !== 'play' && toDateKey(new Date(session.startedAt)) === todayKey,
+  )
 }

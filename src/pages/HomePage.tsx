@@ -3,13 +3,14 @@ import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { ExperimentSection } from '@/components/ui/ExperimentSection'
 import { InsightCard } from '@/components/ui/InsightCard'
+import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
 import { DEFAULT_TARGET_MINUTES, normalizeTargetMinutes } from '@/lib/countdown'
-import { groupSessionsByDate, loadStudySessions } from '@/lib/dailyRecords'
+import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
 import { formatDday } from '@/lib/exams'
 import { getFirstMe, type FirstMe } from '@/lib/firstMe'
@@ -102,6 +103,8 @@ export function HomePage() {
   const { allPlans, getPlans } = usePlans()
   // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
   const [sessions] = useState<StudySession[]>(loadStudySessions)
+  // 노는 기록까지 들어 있는 전체 기록입니다. 계획별 실제 시간(`12 / 50분`)은 노는 계획에도 보여야 해서 따로 읽습니다. (#238)
+  const [allSessions] = useState<StudySession[]>(loadAllSessions)
   // 계획 화면에서 저장한 과목 목록입니다. 과목 태그의 이름과 색을 찾는 데 씁니다.
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
   // 온보딩에서 내가 적은 시험 날짜와 공부하는 이유입니다. (lib/firstMe.ts)
@@ -162,7 +165,7 @@ export function HomePage() {
           hasPlansToday={todayPlans.length > 0}
           allPlans={allPlans}
           subjects={subjects}
-          sessions={sessions}
+          sessions={allSessions}
         />
         <FirstMeCard firstMe={firstMe} />
       </section>
@@ -175,7 +178,7 @@ export function HomePage() {
       />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
-        <TodayCard plans={todayPlans} subjects={subjects} sessions={sessions} />
+        <TodayCard plans={todayPlans} subjects={subjects} sessions={allSessions} />
 
         <Card title="어제 한 줄">
           {hasYesterdayRecord ? (
@@ -261,6 +264,7 @@ interface NowCardProps {
   /** 모든 날짜의 계획. 타이머가 재고 있는 계획을 id 로 찾는 데 씁니다 */
   allPlans: StudyPlan[]
   subjects: Subject[]
+  /** 계획별 실제 시간을 구할 기록. 노는 기록까지 들어 있어야 합니다 */
   sessions: StudySession[]
 }
 
@@ -300,6 +304,7 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
               className="shrink-0"
             />
           )}
+          {timerPlan?.kind === 'play' && <PlayBadge className="shrink-0" />}
           <p className="min-w-0 text-lg font-semibold break-words text-slate-900">
             {timerPlan ? timerPlan.content : '계획 없이 공부'}
           </p>
@@ -331,6 +336,8 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
           {subject && (
             <SubjectBadge name={subject.name} color={subject.color} className="shrink-0" />
           )}
+          {/* 노는 계획은 과목 대신 회색 "놀기" 태그를 보여줍니다. (#238) */}
+          {nextPlan.kind === 'play' && <PlayBadge className="shrink-0" />}
           <p className="min-w-0 text-lg font-semibold break-words text-slate-900">
             {nextPlan.content}
           </p>
@@ -475,6 +482,7 @@ function TodayCard({ plans, subjects, sessions }: TodayCardProps) {
                   {subject && (
                     <SubjectBadge name={subject.name} color={subject.color} className="shrink-0" />
                   )}
+                  {plan.kind === 'play' && <PlayBadge className="shrink-0" />}
                   <p
                     className={cn(
                       'min-w-0 flex-1 text-sm break-words text-slate-900',

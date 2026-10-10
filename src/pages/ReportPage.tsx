@@ -114,8 +114,9 @@ function getRangeStats(
     const dateKey = moveDateKey(startKey, i)
     const summary = getDaySummary(dateKey, plans, sessions)
     studyMinutes += summary.studyMinutes
+    // 노는 계획은 공부 목표가 아니라서 뺍니다. (#238)
     targetMinutes += plans
-      .filter((plan) => plan.date === dateKey)
+      .filter((plan) => plan.date === dateKey && plan.kind !== 'play')
       .reduce((sum, plan) => sum + plan.targetMinutes, 0)
 
     if (summary.firstStartAt !== null) {

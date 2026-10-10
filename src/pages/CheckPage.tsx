@@ -138,7 +138,8 @@ export function CheckPage() {
   )
 
   // 어제 계획 달성률 = 어제 실제로 공부한 시간 ÷ 어제 계획한 목표 시간
-  const yesterdayPlans = getPlans(yesterdayKey)
+  // 노는 계획은 공부 목표가 아니라서 뺍니다. (#238)
+  const yesterdayPlans = getPlans(yesterdayKey).filter((plan) => plan.kind !== 'play')
   const targetMinutes = yesterdayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
 
   // 어제 시작한 공부 기록의 순공시간(일시정지한 시간은 뺌)을 더합니다.

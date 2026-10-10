@@ -24,7 +24,7 @@ export interface FrequentPlan {
  * 다른 날의 계획을 targetDate 로 가져올 때 쓸 새 계획 목록을 만듭니다.
  * 원래 날의 계획은 바꾸지 않고, 새 id · 새 날짜 · "아직 안 함" 으로 복사합니다. 시작 시각은 그대로 가져옵니다.
  *
- * - validSubjectIds: 지금 남아 있는 과목의 id 목록. 지워진 과목의 계획은 가져오지 않습니다.
+ * - validSubjectIds: 지금 남아 있는 과목의 id 목록. 지워진 과목의 계획은 가져오지 않습니다. (과목이 없는 노는 계획은 가져옵니다)
  * - now: id 를 만드는 데 쓰는 지금 시각(Date.now()). 한 번에 여러 개를 만들어도 겹치지 않게 순서 번호를 붙입니다.
  *
  * 예) 어제 계획이 [수학 60분(완료), 영어 30분(완료), 한국사 40분(과목이 지워짐)] 이면
@@ -38,18 +38,23 @@ export function copyPlans(
   validSubjectIds: string[],
   now: number,
 ): StudyPlan[] {
-  return sourcePlans
-    .filter((plan) => validSubjectIds.includes(plan.subjectId))
-    .map((plan, index) => ({
-      id: `plan-${now}-${index}`,
-      date: targetDate,
-      subjectId: plan.subjectId,
-      content: plan.content,
-      targetMinutes: plan.targetMinutes,
-      done: false,
-      // 시작 시각을 정해 둔 계획은 그 시각도 같이 가져옵니다. (#237)
-      ...(plan.startTime ? { startTime: plan.startTime } : {}),
-    }))
+  return (
+    sourcePlans
+      // 노는 계획은 과목이 없어서 과목 검사를 하지 않고 그대로 가져옵니다. (#238)
+      .filter((plan) => plan.kind === 'play' || validSubjectIds.includes(plan.subjectId))
+      .map((plan, index) => ({
+        id: `plan-${now}-${index}`,
+        date: targetDate,
+        subjectId: plan.subjectId,
+        content: plan.content,
+        targetMinutes: plan.targetMinutes,
+        done: false,
+        // 시작 시각을 정해 둔 계획은 그 시각도 같이 가져옵니다. (#237)
+        ...(plan.startTime ? { startTime: plan.startTime } : {}),
+        // 노는 계획이면 노는 계획으로 가져옵니다.
+        ...(plan.kind === 'play' ? { kind: plan.kind } : {}),
+      }))
+  )
 }
 
 /**

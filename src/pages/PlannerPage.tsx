@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { GoalAdjustModal } from '@/components/ui/GoalAdjustModal'
 import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
+import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
@@ -17,7 +18,7 @@ import { getTodayCareDecision } from '@/lib/careInputs'
 import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
 import { mockSubjects } from '@/lib/mock'
-import { getPlanProgress } from '@/lib/planProgress'
+import { getPlanProgress, getPlayProgress } from '@/lib/planProgress'
 import { copyPlans, getFrequentPlans, type FrequentPlan } from '@/lib/planShortcuts'
 import {
   WEEKDAY_ORDER,
@@ -28,7 +29,7 @@ import {
 } from '@/lib/routines'
 import { loadData, saveData } from '@/lib/storage'
 import { getNowLine, getTimeline } from '@/lib/timeline'
-import type { Routine, StudyPlan, StudySession, Subject, SubjectColor } from '@/types'
+import type { PlanKind, Routine, StudyPlan, StudySession, Subject, SubjectColor } from '@/types'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -59,7 +60,7 @@ const blockColorStyles: Record<SubjectColor, { block: string; fill: string }> = 
   blue: { block: 'border-blue-300 bg-blue-50 text-blue-900', fill: 'bg-blue-200' },
   purple: { block: 'border-purple-300 bg-purple-50 text-purple-900', fill: 'bg-purple-200' },
 }
-// 과목이 지워진 계획의 블록 색
+// 노는 계획과, 과목이 지워진 계획의 블록 색 (회색)
 const defaultBlockStyle = {
   block: 'border-slate-300 bg-slate-50 text-slate-800',
   fill: 'bg-slate-200',
@@ -87,8 +88,22 @@ function formatGap(totalMinutes: number): string {
   return `${hours}시간 ${minutes}분`
 }
 
+// 계획의 종류. 노는 것도 계획에 넣을 수 있습니다. (#238)
+const kindOptions: { kind: PlanKind; label: string }[] = [
+  { kind: 'study', label: '공부' },
+  { kind: 'play', label: '놀기' },
+]
+
+// 노는 계획에서 버튼으로 고르는 종류. 고른 이름이 그대로 계획의 내용이 됩니다.
+const PLAY_TYPES = ['게임', '영상', '운동', '친구', '쉬기']
+// 버튼에 없는 것을 직접 적을 때 고르는 버튼의 이름
+const CUSTOM_PLAY_TYPE = '직접 입력'
+
 /** 계획 추가 폼이 부모에게 넘기는 값 */
 interface PlanInput {
+  /** 공부 계획인지 노는 계획인지 */
+  kind: PlanKind
+  /** 과목 (Subject 의 id). 노는 계획이면 빈 글자입니다 */
   subjectId: string
   content: string
   targetMinutes: number
@@ -117,6 +132,10 @@ interface PlanAddFormProps {
 function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAddFormProps) {
   // 첫 과목을 미리 골라 둡니다. 과목이 하나도 없으면 빈 값입니다.
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
+  // 공부 계획을 넣는 중인지 노는 계획을 넣는 중인지 (#238)
+  const [kind, setKind] = useState<PlanKind>('study')
+  // 노는 계획에서 고른 종류 (게임 · 영상 … 또는 '직접 입력')
+  const [playType, setPlayType] = useState(PLAY_TYPES[0])
   const [content, setContent] = useState('')
   // 목표 시간은 버튼으로 고릅니다. 고른 값은 다음 계획을 넣을 때도 그대로 남습니다.
   const [minutes, setMinutes] = useState(DEFAULT_PLAN_MINUTES)
@@ -127,6 +146,11 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
   const [isRepeat, setIsRepeat] = useState(false)
   const [repeatWeekdays, setRepeatWeekdays] = useState<number[]>([])
   const [repeatError, setRepeatError] = useState('')
+
+  function handleChangeKind(nextKind: PlanKind) {
+    setKind(nextKind)
+    setContentError('')
+  }
 
   function handleToggleRepeat() {
     // 켤 때 아직 고른 요일이 없으면, 지금 보고 있는 날짜의 요일을 미리 골라 둡니다.
@@ -149,10 +173,14 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
 
     // 띄어쓰기만 입력한 것도 빈 내용으로 봅니다.
     const trimmedContent = content.trim()
+    const isPlay = kind === 'play'
+    // 놀기에서 종류 버튼(게임 · 영상 …)을 골랐으면 그 이름이 내용이 됩니다. 공부와 "직접 입력" 은 적은 글자를 씁니다.
+    const usesTypedContent = !isPlay || playType === CUSTOM_PLAY_TYPE
+    const finalContent = usesTypedContent ? trimmedContent : playType
 
     // 내용이 비었으면 추가하지 않고 안내 문구만 보여 줍니다. (목표 시간은 버튼으로 골라서 항상 쓸 수 있는 값입니다)
-    if (trimmedContent === '') {
-      setContentError('할 일을 입력해 주세요.')
+    if (finalContent === '') {
+      setContentError(isPlay ? '무엇을 하며 놀지 적어 주세요.' : '할 일을 입력해 주세요.')
       return
     }
 
@@ -163,8 +191,10 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
     }
 
     onAdd({
-      subjectId,
-      content: trimmedContent,
+      kind,
+      // 노는 계획은 과목이 없어서 빈 글자를 넘깁니다.
+      subjectId: isPlay ? '' : subjectId,
+      content: finalContent,
       targetMinutes: minutes,
       startTime,
       repeatWeekdays: isRepeat ? repeatWeekdays : [],
@@ -193,6 +223,7 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
                   type="button"
                   onClick={() =>
                     onAdd({
+                      kind: 'study',
                       subjectId: plan.subjectId,
                       content: plan.content,
                       targetMinutes: plan.targetMinutes,
@@ -229,33 +260,81 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
 
       {/* noValidate: 브라우저 기본 경고창 대신 아래 Input 의 안내 문구를 보여 주기 위해 끕니다. */}
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <div role="group" aria-label="과목" className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-slate-700">과목</span>
-          <div className="flex flex-wrap gap-2">
-            {subjects.map((subject) => (
-              <Button
-                key={subject.id}
-                variant={subject.id === subjectId ? 'primary' : 'secondary'}
-                aria-pressed={subject.id === subjectId}
-                onClick={() => setSubjectId(subject.id)}
+        {/* 공부 계획인지 노는 계획인지 고릅니다. 노는 것도 계획에 있어야 계획이 현실적이 됩니다. (#238) */}
+        <div role="group" aria-label="종류" className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-slate-700">종류</span>
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+            {kindOptions.map((option) => (
+              <button
+                key={option.kind}
+                type="button"
+                aria-pressed={kind === option.kind}
+                onClick={() => handleChangeKind(option.kind)}
+                className={cn(
+                  'h-10 cursor-pointer rounded-md text-sm font-medium transition-colors',
+                  kind === option.kind
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900',
+                )}
               >
-                {subject.name}
-              </Button>
+                {option.label}
+              </button>
             ))}
           </div>
         </div>
 
-        <Input
-          name="planContent"
-          label="할 일"
-          placeholder="예: 수학 문제집 4단원"
-          value={content}
-          onChange={(event) => {
-            setContent(event.target.value)
-            setContentError('')
-          }}
-          error={contentError}
-        />
+        {kind === 'study' ? (
+          <div role="group" aria-label="과목" className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-slate-700">과목</span>
+            <div className="flex flex-wrap gap-2">
+              {subjects.map((subject) => (
+                <Button
+                  key={subject.id}
+                  variant={subject.id === subjectId ? 'primary' : 'secondary'}
+                  aria-pressed={subject.id === subjectId}
+                  onClick={() => setSubjectId(subject.id)}
+                >
+                  {subject.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          // 노는 계획은 과목 대신 무엇을 하며 놀지 고릅니다.
+          <div role="group" aria-label="무엇을 하며 놀지" className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-slate-700">무엇을 하며 놀지</span>
+            <div className="flex flex-wrap gap-2">
+              {[...PLAY_TYPES, CUSTOM_PLAY_TYPE].map((type) => (
+                <Button
+                  key={type}
+                  variant={type === playType ? 'primary' : 'secondary'}
+                  aria-pressed={type === playType}
+                  onClick={() => {
+                    setPlayType(type)
+                    setContentError('')
+                  }}
+                >
+                  {type}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 공부는 할 일을 적고, 놀기는 "직접 입력" 을 골랐을 때만 적습니다. */}
+        {(kind === 'study' || playType === CUSTOM_PLAY_TYPE) && (
+          <Input
+            name="planContent"
+            label={kind === 'study' ? '할 일' : '무엇을 할지 직접 적기'}
+            placeholder={kind === 'study' ? '예: 수학 문제집 4단원' : '예: 농구'}
+            value={content}
+            onChange={(event) => {
+              setContent(event.target.value)
+              setContentError('')
+            }}
+            error={contentError}
+          />
+        )}
 
         {/* 시작 시각은 안 정해도 됩니다. 정하면 플래너 보기에서 시간 순서대로 놓입니다. (#237) */}
         <Input
@@ -371,6 +450,8 @@ function RoutineList({ routines, subjects, notice, onDelete }: RoutineListProps)
                         {routine.startTime}
                       </span>
                     )}
+                    {/* 노는 루틴은 과목 대신 회색 "놀기" 태그를 보여줍니다. */}
+                    {routine.kind === 'play' && <PlayBadge className="shrink-0" />}
                     {subject && (
                       <span
                         className={cn(
@@ -556,6 +637,8 @@ function PlanRow({
           />
         </label>
 
+        {/* 노는 계획은 과목 대신 회색 "놀기" 태그를 보여줍니다. (#238) */}
+        {plan.kind === 'play' && <PlayBadge className="shrink-0" />}
         {subject && (
           <span
             className={cn(
@@ -745,6 +828,7 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
                     {/* truncate: 글자가 길면 한 줄에서 … 으로 줄입니다. (짧은 블록에서 넘치지 않게) */}
                     <span className="min-w-0 truncate">
                       {subject && <span className="mr-1.5 font-semibold">{subject.name}</span>}
+                      {plan.kind === 'play' && <span className="mr-1.5 font-semibold">놀기</span>}
                       <span className={cn(plan.done && 'line-through')}>{plan.content}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5 font-medium tabular-nums">
@@ -848,7 +932,9 @@ export function PlannerPage() {
   const { routines, addRoutine, deleteRoutine } = useRoutines()
   // 루틴을 방금 저장했을 때 보여줄 안내
   const [routineNotice, setRoutineNotice] = useState<string | null>(null)
-  const { sessions } = useStudySessions()
+  // sessions: 공부 기록만 / allSessions: 노는 기록까지.
+  // 계획별 실제 시간은 노는 계획에도 보여야 해서 allSessions 로 구합니다. (#238)
+  const { sessions, allSessions } = useStudySessions()
   const [selectedDate, setSelectedDate] = useState(todayKey)
   // 목록으로 볼지 플래너로 볼지. 고른 보기를 저장해 두어서 다음에 열 때도 그대로입니다. (#237)
   const [view, setView] = useState<PlannerView>(loadPlannerView)
@@ -875,6 +961,8 @@ export function PlannerPage() {
   const isToday = selectedDate === todayKey
   // 플래너 보기에서 시작 시각을 안 정한 계획은 "시간 미정" 카드에 따로 모읍니다. (lib/timeline.ts)
   const { unscheduledPlans } = getTimeline(plans)
+  // 그날의 노는 계획과 실제로 논 시간. 순공에는 넣지 않지만 숫자로는 보여줍니다. (#238)
+  const playProgress = getPlayProgress(plans, allSessions)
 
   // ---- 원터치 계획 (#235) ----
   // 지워진 과목의 계획은 가져오기와 자주 쓰는 계획에서 뺍니다.
@@ -901,7 +989,10 @@ export function PlannerPage() {
   // 대응은 기간이 끝난 개선안의 이행·효과 판정, 체크인의 기분·미달 원인, 연속 미달 일수로 정합니다.
   // (기간이 끝난 개선안이 아직 없으면 대응이 정해지지 않아 팝업이 뜨지 않습니다. 자세한 건 lib/careInputs.ts)
   const todayPlans = getPlans(todayKey)
-  const todayGoalMinutes = todayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
+  // 노는 계획은 공부 목표가 아니라서 합계에서 뺍니다. (#238)
+  const todayGoalMinutes = todayPlans
+    .filter((plan) => plan.kind !== 'play')
+    .reduce((sum, plan) => sum + plan.targetMinutes, 0)
   const { suggestions } = useSuggestions()
   const { checks: suggestionChecks } = useSuggestionChecks()
   // 체크인은 화면이 처음 그려질 때 한 번만 읽습니다. (이 화면에서는 체크인을 바꾸지 않습니다)
@@ -939,7 +1030,14 @@ export function PlannerPage() {
 
   // 폼에서 받은 값으로 새 계획을 만들어 저장합니다. 지금 보고 있는 날짜의 계획이 됩니다.
   // repeatWeekdays 가 비어 있지 않으면 "매주 반복" 을 켠 것입니다. 루틴도 같이 저장합니다.
-  function handleAdd({ subjectId, content, targetMinutes, startTime, repeatWeekdays }: PlanInput) {
+  function handleAdd({
+    kind,
+    subjectId,
+    content,
+    targetMinutes,
+    startTime,
+    repeatWeekdays,
+  }: PlanInput) {
     const now = Date.now()
     const newPlan: StudyPlan = {
       // 추가한 시각(밀리초)을 붙여서 다른 계획과 겹치지 않는 id 를 만듭니다.
@@ -949,6 +1047,7 @@ export function PlannerPage() {
       content,
       targetMinutes,
       done: false,
+      kind,
     }
     // 시작 시각은 정했을 때만 넣습니다. (없으면 "시간 미정" 계획입니다)
     if (startTime !== '') newPlan.startTime = startTime
@@ -957,7 +1056,7 @@ export function PlannerPage() {
       const routine: Routine = {
         id: `routine-${now}`,
         weekdays: repeatWeekdays,
-        kind: 'study',
+        kind,
         subjectId,
         content,
         targetMinutes,
@@ -1065,6 +1164,14 @@ export function PlannerPage() {
             오늘
           </Button>
         </div>
+
+        {/* 노는 계획이 있는 날에만: 계획한 노는 시간과 실제로 논 시간 (#238) */}
+        {playProgress.count > 0 && (
+          <p className="mt-2 text-sm break-keep text-slate-500">
+            노는 계획 {playProgress.targetMinutes}분 · 실제 {playProgress.actualMinutes}분. 노는
+            시간은 순공에 넣지 않아요.
+          </p>
+        )}
       </div>
 
       {view === 'timeline' ? (
@@ -1075,7 +1182,7 @@ export function PlannerPage() {
               title={isToday ? '오늘 플래너' : `${month}월 ${day}일 플래너`}
               plans={plans}
               subjects={subjects}
-              sessions={sessions}
+              sessions={allSessions}
               isToday={isToday}
             />
 
@@ -1092,7 +1199,7 @@ export function PlannerPage() {
                         key={plan.id}
                         plan={plan}
                         subject={subjects.find((item) => item.id === plan.subjectId)}
-                        sessions={sessions}
+                        sessions={allSessions}
                         isToday={isToday}
                         onToggleDone={toggleDone}
                         onChangeStartTime={changeStartTime}
@@ -1147,7 +1254,7 @@ export function PlannerPage() {
                       key={plan.id}
                       plan={plan}
                       subject={subjects.find((item) => item.id === plan.subjectId)}
-                      sessions={sessions}
+                      sessions={allSessions}
                       isToday={isToday}
                       onToggleDone={toggleDone}
                       onChangeStartTime={changeStartTime}
