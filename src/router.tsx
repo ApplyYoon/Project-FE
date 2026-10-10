@@ -11,6 +11,7 @@ import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
+import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
@@ -84,6 +85,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <OnboardingPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/onboarding/done',
+    element: (
+      <RequireAuth>
+        <OnboardingDonePage />
       </RequireAuth>
     ),
   },
