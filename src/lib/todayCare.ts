@@ -7,8 +7,12 @@ import type { CareLevel } from '@/lib/careTheme'
  * 통화 화면들(수신·통화 중)이 이 함수만 부르게 해서, 나중에 진짜 값으로 바꿀 곳을 한 군데로 모았습니다.
  *
  * - 독설 허용 수위: 사용자가 설정 화면에서 정한 값을 씁니다. (#59)
- * - ⚠️ 관리 강도: 아직 진짜 값이 없어서 고정값입니다. 아래 입력이 준비되면 바꿉니다.
+ * - ⚠️ 관리 강도: 아직 진짜 계산이 없어서 기본 단계(1)에서 시작합니다. 다만 사용자가 정한 최대 한도는 넘지 않습니다.
+ *   아래 입력이 준비되면 진짜 계산으로 바꿉니다.
  */
+
+// 진짜 계산이 붙기 전까지 쓰는 오늘의 기본 단계 (1 = 당근)
+const DEFAULT_TODAY_CARE_LEVEL: CareLevel = 1
 
 /**
  * 오늘의 관리 강도 (0~3).
@@ -21,7 +25,15 @@ import type { CareLevel } from '@/lib/careTheme'
  * (getCareLevel 은 0~4 를 돌려주는데 색 테마는 0~3 까지만 있어서, 4 는 집중 모드 화면(#69)으로 보내거나 맞춰야 합니다)
  */
 export function getTodayCareLevel(): CareLevel {
-  return 1
+  // 설정에서 정한 최대 한도를 넘지 않게 맞춥니다. 한도가 0(회복)이면 오늘도 0 입니다.
+  // ("정한 한도는 절대 넘지 않아요" 라고 설정 화면에서 약속했기 때문입니다)
+  // 통화·홈 화면이 열릴 때 부르는 함수라서, 저장된 값이 깨져 있어도 에러를 내지 않고 기본 단계를 돌려줍니다.
+  try {
+    const maxLevel = getCareLimits().maxCareLevel
+    return maxLevel < DEFAULT_TODAY_CARE_LEVEL ? 0 : DEFAULT_TODAY_CARE_LEVEL
+  } catch {
+    return DEFAULT_TODAY_CARE_LEVEL
+  }
 }
 
 /**
