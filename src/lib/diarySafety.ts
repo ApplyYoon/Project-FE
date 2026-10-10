@@ -6,12 +6,47 @@
  */
 import { getSafetyBrakeResult, type MoodRecordInput } from '@/lib/safetyBrake'
 import { loadData } from '@/lib/storage'
-import type { CheckIn } from '@/types'
+import type { CheckIn, DiaryEntry, ReflectionEntry } from '@/types'
+
+/**
+ * 날짜별로 저장된 기록({ '2026-09-28': {...} } 모양)을 배열로 꺼냅니다.
+ * 저장된 값이 깨져 있거나 객체가 아니면 빈 배열을 돌려줍니다.
+ */
+function loadEntries<T>(key: string): T[] {
+  const saved = loadData<unknown>(key, {})
+  if (typeof saved !== 'object' || saved === null) return []
+  return Object.values(saved as Record<string, T>)
+}
 
 /** 저장해 둔 체크인에서 날짜·기분만 꺼냅니다. (저장 이름은 useCheckIns 의 'checkins' 와 같습니다) */
 function loadCheckInMoods(): MoodRecordInput[] {
-  const checkIns = Object.values(loadData<Record<string, CheckIn>>('checkins', {}))
+  const checkIns = loadEntries<CheckIn>('checkins')
   return checkIns.map((checkIn) => ({ date: checkIn.date, mood: checkIn.mood }))
+}
+
+/**
+ * 지금까지 저장된 글과 기분을 모두 모아서 돌려줍니다. (알림을 보내기 전 안전 브레이크 확인용)
+ *
+ * - 체크인(#24): 기분 + 오늘의 약속 글
+ * - 일기(#63): 기분 + 일기 원문 (저장 이름 'diary', useDiaryEntries 와 같습니다)
+ * - 성찰 일기(#70): 답변 글 (저장 이름 'reflection-entries', useReflectionEntries 와 같습니다)
+ */
+export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[] } {
+  const checkIns = loadEntries<CheckIn>('checkins')
+  const diaries = loadEntries<DiaryEntry>('diary')
+  const reflections = loadEntries<ReflectionEntry>('reflection-entries')
+
+  return {
+    texts: [
+      ...checkIns.flatMap((checkIn) => [checkIn.promiseIf ?? '', checkIn.promiseThen ?? '']),
+      ...diaries.map((diary) => diary.content ?? ''),
+      ...reflections.flatMap((reflection) => reflection.answers ?? []),
+    ],
+    moods: [
+      ...checkIns.map((checkIn) => ({ date: checkIn.date, mood: checkIn.mood })),
+      ...diaries.map((diary) => ({ date: diary.date, mood: diary.mood })),
+    ],
+  }
 }
 
 /**
