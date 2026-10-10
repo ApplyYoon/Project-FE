@@ -1,5 +1,6 @@
 import { Layout } from '@/components/layout/Layout'
 import { AboutPage } from '@/pages/AboutPage'
+import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CheckPage } from '@/pages/CheckPage'
 import { HomePage } from '@/pages/HomePage'
@@ -27,7 +28,6 @@ export const router = createBrowserRouter([
       { path: 'planner', element: <PlannerPage /> },
       { path: 'timer', element: <TimerPage /> },
       { path: 'check', element: <CheckPage /> },
-      { path: 'call', element: <CallPage /> },
       { path: 'records', element: <RecordsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'login', element: <LoginPage /> },
@@ -37,4 +37,7 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
+  // 전화 화면은 헤더·하단 탭 없이 화면 전체를 쓰므로 Layout 밖에 둡니다.
+  { path: '/call', element: <CallPage /> },
+  { path: '/call/active', element: <CallActivePage /> },
 ])

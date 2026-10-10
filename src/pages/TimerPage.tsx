@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
 import { mockSessions, mockSubjects } from '@/lib/mock'
-import { loadData } from '@/lib/storage'
+import { loadData, saveData } from '@/lib/storage'
 import type { StudySession, Subject, SubjectColor } from '@/types'
 
 // 초 단위 숫자를 '01:23:45' 형태로 바꿔줍니다.
@@ -20,16 +20,23 @@ function formatTime(totalSeconds: number) {
 }
 
 export function TimerPage() {
-  const { seconds, isRunning, start, pause, stop } = useStopwatch()
+  const { seconds, isRunning, isStarted, start, pause, stop } = useStopwatch()
 
   // 계획 화면에서 저장한 과목 목록을 그대로 불러옵니다. (저장된 게 없으면 가짜 데이터)
   const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null)
+  // 고른 과목도 저장해 둡니다. 새로고침했는데 과목만 사라지면 "공부 중인데 무슨 과목인지 모르는" 상태가 되기 때문입니다.
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(() =>
+    loadData<string | null>('timer-subject', null),
+  )
+
+  useEffect(() => {
+    saveData('timer-subject', selectedSubjectId)
+  }, [selectedSubjectId])
 
   const selectedSubject = subjects.find((subject) => subject.id === selectedSubjectId)
 
   // 시작한 뒤 '정지'를 누르기 전까지는 공부 중입니다. 일시정지 중에도 같은 공부가 이어지는 것이라 포함합니다.
-  const isStudying = isRunning || seconds > 0
+  const isStudying = isStarted
 
   // 버튼 아래에 보여줄 안내 문구
   let helpMessage = '준비됐으면 시작을 눌러 주세요.'
