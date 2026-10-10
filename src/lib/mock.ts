@@ -38,13 +38,21 @@ interface SessionInput {
   daysAgo: number // 며칠 전인지 (1 = 어제)
   start: string // 시작 시각 'HH:MM'
   minutes: number // 공부한 시간(분)
+  pauseCount?: number // 일시정지한 횟수 (안 적으면 0)
 }
 
 /** 읽기 쉬운 입력을 받아 StudySession 하나를 만듭니다. */
-function makeSession({ id, subjectId, daysAgo, start, minutes }: SessionInput): StudySession {
+function makeSession({
+  id,
+  subjectId,
+  daysAgo,
+  start,
+  minutes,
+  pauseCount = 0,
+}: SessionInput): StudySession {
   const [hour, minute] = start.split(':').map(Number)
   const startedAt = timeDaysAgo(daysAgo, hour, minute)
-  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE }
+  return { id, subjectId, startedAt, endedAt: startedAt + minutes * MINUTE, pauseCount }
 }
 
 /* ---------- 가짜 데이터 ---------- */
