@@ -2,15 +2,17 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { InsightCard } from '@/components/ui/InsightCard'
-import { cn } from '@/lib/cn'
+import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { usePlans } from '@/hooks/usePlans'
+import { cn } from '@/lib/cn'
 import { getDaySummary } from '@/lib/daySummary'
 import { EXTRA_MINUTES_PER_DAY, getGrowthCurve } from '@/lib/growthCurve'
 import { mockInsights, mockSessions, mockTargetExamDate } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
-import type { StudyPlan, StudySession } from '@/types'
-import { useState } from 'react'
+import { REVIEW_MAX_LENGTH, findWeeklyReview, saveWeeklyReview } from '@/lib/weeklyReview'
+import type { StudyPlan, StudySession, WeeklyReview } from '@/types'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
 const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토']
@@ -395,6 +397,14 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
         <h2 className="text-lg font-bold text-slate-900">다음 주 개선안</h2>
         <p className="mt-2 text-sm text-slate-500">새 개선안 고르기는 #64 가 끝나면 여기 보여요.</p>
       </section>
+
+      {/* 주간 회고 (#82). 위에서 고른 주의 회고를 보여줍니다. ‹ › 로 지난 주를 고르면 지난 회고를 다시 볼 수 있습니다. */}
+      <section>
+        <h2 className="text-lg font-bold text-slate-900">주간 회고</h2>
+        <p className="mt-1 text-sm text-slate-500">3문항이면 끝나. 쓰기 싫은 주는 건너뛰어도 돼.</p>
+        {/* key 가 주마다 달라서, 주를 바꾸면 입력하던 내용이 그 주의 회고로 새로 채워집니다. */}
+        <WeeklyReviewCard key={mondayKey} weekStart={mondayKey} />
+      </section>
     </>
   )
 }
@@ -566,5 +576,164 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
         <p className="mt-2 text-sm text-slate-500">실험 결과 판정은 #93 이 끝나면 여기 보여요.</p>
       </section>
     </>
+  )
+}
+
+type ReviewField = 'best' | 'regret' | 'change'
+type ReviewAnswers = Record<ReviewField, string>
+
+// 회고 질문 3개. 질문을 바꾸고 싶으면 여기만 고치면 됩니다.
+const reviewQuestions: { field: ReviewField; label: string; placeholder: string }[] = [
+  {
+    field: 'best',
+    label: '① 이번 주 가장 잘한 것은?',
+    placeholder: '예) 3일 연속 7시 전에 시작했다',
+  },
+  { field: 'regret', label: '② 가장 아쉬운 것은?', placeholder: '예) 주말에 폰을 너무 오래 봤다' },
+  {
+    field: 'change',
+    label: '③ 다음 주에 바꿀 한 가지는?',
+    placeholder: '예) 공부할 땐 폰을 다른 방에 둔다',
+  },
+]
+
+const emptyAnswers: ReviewAnswers = { best: '', regret: '', change: '' }
+
+interface WeeklyReviewCardProps {
+  /** 회고를 쓸 주의 월요일 날짜 'YYYY-MM-DD' */
+  weekStart: string
+}
+
+/**
+ * 주간 회고 카드. 상태가 세 가지입니다.
+ * - 아직 안 씀 → 입력 칸 + 저장하기 / 건너뛰기
+ * - 저장함 → 쓴 답을 보여주고 "고치기"
+ * - 건너뜀 → 건너뛰었다는 안내 + "지금 쓰기"
+ */
+function WeeklyReviewCard({ weekStart }: WeeklyReviewCardProps) {
+  // 이 주에 저장된 회고. 없으면 undefined
+  const [saved, setSaved] = useState<WeeklyReview | undefined>(() => findWeeklyReview(weekStart))
+  // 아직 저장한 게 없으면 처음부터 입력 칸을 보여줍니다.
+  const [isEditing, setIsEditing] = useState(saved === undefined)
+  const [answers, setAnswers] = useState<ReviewAnswers>(() =>
+    saved && !saved.skipped
+      ? { best: saved.best, regret: saved.regret, change: saved.change }
+      : emptyAnswers,
+  )
+
+  // 세 칸이 모두 비어 있으면 저장할 게 없어서 저장 버튼을 막습니다. (안 쓸 거면 건너뛰기)
+  const hasAnyAnswer = Object.values(answers).some((answer) => answer.trim() !== '')
+
+  /** 회고를 저장하고 화면을 "저장함/건너뜀" 모습으로 바꿉니다. */
+  function save(nextAnswers: ReviewAnswers, skipped: boolean) {
+    const review: WeeklyReview = { weekStart, ...nextAnswers, skipped, savedAt: Date.now() }
+    saveWeeklyReview(review)
+    // 저장 함수가 다듬은 값(앞뒤 공백 제거 등)을 그대로 보여주려고 다시 읽습니다.
+    setSaved(findWeeklyReview(weekStart))
+    setIsEditing(false)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    // form 의 기본 동작(페이지 새로고침)을 막습니다.
+    event.preventDefault()
+    if (!hasAnyAnswer) return
+    save(answers, false)
+  }
+
+  function handleSkip() {
+    save(emptyAnswers, true)
+    setAnswers(emptyAnswers)
+  }
+
+  function handleEdit() {
+    setIsEditing(true)
+  }
+
+  function handleCancel() {
+    // 고치던 내용을 버리고 저장된 답으로 되돌립니다.
+    if (saved && !saved.skipped) {
+      setAnswers({ best: saved.best, regret: saved.regret, change: saved.change })
+    } else {
+      setAnswers(emptyAnswers)
+    }
+    setIsEditing(false)
+  }
+
+  if (!isEditing && saved?.skipped) {
+    return (
+      <Card className="mt-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-600">이 주는 회고를 건너뛰었어요.</p>
+          <Button variant="secondary" onClick={handleEdit} className="self-start sm:self-auto">
+            지금 쓰기
+          </Button>
+        </div>
+      </Card>
+    )
+  }
+
+  if (!isEditing && saved) {
+    return (
+      <Card className="mt-3">
+        <dl className="flex flex-col gap-4">
+          {reviewQuestions.map((question) => (
+            <div key={question.field}>
+              <dt className="text-sm font-semibold text-slate-900">{question.label}</dt>
+              <dd
+                className={cn(
+                  'mt-1 text-sm break-words',
+                  saved[question.field] ? 'text-slate-700' : 'text-slate-400',
+                )}
+              >
+                {saved[question.field] || '안 썼어요'}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <Button variant="secondary" onClick={handleEdit} className="mt-4">
+          고치기
+        </Button>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="mt-3">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        {reviewQuestions.map((question) => (
+          <div key={question.field} className="flex flex-col gap-1">
+            <Input
+              id={`review-${question.field}`}
+              label={question.label}
+              placeholder={question.placeholder}
+              maxLength={REVIEW_MAX_LENGTH}
+              value={answers[question.field]}
+              onChange={(event) =>
+                setAnswers((prev) => ({ ...prev, [question.field]: event.target.value }))
+              }
+            />
+            <p className="text-right text-xs text-slate-400 tabular-nums">
+              {answers[question.field].length} / {REVIEW_MAX_LENGTH}
+            </p>
+          </div>
+        ))}
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          {/* 이미 저장한 회고를 고치는 중이면 "취소", 처음 쓰는 중이면 "건너뛰기" 를 보여줍니다. */}
+          {saved ? (
+            <Button variant="ghost" onClick={handleCancel}>
+              취소
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={handleSkip}>
+              건너뛰기
+            </Button>
+          )}
+          <Button type="submit" disabled={!hasAnyAnswer}>
+            저장하기
+          </Button>
+        </div>
+      </form>
+    </Card>
   )
 }
