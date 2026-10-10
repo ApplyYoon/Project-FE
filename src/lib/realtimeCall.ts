@@ -35,6 +35,40 @@ export class RealtimeCallError extends Error {
 /** 연결된 통화입니다. close() 를 부르면 연결과 마이크를 모두 정리합니다. */
 export interface RealtimeCall {
   close: () => void
+  /** true 면 내 마이크 소리를 AI 에게 보내지 않습니다. (마이크는 켜 둔 채 소리만 끊깁니다) */
+  setMuted: (muted: boolean) => void
+}
+
+// 소리가 나지 않는 아주 짧은 파일입니다. (8000Hz 모노, 100샘플 = 0.0125초, 전부 무음)
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
+
+// AI 목소리를 재생하는 오디오 태그입니다. 통화가 시작되기 전에 미리 만들어 두고 같은 것을 계속 씁니다.
+let callAudio: HTMLAudioElement | null = null
+
+function getCallAudio(): HTMLAudioElement {
+  if (callAudio === null) {
+    callAudio = document.createElement('audio')
+    // autoplay: 소리가 오면 바로 재생
+    callAudio.autoplay = true
+  }
+  return callAudio
+}
+
+/**
+ * 소리를 낼 수 있게 미리 허락받아 둡니다. "받기" 버튼을 누르는 그 순간(await 보다 앞)에 불러야 합니다.
+ *
+ * 아이폰 사파리는 사용자가 버튼을 직접 누른 순간이 아니면 소리 재생을 막습니다.
+ * 그런데 AI 목소리는 받기를 누르고 한참 뒤(서버 연결 뒤)에 시작해서 막힐 수 있습니다.
+ * 그래서 버튼을 누르는 순간에 무음 파일을 한 번 재생해 두면, 이 오디오 태그는 나중에도 소리를 낼 수 있습니다.
+ */
+export function unlockCallAudio(): void {
+  const audio = getCallAudio()
+  audio.src = SILENT_WAV
+  audio.play().catch(() => {
+    // 막혀도 통화는 계속되어야 하므로 에러를 던지지 않고 기록만 남깁니다.
+    console.warn('[realtimeCall] 소리 재생 허락을 미리 받지 못했습니다.')
+  })
 }
 
 /** 서버에서 임시 키를 받습니다. */
@@ -77,9 +111,8 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
   const microphone = await openMicrophone()
 
   const peerConnection = new RTCPeerConnection()
-  // 화면에는 안 보이고 소리만 나는 오디오 태그입니다. autoplay: 소리가 오면 바로 재생
-  const audioElement = document.createElement('audio')
-  audioElement.autoplay = true
+  // 화면에는 안 보이고 소리만 나는 오디오 태그입니다. (unlockCallAudio 가 미리 만들어 둔 것과 같은 태그입니다)
+  const audioElement = getCallAudio()
 
   // 연결을 끝낼 때 한 곳에서 전부 정리합니다. (여러 번 불러도 안전합니다)
   let dataChannel: RTCDataChannel | null = null
@@ -94,6 +127,10 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
     // AI 목소리가 들어오면 오디오 태그에 연결합니다.
     peerConnection.ontrack = (event) => {
       audioElement.srcObject = event.streams[0]
+      // autoplay 만 믿지 않고 한 번 더 재생을 시킵니다. (사파리 대비. 막혀도 통화는 계속됩니다)
+      audioElement.play().catch(() => {
+        console.warn('[realtimeCall] AI 목소리를 재생하지 못했습니다.')
+      })
     }
 
     // 내 마이크 소리를 연결에 붙입니다.
@@ -128,5 +165,12 @@ export async function startRealtimeCall(): Promise<RealtimeCall> {
     throw new RealtimeCallError('connect', 'AI 와 연결하지 못했어요')
   }
 
-  return { close }
+  // 마이크 트랙의 enabled 를 false 로 하면 연결은 그대로 두고 소리만 무음으로 바뀝니다.
+  function setMuted(muted: boolean) {
+    microphone.getAudioTracks().forEach((track) => {
+      track.enabled = !muted
+    })
+  }
+
+  return { close, setMuted }
 }

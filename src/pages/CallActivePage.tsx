@@ -143,6 +143,8 @@ export function CallActivePage() {
   // AI 와의 연결 상태. 연결 중 → 연결됨, 실패하면 error 와 안내 문구
   const [connection, setConnection] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const [errorMessage, setErrorMessage] = useState('')
+  // 연결된 통화를 들고 있습니다. 음소거 버튼이 이 통화의 마이크를 끄고 켜야 해서 useEffect 밖에서도 접근합니다.
+  const callRef = useRef<RealtimeCall | null>(null)
 
   // 화면이 열리면 AI 와 음성 연결을 시작하고, 화면을 떠나면(끊기·뒤로가기) 연결과 마이크를 정리합니다.
   useEffect(() => {
@@ -157,6 +159,7 @@ export function CallActivePage() {
           return
         }
         call = startedCall
+        callRef.current = startedCall
         setConnection('connected')
       })
       .catch((error: unknown) => {
@@ -167,9 +170,16 @@ export function CallActivePage() {
 
     return () => {
       isCancelled = true
+      callRef.current = null
       call?.close()
     }
   }, [])
+
+  // 음소거 상태를 실제 마이크에 반영합니다.
+  // 연결되기 전에 음소거를 눌렀어도, 연결이 끝나는 순간(connection 이 바뀔 때) 다시 적용됩니다.
+  useEffect(() => {
+    callRef.current?.setMuted(isMuted)
+  }, [isMuted, connection])
 
   const [messages, setMessages] = useState<SubtitleMessage[]>([])
 
