@@ -19,7 +19,6 @@ import {
   type MessageSettings,
 } from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
-import { loadData, saveData } from '@/lib/storage'
 import type { CareLevel } from '@/lib/careLevel'
 import {
   getNotificationPermission,
@@ -280,8 +279,7 @@ export function SettingsPage() {
                   {callTime === ''
                     ? '시간을 고르면 매일 그 시간에 AI 선생님이 전화를 걸어요.'
                     : `매일 ${callTime} 에 전화가 와요.`}{' '}
-                  앱이 열려 있을 때만 울려요. 알림은 아래 &quot;AI 메시지 알림&quot;에서 켤 수
-                  있어요.
+                  앱이 열려 있을 때만 울려요. 알림은 아래 &quot;알림&quot;에서 켤 수 있어요.
                 </p>
                 {showIosGuide && (
                   <p className="rounded-lg bg-slate-50 p-3 text-sm break-keep text-slate-600">
@@ -325,17 +323,17 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="AI 메시지 알림">
+          <Card title="알림">
             <div className="flex flex-col gap-4">
               {isNotificationSupported() ? (
                 <>
                   <p className="text-sm text-slate-500">
                     {notificationPermission === 'granted' &&
-                      '알림이 켜져 있어요. 안 읽은 메시지가 오면 브라우저 알림으로도 알려줄게요.'}
+                      '알림이 켜져 있어요. 새 메시지나 전화가 오면 브라우저 알림으로도 알려줄게요.'}
                     {notificationPermission === 'denied' &&
                       '알림이 거부되어 있어요. 메시지는 메시지함에 그대로 쌓이고, 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
                     {notificationPermission === 'default' &&
-                      '알림을 켜면 앱을 안 보고 있어도 새 메시지를 브라우저 알림으로 알려줘요.'}
+                      '알림을 켜면 앱을 안 보고 있어도 새 메시지나 전화를 브라우저 알림으로 알려줘요.'}
                   </p>
                   {notificationPermission === 'default' && (
                     <Button className="h-11 w-full sm:w-auto" onClick={handleRequestNotification}>
