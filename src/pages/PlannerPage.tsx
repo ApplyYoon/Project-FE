@@ -527,6 +527,11 @@ function SubjectManager({ subjects, onAdd, onDelete }: SubjectManagerProps) {
       setNameError('과목 이름을 입력해 주세요.')
       return
     }
+    // 같은 이름의 과목이 두 개면 계획·기록에서 구분할 수 없어서 막습니다.
+    if (subjects.some((subject) => subject.name === trimmedName)) {
+      setNameError('이미 있는 과목이에요.')
+      return
+    }
 
     onAdd(trimmedName, color)
     setName('')
@@ -1122,6 +1127,17 @@ export function PlannerPage() {
 
   // 그 과목으로 등록된 계획이 있으면(날짜 상관없이) 몇 개인지 알려주고 한 번 더 확인합니다.
   function handleDeleteSubject(target: Subject) {
+    // 지금 타이머로 재고 있는 과목은 지우지 못하게 합니다.
+    // 지우면 타이머 화면에서 과목이 사라지고, 정지를 눌러도 기록이 저장되지 않기 때문입니다.
+    const timer = loadData<{ startedAt?: unknown } | null>('timer', null)
+    const isTimerStarted = typeof timer?.startedAt === 'number'
+    if (isTimerStarted && loadData<unknown>('timer-subject', null) === target.id) {
+      window.alert(
+        `"${target.name}" 과목으로 타이머를 재는 중이에요. 타이머를 정지한 뒤에 지워 주세요.`,
+      )
+      return
+    }
+
     const relatedCount = allPlans.filter((plan) => plan.subjectId === target.id).length
     const message =
       relatedCount > 0
