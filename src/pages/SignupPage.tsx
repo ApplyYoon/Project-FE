@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { getPasswordAuthErrorMessage, signupWithPassword } from '@/lib/authApi'
+import type { LoginRedirectState } from '@/lib/authRedirect'
 import { cn } from '@/lib/cn'
 import { getSchoolQueryError, schoolSearchQuery, type School } from '@/lib/schoolSearch'
 import {
@@ -18,12 +19,15 @@ import {
   SIGNUP_STORAGE_KEY,
   canSubmitSignup,
   getEmailError,
+  getMaxSignupStep,
   getNameError,
   getNicknameError,
   getPasswordConfirmError,
   getPasswordError,
+  hasRequiredConsents,
   isAllConsented,
   makeAllConsents,
+  parseSignupStep,
   type SignupConsents,
   type SignupInfo,
 } from '@/lib/signup'
@@ -32,7 +36,7 @@ import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument 
 import { testUser } from '@/lib/testLogin'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 /*
  * ⚠️ 이 화면의 동의 문구("쓰는 곳" 안내)와 "보기" 로 여는 약관 전문(lib/terms.ts)은 초안입니다.
@@ -86,49 +90,57 @@ const collectedItems = [
   '설정 › 내 데이터에서 언제든 지울 수 있어요',
 ]
 
-// 위쪽 단계 안내. SNS·테스트 로그인을 하고 온 사람은 3단계 중 두 번째(가입 정보)입니다.
+// 가입의 세 단계입니다. 주소의 ?step=1 · 2 · 3 과 순서가 같습니다.
 const signupSteps = [
-  { label: '로그인 완료', state: 'done' },
-  { label: '가입 정보', state: 'current' },
-  { label: '온보딩', state: 'next' },
-] as const
-
-// 이메일로 가입하는 사람은 로그인을 먼저 하지 않아서 2단계입니다.
-const emailSignupSteps = [
-  { label: '가입 정보', state: 'current' },
-  { label: '온보딩', state: 'next' },
-] as const
+  { label: '계정 정보', title: '반가워요! 계정 정보를 알려주세요', description: '' },
+  {
+    label: '학교·나이',
+    title: '학교와 나이를 알려주세요',
+    description: '학교는 고르지 않아도 돼요. 만 14세 이상인지는 꼭 알려 주세요.',
+  },
+  {
+    label: '약관 동의',
+    title: '마지막이에요. 약관에 동의해 주세요',
+    description: '[필수] 두 가지에 동의하면 가입할 수 있어요. "보기" 를 누르면 전문이 보여요.',
+  },
+]
 
 interface SignupStepsProps {
-  /** 이메일로 가입하는 중이면 true (로그인 없이 가입 화면에 온 사람) */
-  isEmailSignup: boolean
+  /** 지금 단계 (1 ~ 3) */
+  current: number
 }
 
-/** "1 로그인 완료 / 2 가입 정보 / 3 온보딩" 처럼 지금 어느 단계인지 보여주는 막대입니다. */
-function SignupSteps({ isEmailSignup }: SignupStepsProps) {
-  const steps = isEmailSignup ? emailSignupSteps : signupSteps
-
+/** "1 계정 정보 / 2 학교·나이 / 3 약관 동의" 처럼 지금 어느 단계인지 보여주는 막대입니다. */
+function SignupSteps({ current }: SignupStepsProps) {
   return (
-    <ol
-      className={cn('grid gap-2 text-xs sm:text-sm', isEmailSignup ? 'grid-cols-2' : 'grid-cols-3')}
-    >
-      {steps.map((step, index) => (
-        <li key={step.label} className="flex flex-col gap-2">
-          <span
-            className={cn('h-1 rounded-full', step.state === 'next' ? 'bg-slate-200' : 'bg-brand')}
-          />
-          <span
-            className={cn(
-              'break-keep',
-              step.state === 'current' && 'font-bold text-slate-900',
-              step.state === 'done' && 'text-brand font-semibold',
-              step.state === 'next' && 'text-slate-500',
-            )}
+    <ol className="grid grid-cols-3 gap-2 text-xs sm:text-sm">
+      {signupSteps.map((step, index) => {
+        const number = index + 1
+        // done: 지나온 단계 / current: 지금 단계 / next: 아직 안 온 단계
+        const state = number < current ? 'done' : number === current ? 'current' : 'next'
+        return (
+          <li
+            key={step.label}
+            // aria-current: 스크린리더에 "지금 단계" 라고 알려 줍니다.
+            aria-current={state === 'current' ? 'step' : undefined}
+            className="flex flex-col gap-2"
           >
-            {index + 1} {step.label}
-          </span>
-        </li>
-      ))}
+            <span
+              className={cn('h-1 rounded-full', state === 'next' ? 'bg-slate-200' : 'bg-brand')}
+            />
+            <span
+              className={cn(
+                'break-keep',
+                state === 'current' && 'font-bold text-slate-900',
+                state === 'done' && 'text-brand font-semibold',
+                state === 'next' && 'text-slate-500',
+              )}
+            >
+              {number} {step.label}
+            </span>
+          </li>
+        )
+      })}
     </ol>
   )
 }
@@ -402,7 +414,11 @@ function UnderFourteenView() {
 /**
  * 가입 정보를 받는 화면입니다. 두 가지 경우에 옵니다.
  *   - SNS·테스트 로그인을 처음 한 사람: 이미 로그인된 상태라 비밀번호 없이 가입 정보만 받습니다.
- *   - 로그인 없이 온 사람(헤더의 "회원가입"): 이메일·비밀번호로 가입합니다. 서버에 계정을 만들고 바로 로그인됩니다.
+ *   - 로그인 없이 온 사람(헤더의 "회원가입"): 이메일·비밀번호로 가입합니다. 서버에 계정을 만든 뒤 로그인 화면에서 로그인합니다.
+ *
+ * 세 단계로 나눠서 받고, 지금 단계는 주소에 보입니다. (/signup?step=1 계정 정보 → 2 학교·나이 → 3 약관 동의)
+ * 주소에 두었기 때문에 뒤로 가기를 누르면 앞 단계로 돌아갑니다. 앞 단계를 안 채우고 뒤 단계의 주소를 열면 앞 단계로 돌려보냅니다.
+ * 입력한 값은 이 화면이 들고 있어서, 새로고침하면 사라지고 1단계부터 다시 시작합니다. (비밀번호를 저장해 두지 않기 위해서입니다)
  *  1) 이름·닉네임·이메일·고등학교(선택)  2) 만 14세 이상인지 확인  3) 개인정보 수집·이용 동의
  * 다 마치면 정보를 저장하고 온보딩(/onboarding)으로 갑니다.
  *
@@ -411,9 +427,11 @@ function UnderFourteenView() {
  */
 export function SignupPage() {
   const navigate = useNavigate()
-  const { user, isLoggedIn, login } = useAuth()
+  // useSearchParams: 주소의 ?step=2 같은 값을 읽고 바꿉니다.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { user, isLoggedIn } = useAuth()
   // 이메일로 가입하는 중인지 = 로그인 없이 이 화면에 온 사람인지. (SNS·테스트 로그인을 하고 온 사람은 false)
-  // 화면이 처음 그려질 때 한 번만 정합니다. 가입에 성공해 로그인되는 순간 화면이 바뀌면 안 되기 때문입니다.
+  // 화면이 처음 그려질 때 한 번만 정합니다. 가입하는 도중에 로그인 상태가 바뀌어도 화면이 달라지지 않게 하려는 것입니다.
   const [isEmailSignup] = useState(!isLoggedIn)
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
@@ -434,6 +452,8 @@ export function SignupPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   // 만 14세 이상인지. 아직 안 골랐으면 null, 네 = true, 아니요 = false
   const [isOver14, setIsOver14] = useState<boolean | null>(null)
+  // 2단계에서 만 14세를 안 고르고 "다음" 을 눌렀는지. 눌렀을 때만 빨간 안내를 보여줍니다.
+  const [isAgeMissing, setIsAgeMissing] = useState(false)
   const [consents, setConsents] = useState<SignupConsents>(makeAllConsents(false))
   // "보기" 로 열어 둔 동의 항목. 아무것도 안 열었으면 null
   const [openedKey, setOpenedKey] = useState<ConsentKey | null>(null)
@@ -459,6 +479,51 @@ export function SignupPage() {
     canSubmitSignup({ name, nickname, email, isOver14, consents }) && isPasswordReady
   const openedItem = consentItems.find((item) => item.key === openedKey)
 
+  // 단계마다 다 채웠는지
+  const isAccountReady =
+    getNameError(name) === null &&
+    getNicknameError(nickname) === null &&
+    getEmailError(email) === null &&
+    isPasswordReady
+  const isAgeReady = isOver14 === true
+
+  // 주소가 가리키는 단계와, 지금 입력으로 갈 수 있는 가장 먼 단계 (lib/signup.ts)
+  const requestedStep = parseSignupStep(searchParams.get('step'))
+  const maxStep = getMaxSignupStep(isAccountReady, isAgeReady)
+  // 앞 단계를 안 채우고 뒤 단계의 주소를 열었으면(주소를 직접 고쳤거나 새로고침한 경우) 채울 단계로 돌려보냅니다.
+  // replace: 못 가는 주소를 기록에 남기지 않습니다.
+  if (requestedStep > maxStep) return <Navigate to={`/signup?step=${maxStep}`} replace />
+  const step = requestedStep
+
+  /** 주소의 단계를 바꿉니다. 기록에 남아서 뒤로 가기로 돌아올 수 있습니다. */
+  function goToStep(nextStep: number) {
+    setSearchParams({ step: String(nextStep) })
+    // 새 단계는 맨 위부터 보이게 합니다.
+    window.scrollTo(0, 0)
+  }
+
+  /** "다음" 을 눌렀을 때. 지금 단계를 다 채웠으면 다음 단계로, 아니면 빠진 것을 알려 줍니다. */
+  function handleNext() {
+    if (step === 1) {
+      if (!isAccountReady) {
+        // 빈 칸·틀린 칸에 빨간 안내가 뜨도록 전부 "건드린 것" 으로 표시합니다.
+        setIsNameTouched(true)
+        setIsNicknameTouched(true)
+        setIsEmailTouched(true)
+        setIsPasswordTouched(true)
+        setIsPasswordConfirmTouched(true)
+        return
+      }
+      goToStep(2)
+      return
+    }
+    if (!isAgeReady) {
+      setIsAgeMissing(true)
+      return
+    }
+    goToStep(3)
+  }
+
   function handleChangeConsent(key: ConsentKey, isChecked: boolean) {
     setConsents((prev) => ({ ...prev, [key]: isChecked }))
   }
@@ -466,6 +531,11 @@ export function SignupPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // form 이 기본으로 하는 "페이지 새로고침" 을 막습니다.
     event.preventDefault()
+    // 1 · 2단계에서는 제출(Enter 포함)이 "다음" 입니다. 마지막 단계에서만 가입합니다.
+    if (step < 3) {
+      handleNext()
+      return
+    }
     if (!canSubmit || isSubmitting) return
 
     // 이 기기에 저장해 두는 가입 정보입니다. 비밀번호는 넣지 않습니다.
@@ -478,12 +548,12 @@ export function SignupPage() {
       agreedAt: Date.now(),
     }
 
-    // 이메일 가입: 서버에 계정을 만들고, 성공하면 바로 로그인된 상태가 됩니다. (lib/authApi.ts)
+    // 이메일 가입: 서버에 계정을 만듭니다. 로그인은 하지 않습니다. (lib/authApi.ts)
     if (isEmailSignup) {
       setIsSubmitting(true)
       setSubmitError(null)
       try {
-        const result = await signupWithPassword({
+        await signupWithPassword({
           email: info.email,
           password,
           name: info.name,
@@ -491,15 +561,22 @@ export function SignupPage() {
           school,
           consents,
         })
-        login(result.user, result.token)
       } catch (error) {
         setSubmitError(getPasswordAuthErrorMessage(error, 'signup'))
         setIsSubmitting(false)
         // 실패하면 가입 정보도 저장하지 않고 이 화면에 머뭅니다.
         return
       }
+
+      saveData(SIGNUP_STORAGE_KEY, info)
+      // 가입을 마쳤으니 로그인 화면으로 보냅니다. 방금 가입한 이메일을 넘겨서 로그인 칸에 채워 두게 하고,
+      // 로그인하면 온보딩으로 가게 합니다. replace: 뒤로 가기로 가입 화면(비밀번호가 적혀 있던 곳)에 돌아오지 않게 합니다.
+      const loginState: LoginRedirectState = { from: '/onboarding', signedUpEmail: info.email }
+      navigate('/login', { replace: true, state: loginState })
+      return
     }
 
+    // SNS·테스트 로그인으로 이미 로그인한 사람은 바로 온보딩으로 갑니다.
     saveData(SIGNUP_STORAGE_KEY, info)
     navigate('/onboarding')
   }
@@ -507,14 +584,16 @@ export function SignupPage() {
   return (
     <PlainLayout>
       <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
-        <SignupSteps isEmailSignup={isEmailSignup} />
+        <SignupSteps current={step} />
 
         <div>
           <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
-            반가워요! 가입 정보를 알려주세요
+            {signupSteps[step - 1].title}
           </h1>
           {/* 어떤 SNS 로 로그인했는지는 아직 저장하지 않아서(#47 이후) 이름 없이 적습니다. */}
-          {isEmailSignup ? (
+          {step !== 1 ? (
+            <p className="mt-2 break-keep text-slate-600">{signupSteps[step - 1].description}</p>
+          ) : isEmailSignup ? (
             <p className="mt-2 break-keep text-slate-600">
               이메일과 비밀번호로 가입해요. 이미 계정이 있다면{' '}
               {/* h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다. */}
@@ -534,182 +613,213 @@ export function SignupPage() {
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Input
-            id="name"
-            label="이름"
-            value={name}
-            maxLength={NAME_MAX_LENGTH}
-            placeholder="예) 티맥스"
-            // autoComplete: 브라우저가 저장해 둔 내 이름을 추천해 줍니다.
-            autoComplete="name"
-            error={nameError ?? undefined}
-            onChange={(event) => setName(event.target.value)}
-            // 다 적고 칸을 떠났을 때부터 검사합니다. (적는 중에 빨간 글씨가 뜨지 않게)
-            onBlur={() => setIsNameTouched(true)}
-            className="h-12 text-base"
-          />
-          <p className="text-sm text-slate-500">
-            실제 이름을 적어 주세요. ({NAME_MIN_LENGTH}~{NAME_MAX_LENGTH}자)
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Input
-            id="nickname"
-            label="닉네임"
-            value={nickname}
-            maxLength={NICKNAME_MAX_LENGTH}
-            placeholder="예) 김티맥"
-            autoComplete="nickname"
-            error={nicknameError ?? undefined}
-            onChange={(event) => {
-              setNickname(event.target.value)
-              setIsNicknameTouched(true)
-            }}
-            onBlur={() => setIsNicknameTouched(true)}
-            className="h-12 text-base"
-          />
-          <p className="text-sm text-slate-500">
-            앱에서 부르는 이름이에요. ({NICKNAME_MIN_LENGTH}~{NICKNAME_MAX_LENGTH}자)
-          </p>
-        </div>
-
-        <Input
-          id="email"
-          // type="email": 휴대폰에서 @ 가 있는 키보드가 뜹니다.
-          type="email"
-          label="이메일"
-          value={email}
-          maxLength={EMAIL_MAX_LENGTH}
-          placeholder="예) study@example.com"
-          autoComplete="email"
-          error={emailError ?? undefined}
-          onChange={(event) => setEmail(event.target.value)}
-          onBlur={() => setIsEmailTouched(true)}
-          className="h-12 text-base"
-        />
-
-        {/* 이메일로 가입할 때만 비밀번호를 받습니다. (SNS·테스트 로그인은 비밀번호가 없습니다) */}
-        {isEmailSignup && (
+        {/* ---------- 1단계: 계정 정보 ---------- */}
+        {step === 1 && (
           <>
             <div className="flex flex-col gap-2">
               <Input
-                id="password"
-                // type="password": 적은 글자가 점(●)으로 가려집니다.
-                type="password"
-                label="비밀번호"
-                value={password}
-                // new-password: 브라우저가 "새 비밀번호" 로 알고 저장을 물어봅니다.
-                autoComplete="new-password"
-                error={passwordError ?? undefined}
-                onChange={(event) => setPassword(event.target.value)}
-                onBlur={() => setIsPasswordTouched(true)}
+                id="name"
+                label="이름"
+                value={name}
+                maxLength={NAME_MAX_LENGTH}
+                placeholder="예) 티맥스"
+                // autoComplete: 브라우저가 저장해 둔 내 이름을 추천해 줍니다.
+                autoComplete="name"
+                error={nameError ?? undefined}
+                onChange={(event) => setName(event.target.value)}
+                // 다 적고 칸을 떠났을 때부터 검사합니다. (적는 중에 빨간 글씨가 뜨지 않게)
+                onBlur={() => setIsNameTouched(true)}
                 className="h-12 text-base"
               />
               <p className="text-sm text-slate-500">
-                {PASSWORD_MIN_LENGTH}자 이상, 영문과 숫자를 모두 넣어 주세요.
+                실제 이름을 적어 주세요. ({NAME_MIN_LENGTH}~{NAME_MAX_LENGTH}자)
               </p>
             </div>
+
+            <div className="flex flex-col gap-2">
+              <Input
+                id="nickname"
+                label="닉네임"
+                value={nickname}
+                maxLength={NICKNAME_MAX_LENGTH}
+                placeholder="예) 김티맥"
+                autoComplete="nickname"
+                error={nicknameError ?? undefined}
+                onChange={(event) => {
+                  setNickname(event.target.value)
+                  setIsNicknameTouched(true)
+                }}
+                onBlur={() => setIsNicknameTouched(true)}
+                className="h-12 text-base"
+              />
+              <p className="text-sm text-slate-500">
+                앱에서 부르는 이름이에요. ({NICKNAME_MIN_LENGTH}~{NICKNAME_MAX_LENGTH}자)
+              </p>
+            </div>
+
             <Input
-              id="password-confirm"
-              type="password"
-              label="비밀번호 확인"
-              value={passwordConfirm}
-              autoComplete="new-password"
-              error={passwordConfirmError ?? undefined}
-              onChange={(event) => setPasswordConfirm(event.target.value)}
-              onBlur={() => setIsPasswordConfirmTouched(true)}
+              id="email"
+              // type="email": 휴대폰에서 @ 가 있는 키보드가 뜹니다.
+              type="email"
+              label="이메일"
+              value={email}
+              maxLength={EMAIL_MAX_LENGTH}
+              placeholder="예) study@example.com"
+              autoComplete="email"
+              error={emailError ?? undefined}
+              onChange={(event) => setEmail(event.target.value)}
+              onBlur={() => setIsEmailTouched(true)}
               className="h-12 text-base"
             />
+
+            {/* 이메일로 가입할 때만 비밀번호를 받습니다. (SNS·테스트 로그인은 비밀번호가 없습니다) */}
+            {isEmailSignup && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    id="password"
+                    // type="password": 적은 글자가 점(●)으로 가려집니다.
+                    type="password"
+                    label="비밀번호"
+                    value={password}
+                    // new-password: 브라우저가 "새 비밀번호" 로 알고 저장을 물어봅니다.
+                    autoComplete="new-password"
+                    error={passwordError ?? undefined}
+                    onChange={(event) => setPassword(event.target.value)}
+                    onBlur={() => setIsPasswordTouched(true)}
+                    className="h-12 text-base"
+                  />
+                  <p className="text-sm text-slate-500">
+                    {PASSWORD_MIN_LENGTH}자 이상, 영문과 숫자를 모두 넣어 주세요.
+                  </p>
+                </div>
+                <Input
+                  id="password-confirm"
+                  type="password"
+                  label="비밀번호 확인"
+                  value={passwordConfirm}
+                  autoComplete="new-password"
+                  error={passwordConfirmError ?? undefined}
+                  onChange={(event) => setPasswordConfirm(event.target.value)}
+                  onBlur={() => setIsPasswordConfirmTouched(true)}
+                  className="h-12 text-base"
+                />
+              </>
+            )}
           </>
         )}
 
-        <SchoolField school={school} onChange={setSchool} />
+        {/* ---------- 2단계: 학교·나이 ---------- */}
+        {step === 2 && (
+          <>
+            <SchoolField school={school} onChange={setSchool} />
 
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-semibold text-slate-900">만 14세 이상인가요?</legend>
-          <div className="grid grid-cols-2 gap-3">
-            <ChoiceCard
-              label="네, 만 14세 이상이에요"
-              isSelected={isOver14 === true}
-              onSelect={() => setIsOver14(true)}
-            />
-            {/* "아니요" 를 누르면 바로 안내 화면으로 바뀌어서, 이 입력 화면에서는 선택된 모양이 될 일이 없습니다. */}
-            <ChoiceCard label="아니요" isSelected={false} onSelect={() => setIsOver14(false)} />
-          </div>
-          <p className="text-sm break-keep text-slate-500">
-            만 14세 미만은 보호자 동의 기능이 생긴 뒤에 가입할 수 있어요.
-          </p>
-        </fieldset>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-sm font-semibold text-slate-900">
+                만 14세 이상인가요?
+              </legend>
+              <div className="grid grid-cols-2 gap-3">
+                <ChoiceCard
+                  label="네, 만 14세 이상이에요"
+                  isSelected={isOver14 === true}
+                  onSelect={() => {
+                    setIsOver14(true)
+                    setIsAgeMissing(false)
+                  }}
+                />
+                {/* "아니요" 를 누르면 바로 안내 화면으로 바뀌어서, 이 입력 화면에서는 선택된 모양이 될 일이 없습니다. */}
+                <ChoiceCard label="아니요" isSelected={false} onSelect={() => setIsOver14(false)} />
+              </div>
+              <p className="text-sm break-keep text-slate-500">
+                만 14세 미만은 보호자 동의 기능이 생긴 뒤에 가입할 수 있어요.
+              </p>
+              {/* 안 고르고 "다음" 을 눌렀을 때만 보입니다. */}
+              {isAgeMissing && (
+                <p role="alert" className="text-sm break-keep text-red-600">
+                  만 14세 이상인지 골라 주세요.
+                </p>
+              )}
+            </fieldset>
+          </>
+        )}
 
-        <fieldset className="overflow-hidden rounded-xl border border-slate-200">
-          <legend className="sr-only">약관 동의</legend>
+        {/* ---------- 3단계: 약관 동의 ---------- */}
+        {step === 3 && (
+          <>
+            <fieldset className="overflow-hidden rounded-xl border border-slate-200">
+              <legend className="sr-only">약관 동의</legend>
 
-          <label className="flex min-h-14 cursor-pointer items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 font-semibold">
-            <input
-              type="checkbox"
-              checked={isAllConsented(consents)}
-              onChange={(event) => setConsents(makeAllConsents(event.target.checked))}
-              className="accent-brand h-5 w-5 shrink-0"
-            />
-            전체 동의
-          </label>
+              <label className="flex min-h-14 cursor-pointer items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 font-semibold">
+                <input
+                  type="checkbox"
+                  checked={isAllConsented(consents)}
+                  onChange={(event) => setConsents(makeAllConsents(event.target.checked))}
+                  className="accent-brand h-5 w-5 shrink-0"
+                />
+                전체 동의
+              </label>
 
-          <ul className="divide-y divide-slate-100">
-            {consentItems.map((item) => (
-              <li key={item.key} className="flex items-start justify-between gap-3 px-4 py-3">
-                <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={consents[item.key]}
-                    onChange={(event) => handleChangeConsent(item.key, event.target.checked)}
-                    className="accent-brand mt-0.5 h-5 w-5 shrink-0"
-                  />
-                  <span className="min-w-0 break-keep">
-                    <span
-                      className={cn(
-                        'font-semibold',
-                        item.isRequired ? 'text-brand' : 'text-slate-500',
-                      )}
+              <ul className="divide-y divide-slate-100">
+                {consentItems.map((item) => (
+                  <li key={item.key} className="flex items-start justify-between gap-3 px-4 py-3">
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={consents[item.key]}
+                        onChange={(event) => handleChangeConsent(item.key, event.target.checked)}
+                        className="accent-brand mt-0.5 h-5 w-5 shrink-0"
+                      />
+                      <span className="min-w-0 break-keep">
+                        <span
+                          className={cn(
+                            'font-semibold',
+                            item.isRequired ? 'text-brand' : 'text-slate-500',
+                          )}
+                        >
+                          {item.isRequired ? '[필수]' : '[선택]'}
+                        </span>{' '}
+                        {item.label}
+                        {item.description && (
+                          <span className="mt-1 block text-sm text-slate-500">
+                            {item.description}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                    {/* h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다. */}
+                    <button
+                      type="button"
+                      onClick={() => setOpenedKey(item.key)}
+                      aria-label={`${item.label} 보기`}
+                      className="text-brand h-10 shrink-0 cursor-pointer px-1 text-sm underline"
                     >
-                      {item.isRequired ? '[필수]' : '[선택]'}
-                    </span>{' '}
-                    {item.label}
-                    {item.description && (
-                      <span className="mt-1 block text-sm text-slate-500">{item.description}</span>
-                    )}
-                  </span>
-                </label>
-                {/* h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다. */}
-                <button
-                  type="button"
-                  onClick={() => setOpenedKey(item.key)}
-                  aria-label={`${item.label} 보기`}
-                  className="text-brand h-10 shrink-0 cursor-pointer px-1 text-sm underline"
-                >
-                  보기
-                </button>
-              </li>
-            ))}
-          </ul>
-        </fieldset>
+                      보기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
 
-        {/* details/summary: 따로 코드를 쓰지 않아도 눌러서 접고 펼 수 있는 HTML 기본 부품입니다. 처음에는 접혀 있습니다. */}
-        <details className="group rounded-xl bg-slate-50 p-4">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between font-semibold [&::-webkit-details-marker]:hidden">
-            무엇을 모으나요?
-            {/* group-open: 펼쳐졌을 때만 화살표를 뒤집습니다. */}
-            <span aria-hidden className="text-slate-500 transition-transform group-open:rotate-180">
-              ▾
-            </span>
-          </summary>
-          <ul className="mt-3 flex list-disc flex-col gap-2 pl-5 text-sm break-keep text-slate-700 sm:text-base">
-            {collectedItems.map((text) => (
-              <li key={text}>{text}</li>
-            ))}
-          </ul>
-        </details>
+            {/* details/summary: 따로 코드를 쓰지 않아도 눌러서 접고 펼 수 있는 HTML 기본 부품입니다. 처음에는 접혀 있습니다. */}
+            <details className="group rounded-xl bg-slate-50 p-4">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between font-semibold [&::-webkit-details-marker]:hidden">
+                무엇을 모으나요?
+                {/* group-open: 펼쳐졌을 때만 화살표를 뒤집습니다. */}
+                <span
+                  aria-hidden
+                  className="text-slate-500 transition-transform group-open:rotate-180"
+                >
+                  ▾
+                </span>
+              </summary>
+              <ul className="mt-3 flex list-disc flex-col gap-2 pl-5 text-sm break-keep text-slate-700 sm:text-base">
+                {collectedItems.map((text) => (
+                  <li key={text}>{text}</li>
+                ))}
+              </ul>
+            </details>
+          </>
+        )}
 
         <div className="flex flex-col gap-2">
           {/* 서버가 가입을 거절했거나 연결하지 못했을 때의 안내 (이메일 가입만) */}
@@ -718,19 +828,38 @@ export function SignupPage() {
               {submitError}
             </p>
           )}
-          {/* 이름·닉네임·이메일·나이·필수 동의 중 하나라도 빠졌으면 눌리지 않습니다. */}
-          <Button type="submit" size="lg" className="w-full" disabled={!canSubmit || isSubmitting}>
-            {isSubmitting
-              ? '가입하는 중…'
-              : isEmailSignup
-                ? '가입하고 온보딩 시작'
-                : '다음 · 온보딩 시작'}
-          </Button>
-          {!canSubmit && (
+          <div className="flex gap-2">
+            {/* 2 · 3단계에는 앞 단계로 돌아가는 버튼이 있습니다. (브라우저의 뒤로 가기와 같은 곳으로 갑니다) */}
+            {step > 1 && (
+              <Button
+                variant="secondary"
+                size="lg"
+                className="shrink-0"
+                onClick={() => goToStep(step - 1)}
+              >
+                이전
+              </Button>
+            )}
+            {step < 3 ? (
+              // type="submit": 누르거나 입력 칸에서 Enter 를 치면 handleSubmit 이 "다음" 으로 처리합니다.
+              <Button type="submit" size="lg" className="min-w-0 flex-1">
+                다음
+              </Button>
+            ) : (
+              // 필수 동의 둘을 체크해야 눌립니다.
+              <Button
+                type="submit"
+                size="lg"
+                className="min-w-0 flex-1"
+                disabled={!canSubmit || isSubmitting}
+              >
+                {isSubmitting ? '가입하는 중…' : isEmailSignup ? '가입하기' : '다음 · 온보딩 시작'}
+              </Button>
+            )}
+          </div>
+          {step === 3 && !hasRequiredConsents(consents) && (
             <p className="text-center text-sm break-keep text-slate-500">
-              {isEmailSignup
-                ? '이름·닉네임·이메일·비밀번호, 만 14세 확인, 필수 동의를 마치면 눌러져요.'
-                : '이름·닉네임·이메일, 만 14세 확인, 필수 동의를 마치면 눌러져요.'}
+              [필수] 두 가지에 동의하면 눌러져요.
             </p>
           )}
         </div>

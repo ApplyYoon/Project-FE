@@ -66,8 +66,11 @@ export async function exchangeSnsCode(code: string, provider?: string): Promise<
  *
  * ⚠️ 이 서버 API 도 아직 없습니다. 아래 주소·모양은 FE 가 먼저 적어 본 것이고, BE 와 정해지면 이 파일만 고치면 됩니다.
  *   로그인  POST /auth/login    { email, password }                                            -> { token, user: { id, name } }
- *   가입    POST /auth/signup   { email, password, name, nickname, schoolCode, schoolName, consents } -> { token, user: { id, name } }
+ *   가입    POST /auth/signup   { email, password, name, nickname, schoolCode, schoolName, consents } -> 201 + JSON 아무 값 (예: { "ok": true })
  *   실패    로그인 401 (이메일·비밀번호가 틀림) / 가입 409 (이미 가입한 이메일)
+ *
+ * 가입은 계정만 만듭니다. 가입한 뒤에는 로그인 화면에서 이메일·비밀번호로 로그인합니다. (가입 응답으로 토큰을 받지 않습니다)
+ * ⚠️ 가입 응답의 본문은 비어 있으면 안 됩니다. api() 가 응답을 JSON 으로 읽기 때문입니다. (본문이 없는 응답은 204 만 됩니다)
  *
  * ⚠️ 비밀번호는 서버로 보내기만 합니다. 브라우저 저장소(localStorage)에 넣지 않고, console.log 로도 찍지 않습니다.
  *    저장소에 넣으면 이 기기를 쓰는 누구나 읽을 수 있기 때문입니다. 비밀번호를 보관하고 확인하는 일은 서버가 합니다.
@@ -124,10 +127,11 @@ export async function loginWithPassword(email: string, password: string): Promis
 }
 
 /**
- * 이메일과 비밀번호로 가입합니다. 성공하면 바로 로그인된 상태(토큰)를 돌려줍니다. 실패하면 에러를 던집니다.
+ * 이메일과 비밀번호로 가입합니다. 계정만 만들고 로그인은 하지 않습니다. 실패하면 에러를 던집니다.
+ * (성공하면 가입 화면이 로그인 화면으로 보냅니다)
  */
-export async function signupWithPassword(input: PasswordSignupInput): Promise<AuthResult> {
-  const result = await api<unknown>('/auth/signup', {
+export async function signupWithPassword(input: PasswordSignupInput): Promise<void> {
+  await api<unknown>('/auth/signup', {
     method: 'POST',
     body: JSON.stringify({
       email: input.email,
@@ -141,8 +145,6 @@ export async function signupWithPassword(input: PasswordSignupInput): Promise<Au
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
-  if (!isAuthResult(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
-  return result
 }
 
 // 서버가 꺼져 있거나 이 API 가 아직 없을 때 보여줄 안내입니다.

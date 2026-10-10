@@ -209,6 +209,36 @@ export function makeAllConsents(isChecked: boolean): SignupConsents {
   return { terms: isChecked, privacy: isChecked, diaryAnalysis: isChecked }
 }
 
+/** 가입 화면의 단계 수. 1 계정 정보 → 2 학교·나이 → 3 약관 동의 */
+export const SIGNUP_STEP_COUNT = 3
+
+/**
+ * 주소의 ?step= 값을 단계 번호(1 ~ 3)로 바꿉니다. 없거나 이상한 값이면 1 입니다.
+ *
+ *   parseSignupStep(null)  -> 1   (/signup 처럼 step 이 없을 때)
+ *   parseSignupStep('2')   -> 2
+ *   parseSignupStep('9')   -> 1
+ *   parseSignupStep('abc') -> 1
+ */
+export function parseSignupStep(value: string | null): number {
+  const step = Number(value)
+  return Number.isInteger(step) && step >= 1 && step <= SIGNUP_STEP_COUNT ? step : 1
+}
+
+/**
+ * 지금 입력으로 갈 수 있는 가장 먼 단계를 알려줍니다. 앞 단계를 다 채워야 다음 단계를 열 수 있습니다.
+ * 주소를 직접 고쳐서 ?step=3 으로 들어오거나, 새로고침으로 입력이 사라졌을 때 앞 단계로 돌려보내는 데 씁니다.
+ *
+ *   getMaxSignupStep(false, false) -> 1   (계정 정보를 아직 못 채움)
+ *   getMaxSignupStep(true, false)  -> 2   (계정 정보는 채웠고, 만 14세 확인은 아직)
+ *   getMaxSignupStep(true, true)   -> 3
+ */
+export function getMaxSignupStep(isAccountReady: boolean, isAgeReady: boolean): number {
+  if (!isAccountReady) return 1
+  if (!isAgeReady) return 2
+  return SIGNUP_STEP_COUNT
+}
+
 /** 가입 화면에 지금 입력해 둔 값입니다. (학교는 안 골라도 되어서 여기에 없습니다) */
 export interface SignupForm {
   name: string

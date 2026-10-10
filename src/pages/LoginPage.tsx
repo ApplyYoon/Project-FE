@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/hooks/useAuth'
 import { getPasswordAuthErrorMessage, loginWithPassword } from '@/lib/authApi'
-import { getAfterLoginPath, getReturnPath } from '@/lib/authRedirect'
+import { getAfterLoginPath, getReturnPath, getSignedUpEmail } from '@/lib/authRedirect'
 import { cn } from '@/lib/cn'
 import { getEmailError, hasSignupInfo, markSignupDone } from '@/lib/signup'
 import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
@@ -155,9 +155,12 @@ export function LoginPage() {
   const location = useLocation()
   // 로그인 안 하고 막힌 페이지에 갔다가 여기로 왔다면, 가려던 주소가 들어 있습니다. (RequireAuth 가 넘겨줌)
   const returnPath = getReturnPath(location.state)
+  // 방금 이메일로 가입을 마치고 온 사람이면 그 이메일이 들어 있습니다. (가입 화면이 넘겨줌) 아니면 null
+  const signedUpEmail = getSignedUpEmail(location.state)
 
   // 일반 로그인(이메일·비밀번호) 칸에 적은 값. 비밀번호는 화면에만 두고 어디에도 저장하지 않습니다.
-  const [email, setEmail] = useState('')
+  // 방금 가입하고 온 사람은 가입한 이메일을 미리 채워 둡니다.
+  const [email, setEmail] = useState(signedUpEmail ?? '')
   const [password, setPassword] = useState('')
   // 서버 답을 기다리는 중인지. 기다리는 동안 버튼을 또 누르지 못하게 합니다.
   const [isLoggingIn, setIsLoggingIn] = useState(false)
@@ -216,6 +219,17 @@ export function LoginPage() {
         {/* 앱 소개 한 줄 */}
         <p className="mt-2 text-slate-600">주머니 속 관리형 독서실 선생님</p>
       </div>
+
+      {/* 방금 가입을 마친 사람에게만 보이는 안내 */}
+      {signedUpEmail !== null && !isLoggedIn && (
+        // role="status": 화면이 바뀌었다는 것을 스크린리더가 읽어 줍니다.
+        <p
+          role="status"
+          className="rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium break-keep text-emerald-700"
+        >
+          가입이 끝났어요. 방금 정한 비밀번호로 로그인해 주세요.
+        </p>
+      )}
 
       {/* 일반 로그인 (이메일 · 비밀번호) */}
       <Card>
