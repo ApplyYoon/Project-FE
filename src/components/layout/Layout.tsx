@@ -1,5 +1,6 @@
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
+import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
 import { Outlet } from 'react-router-dom'
 
 /**
@@ -7,6 +8,9 @@ import { Outlet } from 'react-router-dom'
  * <Outlet /> 자리에 현재 주소에 맞는 페이지가 끼워집니다.
  */
 export function Layout() {
+  // 앱이 열려 있는 동안 안 읽은 AI 메시지를 브라우저 알림으로 띄웁니다. (#62)
+  useAiMessageNotifications()
+
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다.
     <div className="flex min-h-screen flex-col pb-14 sm:pb-0">
