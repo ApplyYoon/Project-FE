@@ -119,7 +119,7 @@ function hasCrisisText(texts: string[]): boolean {
  *   예2) 지금 8시,      23시~7시  -> false (범위 밖)
  *   예3) 지금 10시,     9시~18시  -> true (자정을 안 넘는 범위)
  */
-function isWithinQuietHours(now: Date, quietHours: QuietHours): boolean {
+export function isWithinQuietHours(now: Date, quietHours: QuietHours): boolean {
   const hour = now.getHours()
   const { startHour, endHour } = quietHours
 
