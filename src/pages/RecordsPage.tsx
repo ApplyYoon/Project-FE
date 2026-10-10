@@ -1,12 +1,81 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { cn } from '@/lib/cn'
+import {
+  type DailyRecord,
+  formatClock,
+  formatMinutes,
+  groupSessionsByDate,
+  isStudySession,
+  sessionMinutes,
+  toDateKey,
+} from '@/lib/dailyRecords'
+import { mockSubjects } from '@/lib/mock'
 import { loadData } from '@/lib/storage'
-import { useNavigate } from 'react-router-dom'
+import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
+import type { StudySession, Subject } from '@/types'
+
+const weekdayNames = ['일', '월', '화', '수', '목', '금', '토']
+
+/** 'YYYY-MM-DD' 를 '오늘 · 10월 10일 (토)', '어제 · …', '10월 8일 (수)' 처럼 바꿉니다. */
+function formatDateLabel(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const text = `${month}월 ${day}일 (${weekdayNames[date.getDay()]})`
+
+  const today = new Date()
+  if (dateKey === toDateKey(today)) return `오늘 · ${text}`
+
+  // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다. (-1 = 어제)
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+  if (dateKey === toDateKey(yesterday)) return `어제 · ${text}`
+
+  return text
+}
+
+/** 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (가짜 데이터로 채우지 않습니다) */
+function loadSessions(): StudySession[] {
+  const saved = loadData<unknown>('sessions', [])
+  // 배열이 아니거나 모양이 틀린 기록은 걸러냅니다.
+  return Array.isArray(saved) ? saved.filter(isStudySession) : []
+}
+
+interface SubjectTagProps {
+  subject: Subject | undefined
+}
+
+/** 과목 태그. 과목을 지워서 찾을 수 없으면 "삭제된 과목" 으로 보여줍니다. */
+function SubjectTag({ subject }: SubjectTagProps) {
+  if (!subject) {
+    return (
+      <span className="inline-block max-w-full truncate rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+        삭제된 과목
+      </span>
+    )
+  }
+  return <SubjectBadge name={subject.name} color={subject.color} />
+}
 
 export function RecordsPage() {
   const navigate = useNavigate()
   // 설정 화면에서 켠 사람에게만 일기 메뉴를 보여줍니다. (#63)
   const isDiaryEnabled = loadData('diary-enabled', false)
+  // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
+  const [sessions] = useState<StudySession[]>(loadSessions)
+  const [subjects] = useState<Subject[]>(() => loadData('subjects', mockSubjects))
+
+  // 최근 날짜가 맨 앞에 오도록 날짜별로 묶습니다.
+  const days = groupSessionsByDate(sessions)
+
+  // 지금 펼쳐 둔 날짜. null 이면 전부 접혀 있습니다. 같은 날짜를 다시 누르면 접힙니다.
+  const [openDate, setOpenDate] = useState<string | null>(null)
+
+  function handleToggle(date: string) {
+    setOpenDate((current) => (current === date ? null : date))
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -21,7 +90,352 @@ export function RecordsPage() {
         </Card>
       )}
 
-      {/* 여기에 내용 */}
+      {/* 연속 공부일 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StreakCard sessions={sessions} />
+      </div>
+
+      {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 기록 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <StudyCalendar days={days} subjects={subjects} />
+
+        <Card title="날짜별 기록">
+          {days.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">
+              아직 공부 기록이 없어요. 타이머로 공부하면 여기에 쌓여요.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {days.map((day) => {
+                const isOpen = openDate === day.date
+                const panelId = `records-${day.date}`
+
+                return (
+                  <li key={day.date}>
+                    {/* 날짜 줄 전체가 버튼입니다. min-h-12(48px)라서 손가락으로 누르기 편합니다. */}
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={panelId}
+                      onClick={() => handleToggle(day.date)}
+                      className="flex min-h-12 w-full cursor-pointer items-center justify-between gap-3 py-3 text-left"
+                    >
+                      {/* min-w-0: 과목이 많아도 줄이 가로로 튀어나가지 않게 합니다. */}
+                      <span className="flex min-w-0 flex-col gap-1.5">
+                        <span className="text-sm font-semibold text-slate-900">
+                          {formatDateLabel(day.date)}
+                        </span>
+                        {/* 접혀 있을 때도 과목별 시간이 보입니다. */}
+                        <span className="flex flex-wrap gap-x-3 gap-y-1">
+                          {day.subjects.map((record) => (
+                            // max-w-full: 과목 이름이 아주 길어도 화면 폭을 넘지 않게 해서, 태그의 '...' 줄임이 작동하게 합니다.
+                            <span
+                              key={record.subjectId}
+                              className="inline-flex max-w-full items-center gap-1"
+                            >
+                              <SubjectTag
+                                subject={subjects.find((item) => item.id === record.subjectId)}
+                              />
+                              <span className="shrink-0 text-xs text-slate-500">
+                                {formatMinutes(record.minutes)}
+                              </span>
+                            </span>
+                          ))}
+                        </span>
+                      </span>
+
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          {formatMinutes(day.totalMinutes)}
+                        </span>
+                        <span aria-hidden className="text-xs text-slate-400">
+                          {isOpen ? '▲' : '▼'}
+                        </span>
+                      </span>
+                    </button>
+
+                    {/* 펼치면 그날의 과목별 기록(몇 시부터 몇 시까지, 몇 분)이 나옵니다. */}
+                    {isOpen && (
+                      <div
+                        id={panelId}
+                        className="mb-3 flex flex-col gap-3 rounded-lg bg-slate-50 p-3"
+                      >
+                        {day.subjects.map((record) => (
+                          <div key={record.subjectId}>
+                            <div className="flex items-center justify-between gap-3">
+                              <SubjectTag
+                                subject={subjects.find((item) => item.id === record.subjectId)}
+                              />
+                              <span className="shrink-0 text-sm font-semibold text-slate-900">
+                                {formatMinutes(record.minutes)}
+                              </span>
+                            </div>
+                            <ul className="mt-2 flex flex-col gap-1">
+                              {record.sessions.map((session) => (
+                                <li
+                                  // id 에 시작 시각을 붙입니다. 저장된 기록의 id 가 겹쳐도 화면이 경고 없이 둘 다 보여줍니다.
+                                  key={`${session.id}-${session.startedAt}`}
+                                  className="flex items-center justify-between gap-3 text-sm text-slate-600"
+                                >
+                                  <span>
+                                    {formatClock(session.startedAt)} ~{' '}
+                                    {formatClock(session.endedAt)}
+                                  </span>
+                                  <span>{formatMinutes(sessionMinutes(session))}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Card>
+      </div>
     </div>
+  )
+}
+
+interface StreakCardProps {
+  sessions: StudySession[]
+}
+
+/** "🔥 5일째 연속 공부 중" 을 보여주는 카드 */
+function StreakCard({ sessions }: StreakCardProps) {
+  const streak = getStudyStreak(sessions)
+  const studiedToday = hasStudiedToday(sessions)
+
+  // 상황에 따라 아래 작은 글씨를 바꿉니다.
+  let message = '오늘 공부하면 1일째가 돼요'
+  if (streak > 0 && studiedToday) {
+    message = '오늘도 공부 완료! 내일도 이어가요'
+  } else if (streak > 0) {
+    message = `오늘도 하면 ${streak + 1}일째`
+  }
+
+  return (
+    <Card className="flex items-center gap-4">
+      <div
+        aria-hidden
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-2xl"
+      >
+        🔥
+      </div>
+      <div className="min-w-0">
+        <p className="text-xl font-bold text-slate-900 sm:text-2xl">
+          {streak > 0 ? `${streak}일째 연속 공부 중` : '아직 연속 기록이 없어요'}
+        </p>
+        <p className="mt-1 text-sm text-slate-500">{message}</p>
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * 공부 시간(분)을 색 단계 0~3 으로 바꿉니다. (깃허브 잔디처럼 많이 할수록 진하게)
+ *   0: 기록 없음 · 1: 1시간 미만 · 2: 1~3시간 · 3: 3시간 이상
+ */
+function getStudyLevel(minutes: number | undefined): number {
+  if (minutes === undefined) return 0
+  if (minutes < 60) return 1
+  if (minutes < 180) return 2
+  return 3
+}
+
+/** 단계별 칸 색. 배열 번호 = 단계입니다. */
+const levelStyles = [
+  'text-slate-400 hover:bg-slate-100',
+  'bg-indigo-200 text-indigo-900 hover:bg-indigo-300',
+  'bg-indigo-400 text-white hover:bg-indigo-500',
+  'bg-brand text-white hover:bg-brand-dark',
+]
+
+/** 지나간 날인데 공부 기록이 없는 칸의 색 (연한 빨강) */
+const missedStyle = 'bg-red-100 text-red-700 hover:bg-red-200'
+
+/** 달력 아래 색 설명 */
+const legendItems = [
+  { label: '공부 안 한 날', color: 'bg-red-100' },
+  { label: '1시간 미만', color: 'bg-indigo-200' },
+  { label: '1~3시간', color: 'bg-indigo-400' },
+  { label: '3시간 이상', color: 'bg-brand' },
+]
+
+interface StudyCalendarProps {
+  days: DailyRecord[]
+  subjects: Subject[]
+}
+
+/** 한 달 달력. 공부한 날을 색으로 칠하고, 날짜를 누르면 그날 기록을 아래에 보여줍니다. */
+function StudyCalendar({ days, subjects }: StudyCalendarProps) {
+  const todayKey = toDateKey(new Date())
+
+  // 지금 보고 있는 달. month 는 0(1월) ~ 11(12월) 입니다. (Date 의 규칙과 같습니다)
+  const [view, setView] = useState(() => {
+    const today = new Date()
+    return { year: today.getFullYear(), month: today.getMonth() }
+  })
+  // 누른 날짜 'YYYY-MM-DD'. 처음에는 오늘을 골라 둡니다.
+  const [selectedDate, setSelectedDate] = useState<string | null>(todayKey)
+
+  // 날짜로 그날 기록을 바로 찾을 수 있게 Map 으로 바꿔 둡니다.
+  const recordByDate = new Map(days.map((day) => [day.date, day]))
+
+  // 처음 공부한 날. days 는 최근 날짜가 맨 앞이라 맨 뒤가 가장 오래된 날입니다. 기록이 없으면 undefined.
+  const firstStudyDate = days.at(-1)?.date
+
+  // 그 달 1일의 요일(0=일요일) 만큼 앞을 빈칸으로 채웁니다.
+  const firstWeekday = new Date(view.year, view.month, 1).getDay()
+  // 다음 달의 0일 = 이번 달의 마지막 날입니다.
+  const lastDay = new Date(view.year, view.month + 1, 0).getDate()
+
+  // 빈칸은 null, 날짜는 'YYYY-MM-DD' 로 칸 목록을 만듭니다.
+  const cells: (string | null)[] = []
+  for (let i = 0; i < firstWeekday; i++) cells.push(null)
+  for (let day = 1; day <= lastDay; day++) {
+    cells.push(toDateKey(new Date(view.year, view.month, day)))
+  }
+
+  /** step 이 -1 이면 이전 달, 1 이면 다음 달로 갑니다. */
+  function handleMoveMonth(step: number) {
+    // new Date 가 13월·0월 같은 값을 알아서 다음 해·이전 해로 넘겨줍니다.
+    const next = new Date(view.year, view.month + step, 1)
+    setView({ year: next.getFullYear(), month: next.getMonth() })
+    setSelectedDate(null)
+  }
+
+  function handleSelectDate(date: string) {
+    setSelectedDate(date)
+  }
+
+  const selectedRecord = selectedDate ? recordByDate.get(selectedDate) : undefined
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-slate-900">
+          {view.year}년 {view.month + 1}월
+        </h3>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            aria-label="이전 달"
+            onClick={() => handleMoveMonth(-1)}
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            aria-label="다음 달"
+            onClick={() => handleMoveMonth(1)}
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+
+      {/* 요일 줄 */}
+      <div className="grid grid-cols-7 gap-1 sm:gap-2">
+        {weekdayNames.map((name) => (
+          <span key={name} className="py-1 text-center text-xs text-slate-500">
+            {name}
+          </span>
+        ))}
+      </div>
+
+      {/* 날짜 칸. aspect-square 로 칸 폭만큼 높이를 맞춰서, 화면이 좁아지면 칸도 같이 작아집니다. */}
+      <div className="mt-1 grid grid-cols-7 gap-1 sm:gap-2">
+        {cells.map((date, index) => {
+          if (date === null) return <span key={`blank-${index}`} aria-hidden />
+
+          const record = recordByDate.get(date)
+          const level = getStudyLevel(record?.totalMinutes)
+          const day = Number(date.slice(8))
+          // 처음 공부한 날 이후 ~ 어제 사이에 기록이 없으면 "공부 안 한 날" 입니다.
+          // 첫 기록 전(앱을 쓰기 전), 오늘(아직 공부할 수 있음), 미래는 빨갛게 칠하지 않습니다.
+          // ('YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다)
+          const isMissed =
+            !record && firstStudyDate !== undefined && date > firstStudyDate && date < todayKey
+
+          let label = `${view.month + 1}월 ${day}일, 기록 없음`
+          if (record) {
+            label = `${view.month + 1}월 ${day}일, ${formatMinutes(record.totalMinutes)} 공부`
+          } else if (isMissed) {
+            label = `${view.month + 1}월 ${day}일, 공부 안 함`
+          }
+
+          return (
+            <button
+              key={date}
+              type="button"
+              aria-label={label}
+              aria-pressed={selectedDate === date}
+              onClick={() => handleSelectDate(date)}
+              className={cn(
+                'flex aspect-square w-full cursor-pointer items-center justify-center rounded-lg text-sm font-semibold transition-colors',
+                isMissed ? missedStyle : levelStyles[level],
+                // 오늘은 진한 테두리로 표시합니다.
+                date === todayKey && 'border-2 border-slate-900',
+                // 누른 날짜는 바깥쪽 고리로 표시합니다.
+                selectedDate === date && 'ring-brand ring-2 ring-offset-2',
+              )}
+            >
+              {day}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* 색 설명 */}
+      <ul className="mt-4 flex flex-wrap gap-x-3 gap-y-1">
+        {legendItems.map((item) => (
+          <li key={item.label} className="flex items-center gap-1 text-xs text-slate-500">
+            <span aria-hidden className={cn('h-3 w-3 rounded-sm', item.color)} />
+            {item.label}
+          </li>
+        ))}
+      </ul>
+
+      {/* 누른 날짜의 기록. aria-live: 화면 낭독기가 바뀐 내용을 읽어줍니다. */}
+      <div aria-live="polite">
+        {selectedDate && (
+          <div className="mt-4 rounded-lg bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-slate-900">
+                {formatDateLabel(selectedDate)}
+              </span>
+              {selectedRecord && (
+                <span className="shrink-0 text-sm font-bold text-slate-900">
+                  {formatMinutes(selectedRecord.totalMinutes)}
+                </span>
+              )}
+            </div>
+
+            {selectedRecord ? (
+              <ul className="mt-2 flex flex-col gap-2">
+                {selectedRecord.subjects.map((record) => (
+                  <li key={record.subjectId} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0">
+                      <SubjectTag subject={subjects.find((item) => item.id === record.subjectId)} />
+                    </span>
+                    <span className="shrink-0 text-sm text-slate-600">
+                      {formatMinutes(record.minutes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">이날은 공부 기록이 없어요.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
   )
 }

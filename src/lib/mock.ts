@@ -1,4 +1,11 @@
-import type { Evaluation, ReflectionPrescription, StudyPlan, StudySession, Subject } from '@/types'
+import type {
+  AiMessage,
+  Evaluation,
+  ReflectionPrescription,
+  StudyPlan,
+  StudySession,
+  Subject,
+} from '@/types'
 
 /**
  * 백엔드가 생기기 전까지 화면에 보여줄 가짜 데이터입니다.
@@ -158,3 +165,76 @@ export const mockReflectionPrescription: ReflectionPrescription = {
   reason: "최근 '하기 싫음'이 3번 나와서, 5일 동안 짧게 돌아보기로 했어.",
   questions: ['오늘 계획을 못 지킨 진짜 이유는?', '내일 하나만 바꾼다면?', '오늘 잘한 한 가지는?'],
 }
+
+/** 지금으로부터 n분 전 시각을 Date.now() 와 같은 숫자(밀리초)로 돌려줍니다. */
+function minutesAgo(minutes: number): number {
+  return Date.now() - minutes * MINUTE
+}
+
+/**
+ * 메시지함에 보여줄 AI 메시지 7개 (어제 4개 + 최근 3개)
+ * 최근 메시지는 "n분 전" 으로 만들었습니다. 오늘 시각을 정해 두면
+ * 아침에 열었을 때 아직 오지 않은 시각의 메시지가 생기기 때문입니다.
+ * 마지막 3개는 안 읽은 메시지입니다.
+ */
+export const mockAiMessages: AiMessage[] = [
+  {
+    id: 'message-1',
+    sentAt: timeDaysAgo(1, 7, 30),
+    careLevel: 2,
+    kind: 'regular',
+    text: '좋은 아침! 오늘 계획은 4시간이야. 첫 과목은 수학 어때?',
+    read: true,
+  },
+  {
+    id: 'message-2',
+    sentAt: timeDaysAgo(1, 19, 10),
+    careLevel: 2,
+    kind: 'event',
+    eventLabel: '계획 시간 지남',
+    text: '계획 시간 10분 지났어. 타이머부터 켜 볼까?',
+    read: true,
+  },
+  {
+    id: 'message-3',
+    sentAt: timeDaysAgo(1, 21, 35),
+    careLevel: 1,
+    kind: 'event',
+    eventLabel: '목표 달성',
+    text: '오늘 목표 달성! 첫 시작이 그저께보다 25분 빨랐어.',
+    read: true,
+  },
+  {
+    id: 'message-4',
+    sentAt: minutesAgo(180),
+    careLevel: 2,
+    kind: 'regular',
+    text: '어제 순공 3시간 10분, 계획의 80%야. 폰은 다른 방에 두기 5일째!',
+    read: true,
+  },
+  {
+    id: 'message-5',
+    sentAt: minutesAgo(90),
+    careLevel: 1,
+    kind: 'regular',
+    text: '점심 먹고 20분만 영어 단어 어때? 어제 약속 지킨 거 멋있었어.',
+    read: false,
+  },
+  {
+    id: 'message-6',
+    sentAt: minutesAgo(30),
+    careLevel: 3,
+    kind: 'event',
+    eventLabel: '계획 시간 지남',
+    text: '벌써 40분 지났는데 아직 시작 안 했네. 오늘도 폰이야?',
+    read: false,
+  },
+  {
+    id: 'message-7',
+    sentAt: minutesAgo(5),
+    careLevel: 2,
+    kind: 'regular',
+    text: '지금 25분만 해 보자. 끝나면 칭찬해 줄게.',
+    read: false,
+  },
+]

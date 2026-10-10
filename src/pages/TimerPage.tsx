@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { useAwayDetection } from '@/hooks/useAwayDetection'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { playAlarm } from '@/lib/alarm'
+import { formatAwayDuration, formatClock } from '@/lib/away'
 import { cn } from '@/lib/cn'
 import { mockSessions, mockSubjects } from '@/lib/mock'
 import { BREAK_MINUTES, STUDY_MINUTES, getPomodoroStatus } from '@/lib/pomodoro'
@@ -81,6 +83,17 @@ export function TimerPage() {
   // (뽀모도로의 휴식 구간도 같은 공부 흐름 안에 있어서 포함합니다.)
   const isStudying = isStarted
 
+  // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
+  // 뽀모도로 휴식 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
+  const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({
+    isStarted,
+    isRunning,
+    isResting: isBreak,
+    subjectId: selectedSubjectId,
+    pause,
+    start,
+  })
+
   // 버튼 아래에 보여줄 안내 문구
   let helpMessage = '준비됐으면 시작을 눌러 주세요.'
   if (!selectedSubject) helpMessage = '공부할 과목을 먼저 골라 주세요.'
@@ -99,9 +112,16 @@ export function TimerPage() {
     setMode(nextMode)
   }
 
+  function handleStart() {
+    // 다시 시작하면 "딴짓 감지" 안내는 할 일을 마친 것이라 지웁니다.
+    dismissAwayNotice()
+    start()
+  }
+
   function handleStop() {
-    // 정지하면 구간 끝 안내도 함께 지웁니다.
+    // 정지하면 구간 끝 안내와 딴짓 안내도 함께 지웁니다.
     setEndedPhase(null)
+    dismissAwayNotice()
     stop()
   }
 
@@ -220,6 +240,31 @@ export function TimerPage() {
           </div>
         )}
 
+        {/* 다른 탭·앱에 나갔다 돌아오면 나오는 안내. 이 기록은 딴짓 횟수로 저장돼 AI 평가에 쓰입니다. */}
+        {awayNotice && (
+          <div
+            role="status"
+            className="flex w-full items-start justify-between gap-3 rounded-lg bg-rose-50 px-4 py-3 text-sm break-keep text-rose-800"
+          >
+            <div className="flex flex-col gap-1">
+              <p className="font-bold">
+                딴짓 감지! {formatAwayDuration(awayNotice.awayMs)} 나갔다 왔어요
+              </p>
+              <p>
+                자리 비움 {formatClock(awayNotice.leftAt)} → {formatClock(awayNotice.returnedAt)} ·
+                오늘 {awayCountToday}번째예요. 시작을 누르면 이어서 공부해요.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissAwayNotice}
+              className="h-10 shrink-0 cursor-pointer rounded-md px-3 font-medium hover:bg-rose-100"
+            >
+              확인
+            </button>
+          </div>
+        )}
+
         {/* tabular-nums: 숫자가 바뀌어도 폭이 흔들리지 않게 고정 폭으로 보여줍니다. */}
         <p className="font-mono text-5xl font-bold tracking-tight tabular-nums sm:text-6xl">
           {formatTime(displaySeconds)}
@@ -236,7 +281,7 @@ export function TimerPage() {
               size="lg"
               className="w-full sm:w-40"
               disabled={!selectedSubject}
-              onClick={start}
+              onClick={handleStart}
             >
               시작
             </Button>
@@ -246,7 +291,14 @@ export function TimerPage() {
           </Button>
         </div>
 
-        <p className="text-center text-sm text-slate-500">{helpMessage}</p>
+        <div className="flex flex-col gap-1 text-center text-sm text-slate-500">
+          <p>{helpMessage}</p>
+          <p>
+            {isBreak
+              ? '쉬는 중에는 다른 탭에 가도 괜찮아요.'
+              : '다른 탭이나 앱으로 가면 자동으로 일시정지돼요.'}
+          </p>
+        </div>
       </Card>
 
       <WeeklySubjectRatio subjects={subjects} />
