@@ -1,4 +1,5 @@
 import { getCareLimits } from '@/lib/careLimits'
+import { getCareLevelInfo } from '@/lib/careLevelInfo'
 import type { CareLevel } from '@/lib/careTheme'
 
 /**
@@ -21,6 +22,17 @@ import type { CareLevel } from '@/lib/careTheme'
  */
 export function getTodayCareLevel(): CareLevel {
   return 1
+}
+
+/**
+ * 왜 지금 이 관리 모드인지 알려 주는 한 줄을 돌려줍니다. (#94, 홈의 "지금 관리 모드" 배너)
+ *
+ * ⚠️ 지금은 단계별 기본 문구입니다. 진짜 이유는 #91 decideCareAction 이 돌려주는 reason 이어야 하는데,
+ * 거기에 넣을 기록(개선안 이행 #65, 효과 판정 #92, 기분)을 아직 모아 주는 곳이 없습니다. (#205 에서 연결)
+ * 연결되면 이 함수가 decideCareAction(...).reason 을 먼저 쓰고, 없을 때만 기본 문구를 쓰도록 바꾸세요.
+ */
+export function getTodayCareReason(level: CareLevel): string {
+  return getCareLevelInfo(level).defaultReason
 }
 
 // 저장된 값을 읽지 못할 때 쓰는 수위입니다. 설정 화면의 처음 값(careLimits.ts 의 기본값)과 같습니다.

@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
+import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
   setAllowFocusMode,
@@ -197,6 +198,26 @@ export function SettingsPage() {
                 </span>
               </label>
             </div>
+          </Card>
+
+          {/* 웹은 다른 앱을 못 잠가서, 휴대폰 기본 기능으로 직접 잠그는 법을 안내합니다. (#106) */}
+          <Card title="휴대폰 집중 모드">
+            <p className="text-sm text-slate-500">
+              공부 시간에 SNS 앱을 잠그고 싶다면, 휴대폰의 스크린 타임·집중 모드를 켜는 법을
+              알려줄게요.
+            </p>
+            {/* 집중 모드 잠금(강제적 채찍)을 허용한 사람에게는 이 안내를 한 번 더 권합니다. */}
+            {limits.allowFocusMode && (
+              <p className="mt-2 text-sm font-medium text-slate-700">
+                집중 모드 잠금을 허용했어요. 휴대폰에서도 SNS 앱을 같이 잠가 두면 더 잘 지켜져요.
+              </p>
+            )}
+            <Link
+              to={PHONE_FOCUS_PATH}
+              className="text-brand mt-2 inline-flex h-11 items-center text-sm font-medium underline"
+            >
+              휴대폰 집중 모드 켜는 법 보기
+            </Link>
           </Card>
         </div>
 

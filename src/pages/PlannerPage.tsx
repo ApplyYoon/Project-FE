@@ -7,8 +7,12 @@ import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { moveDateKey, toDateKey } from '@/lib/date'
 import { usePlans } from '@/hooks/usePlans'
 import { useStudySessions } from '@/hooks/useStudySessions'
+import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
+import { useSuggestions } from '@/hooks/useSuggestions'
 import { scalePlanMinutes } from '@/lib/goalAdjust'
-import { getRecentAverageMinutes, getTodayCareAction } from '@/lib/goalAdjustInput'
+import { getTodayCareDecision } from '@/lib/careInputs'
+import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
+import { loadCheckInsByDate } from '@/lib/insightEvidence'
 import { mockSubjects } from '@/lib/mock'
 import { loadData, saveData } from '@/lib/storage'
 import type { StudyPlan, Subject, SubjectColor } from '@/types'
@@ -249,21 +253,24 @@ export function PlannerPage() {
   const plans = getPlans(selectedDate)
   const isToday = selectedDate === todayKey
 
-  // 목표 조정 제안 (#67): 오늘의 대응이 "목표 상향/하향" 이면 팝업으로 물어봅니다.
-  // 개선안 이행·효과 판정, 기분, 미달 원인은 아직 저장하는 곳이 없어서 null/false 입니다.
-  // (그 기능들이 저장을 시작하면 여기에 연결하세요. 그 전에는 대응이 정해지지 않아 팝업이 뜨지 않습니다)
+  // 목표 조정 제안 (#67, #205): 오늘의 대응이 "목표 상향/하향" 이면 팝업으로 물어봅니다.
+  // 대응은 기간이 끝난 개선안의 이행·효과 판정, 체크인의 기분·미달 원인, 연속 미달 일수로 정합니다.
+  // (기간이 끝난 개선안이 아직 없으면 대응이 정해지지 않아 팝업이 뜨지 않습니다. 자세한 건 lib/careInputs.ts)
   const todayPlans = getPlans(todayKey)
   const todayGoalMinutes = todayPlans.reduce((sum, plan) => sum + plan.targetMinutes, 0)
-  const careAction = getTodayCareAction({
-    fulfillment: null,
-    effect: null,
-    mainMissCause: null,
-    isMoodLow: false,
+  const { suggestions } = useSuggestions()
+  const { checks: suggestionChecks } = useSuggestionChecks()
+  // 체크인은 화면이 처음 그려질 때 한 번만 읽습니다. (이 화면에서는 체크인을 바꾸지 않습니다)
+  const [checkIns] = useState(loadCheckInsByDate)
+  const careDecision = getTodayCareDecision({
+    suggestions,
+    suggestionChecks,
+    checkIns,
     plans: allPlans,
     sessions,
   })
   const { proposal, accept, decline } = useGoalAdjust({
-    action: careAction,
+    action: careDecision?.action ?? null,
     currentMinutes: todayGoalMinutes,
     recentAverageMinutes: getRecentAverageMinutes(allPlans, sessions),
     // 수락하면 오늘 계획들의 목표 시간을 새 목표에 맞춰 같은 비율로 바꿉니다.

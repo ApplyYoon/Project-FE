@@ -16,6 +16,7 @@ import { MessagesPage } from '@/pages/MessagesPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
+import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
 import { PlannerPage } from '@/pages/PlannerPage'
 import { RecordsPage } from '@/pages/RecordsPage'
 import { ReflectionPage } from '@/pages/ReflectionPage'
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
       { path: 'diary', element: <DiaryPage /> },
       { path: 'diary/reflection', element: <ReflectionPage /> },
       { path: 'exams', element: <ExamsPage /> },
+      { path: 'phone-focus', element: <PhoneFocusGuidePage /> },
       { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       { path: 'records', element: <RecordsPage /> },
