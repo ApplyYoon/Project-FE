@@ -1,7 +1,9 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/cn'
+import type { AuthUser } from '@/types'
 import { useState, type ReactNode } from 'react'
 
 /* ---------- SNS 로고 ----------
@@ -91,6 +93,47 @@ const snsProviders: SnsProvider[] = [
   },
 ]
 
+// 가짜 로그인에 쓰는 사람과 토큰입니다. 서버가 없는 지금, 로그인 상태가 잘 공유되는지 확인하는 용도입니다.
+const fakeUser: AuthUser = { id: 'test-user', name: '테스트 사용자' }
+const fakeToken = 'fake-token'
+
+/**
+ * 서버를 연결하기 전에 useAuth 를 눌러서 확인해 보는 테스트용 영역입니다.
+ * 서버 로그인이 붙으면 이 영역은 지워 주세요. (가짜라서 누구나 "로그인" 할 수 있습니다)
+ */
+function FakeLoginPanel() {
+  const { user, isLoggedIn, login, logout } = useAuth()
+
+  return (
+    <Card title="테스트용 로그인" className="flex flex-col gap-3">
+      <p className="text-sm text-slate-500">
+        서버를 연결하기 전에 로그인 상태를 확인해 보는 가짜 로그인이에요.
+      </p>
+
+      {isLoggedIn ? (
+        <>
+          {/* role="status": 로그인 상태가 바뀌면 스크린리더가 읽어 줍니다. */}
+          <p role="status" className="text-sm font-medium text-slate-900">
+            로그인됨: {user?.name}
+          </p>
+          <Button variant="secondary" size="lg" className="w-full" onClick={logout}>
+            로그아웃
+          </Button>
+        </>
+      ) : (
+        <>
+          <p role="status" className="text-sm font-medium text-slate-900">
+            로그인 안 됨
+          </p>
+          <Button size="lg" className="w-full" onClick={() => login(fakeUser, fakeToken)}>
+            가짜 로그인
+          </Button>
+        </>
+      )}
+    </Card>
+  )
+}
+
 export function LoginPage() {
   // 누른 SNS 를 기억해 두면, 그 SNS 이름으로 "준비 중" 안내를 띄울 수 있습니다. null 이면 안내가 닫혀 있습니다.
   const [pendingProvider, setPendingProvider] = useState<SnsProvider | null>(null)
@@ -119,6 +162,8 @@ export function LoginPage() {
           </Button>
         ))}
       </Card>
+
+      <FakeLoginPanel />
 
       {/* 지금은 실제 로그인 대신 안내만 보여 줍니다. (실제 연결은 콜백 처리 이슈에서) */}
       <Modal
