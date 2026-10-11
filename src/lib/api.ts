@@ -8,12 +8,14 @@
  * 서버를 부르는 모든 화면이 같은 방식으로 동작하도록, 아래 세 가지를 이 파일 한 곳에서 처리합니다. (#198)
  *   1. 서버가 에러일 때 준 메시지를 읽어서 ApiError 에 담습니다.
  *   2. 로그인한 상태면 모든 요청에 토큰을 붙입니다. (Authorization: Bearer 토큰)
+ *      테스트 로그인의 토큰은 서버가 모르는 가짜라서 붙이지 않습니다. (lib/testLogin.ts)
  *   3. 서버가 "누구인지 모르겠다(401)" 고 하면 로그인 정보를 지웁니다. 그러면 로그인 화면으로 보내집니다.
  *
  * ⚠️ 토큰이나 서버가 준 내용(일기·기분 등)은 console.log 로 찍지 않습니다. 개발자 도구에 남으면 안 되기 때문입니다.
  */
 import { AUTH_STORAGE_KEY, UNAUTHORIZED_EVENT, getAuthToken } from '@/lib/authStorage'
 import { removeData } from '@/lib/storage'
+import { TEST_TOKEN } from '@/lib/testLogin'
 
 /** 환경변수를 안 넣었을 때 쓰는 주소. 내 컴퓨터에서 켠 BE 서버입니다. (BE 의 모든 API 는 /api/v1 로 시작합니다) */
 export const DEFAULT_API_BASE_URL = 'http://localhost:8080/api/v1'
@@ -156,7 +158,10 @@ function handleUnauthorized(sentToken: string): void {
  *     (로그인 전의 401 은 "코드가 틀렸다" 같은 뜻이라 로그인 정보를 건드리지 않고 ApiError 만 던집니다)
  */
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAuthToken()
+  // 테스트 로그인의 토큰은 가짜라서 서버에 보내지 않습니다. 보내면 서버가 401 로 거절하고,
+  // 아래의 "401 이면 로그아웃" 때문에 테스트로 써 보던 사람이 갑자기 로그인 화면으로 튕겨 나갑니다.
+  const savedToken = getAuthToken()
+  const token = savedToken === TEST_TOKEN ? null : savedToken
 
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,

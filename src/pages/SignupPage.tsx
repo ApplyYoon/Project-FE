@@ -413,7 +413,7 @@ function UnderFourteenView() {
 
 /**
  * 가입 정보를 받는 화면입니다. 두 가지 경우에 옵니다.
- *   - SNS·테스트 로그인을 처음 한 사람: 이미 로그인된 상태라 비밀번호 없이 가입 정보만 받습니다.
+ *   - 테스트 로그인을 처음 한 사람: 이미 로그인된 상태라 비밀번호 없이 가입 정보만 받습니다.
  *   - 로그인 없이 온 사람(헤더의 "회원가입"): 이메일·비밀번호로 가입합니다. 서버에 계정을 만든 뒤 로그인 화면에서 로그인합니다.
  *
  * 세 단계로 나눠서 받고, 지금 단계는 주소에 보입니다. (/signup?step=1 계정 정보 → 2 학교·나이 → 3 약관 동의)
@@ -429,8 +429,8 @@ export function SignupPage() {
   const navigate = useNavigate()
   // useSearchParams: 주소의 ?step=2 같은 값을 읽고 바꿉니다.
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user, isLoggedIn } = useAuth()
-  // 이메일로 가입하는 중인지 = 로그인 없이 이 화면에 온 사람인지. (SNS·테스트 로그인을 하고 온 사람은 false)
+  const { user, isLoggedIn, logout } = useAuth()
+  // 이메일로 가입하는 중인지 = 로그인 없이 이 화면에 온 사람인지. (테스트 로그인을 하고 온 사람은 false)
   // 화면이 처음 그려질 때 한 번만 정합니다. 가입하는 도중에 로그인 상태가 바뀌어도 화면이 달라지지 않게 하려는 것입니다.
   const [isEmailSignup] = useState(!isLoggedIn)
   const [name, setName] = useState('')
@@ -524,6 +524,13 @@ export function SignupPage() {
     goToStep(3)
   }
 
+  /** 로그인한 채로 이 화면에 온 사람이 "로그아웃" 을 눌렀을 때 */
+  function handleLogout() {
+    // 로그인 화면으로 먼저 옮긴 뒤 로그인 정보를 지웁니다. (설정 화면의 로그아웃과 같은 순서)
+    navigate('/login', { replace: true })
+    logout()
+  }
+
   function handleChangeConsent(key: ConsentKey, isChecked: boolean) {
     setConsents((prev) => ({ ...prev, [key]: isChecked }))
   }
@@ -576,7 +583,7 @@ export function SignupPage() {
       return
     }
 
-    // SNS·테스트 로그인으로 이미 로그인한 사람은 바로 온보딩으로 갑니다.
+    // 테스트 로그인으로 이미 로그인한 사람은 바로 온보딩으로 갑니다.
     saveData(SIGNUP_STORAGE_KEY, info)
     navigate('/onboarding')
   }
@@ -590,7 +597,6 @@ export function SignupPage() {
           <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
             {signupSteps[step - 1].title}
           </h1>
-          {/* 어떤 SNS 로 로그인했는지는 아직 저장하지 않아서(#47 이후) 이름 없이 적습니다. */}
           {step !== 1 ? (
             <p className="mt-2 break-keep text-slate-600">{signupSteps[step - 1].description}</p>
           ) : isEmailSignup ? (
@@ -605,10 +611,20 @@ export function SignupPage() {
               </Link>
             </p>
           ) : (
+            // 로그인한 채로 온 사람에게는 지금 로그인 상태라는 것과 나가는 길(로그아웃)을 같이 보여줍니다.
+            // 안 그러면 "로그인도 안 했는데 왜 가입 화면이지?" 하고 헷갈립니다. (예전 테스트 로그인이 남아 있는 경우)
             <p className="mt-2 break-keep text-slate-600">
               {isTestUser
                 ? '테스트 계정으로 로그인했어요. 적은 정보는 이 브라우저에만 저장돼요.'
-                : 'SNS 계정으로 로그인했어요.'}
+                : '이미 로그인한 상태예요.'}{' '}
+              {/* type="button": form 안의 버튼이라, 적지 않으면 눌렀을 때 가입 제출이 돼 버립니다. */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="text-brand inline-flex h-10 items-center font-medium underline underline-offset-4"
+              >
+                로그아웃
+              </button>
             </p>
           )}
         </div>
@@ -664,7 +680,7 @@ export function SignupPage() {
               label="이메일"
               value={email}
               maxLength={EMAIL_MAX_LENGTH}
-              placeholder="예) study@example.com"
+              placeholder="예) tmax@starflow.com"
               autoComplete="email"
               error={emailError ?? undefined}
               onChange={(event) => setEmail(event.target.value)}
@@ -672,7 +688,7 @@ export function SignupPage() {
               className="h-12 text-base"
             />
 
-            {/* 이메일로 가입할 때만 비밀번호를 받습니다. (SNS·테스트 로그인은 비밀번호가 없습니다) */}
+            {/* 이메일로 가입할 때만 비밀번호를 받습니다. (테스트 로그인은 비밀번호가 없습니다) */}
             {isEmailSignup && (
               <>
                 <div className="flex flex-col gap-2">
