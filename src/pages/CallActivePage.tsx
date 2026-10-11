@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button'
 import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
+import { loadCallCard } from '@/lib/callCard'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
 import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
@@ -21,6 +22,8 @@ function getFailMessage(error: unknown) {
       return '이 기기에서 마이크를 찾을 수 없어요. 마이크가 연결돼 있는지, 주소가 https 인지 확인해 주세요.'
     }
     if (error.reason === 'mic') return '마이크를 사용할 수 없어요. 마이크 권한을 확인해 주세요.'
+    // 서버가 이유를 알려 준 경우(오늘 통화를 다 씀 · 통화가 아직 켜져 있지 않음)는 그 문장을 그대로 보여줍니다.
+    if (error.userMessage) return error.userMessage
     if (error.reason === 'token') return 'AI 연결 준비에 실패했어요. 잠시 뒤에 다시 시도해 주세요.'
   }
   return 'AI 와 연결하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.'
@@ -195,6 +198,8 @@ export function CallActivePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [seconds, setSeconds] = useState(0)
+  // 서버가 정한 통화 한 번의 최대 길이(초). 연결된 뒤에 정해집니다. 서버가 안 알려 줬으면 null (제한 없음)
+  const [maxCallSeconds, setMaxCallSeconds] = useState<number | null>(null)
   const [isMuted, setIsMuted] = useState(false)
   // 오늘의 관리 강도입니다. 아직 진짜 값이 없어서 고정값이에요. (자세한 건 todayCare.ts)
   // 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
@@ -239,6 +244,8 @@ export function CallActivePage() {
       signal: controller.signal,
       // 오늘의 관리 강도와 독설 허용 수위를 서버에 알려서, AI 의 말투가 내가 정한 한도를 넘지 않게 합니다. (#257)
       tone: getCallTone(),
+      // 내 기록을 숫자로 정리한 "학생 카드" 를 같이 보냅니다. AI 가 이걸 보고 묻는 것과 말투를 바꿉니다. (lib/callCard.ts)
+      card: loadCallCard(),
       // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
       onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
       // 연결이 끊어지면 마이크를 끄고, 안내 화면을 보여줍니다.
@@ -263,6 +270,7 @@ export function CallActivePage() {
         }
         call = startedCall
         callRef.current = startedCall
+        setMaxCallSeconds(startedCall.maxCallSeconds)
         setConnection('connected')
       })
       .catch((error: unknown) => {
@@ -317,6 +325,14 @@ export function CallActivePage() {
     // 연결이 끊기거나 화면을 떠나면 타이머를 꼭 멈춥니다.
     return () => clearInterval(timerId)
   }, [isCounting])
+
+  // 서버가 정한 최대 길이가 되면 통화를 끊고 결과 화면으로 갑니다. 음성 통화는 길수록 돈이 많이 들기 때문입니다.
+  // (화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다)
+  useEffect(() => {
+    if (connection !== 'connected' || maxCallSeconds === null) return
+    if (seconds < maxCallSeconds) return
+    navigate('/call/result', { replace: true })
+  }, [connection, maxCallSeconds, seconds, navigate])
 
   function handleToggleMute() {
     setIsMuted((prev) => !prev)
@@ -375,6 +391,12 @@ export function CallActivePage() {
         <h1 className="mt-3 text-4xl font-bold tracking-tight tabular-nums sm:text-5xl">
           {formatCallTime(seconds)}
         </h1>
+        {/* 통화가 갑자기 끊기는 것처럼 느끼지 않게, 최대 길이를 미리 알려 줍니다. */}
+        {maxCallSeconds !== null && (
+          <p className="mt-2 text-sm text-indigo-100">
+            {formatCallTime(maxCallSeconds)} 이 되면 통화가 끝나요
+          </p>
+        )}
 
         <div className="mt-8">
           <AiAvatar careLevel={careLevel} />
