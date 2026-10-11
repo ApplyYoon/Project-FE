@@ -6,6 +6,7 @@ import {
   loggedOutState,
   type AuthState,
 } from '@/lib/authStorage'
+import { queryClient } from '@/lib/queryClient'
 import { saveData } from '@/lib/storage'
 import type { AuthUser } from '@/types'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -35,6 +36,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   const logout = useCallback(() => {
+    // 서버에서 받아 보관해 둔 것(내 정보 등)을 지웁니다. 안 지우면 같은 기기에서 다른 사람이 로그인했을 때 앞사람의 정보가 잠깐 보입니다.
+    queryClient.clear()
     setAuth(loggedOutState)
   }, [])
 

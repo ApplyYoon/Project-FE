@@ -2,6 +2,7 @@ import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
+import { AccountPage } from '@/pages/AccountPage'
 import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
@@ -69,6 +70,8 @@ export const router = createBrowserRouter([
       { path: 'manual', element: <ManualPage /> },
       { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
+      { path: 'settings/account', element: <AccountPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
       { path: 'messages', element: <Navigate to="/notifications" replace /> },

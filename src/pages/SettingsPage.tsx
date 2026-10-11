@@ -8,6 +8,7 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
+import { logoutOnServer } from '@/lib/accountApi'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import type { CareLevel } from '@/lib/careLevel'
@@ -78,6 +79,9 @@ export function SettingsPage() {
   const accountName = profile?.nickname || user?.name || '사용자'
 
   function handleLogout() {
+    // 서버의 로그인 토큰부터 지워 달라고 합니다. 답을 기다리지 않고 바로 넘어갑니다.
+    // (서버가 꺼져 있어도 로그아웃은 되어야 합니다. 이 기기의 로그인 정보를 지우기 "전에" 불러야 토큰이 같이 나갑니다)
+    void logoutOnServer()
     // 로그인 화면으로 먼저 옮긴 뒤 로그인 정보를 지웁니다.
     // (순서가 반대면 문지기(RequireAuth)가 "설정으로 돌아갈 것" 을 기억해서, 다음에 로그인하면 설정 화면이 뜹니다)
     navigate('/login', { replace: true })
@@ -190,9 +194,9 @@ export function SettingsPage() {
         </p>
       </div>
 
-      {/* 계정: 지금 누구로 로그인했는지 보여주고, 여기서 로그아웃합니다. */}
+      {/* 계정: 지금 누구로 로그인했는지 보여주고, 여기서 내 계정 화면으로 가거나 로그아웃합니다. */}
       <Card>
-        {/* 모바일은 프로필 아래에 로그아웃 버튼을 가득 채우고, PC(sm 이상)는 오른쪽에 나란히 둡니다. */}
+        {/* 모바일은 프로필 아래에 버튼을 가득 채우고, PC(sm 이상)는 오른쪽에 나란히 둡니다. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {/* 프로필 사진 대신 이름의 첫 글자를 동그라미에 넣습니다. 꾸밈이라 스크린리더는 읽지 않습니다. */}
@@ -220,6 +224,13 @@ export function SettingsPage() {
               )}
             </div>
           </div>
+          {/* 내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
+          <Link
+            to="/settings/account"
+            className="inline-flex h-10 w-full shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 sm:w-auto"
+          >
+            내 계정 관리
+          </Link>
           <Button
             variant="secondary"
             className="w-full shrink-0 sm:w-auto"

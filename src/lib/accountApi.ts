@@ -1,0 +1,131 @@
+/**
+ * 로그인한 사람이 자기 계정을 관리할 때 서버를 부르는 함수들입니다. (화면은 pages/AccountPage.tsx)
+ *
+ * 서버(BE)와 정한 약속입니다. (BE 저장소의 docs/API.md "내 계정", BE 이슈 #101) 전부 로그인이 필요합니다.
+ *   내 정보 보기    GET  /auth/profile                                                    -> 200 Profile
+ *   내 정보 고치기  PUT  /auth/profile   { name, nickname, schoolCode, schoolName, diaryAnalysis } -> 200 Profile
+ *   비밀번호 바꾸기 PUT  /auth/password  { currentPassword, newPassword }                  -> 204
+ *   로그아웃        POST /auth/logout                                                     -> 204
+ *   탈퇴            POST /auth/withdraw  { password }                                      -> 204
+ *   실패            값이 틀리거나 "지금 비밀번호" 가 틀리면 400 / 로그인이 풀렸으면 401
+ *
+ * ⚠️ 비밀번호는 서버로 보내기만 합니다. 브라우저 저장소에 넣지 않고, console.log 로도 찍지 않습니다.
+ */
+import { ApiError, api, isConnectionError } from '@/lib/api'
+import { queryOptions } from '@tanstack/react-query'
+
+/** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 멈춰도 로딩이 영원히 끝나지 않으면 안 되기 때문입니다. */
+const REQUEST_TIMEOUT_MS = 10000
+
+/** 서버가 돌려주는 내 정보 */
+export interface Profile {
+  email: string
+  /** 이름 (실명) */
+  name: string
+  /** 앱에서 부르는 이름 */
+  nickname: string
+  /** 고른 고등학교의 번호와 이름. 고르지 않았으면 둘 다 null */
+  schoolCode: string | null
+  schoolName: string | null
+  /** [선택 동의] 일기·감정 기록을 분석에 써도 되는지 */
+  diaryAnalysis: boolean
+}
+
+/** 내 정보를 고칠 때 서버에 보내는 값. 고칠 수 있는 것을 한꺼번에 보냅니다. (이메일은 바꿀 수 없습니다) */
+export type ProfileUpdateInput = Omit<Profile, 'email'>
+
+/** 서버가 준 값이 약속한 모양이 맞는지 확인합니다. (서버 응답도 그대로 믿지 않고 확인합니다) */
+function isProfile(value: unknown): value is Profile {
+  if (typeof value !== 'object' || value === null) return false
+  const profile = value as Record<string, unknown>
+  return (
+    typeof profile.email === 'string' &&
+    typeof profile.name === 'string' &&
+    typeof profile.nickname === 'string' &&
+    (profile.schoolCode === null || typeof profile.schoolCode === 'string') &&
+    (profile.schoolName === null || typeof profile.schoolName === 'string') &&
+    typeof profile.diaryAnalysis === 'boolean'
+  )
+}
+
+async function fetchProfile(): Promise<Profile> {
+  const result = await api<unknown>('/auth/profile', {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  // 502: 서버가 이상한 응답을 줬다는 뜻으로 씁니다.
+  if (!isProfile(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+  return result
+}
+
+/**
+ * 내 정보의 쿼리 설정입니다. 화면에서는 useSuspenseQuery(profileQuery()) 로 받아옵니다. (docs/DATA-FETCHING.md)
+ * queryKey 에 사람을 구분하는 값이 없는 이유: 로그인한 사람의 것 하나뿐이고, 로그아웃할 때 보관함에서 지우기 때문입니다.
+ */
+export function profileQuery() {
+  return queryOptions({
+    queryKey: ['profile'],
+    queryFn: fetchProfile,
+    // 400·404 같은 거절은 다시 시도해도 같아서, 다시 시도하지 않습니다.
+    retry: false,
+  })
+}
+
+/** 내 정보를 고치고, 고친 뒤의 내 정보를 돌려줍니다. 실패하면 에러를 던집니다. */
+export async function updateProfile(input: ProfileUpdateInput): Promise<Profile> {
+  const result = await api<unknown>('/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  if (!isProfile(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+  return result
+}
+
+/** 비밀번호를 바꿉니다. 실패하면 에러를 던집니다. (지금 비밀번호가 틀리면 400) */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api<void>('/auth/password', {
+    method: 'PUT',
+    body: JSON.stringify({ currentPassword, newPassword }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+}
+
+/**
+ * 서버의 로그인 토큰을 지웁니다. 실패해도 에러를 던지지 않습니다.
+ *
+ * 로그아웃은 서버가 꺼져 있어도 되어야 합니다. 그래서 이 함수의 결과와 상관없이 화면은 로그아웃을 진행합니다.
+ * (서버에 닿지 못하면 그 토큰은 30일 뒤에 스스로 끝납니다)
+ *
+ * ⚠️ 이 기기의 로그인 정보를 지우기 "전에" 불러야 합니다. 지운 뒤에는 보낼 토큰이 없습니다.
+ */
+export async function logoutOnServer(): Promise<void> {
+  try {
+    await api<void>('/auth/logout', {
+      method: 'POST',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch {
+    // 일부러 아무것도 하지 않습니다. (위 설명)
+  }
+}
+
+/** 탈퇴합니다. 서버의 계정과 기록이 지워집니다. 실패하면 에러를 던집니다. (비밀번호가 틀리면 400) */
+export async function withdraw(password: string): Promise<void> {
+  await api<void>('/auth/withdraw', {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+}
+
+/**
+ * 계정 관련 요청이 실패했을 때 화면에 보여줄 한 줄을 고릅니다.
+ *
+ *   서버가 거절(400 · 404 등) -> 서버가 준 메시지  (예: '비밀번호가 맞지 않아요', '이메일로 가입한 계정이 없어요')
+ *   서버에 닿지 못함      -> '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.'
+ */
+export function getAccountErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.message
+  if (isConnectionError(error)) return '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.'
+  return '알 수 없는 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'
+}
