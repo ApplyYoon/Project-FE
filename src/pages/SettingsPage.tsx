@@ -8,6 +8,7 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
+import { logoutOnServer } from '@/lib/accountApi'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import type { CareLevel } from '@/lib/careLevel'
@@ -78,6 +79,9 @@ export function SettingsPage() {
   const accountName = profile?.nickname || user?.name || '사용자'
 
   function handleLogout() {
+    // 서버의 로그인 토큰부터 지워 달라고 합니다. 답을 기다리지 않고 바로 넘어갑니다.
+    // (서버가 꺼져 있어도 로그아웃은 되어야 합니다. 이 기기의 로그인 정보를 지우기 "전에" 불러야 토큰이 같이 나갑니다)
+    void logoutOnServer()
     // 로그인 화면으로 먼저 옮긴 뒤 로그인 정보를 지웁니다.
     // (순서가 반대면 문지기(RequireAuth)가 "설정으로 돌아갈 것" 을 기억해서, 다음에 로그인하면 설정 화면이 뜹니다)
     navigate('/login', { replace: true })
