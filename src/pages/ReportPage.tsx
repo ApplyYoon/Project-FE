@@ -12,8 +12,11 @@ import { usePlans } from '@/hooks/usePlans'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
+import { formatClock, loadAwayRecords } from '@/lib/away'
+import { getAwaySummary } from '@/lib/awaySummary'
 import { loadStudySessions } from '@/lib/dailyRecords'
 import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
+import { loadUnlockRecords } from '@/lib/focusMode'
 import { getDaySummary } from '@/lib/daySummary'
 import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { getFacts } from '@/lib/facts'
@@ -395,6 +398,9 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
       {/* 위의 숫자를 말로 풀어 주는 코치 한 문단 (#249). 서버가 없으면 숫자를 끼운 기본 문장이 나옵니다. */}
       <WeeklyCoachCard plans={allPlans} sessions={sessions} mondayKey={mondayKey} />
 
+      {/* 이 주에 공부하다 나간 기록과 집중 모드를 푼 기록. 하나도 없으면 카드가 보이지 않습니다. */}
+      <FocusRecordCard mondayKey={mondayKey} />
+
       {/* 지난 목표와 결과 (#247). 달성했는지는 그 주의 팩트 숫자로 정해집니다. 스스로 "지켰다" 고 답하지 않습니다. */}
       {pastGoals.length > 0 && (
         <Card title="지난 목표">
@@ -562,6 +568,87 @@ function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
 }
 
 /** 월간 리포트 (#86). 4주를 한 달로 봅니다 (예: 9/8~10/5 · 4주). */
+interface FocusRecordCardProps {
+  /** 보고 있는 주의 월요일 ('YYYY-MM-DD') */
+  mondayKey: string
+}
+
+/**
+ * 주간 리포트의 "집중 기록" 카드입니다. 공부하다 다른 탭·앱으로 나간 기록(딴짓)과 집중 모드를 직접 푼 기록을 보여줍니다.
+ * 웹 앱은 다른 앱을 잠글 수 없어서, 대신 "언제 얼마나 나갔는지" 를 스스로 볼 수 있게 합니다. (계산: lib/awaySummary.ts)
+ * 이 주에 기록이 하나도 없으면 아무것도 그리지 않습니다.
+ */
+function FocusRecordCard({ mondayKey }: FocusRecordCardProps) {
+  // 저장된 기록은 이 화면이 열릴 때 한 번만 읽습니다. (리포트를 보는 동안에는 기록이 늘지 않습니다)
+  const [awayRecords] = useState(loadAwayRecords)
+  const [unlockRecords] = useState(loadUnlockRecords)
+
+  const summary = getAwaySummary(awayRecords, unlockRecords, mondayKey, moveDateKey(mondayKey, 6))
+  if (summary.awayCount === 0 && summary.unlockCount === 0) return null
+
+  return (
+    <Card title="집중 기록">
+      <p className="text-sm break-keep text-slate-500">
+        벌점이 아니에요. 내가 어느 시간대에 약한지 알아보는 기록이에요.
+      </p>
+
+      {/* 모바일은 한 줄에 하나, sm 부터 세 칸으로 나란히 */}
+      <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-lg bg-slate-50 p-3">
+          <dt className="text-xs text-slate-500">공부하다 나간 횟수</dt>
+          <dd className="mt-1 text-lg font-bold text-slate-900">
+            {summary.awayCount}번
+            {summary.awayCount > 0 && (
+              <span className="ml-1 text-sm font-medium text-slate-500">
+                · 합쳐서 {formatMinutes(summary.awayMinutes)}
+              </span>
+            )}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-slate-50 p-3">
+          <dt className="text-xs text-slate-500">가장 자주 나간 시간</dt>
+          <dd className="mt-1 text-lg font-bold text-slate-900">
+            {summary.peakHour === null ? (
+              '없음'
+            ) : (
+              <>
+                {summary.peakHour.hour}시대
+                <span className="ml-1 text-sm font-medium text-slate-500">
+                  · {summary.peakHour.count}번
+                </span>
+              </>
+            )}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-slate-50 p-3">
+          <dt className="text-xs text-slate-500">집중 모드를 푼 횟수</dt>
+          <dd className="mt-1 text-lg font-bold text-slate-900">{summary.unlockCount}번</dd>
+        </div>
+      </dl>
+
+      {summary.recentUnlocks.length > 0 && (
+        <div className="mt-4">
+          <p className="text-sm font-semibold text-slate-900">집중 모드를 풀 때 적은 이유</p>
+          <ul className="mt-2 flex flex-col divide-y divide-slate-100">
+            {summary.recentUnlocks.map((unlock) => (
+              <li
+                key={unlock.id}
+                className="flex items-baseline justify-between gap-3 py-2 text-sm"
+              >
+                {/* min-w-0 + break-words: 이유가 길어도 카드 밖으로 넘치지 않게 합니다. */}
+                <span className="min-w-0 break-words text-slate-700">{unlock.reason}</span>
+                <span className="shrink-0 text-xs text-slate-500">
+                  {formatMonthDay(toDayKey(unlock.unlockedAt))} {formatClock(unlock.unlockedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 interface WeeklyCoachCardProps {
   plans: StudyPlan[]
   sessions: StudySession[]

@@ -1,12 +1,10 @@
-import { toDateString } from '@/lib/away'
+import { AWAY_RECORDS_KEY, loadAwayRecords, toDateString } from '@/lib/away'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import type { AwayRecord } from '@/types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
-// 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-away-records' 가 됩니다)
-// 딴짓 기록 목록
-const RECORDS_KEY = 'away-records'
+// 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다. 딴짓 기록 목록의 이름은 lib/away.ts 에 있습니다)
 // 나갔지만 아직 돌아오지 않은 상태. 돌아오기 전에 페이지가 닫히거나 새로 열려도 기록이 사라지지 않게 따로 적어 둡니다.
 const PENDING_KEY = 'away-pending'
 
@@ -23,25 +21,6 @@ interface PendingAway {
   leftAt: number
   /** 공부하던 과목 (Subject 의 id). 알 수 없으면 null */
   subjectId: string | null
-}
-
-/** 저장소에서 꺼낸 값이 우리가 저장한 딴짓 기록 모양이 맞는지 확인합니다. (깨진 값이 섞여도 앱이 멈추지 않게) */
-function isAwayRecord(value: unknown): value is AwayRecord {
-  if (typeof value !== 'object' || value === null) return false
-  const record = value as Record<string, unknown>
-  return (
-    typeof record.id === 'string' &&
-    typeof record.date === 'string' &&
-    (record.subjectId === null || typeof record.subjectId === 'string') &&
-    typeof record.leftAt === 'number' &&
-    typeof record.returnedAt === 'number' &&
-    typeof record.awayMs === 'number'
-  )
-}
-
-function loadRecords(): AwayRecord[] {
-  const saved = loadData<unknown>(RECORDS_KEY, [])
-  return Array.isArray(saved) ? saved.filter(isAwayRecord) : []
 }
 
 function loadPending(): PendingAway | null {
@@ -137,7 +116,7 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
   const [leftover] = useState(() => readLeftover(options.isStarted))
 
   const [records, setRecords] = useState<AwayRecord[]>(() => {
-    const saved = loadRecords()
+    const saved = loadAwayRecords()
     return leftover.action === 'finish' ? [...saved, leftover.record] : saved
   })
   // 돌아왔을 때 보여줄 안내. 방금 끝난 딴짓 한 번의 기록입니다.
@@ -156,7 +135,7 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
 
   // 기록이 늘어날 때마다 저장합니다.
   useEffect(() => {
-    saveData(RECORDS_KEY, records)
+    saveData(AWAY_RECORDS_KEY, records)
   }, [records])
 
   // 페이지가 열릴 때 읽어 둔 흔적을 정리합니다. (여러 번 실행돼도 결과가 같습니다)
