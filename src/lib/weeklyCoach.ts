@@ -5,7 +5,10 @@
  * AI 가 없을 때(서버 연결 전 · 실패)는 이 파일이 숫자를 끼워 넣어 만든 "기본 문장" 을 보여줍니다. 그래서 문단은 항상 나옵니다.
  *
  * - getCoachSummary : 기본 문장과 근거 숫자를 만듭니다. (React·서버 없이 돌아가는 순수 함수)
- * - weeklyCoachQuery : 서버에 AI 문단을 물어보는 쿼리 설정입니다. (docs/DATA-FETCHING.md)
+ * - weeklyCoachQuery · monthlyCoachQuery : 서버에 AI 문단을 물어보는 쿼리 설정입니다. (docs/DATA-FETCHING.md)
+ * - fetchCoachParagraph : 서버에 물어보는 공통 함수입니다. 홈의 "어제 한 줄"(lib/dailyCoach.ts)도 같이 씁니다.
+ *
+ * 월간 리포트도 같은 규칙으로 문단을 만듭니다. 달라지는 것은 "이번 주 · 지난주 · 다음 주" 같은 기간을 부르는 말뿐입니다.
  *
  * ⚠️ 서버에는 "계산된 숫자" 만 보냅니다. 계획 내용·일기·이름 같은 원문은 보내지 않습니다.
  */
@@ -23,6 +26,29 @@ export const WEEKDAY_GAP = 20
 export const LATE_START_MINUTES = 15
 
 const WEEKDAY_NAMES = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
+
+/** 문장에서 기간을 부르는 말입니다. 주간과 월간이 같은 규칙을 쓰되 이 말만 다릅니다. */
+export interface CoachPeriodWords {
+  /** 지금 보는 기간 (예: '이번 주') */
+  current: string
+  /** 비교하는 그 전 기간 (예: '지난주') */
+  previous: string
+  /** 다음 기간 (예: '다음 주') */
+  next: string
+}
+
+/** 주간 리포트에서 쓰는 말 */
+export const WEEK_WORDS: CoachPeriodWords = {
+  current: '이번 주',
+  previous: '지난주',
+  next: '다음 주',
+}
+/** 월간 리포트(4주)에서 쓰는 말 */
+export const MONTH_WORDS: CoachPeriodWords = {
+  current: '이 4주',
+  previous: '그 전 4주',
+  next: '다음 달',
+}
 
 /** 문단에 쓰인 숫자 하나. "근거 숫자 보기" 에 그대로 보여줍니다. */
 export interface CoachEvidence {
@@ -82,7 +108,12 @@ export interface CoachSummary {
  *   예6) 계획이 없던 주(계획 대비 null), 완주율 60%(5번 중 3번)
  *        -> 첫 문장 없이 "목표를 정한 타이머 5번 중 3번을 끝까지 했어. (완주율 60%)" 부터 시작합니다.
  */
-export function getCoachSummary(thisWeek: Facts, lastWeek: Facts): CoachSummary | null {
+export function getCoachSummary(
+  thisWeek: Facts,
+  lastWeek: Facts,
+  // 기간을 부르는 말. 안 넘기면 주간입니다. 월간 리포트는 MONTH_WORDS 를 넘깁니다. (그러면 thisWeek 는 "이 4주" 의 팩트입니다)
+  words: CoachPeriodWords = WEEK_WORDS,
+): CoachSummary | null {
   const completion = thisWeek.completionRate
   // 규칙 0
   if (completion.value === null || completion.sampleCount < MIN_SAMPLES_FOR_COACH) return null
@@ -93,7 +124,7 @@ export function getCoachSummary(thisWeek: Facts, lastWeek: Facts): CoachSummary 
   // 규칙 1: 계획 대비 실제
   const planRate = thisWeek.planRate
   if (planRate.value !== null) {
-    sentences.push(`이번 주는 계획의 ${planRate.value}% 를 했어.`)
+    sentences.push(`${words.current}는 계획의 ${planRate.value}% 를 했어.`)
     evidence.push({
       label: '계획 대비 실제',
       value: `${planRate.value}%`,
@@ -103,9 +134,9 @@ export function getCoachSummary(thisWeek: Facts, lastWeek: Facts): CoachSummary 
     const lastPlanRate = lastWeek.planRate.value
     if (lastPlanRate !== null && lastPlanRate !== planRate.value) {
       const gap = planRate.value - lastPlanRate
-      sentences.push(`지난주보다 ${Math.abs(gap)}%p ${gap > 0 ? '올랐어' : '내렸어'}.`)
+      sentences.push(`${words.previous}보다 ${Math.abs(gap)}%p ${gap > 0 ? '올랐어' : '내렸어'}.`)
       evidence.push({
-        label: '지난주 계획 대비 실제',
+        label: `${words.previous} 계획 대비 실제`,
         value: `${lastPlanRate}%`,
         basis: `계획 ${lastWeek.planRate.sampleCount}개`,
       })
@@ -166,7 +197,7 @@ export function getCoachSummary(thisWeek: Facts, lastWeek: Facts): CoachSummary 
       basis: `계획 ${delay.sampleCount}개`,
     })
   } else {
-    sentences.push('지금 흐름이 좋아. 다음 주도 이만큼만 이어 가 보자.')
+    sentences.push(`지금 흐름이 좋아. ${words.next}도 이만큼만 이어 가 보자.`)
   }
 
   return { sentences, evidence }
@@ -174,24 +205,35 @@ export function getCoachSummary(thisWeek: Facts, lastWeek: Facts): CoachSummary 
 
 /* ---------- 서버에 AI 문단 물어보기 ----------
  *
- * ⚠️ 서버 API 는 아직 없습니다. 아래 주소·모양은 FE 가 먼저 적어 본 것이고, BE(#87)와 정해지면 여기만 고치면 됩니다.
- *   요청  POST /coach/weekly   { mondayKey, numbers: [{ label, value, basis }], maxCareLevel, maxHarshness }
- *   응답  { "paragraph": "이번 주는 계획의 64% 를 했어. …" }
+ * 서버(BE)와 정한 약속입니다. (BE 저장소의 docs/API.md "주간 코치 문단", "어제 한 줄 · 월간 코치 문단")
+ *   주간  POST /coach/weekly    { mondayKey, numbers: [{ label, value, basis }], maxCareLevel, maxHarshness }
+ *   월간  POST /coach/monthly   { numbers, maxCareLevel, maxHarshness }
+ *   어제  POST /coach/daily     { numbers, maxCareLevel, maxHarshness }
+ *   응답  { "paragraph": "이번 주는 계획의 64% 를 했어. …" }  또는  { "paragraph": null }
  *
- * - numbers 는 위의 evidence 그대로입니다. AI 는 이 숫자만 가지고 문단을 씁니다. (숫자를 새로 만들면 안 됩니다)
+ * - numbers 는 위의 evidence 그대로입니다. AI 는 이 숫자만 가지고 문단을 씁니다. (숫자를 새로 만들면 서버가 버립니다)
+ * - label · value · basis 는 30자까지, 한글·영문·숫자·띄어쓰기·% · ( ) 만 쓸 수 있습니다. ('19:25', '+35분' 같은 글자는 400 입니다)
  * - maxCareLevel · maxHarshness 는 설정에서 정한 한도입니다. 말투가 이 한도를 넘지 않게 하는 것은 서버의 일입니다.
+ * - AI 는 배포 서버에서만 켜집니다. 내 컴퓨터의 서버나 테스트 로그인에서는 항상 null 이 와서 기본 문장이 보입니다.
  */
 
-/** AI 문단을 물어볼 때 서버에 보내는 값 */
-export interface WeeklyCoachRequest {
-  /** 어느 주인지 (그 주의 월요일 'YYYY-MM-DD') */
-  mondayKey: string
+/** 어느 기간의 문단인지. 서버 주소의 마지막 부분과 같습니다. (/coach/weekly 등) */
+export type CoachKind = 'daily' | 'weekly' | 'monthly'
+
+/** 월간 · 어제 한 줄을 물어볼 때 서버에 보내는 값 */
+export interface CoachCommentRequest {
   /** 문단에 써도 되는 숫자들 */
   numbers: CoachEvidence[]
   /** 내가 정한 관리 강도 최대 한도 (0 ~ 4) */
   maxCareLevel: number
   /** 내가 허용한 독설 수위 (1 ~ 5) */
   maxHarshness: number
+}
+
+/** 주간 문단을 물어볼 때 서버에 보내는 값. 어느 주인지가 더 들어갑니다. */
+export interface WeeklyCoachRequest extends CoachCommentRequest {
+  /** 어느 주인지 (그 주의 월요일 'YYYY-MM-DD') */
+  mondayKey: string
 }
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 멈춰도 기본 문장이 늦지 않게 뜨도록 짧게 잡습니다. */
@@ -203,9 +245,12 @@ const COACH_TIMEOUT_MS = 8000
  * AI 문단은 "있으면 더 좋은 것" 입니다. 서버가 없거나 실패해도 화면은 기본 문장으로 계속 보여야 해서,
  * 실패를 에러로 다루지 않습니다. (null 이 오면 화면이 기본 문장을 보여줍니다)
  */
-async function fetchWeeklyCoach(request: WeeklyCoachRequest): Promise<string | null> {
+export async function fetchCoachParagraph(
+  kind: CoachKind,
+  request: CoachCommentRequest | WeeklyCoachRequest,
+): Promise<string | null> {
   try {
-    const result = await api<unknown>('/coach/weekly', {
+    const result = await api<unknown>(`/coach/${kind}`, {
       method: 'POST',
       body: JSON.stringify(request),
       signal: AbortSignal.timeout(COACH_TIMEOUT_MS),
@@ -222,24 +267,45 @@ async function fetchWeeklyCoach(request: WeeklyCoachRequest): Promise<string | n
 }
 
 /**
- * AI 문단의 쿼리 설정입니다. 화면에서는 useSuspenseQuery(weeklyCoachQuery(request)) 로 받아옵니다.
- * data 는 AI 가 쓴 문단(글자)이거나, 받지 못했을 때 null 입니다.
+ * 주간·월간 AI 문단의 쿼리 설정을 만드는 공통 함수입니다. data 는 AI 가 쓴 문단(글자)이거나, 받지 못했을 때 null 입니다.
  *
- * - queryKey 에 숫자들까지 넣어서, 같은 주라도 기록이 늘어 숫자가 바뀌면 새로 물어봅니다.
+ * - queryKey 에 숫자들까지 넣어서, 같은 기간이라도 기록이 늘어 숫자가 바뀌면 새로 물어봅니다.
  * - 한 번 받으면 30분 동안은 다시 묻지 않습니다. (같은 숫자로 같은 것을 또 물으면 돈만 듭니다)
  * - retry: false — 실패는 이미 null 로 바꿔 돌려주기 때문에 다시 시도할 일이 없습니다.
  */
-export function weeklyCoachQuery(request: WeeklyCoachRequest) {
+function coachQuery(
+  kind: CoachKind,
+  /** 어느 기간인지 구분하는 날짜 (주간은 그 주의 월요일, 월간은 그 4주의 첫 날) */
+  periodKey: string,
+  request: CoachCommentRequest | WeeklyCoachRequest,
+) {
   return queryOptions({
     queryKey: [
-      'weekly-coach',
-      request.mondayKey,
+      'coach',
+      kind,
+      periodKey,
       request.numbers,
       request.maxCareLevel,
       request.maxHarshness,
     ],
-    queryFn: () => fetchWeeklyCoach(request),
+    queryFn: () => fetchCoachParagraph(kind, request),
     staleTime: 30 * 60 * 1000,
     retry: false,
   })
+}
+
+/** 화면의 코치 문단 컴포넌트가 받는 쿼리 설정의 모양입니다. (주간 · 월간이 같습니다) */
+export type CoachQuery = ReturnType<typeof coachQuery>
+
+/** 주간 AI 문단의 쿼리 설정입니다. 화면에서는 useSuspenseQuery(weeklyCoachQuery(request)) 로 받아옵니다. */
+export function weeklyCoachQuery(request: WeeklyCoachRequest): CoachQuery {
+  return coachQuery('weekly', request.mondayKey, request)
+}
+
+/**
+ * 월간 AI 문단의 쿼리 설정입니다. 주간과 같은 방식이고, 서버 주소와 보내는 값만 다릅니다.
+ * startKey 는 보고 있는 4주의 첫 날입니다. (다른 4주로 넘기면 따로 보관합니다)
+ */
+export function monthlyCoachQuery(startKey: string, request: CoachCommentRequest): CoachQuery {
+  return coachQuery('monthly', startKey, request)
 }
