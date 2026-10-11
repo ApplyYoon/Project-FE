@@ -58,7 +58,7 @@ export function useCallReminder() {
 
       // 먼저 "울렸다" 고 기록해서, 아래에서 에러가 나도 같은 전화가 계속 반복되지 않게 합니다.
       saveData(LAST_RING_STORAGE_KEY, Date.now())
-      showCallNotification(() => navigate('/call'))
+      showCallNotification()
       navigate('/call')
     }
 
