@@ -148,7 +148,7 @@ export function LoginPage() {
             type="email"
             label="이메일"
             value={email}
-            placeholder="예) study@example.com"
+            placeholder="예) tmax@starflow.com"
             // autoComplete: 브라우저(비밀번호 관리자)가 저장해 둔 값을 채워 줍니다.
             autoComplete="email"
             onChange={(event) => setEmail(event.target.value)}

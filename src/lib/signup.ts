@@ -119,16 +119,16 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  * 이메일이 규칙에 맞는지 확인합니다. 맞으면 null, 틀리면 화면에 보여줄 안내 문구입니다.
  *
  *   getEmailError('')                  -> '이메일을 입력해 주세요.'
- *   getEmailError('study')             -> '이메일 주소를 다시 확인해 주세요. (예: study@example.com)'
- *   getEmailError('study@example')     -> '이메일 주소를 다시 확인해 주세요. (예: study@example.com)'
- *   getEmailError('study@example.com') -> null
+ *   getEmailError('tmax')              -> '이메일 주소를 다시 확인해 주세요. (예: tmax@starflow.com)'
+ *   getEmailError('tmax@starflow')     -> '이메일 주소를 다시 확인해 주세요. (예: tmax@starflow.com)'
+ *   getEmailError('tmax@starflow.com') -> null
  */
 export function getEmailError(email: string): string | null {
   const trimmed = email.trim()
 
   if (trimmed === '') return '이메일을 입력해 주세요.'
   if (trimmed.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(trimmed)) {
-    return '이메일 주소를 다시 확인해 주세요. (예: study@example.com)'
+    return '이메일 주소를 다시 확인해 주세요. (예: tmax@starflow.com)'
   }
   return null
 }

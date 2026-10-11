@@ -680,7 +680,7 @@ export function SignupPage() {
               label="이메일"
               value={email}
               maxLength={EMAIL_MAX_LENGTH}
-              placeholder="예) study@example.com"
+              placeholder="예) tmax@starflow.com"
               autoComplete="email"
               error={emailError ?? undefined}
               onChange={(event) => setEmail(event.target.value)}
