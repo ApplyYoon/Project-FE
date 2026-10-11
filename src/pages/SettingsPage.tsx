@@ -439,6 +439,12 @@ export function SettingsPage() {
                     받을 수 있어요.
                   </p>
                 )}
+                {/* 정해 둔 시간을 기다리지 않고 바로 전화 화면을 열어 봅니다. (수신 화면 → "받기" → 통화) */}
+                <div>
+                  <Link to="/call" className={secondaryLinkClass}>
+                    지금 전화 받아 보기
+                  </Link>
+                </div>
               </div>
 
               <MessageSettingsFields
