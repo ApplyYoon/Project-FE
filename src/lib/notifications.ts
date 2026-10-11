@@ -85,31 +85,95 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission()
 }
 
+/** 휴대폰·컴퓨터의 알림(시스템 알림) 하나에 들어가는 내용입니다. */
+export interface SystemNotificationContent {
+  /** 굵게 보이는 첫 줄 */
+  title: string
+  /** 그 아래에 보이는 내용 */
+  body: string
+  /** 알림의 이름표. 같은 tag 로 또 보내면 새로 쌓이지 않고 하나로 합쳐집니다. */
+  tag: string
+  /** 알림을 눌렀을 때 열 주소. 예) '/notifications' */
+  url: string
+}
+
+/** 알림 옆에 보이는 그림. (홈 화면 아이콘과 같은 그림입니다) */
+const NOTIFICATION_ICON = '/icons/icon-192.png'
+
 /**
- * AI 메시지를 브라우저 알림으로 띄웁니다. 권한이 없으면 아무 일도 하지 않습니다.
- * (메시지 자체는 이 함수와 상관없이 알림 화면에 이미 저장되어 있습니다)
- * 알림을 누르면 알림 화면(/notifications)으로 이동합니다.
- *
- * 알림을 띄우지 못하면 에러를 내지 않고 null 을 돌려줍니다.
- * 안드로이드 크롬은 `new Notification()` 을 막아 두어서 권한을 허용해도 TypeError 를 냅니다.
- * 이 에러를 잡지 않으면 앱 전체가 에러 화면이 되기 때문에, 알림만 포기하고 앱은 계속 돌아가게 합니다.
- * (전화 알림 lib/callReminder.ts 도 같은 방식입니다)
+ * 일하고 있는 서비스 워커(public/sw.js)를 찾아 줍니다. 없으면 null 입니다.
+ * 개발 서버(pnpm run dev)는 서비스 워커를 등록하지 않아서 null 이 나옵니다. (lib/pwa.ts)
  */
-export function showAiMessageNotification(message: AiMessage): Notification | null {
-  if (getNotificationPermission() !== 'granted') return null
+async function getServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null
+
+  const registration = await navigator.serviceWorker.getRegistration()
+  if (registration === undefined) return null
+  // 등록은 됐지만 아직 준비 중일 수 있어서 준비가 끝날 때까지 기다립니다.
+  // (등록된 게 있을 때만 기다립니다. 하나도 없는데 기다리면 영원히 끝나지 않습니다)
+  return navigator.serviceWorker.ready
+}
+
+/**
+ * 시스템 알림을 띄웁니다. 띄웠으면 true, 못 띄웠으면 false 입니다. (에러를 내지 않습니다)
+ * 알림 권한이 없으면 아무 일도 하지 않고 false 를 돌려줍니다.
+ *
+ * ■ 띄우는 방법은 두 가지이고, 위에서부터 됩니다.
+ *  1. 서비스 워커에게 부탁하기 — 휴대폰에서 되는 방법은 이것뿐입니다.
+ *     안드로이드 크롬은 2번 방법을 막아 두었고, 아이폰은 홈 화면에 추가한 앱에서 이 방법만 됩니다.
+ *     알림을 눌렀을 때 할 일은 서비스 워커(public/sw.js 의 'notificationclick')가 맡습니다.
+ *  2. 화면이 직접 띄우기(`new Notification()`) — 서비스 워커가 없을 때(개발 서버)만 씁니다. PC 에서만 됩니다.
+ *
+ * ⚠️ 앱이 열려 있을 때(또는 방금 뒤로 보낸 동안)만 뜹니다. 앱을 완전히 닫아도 오게 하려면 웹 푸시(#256)가 필요합니다.
+ *
+ *   await showSystemNotification({ title: 'STARFLOW 알림', body: '계획 시간이 지났어요', tag: 'alert-1', url: '/notifications' })
+ */
+export async function showSystemNotification(content: SystemNotificationContent): Promise<boolean> {
+  if (getNotificationPermission() !== 'granted') return false
 
   try {
-    // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
-    // 앱이 정해 둔 문장으로 만든 알림에는 "AI 메시지" 라고 붙이지 않습니다. (AI 가 쓴 글이 아닙니다)
-    const title = message.source === 'app' ? 'STARFLOW 알림' : 'AI 메시지'
-    const notification = new Notification(title, { body: message.text, tag: message.id })
+    const serviceWorker = await getServiceWorker()
+    if (serviceWorker !== null) {
+      await serviceWorker.showNotification(content.title, {
+        body: content.body,
+        tag: content.tag,
+        icon: NOTIFICATION_ICON,
+        // data: 알림에 붙여 두는 쪽지입니다. 알림을 누르면 서비스 워커가 이 주소를 읽어서 엽니다.
+        data: { url: content.url },
+      })
+      return true
+    }
+
+    const notification = new Notification(content.title, {
+      body: content.body,
+      tag: content.tag,
+      icon: NOTIFICATION_ICON,
+    })
     notification.onclick = () => {
       window.focus()
-      window.location.assign('/notifications')
       notification.close()
+      window.location.assign(content.url)
     }
-    return notification
+    return true
   } catch {
-    return null
+    // 브라우저가 막으면(예: 서비스 워커 없는 안드로이드 크롬) 알림만 포기하고 앱은 계속 돌아가게 합니다.
+    // 이 에러를 잡지 않으면 앱 전체가 에러 화면이 됩니다.
+    return false
   }
+}
+
+/**
+ * AI 메시지를 시스템 알림으로 띄웁니다. 띄웠으면 true 입니다. 권한이 없으면 아무 일도 하지 않습니다.
+ * (메시지 자체는 이 함수와 상관없이 알림 화면에 이미 저장되어 있습니다)
+ * 알림을 누르면 알림 화면(/notifications)으로 이동합니다.
+ */
+export function showAiMessageNotification(message: AiMessage): Promise<boolean> {
+  return showSystemNotification({
+    // 앱이 정해 둔 문장으로 만든 알림에는 "AI 메시지" 라고 붙이지 않습니다. (AI 가 쓴 글이 아닙니다)
+    title: message.source === 'app' ? 'STARFLOW 알림' : 'AI 메시지',
+    body: message.text,
+    // tag 를 메시지 id 로 두면, 같은 메시지로 또 알림을 보내려 할 때 브라우저가 하나로 합쳐 줍니다.
+    tag: message.id,
+    url: '/notifications',
+  })
 }

@@ -7,7 +7,7 @@
  * ⚠️ 이 기능은 **앱(웹 페이지)이 열려 있을 때만** 동작합니다.
  *    앱이 닫혀 있을 때 알림을 보내려면 서버가 보내는 웹 푸시와 서비스 워커(#105)가 필요합니다.
  */
-import { getNotificationPermission } from '@/lib/notifications'
+import { showSystemNotification } from '@/lib/notifications'
 
 // 저장소에 넣는 이름들입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다)
 /** 전화 받을 시간. 'HH:MM' 글자 (예: '22:00'). 아직 안 정했으면 저장돼 있지 않습니다. */
@@ -100,26 +100,17 @@ export function isIosWithoutInstall(): boolean {
 }
 
 /**
- * 전화가 왔다는 브라우저 알림을 띄웁니다. 알림을 누르면 onClick 이 불립니다.
+ * 전화가 왔다는 시스템 알림을 띄웁니다. 알림을 누르면 전화 수신 화면(/call)이 열립니다.
  * 권한이 없거나 이 브라우저가 지원하지 않으면 아무것도 하지 않습니다. (에러도 내지 않습니다)
- *
- * 참고: 안드로이드 크롬은 서비스 워커 없이는 이 방식의 알림을 못 띄웁니다. (#105 에서 서비스 워커를 만든 뒤 지원)
+ * 띄우는 방법은 lib/notifications.ts 의 showSystemNotification 을 보세요. (휴대폰은 서비스 워커로 띄웁니다)
  */
-export function showCallNotification(onClick: () => void): void {
-  if (getNotificationPermission() !== 'granted') return
-
-  try {
-    const notification = new Notification('AI 선생님에게 전화가 왔어요', {
-      body: '받으러 가서 오늘 하루를 같이 돌아봐요.',
-      // tag: 같은 알림이 여러 개 쌓이지 않고 하나만 남게 합니다.
-      tag: 'ai-call',
-    })
-    notification.onclick = () => {
-      window.focus()
-      notification.close()
-      onClick()
-    }
-  } catch {
-    console.warn('[callReminder] 브라우저 알림을 띄우지 못했습니다.')
-  }
+export function showCallNotification(): void {
+  // void: 알림이 떴는지 기다리지 않고 넘어갑니다. 못 띄워도 전화 화면은 그대로 열립니다.
+  void showSystemNotification({
+    title: 'AI 선생님에게 전화가 왔어요',
+    body: '받으러 가서 오늘 하루를 같이 돌아봐요.',
+    // tag: 같은 알림이 여러 개 쌓이지 않고 하나만 남게 합니다.
+    tag: 'ai-call',
+    url: '/call',
+  })
 }
