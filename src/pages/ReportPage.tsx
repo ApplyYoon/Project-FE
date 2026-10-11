@@ -23,8 +23,13 @@ import { getInsightsToShow } from '@/lib/insights'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import {
   MIN_SAMPLES_FOR_COACH,
+  MONTH_WORDS,
   getCoachSummary,
+  monthlyCoachQuery,
   weeklyCoachQuery,
+  type CoachCommentRequest,
+  type CoachEvidence,
+  type CoachQuery,
   type WeeklyCoachRequest,
 } from '@/lib/weeklyCoach'
 import { getWeeklyFacts } from '@/lib/weeklyFacts'
@@ -602,36 +607,115 @@ function WeeklyCoachCard({ plans, sessions, mondayKey }: WeeklyCoachCardProps) {
     <Card title="코치 한마디">
       {/* 서버에 물어보는 동안에는 스켈레톤을 보여줍니다. resetKeys: 다른 주로 넘기면 새로 받아옵니다. */}
       <AsyncBoundary pendingFallback={<CoachSkeleton />} resetKeys={[mondayKey]}>
-        <CoachParagraph request={request} fallbackSentences={summary.sentences} />
+        <CoachParagraph query={weeklyCoachQuery(request)} fallbackSentences={summary.sentences} />
       </AsyncBoundary>
 
-      {/* details/summary: 눌러서 접고 펼 수 있는 HTML 기본 부품입니다. 처음에는 접혀 있습니다. */}
-      <details className="group mt-4 rounded-lg bg-slate-50 px-3">
-        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
-          근거 숫자 보기
-          <span aria-hidden className="text-slate-500 transition-transform group-open:rotate-180">
-            ▾
-          </span>
-        </summary>
-        <ul className="flex flex-col divide-y divide-slate-200 pb-2 text-sm">
-          {summary.evidence.map((item) => (
-            <li key={item.label} className="flex items-center justify-between gap-3 py-2">
-              <span className="min-w-0 break-keep text-slate-600">{item.label}</span>
-              <span className="shrink-0 text-right">
-                <strong className="font-semibold text-slate-900">{item.value}</strong>
-                <span className="ml-2 text-xs text-slate-500">{item.basis}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </details>
+      <CoachEvidenceDetails evidence={summary.evidence} />
     </Card>
   )
 }
 
+interface MonthlyCoachCardProps {
+  plans: StudyPlan[]
+  sessions: StudySession[]
+  /** 보고 있는 4주의 첫 날과 마지막 날 ('YYYY-MM-DD') */
+  startKey: string
+  endKey: string
+  /** 비교할 그 전 4주의 첫 날 */
+  previousStartKey: string
+}
+
+/**
+ * 월간 리포트의 "코치 한마디" 카드입니다. 주간과 같은 규칙(lib/weeklyCoach.ts)을 4주 단위로 씁니다.
+ * 달라지는 것은 숫자를 계산하는 기간과, 문장에서 기간을 부르는 말("이 4주 · 그 전 4주 · 다음 달")뿐입니다.
+ */
+function MonthlyCoachCard({
+  plans,
+  sessions,
+  startKey,
+  endKey,
+  previousStartKey,
+}: MonthlyCoachCardProps) {
+  const [limits] = useState(getCareLimits)
+  // 아직 오지 않은 날의 계획까지 넣으면 "계획 대비 실제" 가 낮게 보여서, 오늘까지만 계산합니다. (주간과 같은 규칙)
+  // 'YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다.
+  const todayKey = getTodayKey()
+  const thisMonth = getFacts(plans, sessions, startKey, endKey < todayKey ? endKey : todayKey)
+  const previousMonth = getFacts(
+    plans,
+    sessions,
+    previousStartKey,
+    moveDateKey(previousStartKey, 27),
+  )
+  const summary = getCoachSummary(thisMonth, previousMonth, MONTH_WORDS)
+
+  if (summary === null) {
+    return (
+      <Card title="코치 한마디">
+        <p className="text-sm break-keep text-slate-600">
+          기록이 더 쌓이면 이야기해 줄게. 목표를 정한 타이머가 4주에 {MIN_SAMPLES_FOR_COACH}번은
+          있어야 해. (이 4주는 {thisMonth.completionRate.sampleCount}번)
+        </p>
+      </Card>
+    )
+  }
+
+  // 서버에는 계산된 숫자와 내가 정한 한도만 보냅니다. 계획 내용·일기 같은 원문은 보내지 않습니다.
+  const request: CoachCommentRequest = {
+    numbers: summary.evidence,
+    maxCareLevel: limits.maxCareLevel,
+    maxHarshness: limits.maxHarshness,
+  }
+
+  return (
+    <Card title="코치 한마디">
+      {/* resetKeys: 다른 4주로 넘기면 새로 받아옵니다. */}
+      <AsyncBoundary pendingFallback={<CoachSkeleton />} resetKeys={[startKey]}>
+        <CoachParagraph
+          query={monthlyCoachQuery(startKey, request)}
+          fallbackSentences={summary.sentences}
+        />
+      </AsyncBoundary>
+
+      <CoachEvidenceDetails evidence={summary.evidence} />
+    </Card>
+  )
+}
+
+interface CoachEvidenceDetailsProps {
+  /** 문단에 쓰인 숫자들 */
+  evidence: CoachEvidence[]
+}
+
+/** 코치 문단 아래의 "근거 숫자 보기" 입니다. 문단에 쓰인 숫자를 그대로 확인할 수 있습니다. (주간 · 월간이 같이 씁니다) */
+function CoachEvidenceDetails({ evidence }: CoachEvidenceDetailsProps) {
+  return (
+    // details/summary: 눌러서 접고 펼 수 있는 HTML 기본 부품입니다. 처음에는 접혀 있습니다.
+    <details className="group mt-4 rounded-lg bg-slate-50 px-3">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
+        근거 숫자 보기
+        <span aria-hidden className="text-slate-500 transition-transform group-open:rotate-180">
+          ▾
+        </span>
+      </summary>
+      <ul className="flex flex-col divide-y divide-slate-200 pb-2 text-sm">
+        {evidence.map((item) => (
+          <li key={item.label} className="flex items-center justify-between gap-3 py-2">
+            <span className="min-w-0 break-keep text-slate-600">{item.label}</span>
+            <span className="shrink-0 text-right">
+              <strong className="font-semibold text-slate-900">{item.value}</strong>
+              <span className="ml-2 text-xs text-slate-500">{item.basis}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 interface CoachParagraphProps {
-  /** 서버에 보낼 값 */
-  request: WeeklyCoachRequest
+  /** 서버에 물어볼 쿼리 설정 (lib/weeklyCoach.ts 의 weeklyCoachQuery · monthlyCoachQuery) */
+  query: CoachQuery
   /** 서버가 문단을 주지 못했을 때 보여줄 기본 문장들 */
   fallbackSentences: string[]
 }
@@ -640,8 +724,8 @@ interface CoachParagraphProps {
  * 코치 문단을 보여줍니다. useSuspenseQuery 가 서버 답을 기다리는 동안에는 바깥의 AsyncBoundary 가 스켈레톤을 보여줍니다.
  * 서버가 없거나 실패하면 data 가 null 로 와서(에러가 아닙니다) 기본 문장을 보여줍니다.
  */
-function CoachParagraph({ request, fallbackSentences }: CoachParagraphProps) {
-  const { data: aiParagraph } = useSuspenseQuery(weeklyCoachQuery(request))
+function CoachParagraph({ query, fallbackSentences }: CoachParagraphProps) {
+  const { data: aiParagraph } = useSuspenseQuery(query)
   const isAiWritten = aiParagraph !== null
 
   return (
@@ -802,6 +886,15 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
           )}
         </Card>
       </div>
+
+      {/* 위의 숫자를 말로 풀어 주는 코치 한 문단. 주간과 같은 규칙을 4주 단위로 씁니다. 서버가 없으면 기본 문장이 나옵니다. */}
+      <MonthlyCoachCard
+        plans={allPlans}
+        sessions={sessions}
+        startKey={earliestMondayKey}
+        endKey={blockEndKey}
+        previousStartKey={previousMonthStart}
+      />
 
       <Card title="주별 순공">
         <ul className="flex flex-col gap-3">
