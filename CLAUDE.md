@@ -297,6 +297,7 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                        |
 | [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)       | 서버 데이터 받아오기 (TanStack Query) |
 | [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림)      |
+| [docs/AI-FEATURES.md](./docs/AI-FEATURES.md)           | 앱 안의 AI(GPT) 기능 — 원칙·지금·다음 |
 
 스킬(`.claude/skills/`): `github-flow` · `new-page` · `new-component` · `responsive-ui`
 명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/check` `/sync` `/run` `/fix`
