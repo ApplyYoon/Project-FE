@@ -3,7 +3,7 @@
  * React 를 쓰지 않는 순수 함수입니다. (연결 방법은 OpenAI 공식 문서 "Realtime API with WebRTC" 기준)
  *
  * 순서
- *  1. 우리 서버에서 "임시 키"를 받는다
+ *  1. 우리 서버에서 "임시 키"를 받는다 (이때 오늘의 말투와 학생 카드를 같이 보내서, AI 가 내 기록에 맞게 말하게 한다)
  *  2. 마이크를 켜서 연결에 붙인다
  *  3. OpenAI 와 연결 정보(SDP)를 주고받는다
  *  4. AI 목소리를 받아 재생한다
@@ -11,15 +11,21 @@
  * ⚠️ OpenAI API 키(sk-...)는 절대 이 코드나 .env 에 넣지 않습니다.
  *    브라우저는 서버가 만들어 준 짧게 쓰고 버리는 임시 키만 씁니다.
  */
-import { api } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
+import type { CallCard } from '@/lib/callCard'
 import { createConnectionWatcher } from '@/lib/connectionWatch'
 import type { CallTone } from '@/lib/todayCare'
 import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
-// ⚠️ 경로는 임시 값입니다. BE 와 정한 실제 경로로 바꾸세요.
-// 서버는 { "value": "임시 키" } 모양으로 응답해야 합니다. (OpenAI 문서의 예시와 같은 모양)
-const TOKEN_PATH = '/realtime/token'
+// 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
+//   요청  POST /realtime/session   { careLevel, maxHarshness, card }
+//   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초) }
+//   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
+const SESSION_PATH = '/realtime/session'
+
+// 말투를 넘기지 않았을 때 쓰는 값입니다. (1 = 당근, 독설 수위 3 = 설정의 기본값)
+const DEFAULT_TONE: CallTone = { careLevel: 1, maxHarshness: 3 }
 
 // 이 시간 안에 연결이 안 되면 그만둡니다. (응답이 멈췄는데 "연결 중…" 에서 끝없이 기다리지 않게)
 const CONNECT_TIMEOUT_MS = 15_000
@@ -36,11 +42,17 @@ export type RealtimeFailReason = 'token' | 'mic' | 'no-mic' | 'connect'
 
 export class RealtimeCallError extends Error {
   reason: RealtimeFailReason
+  /**
+   * 서버가 알려 준 안내 문장. 있으면 화면에 이 문장을 그대로 보여줍니다.
+   * 예: '오늘 통화는 다 썼어요. 내일 다시 만나요' (429), 'AI 통화가 아직 켜져 있지 않아요' (503)
+   */
+  userMessage?: string
 
-  constructor(reason: RealtimeFailReason, message: string) {
+  constructor(reason: RealtimeFailReason, message: string, userMessage?: string) {
     super(message)
     this.name = 'RealtimeCallError'
     this.reason = reason
+    this.userMessage = userMessage
   }
 }
 
@@ -49,6 +61,8 @@ export interface RealtimeCall {
   close: () => void
   /** true 면 내 마이크 소리를 AI 에게 보내지 않습니다. (마이크는 켜 둔 채 소리만 끊깁니다) */
   setMuted: (muted: boolean) => void
+  /** 서버가 정한 통화 한 번의 최대 길이(초). 이 시간이 되면 화면이 통화를 끊습니다. 서버가 안 알려 줬으면 null */
+  maxCallSeconds: number | null
 }
 
 // 소리가 나지 않는 아주 짧은 파일입니다. (8000Hz 모노, 100샘플 = 0.0125초, 전부 무음)
@@ -83,41 +97,56 @@ export function unlockCallAudio(): void {
   })
 }
 
+/** 서버가 통화를 시작하라고 준 것 */
+interface CallSession {
+  /** 임시 키. 이 값으로 OpenAI 에 연결합니다. */
+  key: string
+  /** 통화 한 번의 최대 길이(초). 서버가 안 알려 줬으면 null */
+  maxCallSeconds: number | null
+}
+
 /**
  * 서버에서 임시 키를 받습니다.
  * api() 로 부르기 때문에 서버 주소와 로그인 토큰이 자동으로 붙습니다.
- * (예전에는 주소를 그냥 적어서 화면을 띄운 서버로 요청이 가고, 통화가 항상 실패했습니다)
  * signal 이 "그만" 을 알리면 요청을 멈춥니다.
  *
- * tone 이 있으면 오늘의 관리 강도와 독설 허용 수위를 주소 뒤에 붙여 보냅니다. (#257)
- *   /realtime/token?careLevel=1&maxHarshness=3
- * 서버가 아직 이 값을 읽지 않아도 괜찮습니다. 모르는 값은 무시되고 임시 키는 그대로 옵니다.
- * ⚠️ 주소 뒤에 붙이는 값에는 이름·일기 같은 개인 내용을 넣지 않습니다. (주소는 서버 기록에 남기 쉽습니다)
+ * 오늘의 말투(tone)와 학생 카드(card)를 같이 보냅니다. 서버는 이것으로 AI 의 지침을 만들어 임시 키에 묶습니다.
+ * 그래서 같은 날이라도 내 기록에 따라 AI 가 묻는 것과 말투가 달라집니다. (lib/callCard.ts)
+ * ⚠️ 주소 뒤(?a=b)가 아니라 본문에 담아 보냅니다. 주소는 서버 기록에 남기 쉽기 때문입니다.
  */
-async function fetchEphemeralKey(signal: AbortSignal, tone?: CallTone): Promise<string> {
-  // URLSearchParams: { careLevel: '1', maxHarshness: '3' } 를 'careLevel=1&maxHarshness=3' 으로 만들어 줍니다.
-  const query =
-    tone === undefined
-      ? ''
-      : `?${new URLSearchParams({
-          careLevel: String(tone.careLevel),
-          maxHarshness: String(tone.maxHarshness),
-        }).toString()}`
-
+async function requestCallSession(
+  signal: AbortSignal,
+  tone: CallTone,
+  card: CallCard | null,
+): Promise<CallSession> {
   try {
-    const data = await api<unknown>(`${TOKEN_PATH}${query}`, { signal })
-    const value =
-      typeof data === 'object' && data !== null ? (data as { value?: unknown }).value : null
+    const data = await api<unknown>(SESSION_PATH, {
+      method: 'POST',
+      body: JSON.stringify({ careLevel: tone.careLevel, maxHarshness: tone.maxHarshness, card }),
+      signal,
+    })
+    const record =
+      typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {}
+    const value = record.value
     if (typeof value !== 'string' || value === '') throw new Error('임시 키가 없습니다')
 
     // sk- 로 시작하면 서버가 진짜 API 키를 그대로 내려준 것입니다. 노출 사고이므로 절대 쓰지 않고 멈춥니다.
     if (value.startsWith('sk-')) throw new Error('서버가 API 키를 그대로 보냈습니다')
 
-    return value
+    const maxCallSeconds =
+      typeof record.maxCallSeconds === 'number' && record.maxCallSeconds > 0
+        ? record.maxCallSeconds
+        : null
+    return { key: value, maxCallSeconds }
   } catch (error) {
     // 에러 안에 키가 들어 있을 수 있어서 원문 대신 이유만 남깁니다.
     const detail = error instanceof Error ? error.message : '알 수 없는 오류'
-    throw new RealtimeCallError('token', `임시 키를 받지 못했어요: ${detail}`)
+    // 429(오늘 통화를 다 씀) · 503(통화가 꺼져 있음)은 서버가 사람이 읽을 문장을 줍니다. 화면에 그대로 보여주게 넘깁니다.
+    const userMessage =
+      error instanceof ApiError && (error.status === 429 || error.status === 503)
+        ? error.message
+        : undefined
+    throw new RealtimeCallError('token', `임시 키를 받지 못했어요: ${detail}`, userMessage)
   }
 }
 
@@ -155,6 +184,8 @@ export interface StartCallOptions {
   signal?: AbortSignal
   /** 오늘의 말투(관리 강도 · 독설 허용 수위). 임시 키를 요청할 때 서버에 같이 보냅니다. (lib/todayCare.ts 의 getCallTone) */
   tone?: CallTone
+  /** 학생 카드(내 기록을 숫자로 정리한 것). 서버가 이것으로 질문과 말투를 정합니다. 기록이 없으면 null (lib/callCard.ts) */
+  card?: CallCard | null
 }
 
 /**
@@ -169,10 +200,10 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
   options.signal?.addEventListener('abort', () => controller.abort())
   const signal = controller.signal
 
-  let ephemeralKey: string
+  let session: CallSession
   let microphone: MediaStream
   try {
-    ephemeralKey = await fetchEphemeralKey(signal, options.tone)
+    session = await requestCallSession(signal, options.tone ?? DEFAULT_TONE, options.card ?? null)
     microphone = await openMicrophone()
   } catch (error) {
     clearTimeout(timeoutId)
@@ -225,19 +256,8 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     const channel = dataChannel
     // 통로가 열리면 AI 에게 "말을 시작해"라고 알려서 첫 인사가 나오게 합니다.
     // (공식 문서에 인사 방법이 따로 없어서 response.create 이벤트를 쓴 것입니다. 실제 서버로 확인이 필요합니다)
+    // 내 말을 글자로 바꾸는 설정(자막)과 AI 의 지침은 서버가 임시 키를 만들 때 이미 넣었습니다. 여기서 다시 보내지 않습니다.
     channel.addEventListener('open', () => {
-      // 내 말을 글자로 바꾸는 기능은 기본이 꺼져 있어서 켭니다. (공식 문서의 session.update 예시를 따랐습니다)
-      // BE 가 임시 키를 만들 때 같은 설정(audio.input.transcription)을 넣어 준다면 이 부분은 지워도 됩니다.
-      // ⚠️ 실제 서버로는 아직 확인하지 못했습니다.
-      channel.send(
-        JSON.stringify({
-          type: 'session.update',
-          session: {
-            type: 'realtime',
-            audio: { input: { transcription: { model: 'gpt-4o-transcribe', language: 'ko' } } },
-          },
-        }),
-      )
       channel.send(JSON.stringify({ type: 'response.create' }))
     })
 
@@ -257,7 +277,7 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
       // 그만두라는 신호가 오면 이 요청도 멈춥니다. (멈추면 아래 catch 가 마이크와 연결을 정리합니다)
       signal,
       headers: {
-        Authorization: `Bearer ${ephemeralKey}`,
+        Authorization: `Bearer ${session.key}`,
         'Content-Type': 'application/sdp',
       },
     })
@@ -279,5 +299,5 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     })
   }
 
-  return { close, setMuted }
+  return { close, setMuted, maxCallSeconds: session.maxCallSeconds }
 }
