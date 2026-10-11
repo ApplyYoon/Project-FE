@@ -8,10 +8,11 @@
  * ⚠️ 카드에는 숫자와 정해진 분류값만 담습니다. 계획 내용·일기·이름·약속 문장 같은 "내가 쓴 글" 은 넣지 않습니다.
  *    글은 AI 회사(OpenAI)로 그대로 넘어가기 때문입니다. 새 값을 더할 때도 이 원칙을 지켜 주세요.
  */
+import { loadStudySessions } from '@/lib/dailyRecords'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
 import { getFacts } from '@/lib/facts'
-import { loadList, loadRecord } from '@/lib/storage'
+import { loadRecord } from '@/lib/storage'
 import { getStudyStreak } from '@/lib/streak'
 import { MIN_COMPLETION_SAMPLES, getMondayKey } from '@/lib/weeklyFacts'
 import type { CheckIn, MissReason, StudyPlan, StudySession } from '@/types'
@@ -131,12 +132,26 @@ export function buildCallCard(
   }
 }
 
+/**
+ * 저장된 계획을 모든 날짜에서 모아 한 배열로 돌려줍니다. (usePlans 의 allPlans 와 같은 값입니다)
+ * 계획은 목록이 아니라 { '2026-10-10': [계획, 계획], … } 처럼 날짜별로 묶여 저장됩니다.
+ */
+function loadAllPlans(): StudyPlan[] {
+  const plans: StudyPlan[] = []
+  for (const dayPlans of Object.values(loadRecord<unknown>('plans'))) {
+    // 저장된 값이 깨져서 배열이 아닌 날은 건너뜁니다.
+    if (Array.isArray(dayPlans)) plans.push(...(dayPlans as StudyPlan[]))
+  }
+  return plans
+}
+
 /** 이 브라우저에 저장된 기록으로 학생 카드를 만듭니다. 통화 화면이 통화를 시작할 때 부릅니다. */
 export function loadCallCard(): CallCard | null {
   try {
     return buildCallCard(
-      loadList<StudyPlan>('plans'),
-      loadList<StudySession>('sessions'),
+      loadAllPlans(),
+      // 모양이 틀린 기록과 노는 기록은 빼고 불러옵니다. (홈 · 리포트와 같은 방법)
+      loadStudySessions(),
       loadRecord<CheckIn>('checkins'),
     )
   } catch {
