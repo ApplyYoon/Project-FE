@@ -99,3 +99,26 @@ export function loadRecord<T>(key: string): Record<string, T> {
   if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return {}
   return saved as Record<string, T>
 }
+
+/**
+ * 이 앱이 이 브라우저에 저장한 것을 전부 지웁니다. 탈퇴했을 때 씁니다. (pages/AccountPage.tsx)
+ * 설정 화면의 "모든 기록 지우기"(lib/myData.ts)는 설정·계정 정보를 남기지만, 이 함수는 하나도 남기지 않습니다.
+ *
+ * 우리 앱의 키는 모두 'study-' 로 시작합니다. 같은 주소의 다른 값(있다면)은 건드리지 않습니다.
+ * 하나라도 지우지 못하면 false 입니다.
+ */
+export function removeAllData(): boolean {
+  try {
+    // 지우는 도중에 순서가 바뀌지 않게, 지울 키를 먼저 다 모은 뒤에 지웁니다.
+    const keys: string[] = []
+    for (let index = 0; index < localStorage.length; index++) {
+      const key = localStorage.key(index)
+      if (key !== null && key.startsWith(KEY_PREFIX)) keys.push(key)
+    }
+    keys.forEach((key) => localStorage.removeItem(key))
+    return true
+  } catch {
+    // 사생활 보호 모드처럼 저장소를 쓸 수 없는 경우입니다.
+    return false
+  }
+}

@@ -111,7 +111,31 @@ function SchoolResultsSkeleton() {
 ## 5. 값을 바꿀 때 (추가·수정·삭제)
 
 서버의 값을 바꾸는 일은 `useMutation` 으로 하고, 성공하면 관련 쿼리를 다시 받아오게(`invalidateQueries`) 합니다.
-아직 이 프로젝트에 쓰는 곳이 없습니다. 서버 저장을 붙일 때(#201 ~ #203) 예시를 이 문서에 더합니다.
+첫 예시는 내 계정 화면(`src/pages/AccountPage.tsx`)의 "내 정보 고치기" 입니다.
+
+```tsx
+const queryClient = useQueryClient()
+
+const mutation = useMutation({
+  // 서버를 부르는 함수 (lib/accountApi.ts)
+  mutationFn: updateProfile,
+  onSuccess: () => {
+    // 보관해 둔 내 정보를 "낡았다" 고 표시합니다. 그러면 화면이 새 값을 다시 받아옵니다.
+    void queryClient.invalidateQueries({ queryKey: profileQuery().queryKey })
+  },
+})
+
+// 저장 버튼을 눌렀을 때
+mutation.mutate({ name, nickname, schoolCode, schoolName, diaryAnalysis })
+
+// 화면에서 쓰는 값
+mutation.isPending // 보내는 중 → 버튼을 잠급니다
+mutation.isError // 실패 → 안내를 보여줍니다 (mutation.error)
+```
+
+- 받아올 때처럼 `try/catch` 와 "보내는 중" 상태를 직접 만들지 않습니다. `useMutation` 이 대신 관리합니다.
+- 입력 칸의 값(고치는 중인 값)은 `useState` 에 둡니다. 4장의 "받아온 데이터를 `useState` 에 복사하지 않기" 는 **보여주기만 할 때**의 규칙이고, 고치는 화면은 처음 값으로만 씁니다.
+- 계획·기록의 서버 저장(#201 ~ #203)도 같은 방식으로 붙입니다.
 
 ## 6. 기본 설정
 
