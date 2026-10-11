@@ -1,3 +1,4 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
@@ -15,6 +16,7 @@ import { cn } from '@/lib/cn'
 import { DEFAULT_TARGET_MINUTES, normalizeTargetMinutes } from '@/lib/countdown'
 import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
+import { dailyCoachQuery, getYesterdayLine, type YesterdayLine } from '@/lib/dailyCoach'
 import { getDaySummary } from '@/lib/daySummary'
 import { formatDday } from '@/lib/exams'
 import { getFirstMe, type FirstMe } from '@/lib/firstMe'
@@ -42,6 +44,7 @@ import {
 } from '@/lib/weeklyGoal'
 import { loadWeeklyReviews } from '@/lib/weeklyReview'
 import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -158,7 +161,6 @@ export function HomePage() {
   const isFirstReportReady = firstRecordKey !== null && daysSinceFirstRecord >= FIRST_REPORT_DAYS
 
   const yesterdaySummary = getDaySummary(yesterdayKey, allPlans, sessions)
-  const hasYesterdayRecord = yesterdaySummary.studyMinutes > 0
   // 어제 공부 계획이 있었는지. (노는 계획과 0분짜리 계획은 세지 않습니다)
   const hasYesterdayPlan = allPlans.some(
     (plan) => plan.date === yesterdayKey && plan.kind !== 'play' && plan.targetMinutes > 0,
@@ -222,19 +224,11 @@ export function HomePage() {
         <WeeklyGoalCard plans={allPlans} sessions={sessions} />
 
         <Card title="어제 한 줄">
-          {hasYesterdayRecord && hasYesterdayPlan && yesterdaySummary.achievementRate !== null ? (
-            <p className="text-base font-semibold text-slate-900">
-              어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획의{' '}
-              {yesterdaySummary.achievementRate}%야.
-            </p>
-          ) : hasYesterdayRecord ? (
-            // 계획 없이 공부한 날은 "계획의 0%" 라고 하면 못한 것처럼 들려서, 다르게 말합니다.
-            <p className="text-base font-semibold text-slate-900">
-              어제 순공 {formatMinutes(yesterdaySummary.studyMinutes)}, 계획 없이도 해냈네.
-            </p>
-          ) : (
-            <p className="text-base font-semibold text-slate-900">오늘부터 시작해 볼까?</p>
-          )}
+          {/* 숫자는 코드가 계산하고, 그 숫자를 말로 푸는 일만 AI 에게 맡깁니다. 문장 규칙은 lib/dailyCoach.ts 에 있습니다. */}
+          <YesterdayLineView
+            dateKey={yesterdayKey}
+            line={getYesterdayLine(yesterdaySummary, hasYesterdayPlan)}
+          />
 
           {/* 첫 리포트(14일)까지 남은 날. 시안처럼 어제 한 줄 아래에 선을 긋고 같은 카드에 둡니다. (#85) */}
           <div className="mt-4 border-t border-slate-100 pt-4">
@@ -885,5 +879,75 @@ function TreeDrawing({ tree }: TreeDrawingProps) {
         )}
       </g>
     </svg>
+  )
+}
+
+interface YesterdayLineViewProps {
+  /** 어제 날짜 ('YYYY-MM-DD'). 날이 바뀌면 새로 물어보려고 받습니다. */
+  dateKey: string
+  /** 기본 문장과 AI 에게 건넬 숫자 (lib/dailyCoach.ts 의 getYesterdayLine) */
+  line: YesterdayLine
+}
+
+/**
+ * 홈의 "어제 한 줄" 입니다.
+ *   어제 기록이 없음      -> 기본 문장만 ("오늘부터 시작해 볼까?"). 말로 풀 숫자가 없어서 AI 에게 묻지 않습니다.
+ *   서버가 문장을 줌      -> AI 가 쓴 문장 + "AI 가 쓴 글" 표시 + 근거가 된 숫자 한 줄
+ *   서버가 없거나 못 받음 -> 숫자를 끼워 만든 기본 문장
+ */
+function YesterdayLineView({ dateKey, line }: YesterdayLineViewProps) {
+  // 설정에서 정한 관리 강도 한도와 독설 허용 수위. 서버가 이 한도 안에서 말투를 정합니다. 처음 그릴 때 한 번만 읽습니다.
+  const [limits] = useState(getCareLimits)
+  const fallback = <p className="text-base font-semibold text-slate-900">{line.sentence}</p>
+
+  if (line.evidence.length === 0) return fallback
+
+  return (
+    // 홈은 열자마자 보여야 하는 화면이라, 서버 답을 기다리는 동안 스켈레톤 대신 기본 문장을 먼저 보여줍니다.
+    <AsyncBoundary pendingFallback={fallback} resetKeys={[dateKey]}>
+      <YesterdayAiLine
+        dateKey={dateKey}
+        fallbackSentence={line.sentence}
+        // 서버에는 계산된 숫자와 내가 정한 한도만 보냅니다. 계획 내용·과목 이름 같은 원문은 보내지 않습니다.
+        request={{
+          numbers: line.evidence,
+          maxCareLevel: limits.maxCareLevel,
+          maxHarshness: limits.maxHarshness,
+        }}
+      />
+    </AsyncBoundary>
+  )
+}
+
+interface YesterdayAiLineProps {
+  dateKey: string
+  /** 서버가 문장을 주지 못했을 때 보여줄 기본 문장 */
+  fallbackSentence: string
+  /** 서버에 보낼 값 */
+  request: Parameters<typeof dailyCoachQuery>[1]
+}
+
+/**
+ * 서버에 "어제 한 줄" 을 물어보고 보여줍니다. useSuspenseQuery 가 기다리는 동안에는 바깥의 AsyncBoundary 가 기본 문장을 보여줍니다.
+ * 서버가 없거나 실패하면 data 가 null 로 와서(에러가 아닙니다) 기본 문장을 그대로 보여줍니다.
+ */
+function YesterdayAiLine({ dateKey, fallbackSentence, request }: YesterdayAiLineProps) {
+  const { data: aiSentence } = useSuspenseQuery(dailyCoachQuery(dateKey, request))
+
+  if (aiSentence === null) {
+    return <p className="text-base font-semibold text-slate-900">{fallbackSentence}</p>
+  }
+
+  return (
+    <div>
+      <p className="text-base font-semibold break-keep text-slate-900">{aiSentence}</p>
+      {/* 누가 쓴 글인지 꼭 밝힙니다. AI 가 쓴 글은 틀릴 수 있어서, 바로 아래에 근거가 된 숫자(기본 문장)를 같이 보여줍니다. */}
+      <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+        <span className="bg-brand-light text-brand rounded px-1.5 py-0.5 text-xs font-medium">
+          AI 가 쓴 글
+        </span>
+        <span className="break-keep">{fallbackSentence}</span>
+      </p>
+    </div>
   )
 }

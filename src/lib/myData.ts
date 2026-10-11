@@ -62,6 +62,8 @@ const RECORD_KEYS = [
   'voice-pledge',
   // 주마다 고른 "이번 주 목표" 와 쉬기로 한 주 (#247)
   'weekly-goals',
+  // AI 가 써 준 "어제 한 줄" (그날 다시 묻지 않으려고 저장해 둔 것. lib/dailyCoach.ts)
+  'daily-coach',
   // 목표 조정 제안을 거절한 날짜, 수락한 날짜
   'goal-adjust-declined',
   'goal-adjust-accepted',
