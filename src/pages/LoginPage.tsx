@@ -75,6 +75,9 @@ export function LoginPage() {
   const [loginError, setLoginError] = useState<string | null>(null)
 
   function handleTestLogin() {
+    // 테스트 로그인은 앱을 바로 둘러보려는 것이라 가입 화면을 건너뜁니다. "가입 마침" 표시를 해 두면 홈으로 갑니다.
+    // (가입 화면은 로그아웃한 뒤 "회원가입" 으로 들어가면 볼 수 있습니다)
+    markSignupDone()
     login(testUser, TEST_TOKEN)
     setHasJustLoggedIn(true)
   }
@@ -111,7 +114,8 @@ export function LoginPage() {
     }
   }
 
-  // 로그인이 되면 갈 곳으로 보냅니다. 처음 온 사람은 가입 화면, 가입을 마친 사람은 가려던 페이지(없으면 홈)입니다.
+  // 로그인이 되면 갈 곳으로 보냅니다. 가려던 페이지가 있으면 거기로, 없으면 홈입니다.
+  // (이메일 로그인과 테스트 로그인은 둘 다 위에서 "가입 마침" 표시를 해 두어서 가입 화면으로 가지 않습니다)
   // replace: 로그인 화면을 기록에 남기지 않습니다.
   // 가려던 주소 없이 /login 을 직접 연 "이미 로그인한 사람" 은 그대로 둡니다. (로그아웃 버튼을 쓸 수 있어야 하기 때문입니다)
   if (isLoggedIn && (hasJustLoggedIn || returnPath !== null)) {
