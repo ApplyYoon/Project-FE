@@ -114,6 +114,10 @@ interface UseAwayDetectionOptions {
   pause: () => void
   /** 타이머를 다시 흐르게 하는 함수 */
   start: () => void
+  /** 공부 중에 나간 바로 그 순간에 부를 함수 (없어도 됩니다). 예) "돌아와" 알림 띄우기 */
+  onLeave?: () => void
+  /** 나갔다가 돌아온 순간에 부를 함수 (없어도 됩니다). 예) 그 알림 닫기 */
+  onReturn?: () => void
 }
 
 /**
@@ -179,7 +183,8 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
   // 탭을 떠나거나 돌아올 때를 지켜봅니다.
   useEffect(() => {
     function handleVisibilityChange() {
-      const { isRunning, isResting, subjectId, pause, start } = optionsRef.current
+      const { isRunning, isResting, subjectId, pause, start, onLeave, onReturn } =
+        optionsRef.current
 
       if (document.hidden) {
         // 시간이 흐르는 중일 때만 딴짓입니다. (이미 멈춰 있거나, 쉬는 중이거나, 이미 나간 상태면 무시)
@@ -191,6 +196,7 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
         saveData(PENDING_KEY, pending)
         // flushSync: 일시정지도 지금 바로 화면·저장소에 반영합니다. (평소 방식은 조금 뒤에 반영돼서 그 사이에 얼어붙을 수 있습니다)
         flushSync(() => pause())
+        onLeave?.()
         return
       }
 
@@ -205,6 +211,7 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
 
       setRecords((prev) => [...prev, record])
       setAwayNotice(record)
+      onReturn?.()
       // 잠깐 나갔다 온 거라면 다시 누르지 않아도 이어서 흐르게 합니다. (나가 있던 시간은 순공에서 빠집니다)
       if (record.awayMs <= AUTO_RESUME_LIMIT_MS) start()
     }
