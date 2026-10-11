@@ -34,6 +34,7 @@ import {
   getNotificationPermission,
   isNotificationSupported,
   requestNotificationPermission,
+  showSystemNotification,
 } from '@/lib/notifications'
 import { loadSignupProfile } from '@/lib/signup'
 import { loadData, removeData, saveData } from '@/lib/storage'
@@ -147,6 +148,20 @@ export function SettingsPage() {
   async function handleRequestNotification() {
     const permission = await requestNotificationPermission()
     setNotificationPermission(permission)
+  }
+
+  // "알림 한 번 보내 보기" 의 결과. 아직 안 눌렀으면 null, 떴으면 true, 못 띄웠으면 false 입니다.
+  const [isTestNotificationShown, setIsTestNotificationShown] = useState<boolean | null>(null)
+
+  /** 알림이 이 기기에서 정말 뜨는지 한 번 보내 봅니다. 눌러서 바로 확인할 수 있게 둔 버튼입니다. */
+  async function handleSendTestNotification() {
+    const isShown = await showSystemNotification({
+      title: 'STARFLOW 알림',
+      body: '알림이 잘 와요. 새 소식이 생기면 이렇게 알려줄게요.',
+      tag: 'test-notification',
+      url: '/settings',
+    })
+    setIsTestNotificationShown(isShown)
   }
 
   // 일기 기능을 켰는지. 켜면 기록 화면에 일기 메뉴가 보입니다. (기본은 꺼짐 — #63 "원할 때만 켜는 기능")
@@ -508,6 +523,26 @@ export function SettingsPage() {
                     <Button className="h-11 w-full sm:w-auto" onClick={handleRequestNotification}>
                       알림 켜기
                     </Button>
+                  )}
+                  {/* 알림을 켠 사람은 이 기기에서 정말 뜨는지 눌러서 확인할 수 있습니다. */}
+                  {notificationPermission === 'granted' && (
+                    <>
+                      <Button
+                        variant="secondary"
+                        className="h-11 w-full sm:w-auto"
+                        onClick={handleSendTestNotification}
+                      >
+                        알림 한 번 보내 보기
+                      </Button>
+                      {/* role="status": 화면을 읽어 주는 프로그램이 결과를 읽어 줍니다. */}
+                      {isTestNotificationShown !== null && (
+                        <p role="status" className="text-sm break-keep text-slate-600">
+                          {isTestNotificationShown
+                            ? '알림을 보냈어요. 안 보이면 휴대폰의 알림 설정(방해 금지 모드 등)을 확인해 주세요.'
+                            : '이 브라우저에서는 알림을 띄우지 못했어요. 휴대폰이라면 홈 화면에 추가한 앱으로 열어 주세요.'}
+                        </p>
+                      )}
+                    </>
                   )}
                 </>
               ) : (
