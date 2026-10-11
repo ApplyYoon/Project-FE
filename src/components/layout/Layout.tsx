@@ -26,7 +26,7 @@ export function Layout() {
   useCallReminder()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  // 로그인 전(로그인 화면·SNS 콜백)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
+  // 로그인 전(로그인 화면)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
   // (헤더는 로그인 전이면 스스로 "로그인 · 회원가입" 만 보여줍니다. Header.tsx)
   const { isLoggedIn } = useAuth()
 

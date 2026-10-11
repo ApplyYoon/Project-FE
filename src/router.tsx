@@ -2,7 +2,6 @@ import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
-import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
 import { CallActivePage } from '@/pages/CallActivePage'
 import { CallPage } from '@/pages/CallPage'
 import { CallResultPage } from '@/pages/CallResultPage'
@@ -37,7 +36,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
  *   { path: 'todo', element: <TodoPage /> }  ->  http://localhost:5173/todo
  *
  * 로그인 안 한 사람은 RequireAuth 가 /login 으로 보냅니다. 새 페이지는 따로 할 일 없이 자동으로 막힙니다.
- * 로그인 없이 열려야 하는 주소(로그인·회원가입·SNS 콜백)만 lib/authRedirect.ts 의 PUBLIC_PATHS 에 적어 둡니다.
+ * 로그인 없이 열려야 하는 주소(로그인·회원가입·도움 연결 안내)만 lib/authRedirect.ts 의 PUBLIC_PATHS 에 적어 둡니다.
  */
 // errorElement: 그 주소의 화면을 그리다가 에러가 나면 대신 보여줄 화면입니다. (저장된 값이 깨져 있을 때 등)
 export const router = createBrowserRouter([
@@ -74,9 +73,6 @@ export const router = createBrowserRouter([
       // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
       { path: 'messages', element: <Navigate to="/notifications" replace /> },
       { path: 'login', element: <LoginPage /> },
-      // SNS 로그인을 마치고 돌아오는 주소. 주소에 ?code=... 가 붙어서 옵니다.
-      // 로그인 전에 열려야 해서 lib/authRedirect.ts 의 PUBLIC_PATHS 에 이미 적혀 있습니다. (RequireAuth 가 막지 않습니다)
-      { path: 'auth/callback', element: <AuthCallbackPage /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],

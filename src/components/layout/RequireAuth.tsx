@@ -11,7 +11,7 @@ interface RequireAuthProps {
 /**
  * 로그인해야 볼 수 있는 화면을 감싸는 문지기입니다. (router.tsx 에서 화면을 이걸로 감쌉니다)
  *
- *   로그인 없이 열리는 주소     -> 로그인·회원가입·SNS 콜백은 그대로 보여줍니다. (lib/authRedirect.ts 의 PUBLIC_PATHS)
+ *   로그인 없이 열리는 주소     -> 로그인·회원가입·도움 연결 안내는 그대로 보여줍니다. (lib/authRedirect.ts 의 PUBLIC_PATHS)
  *   로그인 안 했다             -> /login 으로 보냅니다. 가려던 주소도 같이 넘겨서, 로그인하면 거기로 돌아가게 합니다.
  *   로그인했지만 가입을 안 마쳤다 -> /signup 으로 보냅니다. 가입을 건너뛰고 앱에 들어갈 수 없습니다.
  *   로그인했고 가입도 마쳤다     -> 감싼 화면을 그대로 보여줍니다.
@@ -39,8 +39,8 @@ export function RequireAuth({ children }: RequireAuthProps) {
   }
 
   // 로그인은 했지만 가입 정보(이름·동의 등)를 아직 안 적은 사람은 가입 화면으로 보냅니다.
-  // ⚠️ 지금은 "이 브라우저에 가입 정보가 저장돼 있는지" 로 판단합니다. 서버 로그인이 붙으면 서버가 알려 주는 값
-  //    (처음 온 사람인지)으로 바꿔야 합니다. 안 그러면 다른 기기에서 로그인한 기존 회원도 가입 화면으로 갑니다.
+  // 테스트 로그인으로 처음 들어온 사람이 여기에 해당합니다. (lib/testLogin.ts)
+  // 이메일로 로그인한 사람은 서버에 가입을 마친 회원이라, 로그인할 때 "가입 마침" 표시를 해 둡니다. (LoginPage 의 markSignupDone)
   if (!hasSignupInfo()) {
     return <Navigate to="/signup" replace />
   }
