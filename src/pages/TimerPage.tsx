@@ -30,7 +30,13 @@ import {
   normalizeTargetMinutes,
 } from '@/lib/countdown'
 import { DAY_START_HOUR, getTodayKey, toDayDate, toDayKey } from '@/lib/date'
-import { canUseFocusMode, isSafetyBrakeOnNow } from '@/lib/focusMode'
+import {
+  canUseFocusMode,
+  closeFocusLeaveNotification,
+  isSafetyBrakeOnNow,
+  showFocusLeaveNotification,
+} from '@/lib/focusMode'
+import { getNotificationPermission } from '@/lib/notifications'
 import { missReasonOptions } from '@/lib/missReasons'
 import { loadSubjects } from '@/lib/subjects'
 import { getPlanProgress } from '@/lib/planProgress'
@@ -237,6 +243,10 @@ export function TimerPage() {
     // 저절로 멈출 때는 일시정지 횟수를 올리지 않는 autoPause 를 씁니다. (횟수는 내가 직접 멈춘 것만 셉니다)
     pause: autoPause,
     start,
+    // 집중 모드 중에 나가면 바로 "돌아와" 알림을 띄우고, 돌아오면 닫습니다. (집중 모드가 아니면 아무 일도 하지 않습니다)
+    // void: 알림이 떴는지 기다리지 않습니다. 못 띄워도 타이머는 그대로 멈추고 기록됩니다.
+    onLeave: () => void showFocusLeaveNotification(),
+    onReturn: () => void closeFocusLeaveNotification(),
   })
 
   // 집중 모드(#69). 설정에서 "집중 모드 잠금 허용" 을 켰고 최대 한도가 4일 때만 버튼이 보입니다. (#59)
@@ -1124,6 +1134,8 @@ function FocusModeScreen({
   onResume,
   onExit,
 }: FocusModeScreenProps) {
+  // 알림 권한을 허용했는지. 화면이 처음 그려질 때 한 번만 확인합니다.
+  const [canNotify] = useState(() => getNotificationPermission() === 'granted')
   const percent =
     targetMinutes > 0 ? Math.min(100, Math.round((studiedMinutes / targetMinutes) * 100)) : 0
 
@@ -1178,7 +1190,11 @@ function FocusModeScreen({
         </button>
 
         <p className="text-sm break-keep text-slate-400">
-          화면은 꺼지지 않아. 다른 탭에 다녀오면 그 시간은 빼고 이어서 재
+          화면은 꺼지지 않아. 다른 탭에 다녀오면 그 시간은 빼고 이어서 재.{' '}
+          {/* 알림을 켠 사람에게만 "알려 줄게" 라고 말합니다. 안 켰으면 켜는 곳을 알려 줍니다. */}
+          {canNotify
+            ? '나가면 바로 알림으로 알려 줄게.'
+            : '설정에서 알림을 켜면, 나갔을 때 바로 알려 줘.'}
         </p>
 
         <button

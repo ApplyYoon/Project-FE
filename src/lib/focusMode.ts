@@ -1,5 +1,6 @@
 import type { CareLimits } from '@/lib/careLimits'
 import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
+import { closeSystemNotification, showSystemNotification } from '@/lib/notifications'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, saveData } from '@/lib/storage'
 
@@ -148,4 +149,30 @@ export function endFocusMode(reason: string, isAuto: boolean, now: number = Date
   saveData(UNLOCK_RECORDS_KEY, [...loadUnlockRecords(), record])
   saveData(FOCUS_MODE_KEY, null)
   notifyChange()
+}
+
+/** "집중 모드 중에 나갔어" 알림의 이름표. 같은 알림이 여러 개 쌓이지 않고 하나만 남습니다. */
+const LEAVE_NOTIFICATION_TAG = 'focus-leave'
+
+/**
+ * 집중 모드 중에 다른 탭·앱으로 나간 순간, "돌아와" 라고 시스템 알림을 띄웁니다. 띄웠으면 true 입니다.
+ * 집중 모드가 꺼져 있으면 아무 일도 하지 않습니다. (일반 타이머는 강의를 보러 다른 탭에 갈 수도 있어서 알리지 않습니다)
+ *
+ * 웹 앱은 다른 앱을 잠글 수 없습니다. 대신 나간 것을 바로 알아채서 알려 주는 것이 집중 모드가 할 수 있는 일입니다.
+ * 알림을 누르면 타이머 화면으로 돌아옵니다. 알림 권한이 없으면 뜨지 않습니다. (설정 › 알림에서 켭니다)
+ */
+export function showFocusLeaveNotification(): Promise<boolean> {
+  if (loadFocusMode() === null) return Promise.resolve(false)
+
+  return showSystemNotification({
+    title: '집중 모드 중이야',
+    body: '다른 데로 나갔네. 나가 있는 시간은 순공에서 빠져. 돌아와서 이어서 하자.',
+    tag: LEAVE_NOTIFICATION_TAG,
+    url: '/timer',
+  })
+}
+
+/** 돌아왔으면 "돌아와" 알림을 닫습니다. 떠 있는 알림이 없으면 아무 일도 하지 않습니다. */
+export function closeFocusLeaveNotification(): Promise<void> {
+  return closeSystemNotification(LEAVE_NOTIFICATION_TAG)
 }

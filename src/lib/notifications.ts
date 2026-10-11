@@ -100,6 +100,10 @@ export interface SystemNotificationContent {
 /** 알림 옆에 보이는 그림. (홈 화면 아이콘과 같은 그림입니다) */
 const NOTIFICATION_ICON = '/icons/icon-192.png'
 
+// 화면이 직접 띄운 알림(서비스 워커가 없을 때)을 tag 별로 기억해 둡니다. closeSystemNotification 이 나중에 닫을 수 있게 하려는 것입니다.
+// (서비스 워커로 띄운 알림은 서비스 워커에게 물어보면 찾을 수 있어서 기억할 필요가 없습니다)
+const directNotifications = new Map<string, Notification>()
+
 /**
  * 일하고 있는 서비스 워커(public/sw.js)를 찾아 줍니다. 없으면 null 입니다.
  * 개발 서버(pnpm run dev)는 서비스 워커를 등록하지 않아서 null 이 나옵니다. (lib/pwa.ts)
@@ -152,13 +156,37 @@ export async function showSystemNotification(content: SystemNotificationContent)
     notification.onclick = () => {
       window.focus()
       notification.close()
-      window.location.assign(content.url)
+      // 이미 그 화면을 보고 있으면 그대로 둡니다. (다시 열면 화면이 새로고침됩니다. 서비스 워커 쪽과 같은 규칙)
+      if (window.location.pathname !== content.url) window.location.assign(content.url)
     }
+    directNotifications.set(content.tag, notification)
     return true
   } catch {
     // 브라우저가 막으면(예: 서비스 워커 없는 안드로이드 크롬) 알림만 포기하고 앱은 계속 돌아가게 합니다.
     // 이 에러를 잡지 않으면 앱 전체가 에러 화면이 됩니다.
     return false
+  }
+}
+
+/**
+ * 떠 있는 시스템 알림을 닫습니다. tag 는 띄울 때 넣은 이름표입니다. 그런 알림이 없으면 아무 일도 하지 않습니다.
+ * 더는 맞지 않는 알림을 치울 때 씁니다. 예) "나갔어, 돌아와" 알림은 돌아온 뒤에는 필요 없습니다.
+ *
+ *   await closeSystemNotification('focus-leave')
+ */
+export async function closeSystemNotification(tag: string): Promise<void> {
+  try {
+    // 화면이 직접 띄운 알림
+    directNotifications.get(tag)?.close()
+    directNotifications.delete(tag)
+
+    // 서비스 워커로 띄운 알림
+    const serviceWorker = await getServiceWorker()
+    if (serviceWorker === null) return
+    const notifications = await serviceWorker.getNotifications({ tag })
+    for (const notification of notifications) notification.close()
+  } catch {
+    // 알림을 못 닫아도 앱은 그대로 돌아가야 합니다. 떠 있는 알림은 사용자가 직접 닫을 수 있습니다.
   }
 }
 
