@@ -9,6 +9,7 @@ import { useAppAlerts } from '@/hooks/useAppAlerts'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
+import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { cn } from '@/lib/cn'
 import { isRecordsCardPath, isRecordsTabPath } from '@/lib/recordsMenu'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -24,6 +25,8 @@ export function Layout() {
   useAppAlerts()
   // 정해 둔 "전화 받을 시간" 이 되면 알림을 띄우고 전화 수신 화면으로 보냅니다. (앱이 열려 있을 때만)
   useCallReminder()
+  // 다른 화면으로 옮기면 맨 위부터 보이게 합니다. (같은 화면 안의 탭 · 날짜 바꾸기와 뒤로 가기는 그대로 둡니다)
+  useScrollToTopOnPageChange()
   const { pathname } = useLocation()
   const navigate = useNavigate()
   // 로그인 전(로그인 화면)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.

@@ -1,4 +1,5 @@
 import { Header } from '@/components/layout/Header'
+import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import type { ReactNode } from 'react'
 
 interface PlainLayoutProps {
@@ -16,6 +17,9 @@ interface PlainLayoutProps {
  * 이 틀을 쓰는 페이지는 router.tsx 에서 Layout 밖에 둡니다.
  */
 export function PlainLayout({ headerAction, children }: PlainLayoutProps) {
+  // 다른 화면에서 넘어오면 맨 위부터 보이게 합니다. (Layout 과 같은 규칙)
+  useScrollToTopOnPageChange()
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header hideNav action={headerAction} />

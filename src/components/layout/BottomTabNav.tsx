@@ -1,5 +1,6 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
 import { cn } from '@/lib/cn'
+import { scrollToTop } from '@/lib/scroll'
 import { NavLink, useLocation } from 'react-router-dom'
 
 /**
@@ -20,6 +21,8 @@ export function BottomTabNav() {
           <li key={item.to}>
             <NavLink
               to={item.to}
+              // 탭을 누르면 맨 위로 올립니다. 지금 보고 있는 탭을 다시 눌러도 올라갑니다.
+              onClick={scrollToTop}
               className={({ isActive }) =>
                 // 기록 아래 화면(리포트·사용설명서 등)에서도 "기록" 이 선택된 모양이 되게 합니다.
                 tabLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
