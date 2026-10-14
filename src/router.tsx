@@ -1,5 +1,6 @@
 import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
+import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
 import { AccountPage } from '@/pages/AccountPage'
@@ -19,6 +20,7 @@ import { NotificationsPage } from '@/pages/NotificationsPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
+import { OnboardingThinkingPage } from '@/pages/OnboardingThinkingPage'
 import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
 import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
 import { PlannerPage } from '@/pages/PlannerPage'
@@ -117,6 +119,16 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <OnboardingPage mode="more" />
+      </RequireAuth>
+    ),
+  },
+  // 생각 습관 테스트. 온보딩 질문 다음, 처음 계획 앞에 나옵니다. 안 했으면 RequireAuth 가 여기로 보냅니다. (lib/thinkingTest.ts)
+  {
+    path: THINKING_TEST_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingThinkingPage />
       </RequireAuth>
     ),
   },

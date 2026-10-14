@@ -1,7 +1,7 @@
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -31,6 +31,7 @@ import { loadSubjects } from '@/lib/subjects'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
 import { thinkingHabitsQuery } from '@/lib/thinkingHabits'
+import { THINKING_TEST_PATH, hasThinkingTest } from '@/lib/thinkingTest'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
 import type { CareLevel, StudySession, Subject } from '@/types'
 
@@ -251,6 +252,17 @@ export function RecordsPage() {
         >
           <ThinkingHabitList />
         </AsyncBoundary>
+        {/* 가입 때 한 생각 습관 테스트. 했으면 결과를, 안 했으면 테스트를 엽니다. 통화에서 보인 것과 비교해 볼 수 있습니다. */}
+        <Link
+          to={
+            hasThinkingTest()
+              ? `${THINKING_TEST_PATH}?step=result&from=records`
+              : `${THINKING_TEST_PATH}?from=records`
+          }
+          className="text-brand mt-4 inline-flex h-10 items-center text-sm font-medium underline"
+        >
+          {hasThinkingTest() ? '처음 한 생각 습관 테스트 결과 보기' : '생각 습관 테스트 해 보기'}
+        </Link>
       </Card>
     </div>
   )

@@ -18,6 +18,7 @@ import {
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
 import { loadData, removeData, saveData } from '@/lib/storage'
+import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
@@ -316,8 +317,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
       const limits = getCareLimits()
       setInitialCareLimits(limits.maxCareLevel, limits.maxHarshness)
       saveMessageSettings(getMessageSettings())
-      // 질문이 끝나면 처음 계획을 세우러 갑니다. 거기서 "준비 끝" 화면으로 이어집니다. (#240)
-      navigate('/onboarding/plan')
+      // 질문이 끝나면 생각 습관 테스트를 하고, 그다음 처음 계획을 세우러 갑니다. 거기서 "준비 끝" 화면으로 이어집니다. (#240)
+      navigate(`${THINKING_TEST_PATH}?from=onboarding`)
       return
     }
     setStepIndex((index) => index + 1)
