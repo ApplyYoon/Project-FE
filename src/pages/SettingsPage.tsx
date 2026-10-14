@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
@@ -36,6 +37,13 @@ import {
   requestNotificationPermission,
   showSystemNotification,
 } from '@/lib/notifications'
+import {
+  WebPushError,
+  getWebPushStatus,
+  turnOffWebPush,
+  turnOnWebPush,
+  type WebPushStatus,
+} from '@/lib/webPush'
 import { loadSignupProfile } from '@/lib/signup'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
@@ -551,6 +559,7 @@ export function SettingsPage() {
                   그대로 쌓여요.
                 </p>
               )}
+              <WebPushSection />
             </div>
           </Card>
 
@@ -710,6 +719,81 @@ export function SettingsPage() {
           </>
         )}
       </Modal>
+    </div>
+  )
+}
+
+// 푸시 상태마다 보여 줄 안내 문장
+const webPushMessages: Record<WebPushStatus, string> = {
+  unsupported: '이 브라우저에서는 앱을 닫았을 때 오는 알림을 쓸 수 없어요.',
+  'needs-install':
+    '아이폰은 Safari 의 공유 버튼 → "홈 화면에 추가" 로 설치한 앱에서만 켤 수 있어요. 설치한 앱으로 열어 주세요.',
+  denied: '알림이 거부되어 있어요. 휴대폰이나 브라우저 설정에서 이 앱의 알림을 허용해 주세요.',
+  off: '켜면 앱을 닫아 둬도 하루 한 번 "오늘의 작전" 같은 알림이 휴대폰 알림 칸에 와요. (밤 11시 ~ 아침 7시는 보내지 않아요)',
+  on: '켜져 있어요. 앱을 닫아 둬도 이 기기로 알림이 와요.',
+}
+
+/**
+ * "앱을 닫아도 알림 받기" (웹 푸시) 켜기·끄기. (lib/webPush.ts)
+ * 위의 "알림 켜기" 는 앱이 열려 있을 때 뜨는 알림이고, 이것은 앱을 닫아 둬도 서버가 보내는 알림입니다.
+ */
+function WebPushSection() {
+  // 이 기기의 지금 상태. 처음에는 알아보는 중(null)입니다.
+  const [status, setStatus] = useState<WebPushStatus | null>(null)
+
+  // 화면이 열리면 이 기기의 상태를 한 번 알아봅니다. (서버가 아니라 브라우저에게 묻는 것이라 useEffect 에서 합니다)
+  useEffect(() => {
+    let isCancelled = false
+    void getWebPushStatus().then((next) => {
+      if (!isCancelled) setStatus(next)
+    })
+    return () => {
+      isCancelled = true
+    }
+  }, [])
+
+  // 켜기·끄기는 서버의 값을 바꾸는 요청이라 useMutation 을 씁니다. (docs/DATA-FETCHING.md 5장)
+  const mutation = useMutation({
+    mutationFn: (turnOn: boolean) => (turnOn ? turnOnWebPush() : turnOffWebPush()),
+    onSettled: async () => {
+      // 성공했든 실패했든 이 기기의 실제 상태를 다시 읽어 맞춥니다.
+      setStatus(await getWebPushStatus())
+    },
+  })
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-100 pt-4">
+      <p className="text-sm font-semibold text-slate-900">앱을 닫아도 알림 받기</p>
+      <p className="text-sm break-keep text-slate-500">
+        {status === null ? '이 기기에서 쓸 수 있는지 알아보는 중이에요…' : webPushMessages[status]}
+      </p>
+      {status === 'off' && (
+        <Button
+          className="h-11 w-full sm:w-auto"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate(true)}
+        >
+          {mutation.isPending ? '켜는 중…' : '앱을 닫아도 알림 받기'}
+        </Button>
+      )}
+      {status === 'on' && (
+        <Button
+          variant="secondary"
+          className="h-11 w-full sm:w-auto"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate(false)}
+        >
+          {mutation.isPending ? '끄는 중…' : '끄기'}
+        </Button>
+      )}
+      {/* 켜다가 실패하면 이유를 보여 줍니다. (서버에 푸시가 아직 꺼져 있음 · 권한 거부 등) */}
+      {mutation.isError && (
+        <p role="status" className="text-sm break-keep text-red-700">
+          {mutation.error instanceof WebPushError
+            ? mutation.error.message
+            : '알림 설정을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.'}
+        </p>
+      )}
     </div>
   )
 }
