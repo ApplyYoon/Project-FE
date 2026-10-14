@@ -19,7 +19,7 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
-//   요청  POST /realtime/session   { careLevel, maxHarshness, card, selfReportedBiases }
+//   요청  POST /realtime/session   { careLevel, maxHarshness, card, selfReportedBiases, selfReportedWeaknesses }
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 const SESSION_PATH = '/realtime/session'
@@ -123,6 +123,7 @@ async function requestCallSession(
   tone: CallTone,
   card: CallCard | null,
   selfReportedBiases: string[],
+  selfReportedWeaknesses: string[],
 ): Promise<CallSession> {
   try {
     const data = await api<unknown>(SESSION_PATH, {
@@ -132,6 +133,7 @@ async function requestCallSession(
         maxHarshness: tone.maxHarshness,
         card,
         selfReportedBiases,
+        selfReportedWeaknesses,
       }),
       signal,
     })
@@ -202,6 +204,11 @@ export interface StartCallOptions {
    * 서버는 통화 기록이 쌓이기 전 첫 통화에서 이 습관을 확인하는 질문을 합니다.
    */
   selfReportedBiases?: string[]
+  /**
+   * 가입 때 테스트 마지막에 고른 "내가 생각하는 나의 약점" 칩 이름들. 안 골랐으면 빈 목록 (lib/thinkingTest.ts)
+   * "기타" 에 직접 쓴 글은 보내지 않습니다.
+   */
+  selfReportedWeaknesses?: string[]
 }
 
 /**
@@ -224,6 +231,7 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
       options.tone ?? DEFAULT_TONE,
       options.card ?? null,
       options.selfReportedBiases ?? [],
+      options.selfReportedWeaknesses ?? [],
     )
     microphone = await openMicrophone()
   } catch (error) {

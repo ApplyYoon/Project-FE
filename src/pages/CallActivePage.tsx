@@ -3,7 +3,7 @@ import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { loadCallCard } from '@/lib/callCard'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
-import { loadSelfReportedHabits } from '@/lib/thinkingTest'
+import { loadSelfReportedHabits, loadSelfReportedWeaknesses } from '@/lib/thinkingTest'
 import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { toCallLines, type CallResultState } from '@/lib/callReview'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
@@ -260,6 +260,8 @@ export function CallActivePage() {
       card: loadCallCard(),
       // 가입 때 한 생각 습관 테스트에서 많이 고른 습관. 통화 기록이 없는 첫 통화부터 AI 가 이걸 확인합니다. (lib/thinkingTest.ts)
       selfReportedBiases: loadSelfReportedHabits(),
+      // 가입 테스트 마지막에 고른 "나의 약점". AI 가 탓하지 않고 언제 그런지 묻는 데 씁니다.
+      selfReportedWeaknesses: loadSelfReportedWeaknesses(),
       // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
       onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
       // 연결이 끊어지면 마이크를 끄고, 안내 화면을 보여줍니다.
