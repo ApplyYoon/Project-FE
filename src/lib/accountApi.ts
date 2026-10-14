@@ -12,6 +12,7 @@
  * ⚠️ 비밀번호는 서버로 보내기만 합니다. 브라우저 저장소에 넣지 않고, console.log 로도 찍지 않습니다.
  */
 import { ApiError, api, isConnectionError } from '@/lib/api'
+import { turnOffWebPush } from '@/lib/webPush'
 import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 멈춰도 로딩이 영원히 끝나지 않으면 안 되기 때문입니다. */
@@ -99,6 +100,9 @@ export async function changePassword(currentPassword: string, newPassword: strin
  * ⚠️ 이 기기의 로그인 정보를 지우기 "전에" 불러야 합니다. 지운 뒤에는 보낼 토큰이 없습니다.
  */
 export async function logoutOnServer(): Promise<void> {
+  // 이 기기의 푸시 알림도 끕니다. 같은 기기를 다른 사람이 쓰면, 내 알림(생각 습관 작전)이 그 사람에게 가지 않게 하려는 것입니다.
+  // (토큰을 지우기 전에 해야 서버에도 알릴 수 있습니다. 실패해도 로그아웃은 계속합니다)
+  await turnOffWebPush().catch(() => undefined)
   try {
     await api<void>('/auth/logout', {
       method: 'POST',
