@@ -20,7 +20,7 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
 //   요청  POST /realtime/session   { careLevel, maxHarshness, card }
-//   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초) }
+//   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 const SESSION_PATH = '/realtime/session'
 
@@ -63,6 +63,8 @@ export interface RealtimeCall {
   setMuted: (muted: boolean) => void
   /** 서버가 정한 통화 한 번의 최대 길이(초). 이 시간이 되면 화면이 통화를 끊습니다. 서버가 안 알려 줬으면 null */
   maxCallSeconds: number | null
+  /** 서버의 통화 기록 번호. 통화가 끝나면 이 번호로 자막을 보내 결론을 받습니다. (lib/callReview.ts) 서버가 안 알려 줬으면 null */
+  callId: string | null
 }
 
 // 소리가 나지 않는 아주 짧은 파일입니다. (8000Hz 모노, 100샘플 = 0.0125초, 전부 무음)
@@ -103,6 +105,8 @@ interface CallSession {
   key: string
   /** 통화 한 번의 최대 길이(초). 서버가 안 알려 줬으면 null */
   maxCallSeconds: number | null
+  /** 통화 기록 번호. 서버가 안 알려 줬으면 null */
+  callId: string | null
 }
 
 /**
@@ -137,7 +141,8 @@ async function requestCallSession(
       typeof record.maxCallSeconds === 'number' && record.maxCallSeconds > 0
         ? record.maxCallSeconds
         : null
-    return { key: value, maxCallSeconds }
+    const callId = typeof record.callId === 'string' && record.callId !== '' ? record.callId : null
+    return { key: value, maxCallSeconds, callId }
   } catch (error) {
     // 에러 안에 키가 들어 있을 수 있어서 원문 대신 이유만 남깁니다.
     const detail = error instanceof Error ? error.message : '알 수 없는 오류'
@@ -299,5 +304,5 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     })
   }
 
-  return { close, setMuted, maxCallSeconds: session.maxCallSeconds }
+  return { close, setMuted, maxCallSeconds: session.maxCallSeconds, callId: session.callId }
 }

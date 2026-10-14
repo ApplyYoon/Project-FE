@@ -22,8 +22,8 @@ export type TranscriptEvent =
   | { type: 'me-started'; itemId: string } // 내가 말을 마침. 글자로 바뀌길 기다리는 중
   | { type: 'me-done'; itemId: string; text: string } // 내 말 완성본
 
-// 내 말이 글자로 바뀌기를 기다리는 동안 보여주는 표시
-const WAITING_TEXT = '…'
+// 내 말이 글자로 바뀌기를 기다리는 동안 보여주는 표시. 통화가 끝나 자막을 서버에 보낼 때는 이 말풍선을 뺍니다. (lib/callReview.ts)
+export const WAITING_TEXT = '…'
 
 /**
  * 데이터 채널로 받은 글자(JSON 문자열)를 읽어서 TranscriptEvent 로 바꿉니다.
