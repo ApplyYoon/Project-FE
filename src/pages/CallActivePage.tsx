@@ -4,9 +4,18 @@ import { cn } from '@/lib/cn'
 import { loadCallCard } from '@/lib/callCard'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
 import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
+import { toCallLines, type CallResultState } from '@/lib/callReview'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+
+/**
+ * 결과 화면에 넘길 값(통화 기록 번호 + 자막)을 만듭니다.
+ * 서버가 통화 번호를 주지 않았으면(옛 서버 등) 정리할 수 없어서 null 입니다.
+ */
+function toResultState(callId: string | null, messages: SubtitleMessage[]): CallResultState | null {
+  return callId === null ? null : { callId, lines: toCallLines(messages) }
+}
 
 /** 수신 화면이 넘겨준 인사말을 꺼냅니다. 없거나 모양이 다르면 null 입니다. */
 function readGreeting(state: unknown): string | null {
@@ -227,6 +236,8 @@ export function CallActivePage() {
   const callRef = useRef<RealtimeCall | null>(null)
   // 화면에 보이는 자막 말풍선들. AI 와 내 말이 오는 대로 쌓입니다.
   const [messages, setMessages] = useState<SubtitleMessage[]>([])
+  // 서버의 통화 기록 번호. 연결되면 정해집니다. 통화가 끝나면 결과 화면이 이 번호로 자막을 보내 결론을 받습니다.
+  const [callId, setCallId] = useState<string | null>(null)
 
   // 화면이 열리면 AI 와 음성 연결을 시작하고, 화면을 떠나면(끊기·뒤로가기) 연결과 마이크를 정리합니다.
   // attempt 가 바뀌면(다시 시도) 이전 연결을 정리하고 새로 연결합니다.
@@ -271,6 +282,7 @@ export function CallActivePage() {
         call = startedCall
         callRef.current = startedCall
         setMaxCallSeconds(startedCall.maxCallSeconds)
+        setCallId(startedCall.callId)
         setConnection('connected')
       })
       .catch((error: unknown) => {
@@ -326,13 +338,19 @@ export function CallActivePage() {
     return () => clearInterval(timerId)
   }, [isCounting])
 
+  // 결과 화면으로 갑니다. 서버의 통화 기록 번호와 자막을 같이 넘겨서, 결과 화면이 "오늘의 결론" 을 받아 오게 합니다.
+  // replace: 이 화면을 방문 기록에서 지웁니다. 결과 화면에서 뒤로가기를 눌러도 통화가 다시 걸리지 않습니다.
+  function goToResult() {
+    navigate('/call/result', { replace: true, state: toResultState(callId, messages) })
+  }
+
   // 서버가 정한 최대 길이가 되면 통화를 끊고 결과 화면으로 갑니다. 음성 통화는 길수록 돈이 많이 들기 때문입니다.
   // (화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다)
   useEffect(() => {
     if (connection !== 'connected' || maxCallSeconds === null) return
     if (seconds < maxCallSeconds) return
-    navigate('/call/result', { replace: true })
-  }, [connection, maxCallSeconds, seconds, navigate])
+    navigate('/call/result', { replace: true, state: toResultState(callId, messages) })
+  }, [connection, maxCallSeconds, seconds, navigate, callId, messages])
 
   function handleToggleMute() {
     setIsMuted((prev) => !prev)
@@ -340,9 +358,12 @@ export function CallActivePage() {
 
   function handleHangUp() {
     // 화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다.
-    // replace: 이 화면을 방문 기록에서 지웁니다. 결과 화면에서 뒤로가기를 눌러도 통화가 다시 걸리지 않습니다.
     // 통화가 연결된 적이 없으면 평가할 내용이 없어서, 결과 화면 대신 홈으로 갑니다.
-    navigate(isCounting ? '/call/result' : '/', { replace: true })
+    if (isCounting) {
+      goToResult()
+      return
+    }
+    navigate('/', { replace: true })
   }
 
   // 다시 시도: "연결 중"으로 돌려놓고 attempt 를 올리면 위 useEffect 가 새로 연결합니다.
@@ -368,9 +389,13 @@ export function CallActivePage() {
         onRetry={handleRetry}
         // 끊긴 경우는 평가 화면으로, 처음부터 안 된 경우는 말 대신 체크인 화면으로 보냅니다.
         // replace: 떠난 뒤 뒤로가기를 눌러도 이 화면으로 돌아와 전화가 다시 걸리지 않게 합니다.
-        onLeave={() =>
-          navigate(connection === 'dropped' ? '/call/result' : '/check', { replace: true })
-        }
+        onLeave={() => {
+          if (connection === 'dropped') {
+            goToResult()
+            return
+          }
+          navigate('/check', { replace: true })
+        }}
         onPreview={import.meta.env.DEV ? () => setIsPreview(true) : undefined}
       />
     )
