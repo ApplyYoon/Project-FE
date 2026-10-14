@@ -1,18 +1,25 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
+import { SUPPORT_PATH } from '@/lib/helpLines'
+import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import {
+  WEAKNESS_NOTE_MAX,
   getTopHabits,
+  getWeaknessLabel,
   loadThinkingTest,
   saveThinkingTest,
   scoreThinkingTest,
   thinkingHabits,
   thinkingTestQuestions,
+  weaknessOptions,
   type ThinkingTestResult,
+  type WeaknessKey,
 } from '@/lib/thinkingTest'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
@@ -41,9 +48,10 @@ function getNextStep(from: string): { path: string; label: string } {
 
 /**
  * 생각 습관 테스트 화면입니다. 가입 설문 다음에 나오고, 안 했으면 RequireAuth 가 여기로 보냅니다.
- * 상황 질문 12개에 답하면, 내가 자주 고른 생각 습관(인지편향)을 보여 줍니다. (문항·채점: lib/thinkingTest.ts)
+ * 상황 질문 24개에 답하고 마지막에 "내가 생각하는 나의 약점" 을 고르면, 내가 자주 고른 생각 습관(인지편향)을 보여 줍니다.
+ * (문항·채점·약점 칩: lib/thinkingTest.ts)
  *
- * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 12 · result) 뒤로 가기를 누르면 앞 질문으로 갑니다.
+ * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 24 · weakness · result) 뒤로 가기를 누르면 앞 단계로 갑니다.
  * 결과는 "너는 ○○형" 이 아니라 "이런 생각을 자주 고른 편" 이라는 가설로 보여 줍니다.
  */
 export function OnboardingThinkingPage() {
@@ -64,14 +72,26 @@ export function OnboardingThinkingPage() {
   function handleChoose(questionId: string, optionIndex: number, questionNumber: number) {
     const nextAnswers = { ...answers, [questionId]: optionIndex }
     setAnswers(nextAnswers)
-    if (questionNumber < total) {
-      saveData(DRAFT_KEY, nextAnswers)
-      setStep(String(questionNumber + 1))
+    saveData(DRAFT_KEY, nextAnswers)
+    // 마지막 질문 다음에는 "나의 약점" 을 고르러 갑니다.
+    setStep(questionNumber < total ? String(questionNumber + 1) : 'weakness')
+  }
+
+  function handleFinish(weaknesses: WeaknessKey[], weaknessNote: string) {
+    // 결과를 저장하고 임시 답은 지웁니다.
+    saveThinkingTest(answers, weaknesses, weaknessNote)
+    removeData(DRAFT_KEY)
+    // "기타" 에 쓴 글에 위기 표현이 있으면 결과보다 도움 안내를 먼저 보여 줍니다. (안전이 먼저입니다)
+    const brake = getSafetyBrakeResult({
+      now: new Date(),
+      recentTexts: [weaknessNote],
+      recentMoods: [],
+      exams: [],
+    })
+    if (brake.stopWhip) {
+      navigate(SUPPORT_PATH)
       return
     }
-    // 마지막 질문이면 결과를 저장하고 임시 답은 지웁니다.
-    saveThinkingTest(nextAnswers)
-    removeData(DRAFT_KEY)
     setStep('result')
   }
 
@@ -83,6 +103,8 @@ export function OnboardingThinkingPage() {
       <PlainLayout>
         <ThinkingTestResultView
           result={scoreThinkingTest(saved.answers)}
+          weaknesses={saved.weaknesses}
+          weaknessNote={saved.weaknessNote}
           nextLabel={next.label}
           onNext={() => navigate(next.path)}
           onRetry={handleStart}
@@ -91,8 +113,20 @@ export function OnboardingThinkingPage() {
     )
   }
 
-  // 주소의 질문 번호. 숫자가 아니거나 범위 밖이면 처음 화면입니다.
-  const requested = Number(step)
+  // 아직 답하지 않은 첫 질문의 자리 (0 부터). 다 답했으면 -1
+  const firstUnanswered = thinkingTestQuestions.findIndex((question) => !(question.id in answers))
+
+  // 질문에 다 답했으면 "나의 약점" 을 고릅니다. 덜 답했는데 주소로 건너뛰었으면 아래에서 그 질문을 보여 줍니다.
+  if (step === 'weakness' && firstUnanswered === -1) {
+    return (
+      <PlainLayout>
+        <WeaknessStep onSubmit={handleFinish} onBack={() => setStep(String(total))} />
+      </PlainLayout>
+    )
+  }
+
+  // 주소의 질문 번호. "나의 약점" 에서 넘어온 것은 마지막 질문으로 봅니다. 숫자가 아니거나 범위 밖이면 처음 화면입니다.
+  const requested = step === 'weakness' ? total : Number(step)
   if (step === 'intro' || !Number.isInteger(requested) || requested < 1 || requested > total) {
     return (
       <PlainLayout>
@@ -102,7 +136,6 @@ export function OnboardingThinkingPage() {
   }
 
   // 앞 질문에 답하지 않고 주소로 건너뛰었으면, 아직 답하지 않은 첫 질문을 보여 줍니다.
-  const firstUnanswered = thinkingTestQuestions.findIndex((question) => !(question.id in answers))
   const questionNumber =
     firstUnanswered === -1 ? requested : Math.min(requested, firstUnanswered + 1)
   const question = thinkingTestQuestions[questionNumber - 1]
@@ -173,7 +206,7 @@ function ThinkingTestIntro({ onStart }: ThinkingTestIntroProps) {
       </div>
       <Card>
         <ul className="flex flex-col gap-2 text-sm break-keep text-slate-700">
-          <li>· 상황 질문 12개, 2분이면 끝나요.</li>
+          <li>· 상황 질문 24개, 4분쯤 걸려요. 마지막에 내가 생각하는 약점을 골라요.</li>
           <li>· 정답은 없어요. 가장 나다운 답을 골라 줘.</li>
           <li>· 결과는 AI 선생님과 통화할 때 같이 확인해 볼게요.</li>
         </ul>
@@ -187,6 +220,10 @@ function ThinkingTestIntro({ onStart }: ThinkingTestIntroProps) {
 
 interface ThinkingTestResultViewProps {
   result: ThinkingTestResult
+  /** 내가 꼽은 약점 칩들 */
+  weaknesses: WeaknessKey[]
+  /** "기타" 에 쓴 약점. 없으면 null */
+  weaknessNote: string | null
   nextLabel: string
   onNext: () => void
   onRetry: () => void
@@ -195,6 +232,8 @@ interface ThinkingTestResultViewProps {
 /** 테스트 결과. 많이 고른 습관 2개를 카드로, 8개 전체를 막대로 보여 줍니다. */
 function ThinkingTestResultView({
   result,
+  weaknesses,
+  weaknessNote,
   nextLabel,
   onNext,
   onRetry,
@@ -231,6 +270,30 @@ function ThinkingTestResultView({
         )
       })}
 
+      {(weaknesses.length > 0 || weaknessNote !== null) && (
+        <Card title="내가 꼽은 나의 약점">
+          <ul className="flex flex-wrap gap-2">
+            {weaknesses.map((key) => (
+              <li
+                key={key}
+                className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700"
+              >
+                {getWeaknessLabel(key)}
+              </li>
+            ))}
+            {weaknessNote !== null && (
+              <li className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium break-all text-slate-700">
+                {weaknessNote}
+              </li>
+            )}
+          </ul>
+          <p className="mt-3 text-sm break-keep text-slate-600">
+            약점은 탓할 거리가 아니라 작전을 세울 곳이에요. 통화에서 언제 그런지 같이 이야기해
+            볼게요.
+          </p>
+        </Card>
+      )}
+
       <Card title="전체 결과">
         <ul className="flex flex-col gap-3">
           {result.scores.map((score) => (
@@ -243,7 +306,8 @@ function ThinkingTestResultView({
           ))}
         </ul>
         <p className="mt-4 text-sm break-keep text-slate-600">
-          건강하게 대처하는 답은 12개 중 {result.healthyCount}개 골랐어요.
+          건강하게 대처하는 답은 {thinkingTestQuestions.length}개 중 {result.healthyCount}개
+          골랐어요.
         </p>
       </Card>
 
@@ -259,6 +323,104 @@ function ThinkingTestResultView({
         </Button>
         <Button variant="ghost" size="lg" className="w-full sm:w-auto" onClick={onRetry}>
           다시 하기
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface WeaknessStepProps {
+  onSubmit: (weaknesses: WeaknessKey[], weaknessNote: string) => void
+  onBack: () => void
+}
+
+/** 테스트 마지막 단계: 내가 생각하는 나의 약점을 칩으로 여러 개 고르고, "기타" 는 직접 씁니다. */
+function WeaknessStep({ onSubmit, onBack }: WeaknessStepProps) {
+  const [selected, setSelected] = useState<WeaknessKey[]>([])
+  const [isEtcOpen, setIsEtcOpen] = useState(false)
+  const [note, setNote] = useState('')
+
+  function handleToggle(key: WeaknessKey) {
+    setSelected((previous) =>
+      previous.includes(key) ? previous.filter((item) => item !== key) : [...previous, key],
+    )
+  }
+
+  function handleSubmit() {
+    // 칩의 순서는 화면 순서로 맞춰 저장합니다. (누른 순서와 상관없이 결과가 늘 같은 모양이 되게)
+    const ordered = weaknessOptions
+      .map((option) => option.key)
+      .filter((key) => selected.includes(key))
+    onSubmit(ordered, isEtcOpen ? note : '')
+  }
+
+  // 칩 하나의 모양. 고르면 색이 채워집니다. 누르는 곳은 최소 40px(h-10)
+  function chipClass(isOn: boolean) {
+    return cn(
+      'h-10 cursor-pointer rounded-full border px-4 text-sm font-medium',
+      isOn
+        ? 'border-brand bg-brand text-white'
+        : 'hover:border-brand border-slate-200 bg-white text-slate-700',
+    )
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+      <div>
+        <p className="text-brand text-sm font-semibold">생각 습관 테스트 · 마지막</p>
+        <h1 className="mt-2 text-xl font-bold tracking-tight break-keep sm:text-2xl">
+          내가 생각하는 나의 약점은?
+        </h1>
+        <p className="mt-2 text-sm break-keep text-slate-500">
+          여러 개 골라도 돼요. 없으면 그냥 넘어가도 돼요.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {weaknessOptions.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={selected.includes(option.key)}
+            onClick={() => handleToggle(option.key)}
+            className={chipClass(selected.includes(option.key))}
+          >
+            {option.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          aria-pressed={isEtcOpen}
+          onClick={() => setIsEtcOpen((previous) => !previous)}
+          className={chipClass(isEtcOpen)}
+        >
+          기타
+        </button>
+      </div>
+
+      {isEtcOpen && (
+        <div className="flex flex-col gap-1.5">
+          <Input
+            id="weakness-note"
+            label="기타 약점"
+            value={note}
+            maxLength={WEAKNESS_NOTE_MAX}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="예: 웹툰"
+          />
+          <p className="text-xs text-slate-500">
+            {note.length} / {WEAKNESS_NOTE_MAX}자 · 이 글은 내 기기에만 저장되고 AI 에게 보내지
+            않아요.
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Button size="lg" className="w-full sm:w-auto" onClick={handleSubmit}>
+          결과 보기
+        </Button>
+        <Button variant="ghost" size="lg" className="w-full sm:w-auto" onClick={onBack}>
+          ← 이전
         </Button>
       </div>
     </div>
