@@ -19,7 +19,7 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
-//   요청  POST /realtime/session   { careLevel, maxHarshness, card }
+//   요청  POST /realtime/session   { careLevel, maxHarshness, card, selfReportedBiases }
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 const SESSION_PATH = '/realtime/session'
@@ -122,11 +122,17 @@ async function requestCallSession(
   signal: AbortSignal,
   tone: CallTone,
   card: CallCard | null,
+  selfReportedBiases: string[],
 ): Promise<CallSession> {
   try {
     const data = await api<unknown>(SESSION_PATH, {
       method: 'POST',
-      body: JSON.stringify({ careLevel: tone.careLevel, maxHarshness: tone.maxHarshness, card }),
+      body: JSON.stringify({
+        careLevel: tone.careLevel,
+        maxHarshness: tone.maxHarshness,
+        card,
+        selfReportedBiases,
+      }),
       signal,
     })
     const record =
@@ -191,6 +197,11 @@ export interface StartCallOptions {
   tone?: CallTone
   /** 학생 카드(내 기록을 숫자로 정리한 것). 서버가 이것으로 질문과 말투를 정합니다. 기록이 없으면 null (lib/callCard.ts) */
   card?: CallCard | null
+  /**
+   * 가입 때 한 생각 습관 테스트에서 많이 고른 습관 이름들 (많이 고른 것부터, 최대 3개). 안 했으면 빈 목록 (lib/thinkingTest.ts)
+   * 서버는 통화 기록이 쌓이기 전 첫 통화에서 이 습관을 확인하는 질문을 합니다.
+   */
+  selfReportedBiases?: string[]
 }
 
 /**
@@ -208,7 +219,12 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
   let session: CallSession
   let microphone: MediaStream
   try {
-    session = await requestCallSession(signal, options.tone ?? DEFAULT_TONE, options.card ?? null)
+    session = await requestCallSession(
+      signal,
+      options.tone ?? DEFAULT_TONE,
+      options.card ?? null,
+      options.selfReportedBiases ?? [],
+    )
     microphone = await openMicrophone()
   } catch (error) {
     clearTimeout(timeoutId)
