@@ -2,6 +2,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { isPublicPath, type LoginRedirectState } from '@/lib/authRedirect'
 import { hasSignupInfo } from '@/lib/signup'
 import { TEST_TOKEN } from '@/lib/testLogin'
+import { THINKING_TEST_PATH, hasThinkingTest } from '@/lib/thinkingTest'
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
@@ -15,6 +16,7 @@ interface RequireAuthProps {
  *   로그인 없이 열리는 주소     -> 로그인·회원가입·도움 연결 안내는 그대로 보여줍니다. (lib/authRedirect.ts 의 PUBLIC_PATHS)
  *   로그인 안 했다             -> /login 으로 보냅니다. 가려던 주소도 같이 넘겨서, 로그인하면 거기로 돌아가게 합니다.
  *   로그인했지만 가입을 안 마쳤다 -> /signup 으로 보냅니다. 가입을 건너뛰고 앱에 들어갈 수 없습니다. (테스트 로그인은 예외)
+ *   생각 습관 테스트를 안 했다   -> /onboarding/thinking 으로 보냅니다. (가입 설문·설정은 막지 않습니다. 테스트 로그인은 예외)
  *   로그인했고 가입도 마쳤다     -> 감싼 화면을 그대로 보여줍니다.
  *
  * "막을 주소" 가 아니라 "열어 줄 주소" 를 적어 두는 방식이라, 새 페이지를 만들어도 따로 할 일이 없습니다.
@@ -46,6 +48,17 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const isTestLogin = token === TEST_TOKEN
   if (!hasSignupInfo() && !isTestLogin) {
     return <Navigate to="/signup" replace />
+  }
+
+  // 가입은 마쳤지만 생각 습관 테스트를 아직 안 한 사람은 테스트로 보냅니다. ("나는 어떤 생각 습관을 가졌는지" 부터 알아보게)
+  // 가입 설문(/onboarding…)은 테스트 앞뒤로 이어지는 화면이라 막지 않습니다.
+  // 설정(/settings…)도 막지 않습니다. 로그아웃·탈퇴는 언제나 할 수 있어야 하기 때문입니다.
+  // (도움 연결 안내 /support 는 RequireAuth 로 감싸지 않아서 처음부터 막히지 않습니다)
+  // 테스트 로그인은 앱을 바로 둘러보려는 것이라 보내지 않습니다.
+  const isTestFreePath =
+    location.pathname.startsWith('/onboarding') || location.pathname.startsWith('/settings')
+  if (!hasThinkingTest() && !isTestLogin && !isTestFreePath) {
+    return <Navigate to={THINKING_TEST_PATH} replace />
   }
 
   return <>{children}</>
