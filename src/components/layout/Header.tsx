@@ -16,7 +16,7 @@ interface HeaderProps {
 
 /*
  * 헤더 오른쪽에는 셋 중 하나가 보입니다.
- *   로그인 전          -> "로그인 · 회원가입" 두 개만 (메뉴를 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다)
+ *   로그인 전          -> "로그인" 하나만 (처음 온 사람도 로그인 화면에서 시작하면 가입으로 이어지기 때문입니다, #319)
  *   로그인 + hideNav   -> action (온보딩의 "나중에 하기" 등)
  *   로그인             -> 메뉴와 알림 종
  */
@@ -40,13 +40,11 @@ export function Header({ hideNav = false, action }: HeaderProps) {
         </NavLink>
 
         {!isLoggedIn ? (
-          // 로그인 전에는 로그인·회원가입만 보여줍니다. 모바일에서도 그대로 보입니다. (하단 탭이 없어서)
+          // 로그인 전에는 로그인만 보여줍니다. 모바일에서도 그대로 보입니다. (하단 탭이 없어서)
+          // 회원가입은 따로 두지 않습니다. 로그인 화면에서 시작하면 처음인 사람은 가입으로 이어집니다. (#319)
           <nav aria-label="로그인 메뉴" className="flex items-center gap-1">
             <NavLink to="/login" className={guestLinkClass}>
               로그인
-            </NavLink>
-            <NavLink to="/signup" className={guestLinkClass}>
-              회원가입
             </NavLink>
           </nav>
         ) : hideNav ? (
@@ -116,7 +114,7 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
   )
 }
 
-/* 로그인 전에 보이는 "로그인 · 회원가입" 링크. 손가락으로 누르기 쉽게 높이 40px(h-10) 입니다. */
+/* 로그인 전에 보이는 "로그인" 링크. 손가락으로 누르기 쉽게 높이 40px(h-10) 입니다. */
 function guestLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
     'flex h-10 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors',
