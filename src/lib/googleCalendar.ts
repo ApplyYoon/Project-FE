@@ -2,62 +2,33 @@
  * 구글 캘린더 연결 (#314)
  *
  * ■ 방식
- *  1. 구글이 주는 브라우저용 연결 창(Google Identity Services, GIS) 스크립트를 불러옵니다. (라이브러리 설치 없음)
- *  2. [연결] 을 누르면 구글 창이 뜨고, 허락하면 "출입증"(access token)을 받습니다.
+ *  1. [연결] 을 누르면 구글 창이 뜨고, 허락하면 "출입증"(access token)을 받습니다.
+ *     창은 @react-oauth/google 의 useGoogleLogin 이 띄웁니다. (설정 화면 GoogleCalendarSection)
+ *  2. 받은 출입증을 saveCalendarToken 으로 이 기기에 저장합니다.
  *  3. 그 출입증으로 구글 캘린더 API 를 브라우저에서 바로 부릅니다. 우리 서버와 client secret 은 쓰지 않습니다.
  *
  * ■ 알아 둘 것
  *  - 출입증은 한 시간짜리입니다. 끝나면 [다시 연결] 을 눌러 새로 받습니다.
  *  - 구글 클라우드 콘솔이 "테스트 모드" 라서, 콘솔의 "테스트 사용자" 에 넣은 계정만 연결할 수 있습니다.
- *  - 클라이언트 ID 는 .env.local · Vercel 의 VITE_GOOGLE_CLIENT_ID 에 넣습니다. (공개돼도 되는 값)
+ *  - 클라이언트 ID 는 lib/googleClient.ts 에서 가져옵니다.
  *
  * ⚠️ 출입증과 일정 내용을 console.log 로 찍지 않습니다. 일정 제목은 받아오지도 않습니다.
  */
 import { queryOptions } from '@tanstack/react-query'
 import { DAY_START_HOUR } from '@/lib/date'
+import { isGoogleConfigured } from '@/lib/googleClient'
 import { loadData, removeData, saveData } from '@/lib/storage'
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
-const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
-// 일정 읽기·쓰기 권한 하나만 받습니다. (#315 바쁜 시간 읽기, #316 일정 넣기)
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+/** 일정 읽기·쓰기 권한 하나만 받습니다. (#315 바쁜 시간 읽기, #316 일정 넣기) */
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 const CALENDAR_API_URL = 'https://www.googleapis.com/calendar/v3'
+// 구글에 "허락 취소" 를 알리는 주소
+const REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 // 저장 이름. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다)
 const STORAGE_KEY = 'google-calendar'
 const REQUEST_TIMEOUT_MS = 10000
 // 출입증이 끝나기 1분 전부터는 "끝난 것" 으로 봅니다. 요청 도중에 끝나는 일을 막으려는 것입니다.
 const EXPIRY_MARGIN_MS = 60 * 1000
-
-/* ---------- 구글 스크립트(GIS)의 모양. 쓰는 것만 적었습니다 ---------- */
-
-interface TokenResponse {
-  access_token?: string
-  /** 출입증이 몇 초 동안 쓸 수 있는지 */
-  expires_in?: number | string
-  /** 실패했을 때의 이유. 예) 'access_denied' (허락 안 함) */
-  error?: string
-}
-
-interface TokenClient {
-  requestAccessToken: () => void
-}
-
-interface GoogleOAuth2 {
-  initTokenClient: (config: {
-    client_id: string
-    scope: string
-    callback: (response: TokenResponse) => void
-    error_callback: (error: { type: string }) => void
-  }) => TokenClient
-  hasGrantedAllScopes: (response: TokenResponse, scope: string) => boolean
-  revoke: (accessToken: string, done: () => void) => void
-}
-
-declare global {
-  interface Window {
-    google?: { accounts?: { oauth2?: GoogleOAuth2 } }
-  }
-}
 
 /* ---------- 연결 상태 ---------- */
 
@@ -77,7 +48,7 @@ interface SavedConnection {
  */
 export type CalendarStatus = 'unavailable' | 'off' | 'expired' | 'on'
 
-/** 연결하다가 실패했을 때. message 는 화면에 그대로 보여 줄 문장입니다. */
+/** 캘린더를 읽다가 실패했을 때. message 는 화면에 그대로 보여 줄 문장입니다. */
 export class CalendarError extends Error {
   constructor(message: string) {
     super(message)
@@ -95,7 +66,7 @@ function loadConnection(): SavedConnection | null {
 
 /** 지금 연결 상태를 알려 줍니다. */
 export function getCalendarStatus(now: number = Date.now()): CalendarStatus {
-  if (CLIENT_ID === '') return 'unavailable'
+  if (!isGoogleConfigured) return 'unavailable'
   const connection = loadConnection()
   if (connection === null) return 'off'
   return connection.expiresAt - EXPIRY_MARGIN_MS > now ? 'on' : 'expired'
@@ -103,74 +74,16 @@ export function getCalendarStatus(now: number = Date.now()): CalendarStatus {
 
 /* ---------- 연결 · 끊기 ---------- */
 
-// 스크립트는 한 번만 불러옵니다. 두 번째부터는 같은 약속(Promise)을 돌려줍니다.
-let scriptPromise: Promise<void> | null = null
-
-/** 구글 연결 창 스크립트를 불러옵니다. 설정 화면이 열릴 때 미리 부릅니다. */
-export function loadGoogleScript(): Promise<void> {
-  if (window.google?.accounts?.oauth2) return Promise.resolve()
-  if (scriptPromise) return scriptPromise
-
-  scriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script')
-    script.src = GIS_SCRIPT_URL
-    script.async = true
-    script.onload = () => resolve()
-    script.onerror = () => {
-      scriptPromise = null // 실패했으면 다음에 다시 시도할 수 있게 비웁니다.
-      reject(new CalendarError('구글 연결 창을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'))
-    }
-    document.head.appendChild(script)
-  })
-  return scriptPromise
-}
-
 /**
- * 구글 창을 띄워 캘린더 권한을 받습니다. 성공하면 출입증을 저장합니다.
- * ⚠️ 버튼을 누른 그 순간에 바로 불러야 합니다. 중간에 기다렸다가 부르면 브라우저가 팝업을 막습니다.
- *    그래서 스크립트는 loadGoogleScript 로 미리 불러 둡니다.
+ * 구글 창에서 받은 출입증을 저장합니다.
+ *   accessToken : 구글이 준 출입증
+ *   expiresIn   : 몇 초 동안 쓸 수 있는지 (보통 3599초 = 한 시간)
  */
-export function connectCalendar(): Promise<void> {
-  const oauth2 = window.google?.accounts?.oauth2
-  if (CLIENT_ID === '' || !oauth2) {
-    return Promise.reject(
-      new CalendarError('구글 연결 창을 준비하는 중이에요. 잠시 후 다시 눌러 주세요.'),
-    )
-  }
-
-  return new Promise((resolve, reject) => {
-    const client = oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: CALENDAR_SCOPE,
-      callback: (response) => {
-        if (response.error || !response.access_token) {
-          reject(new CalendarError('권한을 허락하지 않아서 연결하지 못했어요.'))
-          return
-        }
-        // 구글 창에서 캘린더 체크를 풀고 허락할 수도 있어서 한 번 더 확인합니다.
-        if (!oauth2.hasGrantedAllScopes(response, CALENDAR_SCOPE)) {
-          reject(new CalendarError('캘린더 권한에 체크해야 연결돼요. 다시 연결해 주세요.'))
-          return
-        }
-        const seconds = Number(response.expires_in) || 3600
-        saveData<SavedConnection>(STORAGE_KEY, {
-          accessToken: response.access_token,
-          expiresAt: Date.now() + seconds * 1000,
-        })
-        resolve()
-      },
-      // 창을 닫았거나 팝업이 막혔을 때
-      error_callback: (error) => {
-        reject(
-          new CalendarError(
-            error.type === 'popup_failed_to_open'
-              ? '팝업이 막혔어요. 브라우저에서 이 사이트의 팝업을 허용해 주세요.'
-              : '연결을 마치지 않았어요. 다시 연결해 주세요.',
-          ),
-        )
-      },
-    })
-    client.requestAccessToken()
+export function saveCalendarToken(accessToken: string, expiresIn: number): void {
+  const seconds = Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 3600
+  saveData<SavedConnection>(STORAGE_KEY, {
+    accessToken,
+    expiresAt: Date.now() + seconds * 1000,
   })
 }
 
@@ -178,8 +91,15 @@ export function connectCalendar(): Promise<void> {
 export function disconnectCalendar(): void {
   const connection = loadConnection()
   removeData(STORAGE_KEY)
-  // 구글에 "허락 취소" 를 알립니다. 실패해도 이 기기에서는 이미 끊긴 상태입니다.
-  if (connection) window.google?.accounts?.oauth2?.revoke(connection.accessToken, () => {})
+  if (connection === null) return
+  // 구글에 "허락 취소" 를 알립니다. 답은 읽지 않아도 돼서 no-cors 로 보냅니다.
+  // 실패해도 이 기기에서는 이미 끊긴 상태이고, 출입증은 한 시간 뒤 저절로 끝납니다.
+  void fetch(REVOKE_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: connection.accessToken }),
+  }).catch(() => {})
 }
 
 /* ---------- 바쁜 시간 읽기 ---------- */
