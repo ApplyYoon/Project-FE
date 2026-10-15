@@ -20,6 +20,7 @@ import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
 import { SUBJECT_COLORS, SUBJECT_COLOR_LABELS, loadSubjects } from '@/lib/subjects'
 import { getPlanProgress, getPlayProgress } from '@/lib/planProgress'
+import { PLAN_RESULT_LABELS, getPlanResult, type PlanResult } from '@/lib/planResult'
 import { copyPlans, getFrequentPlans, type FrequentPlan } from '@/lib/planShortcuts'
 import {
   WEEKDAY_ORDER,
@@ -48,6 +49,15 @@ const subjectColorStyles: Record<SubjectColor, string> = {
   purple: 'bg-purple-50 text-purple-600',
   pink: 'bg-pink-50 text-pink-700',
   slate: 'bg-slate-100 text-slate-600',
+}
+
+/* 계획 결과 → 표시 색. 초록 = 했음, 노랑·주황 = 아쉬움, 빨강 = 안 함. 색만으로 구분하지 않도록 글자도 같이 보여줍니다. (#313) */
+const planResultStyles: Record<PlanResult, string> = {
+  onTime: 'bg-green-50 text-green-700',
+  done: 'bg-green-50 text-green-700',
+  late: 'bg-amber-50 text-amber-700',
+  partial: 'bg-orange-50 text-orange-700',
+  missed: 'bg-red-50 text-red-700',
 }
 
 /* 색 고르기 버튼에 칠할 색. 보여주는 순서는 lib/subjects.ts 의 SUBJECT_COLORS 를 따릅니다. */
@@ -648,6 +658,8 @@ interface PlanRowProps {
   sessions: StudySession[]
   /** 오늘 계획인지. 오늘의 안 끝난 계획에만 [▶ 시작] 이 보입니다 */
   isToday: boolean
+  /** 오늘 날짜 (새벽 4시 기준). 그날이 끝났는지 보고 결과(덜 함·안 함)를 정하는 데 씁니다 */
+  todayKey: string
   onToggleDone: (planId: string) => void
   /** 시작 시각을 바꿨을 때 호출됩니다. 지우면 빈 글자('')를 넘깁니다 */
   onChangeStartTime: (planId: string, startTime: string) => void
@@ -664,6 +676,7 @@ function PlanRow({
   subject,
   sessions,
   isToday,
+  todayKey,
   onToggleDone,
   onChangeStartTime,
   onDelete,
@@ -672,6 +685,8 @@ function PlanRow({
   const [isTimeOpen, setIsTimeOpen] = useState(false)
   // 이 계획에서 타이머를 시작해 공부한 시간. "32 / 50분" 과 진행 막대에 씁니다. (lib/planProgress.ts)
   const progress = getPlanProgress(plan, sessions)
+  // 계획한 시간에 실제로 했는지 (제때 함·늦게 함·덜 함 …). 아직 판정할 수 없으면 null 입니다. (lib/planResult.ts)
+  const result = getPlanResult(plan, sessions, todayKey)
 
   return (
     <li className="flex flex-col py-1">
@@ -720,6 +735,17 @@ function PlanRow({
         {plan.routineId && (
           <span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-indigo-700">
             반복
+          </span>
+        )}
+
+        {result && (
+          <span
+            className={cn(
+              'shrink-0 rounded px-2 py-0.5 text-xs font-semibold',
+              planResultStyles[result],
+            )}
+          >
+            {PLAN_RESULT_LABELS[result]}
           </span>
         )}
 
@@ -1279,6 +1305,7 @@ export function PlannerPage() {
                         subject={subjects.find((item) => item.id === plan.subjectId)}
                         sessions={allSessions}
                         isToday={isToday}
+                        todayKey={todayKey}
                         onToggleDone={toggleDone}
                         onChangeStartTime={changeStartTime}
                         onDelete={handleDelete}
@@ -1334,6 +1361,7 @@ export function PlannerPage() {
                       subject={subjects.find((item) => item.id === plan.subjectId)}
                       sessions={allSessions}
                       isToday={isToday}
+                      todayKey={todayKey}
                       onToggleDone={toggleDone}
                       onChangeStartTime={changeStartTime}
                       onDelete={handleDelete}
