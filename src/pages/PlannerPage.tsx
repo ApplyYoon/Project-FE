@@ -8,6 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
+import { usePlanCalendarSync, type PlanCalendarState } from '@/hooks/usePlanCalendarSync'
 import { usePlans } from '@/hooks/usePlans'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useRoutines } from '@/hooks/useRoutines'
@@ -664,6 +665,10 @@ interface PlanRowProps {
   /** 시작 시각을 바꿨을 때 호출됩니다. 지우면 빈 글자('')를 넘깁니다 */
   onChangeStartTime: (planId: string, startTime: string) => void
   onDelete: (plan: StudyPlan) => void
+  /** 구글 캘린더 상태 (#316). 구글 캘린더를 연결하지 않았거나 맞출 계획이 아니면 없음 */
+  calendarState?: PlanCalendarState
+  /** [구글 캘린더에 넣기] 를 눌렀을 때 */
+  onAddToCalendar?: (plan: StudyPlan) => void
 }
 
 /**
@@ -680,6 +685,8 @@ function PlanRow({
   onToggleDone,
   onChangeStartTime,
   onDelete,
+  calendarState,
+  onAddToCalendar,
 }: PlanRowProps) {
   // 시작 시각을 고치는 칸을 펼쳤는지
   const [isTimeOpen, setIsTimeOpen] = useState(false)
@@ -787,6 +794,27 @@ function PlanRow({
           삭제
         </Button>
       </div>
+
+      {/* 구글 캘린더에 들어갔는지 (#316). pl-12: 위 줄과 같은 들여쓰기 */}
+      {calendarState && (
+        <div className="flex items-center pl-12 text-sm text-slate-500">
+          {calendarState === 'synced' && <span className="py-1">구글 캘린더에 있어요</span>}
+          {calendarState === 'syncing' && (
+            <span role="status" className="py-1">
+              구글 캘린더에 넣는 중…
+            </span>
+          )}
+          {calendarState === 'missing' && (
+            <button
+              type="button"
+              onClick={() => onAddToCalendar?.(plan)}
+              className="text-brand inline-flex h-10 items-center font-medium underline underline-offset-4"
+            >
+              구글 캘린더에 넣기
+            </button>
+          )}
+        </div>
+      )}
 
       {isTimeOpen && (
         // items-end: 입력칸 위에 이름표(label)가 있어서, 버튼을 입력칸 높이에 맞추려고 아래로 붙입니다.
@@ -1009,6 +1037,7 @@ export function PlannerPage() {
     changeStartTime,
     deletePlan,
     replaceDayPlans,
+    setGoogleEventId,
   } = usePlans()
   // 루틴 = 요일마다 반복되는 계획의 틀 (#236)
   const { routines, addRoutine, deleteRoutine } = useRoutines()
@@ -1042,6 +1071,9 @@ export function PlannerPage() {
   useEffect(() => {
     saveData('subjects', subjects)
   }, [subjects])
+
+  // 계획을 만들고 옮기고 지울 때 구글 캘린더도 같이 바꿉니다. (연결했을 때만, #316)
+  const calendar = usePlanCalendarSync({ subjects, setGoogleEventId })
 
   // 보고 있는 날짜에 아직 안 넣은 루틴이 있으면 계획으로 넣습니다. (오늘과 앞으로의 날짜만, 한 날짜에 한 번만)
   // [selectedDate, routines]: 날짜를 옮기거나 루틴이 바뀔 때 다시 확인합니다.
@@ -1102,7 +1134,14 @@ export function PlannerPage() {
     currentMinutes: todayGoalMinutes,
     recentAverageMinutes: getRecentAverageMinutes(allPlans, sessions),
     // 수락하면 오늘 계획들의 목표 시간을 새 목표에 맞춰 같은 비율로 바꿉니다.
-    onAccept: (newMinutes) => replaceDayPlans(todayKey, scalePlanMinutes(todayPlans, newMinutes)),
+    // 구글 캘린더에 넣은 계획은 일정의 끝 시각도 같이 옮깁니다.
+    onAccept: (newMinutes) => {
+      const scaledPlans = scalePlanMinutes(todayPlans, newMinutes)
+      replaceDayPlans(todayKey, scaledPlans)
+      for (const plan of scaledPlans) {
+        if (plan.googleEventId) calendar.onPlanChanged(plan, todayKey)
+      }
+    },
   })
 
   // 'ko-KR' 로 바꾸면 "10월 5일 일요일" 처럼 한국어 날짜가 됩니다.
@@ -1119,6 +1158,18 @@ export function PlannerPage() {
     const isConfirmed = window.confirm(`"${target.content}" 계획을 정말 지울까요?`)
     if (!isConfirmed) return
     deletePlan(target.id)
+    calendar.onPlanDeleted(target)
+  }
+
+  // 시작 시각을 바꿉니다. 구글 캘린더에 넣은 계획이면 일정도 옮기고, 시각을 지우면 일정도 지웁니다.
+  function handleChangeStartTime(planId: string, startTime: string) {
+    changeStartTime(planId, startTime)
+    const plan = allPlans.find((item) => item.id === planId)
+    if (!plan) return
+    calendar.onPlanChanged(
+      { ...plan, startTime: startTime === '' ? undefined : startTime },
+      todayKey,
+    )
   }
 
   // 폼에서 받은 값으로 새 계획을 만들어 저장합니다. 지금 보고 있는 날짜의 계획이 됩니다.
@@ -1168,6 +1219,8 @@ export function PlannerPage() {
 
     // 그날 목록의 맨 뒤에 붙습니다. (목록은 이 순서대로 보여 주므로 맨 아래에 나옵니다)
     addPlan(newPlan)
+    // 구글 캘린더를 연결했으면 일정으로도 넣습니다. (#316)
+    calendar.onPlanAdded(newPlan, todayKey)
   }
 
   // 루틴을 지웁니다. 이미 만들어진 날의 계획은 그대로 남습니다.
@@ -1180,7 +1233,9 @@ export function PlannerPage() {
 
   // 다른 날의 계획을 지금 보고 있는 날짜로 가져옵니다. 완료 표시는 지우고, 원래 날의 계획은 그대로 둡니다.
   function handleImport(sourceDate: string) {
-    addPlans(copyPlans(getPlans(sourceDate), selectedDate, subjectIds, Date.now()))
+    const copiedPlans = copyPlans(getPlans(sourceDate), selectedDate, subjectIds, Date.now())
+    addPlans(copiedPlans)
+    for (const plan of copiedPlans) calendar.onPlanAdded(plan, todayKey)
   }
 
   // 새 과목을 목록 맨 뒤에 추가합니다.
@@ -1307,7 +1362,7 @@ export function PlannerPage() {
                         isToday={isToday}
                         todayKey={todayKey}
                         onToggleDone={toggleDone}
-                        onChangeStartTime={changeStartTime}
+                        onChangeStartTime={handleChangeStartTime}
                         onDelete={handleDelete}
                       />
                     ))}
@@ -1363,11 +1418,19 @@ export function PlannerPage() {
                       isToday={isToday}
                       todayKey={todayKey}
                       onToggleDone={toggleDone}
-                      onChangeStartTime={changeStartTime}
+                      onChangeStartTime={handleChangeStartTime}
                       onDelete={handleDelete}
+                      calendarState={calendar.getPlanState(plan, todayKey)}
+                      onAddToCalendar={calendar.addToCalendar}
                     />
                   ))}
                 </ul>
+              )}
+              {/* 구글 캘린더에 실패했을 때의 안내. 앱의 계획은 실패와 상관없이 그대로입니다. (#316) */}
+              {calendar.notice !== null && (
+                <p role="status" className="mt-2 text-sm break-keep text-red-600">
+                  {calendar.notice}
+                </p>
               )}
             </Card>
 
