@@ -4,9 +4,9 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolField } from '@/components/ui/SchoolField'
 import { useAuth } from '@/hooks/useAuth'
-import { getPasswordAuthErrorMessage, signupWithPassword } from '@/lib/authApi'
-import type { LoginRedirectState } from '@/lib/authRedirect'
+import { getGoogleAuthErrorMessage, signupWithGoogle } from '@/lib/authApi'
 import { cn } from '@/lib/cn'
+import { clearPendingGoogleSignup, loadPendingGoogleSignup } from '@/lib/googleSignup'
 import type { School } from '@/lib/schoolSearch'
 import {
   EMAIL_MAX_LENGTH,
@@ -14,15 +14,12 @@ import {
   NAME_MIN_LENGTH,
   NICKNAME_MAX_LENGTH,
   NICKNAME_MIN_LENGTH,
-  PASSWORD_MIN_LENGTH,
   SIGNUP_STORAGE_KEY,
   canSubmitSignup,
   getEmailError,
   getMaxSignupStep,
   getNameError,
   getNicknameError,
-  getPasswordConfirmError,
-  getPasswordError,
   hasRequiredConsents,
   isAllConsented,
   makeAllConsents,
@@ -34,7 +31,7 @@ import { saveData } from '@/lib/storage'
 import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument } from '@/lib/terms'
 import { testUser } from '@/lib/testLogin'
 import { useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 /*
  * ⚠️ 이 화면의 동의 문구("쓰는 곳" 안내)와 "보기" 로 여는 약관 전문(lib/terms.ts)은 초안입니다.
@@ -237,14 +234,16 @@ function UnderFourteenView() {
 }
 
 /**
- * 가입 정보를 받는 화면입니다. 두 가지 경우에 옵니다.
+ * 가입 정보를 받는 화면입니다. 두 가지 경우에 옵니다. (이메일 가입은 2026-10-15 에 뺐습니다. 새 가입은 구글로만 받습니다)
+ *   - 구글로 처음 온 사람(로그인 화면의 [Google로 시작하기], #319): 이름·이메일은 구글 값으로 채우고 비밀번호 없이 받습니다.
+ *     마지막에 서버에 구글로 가입하면 바로 로그인돼서 온보딩으로 갑니다. (lib/googleSignup.ts)
  *   - 테스트 로그인을 한 채로 온 사람: 이미 로그인된 상태라 비밀번호 없이 가입 정보만 받습니다.
  *     (테스트 로그인은 가입을 건너뛰고 홈으로 가기 때문에, 이 주소를 직접 열었을 때만 여기에 옵니다)
- *   - 로그인 없이 온 사람(헤더의 "회원가입"): 이메일·비밀번호로 가입합니다. 서버에 계정을 만든 뒤 로그인 화면에서 로그인합니다.
+ *   둘 다 아니면(로그인도 안 했고 구글로 시작하지도 않음) 로그인 화면으로 돌려보냅니다.
  *
  * 세 단계로 나눠서 받고, 지금 단계는 주소에 보입니다. (/signup?step=1 계정 정보 → 2 학교·나이 → 3 약관 동의)
  * 주소에 두었기 때문에 뒤로 가기를 누르면 앞 단계로 돌아갑니다. 앞 단계를 안 채우고 뒤 단계의 주소를 열면 앞 단계로 돌려보냅니다.
- * 입력한 값은 이 화면이 들고 있어서, 새로고침하면 사라지고 1단계부터 다시 시작합니다. (비밀번호를 저장해 두지 않기 위해서입니다)
+ * 입력한 값은 이 화면이 들고 있어서, 새로고침하면 사라지고 1단계부터 다시 시작합니다.
  *  1) 이름·닉네임·이메일·고등학교(선택)  2) 만 14세 이상인지 확인  3) 개인정보 수집·이용 동의
  * 다 마치면 정보를 저장하고 온보딩(/onboarding)으로 갑니다.
  *
@@ -255,24 +254,19 @@ export function SignupPage() {
   const navigate = useNavigate()
   // useSearchParams: 주소의 ?step=2 같은 값을 읽고 바꿉니다.
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user, isLoggedIn, logout } = useAuth()
-  // 이메일로 가입하는 중인지 = 로그인 없이 이 화면에 온 사람인지. (테스트 로그인을 하고 온 사람은 false)
-  // 화면이 처음 그려질 때 한 번만 정합니다. 가입하는 도중에 로그인 상태가 바뀌어도 화면이 달라지지 않게 하려는 것입니다.
-  const [isEmailSignup] = useState(!isLoggedIn)
-  const [name, setName] = useState('')
+  const { user, isLoggedIn, login, logout } = useAuth()
+  // 구글로 처음 온 사람이면 구글이 준 정보(신분증·이름·이메일). 아니면 null (lib/googleSignup.ts)
+  // 아래 값들은 화면이 처음 그려질 때 한 번만 정합니다. 가입하는 도중에 로그인 상태가 바뀌어도 화면이 달라지지 않게 하려는 것입니다.
+  const [googleSignup] = useState(() => (isLoggedIn ? null : loadPendingGoogleSignup()))
+  const [name, setName] = useState(googleSignup?.name ?? '')
   const [nickname, setNickname] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(googleSignup?.email ?? '')
   // 고른 고등학교. 안 골라도 가입할 수 있어서 null 로 시작합니다.
   const [school, setSchool] = useState<School | null>(null)
   // 칸을 한 번이라도 건드렸는지. 처음 열었을 때부터 빨간 글씨를 보여주지 않으려고 씁니다.
   const [isNameTouched, setIsNameTouched] = useState(false)
   const [isNicknameTouched, setIsNicknameTouched] = useState(false)
   const [isEmailTouched, setIsEmailTouched] = useState(false)
-  // 이메일로 가입할 때만 쓰는 비밀번호. 서버로 보내기만 하고 이 기기에는 저장하지 않습니다.
-  const [password, setPassword] = useState('')
-  const [passwordConfirm, setPasswordConfirm] = useState('')
-  const [isPasswordTouched, setIsPasswordTouched] = useState(false)
-  const [isPasswordConfirmTouched, setIsPasswordConfirmTouched] = useState(false)
   // 서버에 가입을 보내고 답을 기다리는 중인지, 실패했을 때 보여줄 안내
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -284,6 +278,10 @@ export function SignupPage() {
   // "보기" 로 열어 둔 동의 항목. 아무것도 안 열었으면 null
   const [openedKey, setOpenedKey] = useState<ConsentKey | null>(null)
 
+  // 로그인도 안 했고 구글로 시작하지도 않았으면 가입할 방법이 없습니다. 로그인 화면에서 [Google로 시작하기] 를 누르게 합니다.
+  // (이 탭의 구글 정보가 지워졌을 때도 여기로 옵니다. 예: 탭을 닫았다 다시 열기)
+  if (!isLoggedIn && googleSignup === null) return <Navigate to="/login" replace />
+
   // 만 14세 미만이면 입력 화면 대신 안내 화면을 보여줍니다.
   if (isOver14 === false) return <UnderFourteenView />
 
@@ -292,25 +290,14 @@ export function SignupPage() {
   const nameError = isNameTouched ? getNameError(name) : null
   const nicknameError = isNicknameTouched ? getNicknameError(nickname) : null
   const emailError = isEmailTouched ? getEmailError(email) : null
-  const passwordError = isPasswordTouched ? getPasswordError(password) : null
-  const passwordConfirmError = isPasswordConfirmTouched
-    ? getPasswordConfirmError(password, passwordConfirm)
-    : null
-  // 이메일로 가입할 때는 비밀번호 두 칸도 맞아야 합니다.
-  const isPasswordReady =
-    !isEmailSignup ||
-    (getPasswordError(password) === null &&
-      getPasswordConfirmError(password, passwordConfirm) === null)
-  const canSubmit =
-    canSubmitSignup({ name, nickname, email, isOver14, consents }) && isPasswordReady
+  const canSubmit = canSubmitSignup({ name, nickname, email, isOver14, consents })
   const openedItem = consentItems.find((item) => item.key === openedKey)
 
   // 단계마다 다 채웠는지
   const isAccountReady =
     getNameError(name) === null &&
     getNicknameError(nickname) === null &&
-    getEmailError(email) === null &&
-    isPasswordReady
+    getEmailError(email) === null
   const isAgeReady = isOver14 === true
 
   // 주소가 가리키는 단계와, 지금 입력으로 갈 수 있는 가장 먼 단계 (lib/signup.ts)
@@ -336,8 +323,6 @@ export function SignupPage() {
         setIsNameTouched(true)
         setIsNicknameTouched(true)
         setIsEmailTouched(true)
-        setIsPasswordTouched(true)
-        setIsPasswordConfirmTouched(true)
         return
       }
       goToStep(2)
@@ -348,6 +333,12 @@ export function SignupPage() {
       return
     }
     goToStep(3)
+  }
+
+  /** 구글로 온 사람이 "다른 방법으로 시작하기" 를 눌렀을 때. 잠깐 들고 있던 구글 정보를 지우고 로그인 화면으로 갑니다. */
+  function handleLeaveGoogleSignup() {
+    clearPendingGoogleSignup()
+    navigate('/login', { replace: true })
   }
 
   /** 로그인한 채로 이 화면에 온 사람이 "로그아웃" 을 눌렀을 때 */
@@ -381,31 +372,28 @@ export function SignupPage() {
       agreedAt: Date.now(),
     }
 
-    // 이메일 가입: 서버에 계정을 만듭니다. 로그인은 하지 않습니다. (lib/authApi.ts)
-    if (isEmailSignup) {
+    // 구글 가입: 서버에 계정을 만들면 바로 로그인 정보를 받습니다. (lib/authApi.ts)
+    if (googleSignup !== null) {
       setIsSubmitting(true)
       setSubmitError(null)
       try {
-        await signupWithPassword({
-          email: info.email,
-          password,
+        const result = await signupWithGoogle({
+          credential: googleSignup.credential,
           name: info.name,
           nickname: info.nickname,
           school,
           consents,
         })
+        // 다 썼으니 구글 신분증을 지우고, 가입 정보를 저장한 뒤 로그인합니다. (가입 정보가 있어야 가입 화면으로 다시 오지 않습니다)
+        clearPendingGoogleSignup()
+        saveData(SIGNUP_STORAGE_KEY, info)
+        login(result.user, result.token)
+        // replace: 뒤로 가기로 가입 화면에 돌아오지 않게 합니다.
+        navigate('/onboarding', { replace: true })
       } catch (error) {
-        setSubmitError(getPasswordAuthErrorMessage(error, 'signup'))
+        setSubmitError(getGoogleAuthErrorMessage(error))
         setIsSubmitting(false)
-        // 실패하면 가입 정보도 저장하지 않고 이 화면에 머뭅니다.
-        return
       }
-
-      saveData(SIGNUP_STORAGE_KEY, info)
-      // 가입을 마쳤으니 로그인 화면으로 보냅니다. 방금 가입한 이메일을 넘겨서 로그인 칸에 채워 두게 하고,
-      // 로그인하면 온보딩으로 가게 합니다. replace: 뒤로 가기로 가입 화면(비밀번호가 적혀 있던 곳)에 돌아오지 않게 합니다.
-      const loginState: LoginRedirectState = { from: '/onboarding', signedUpEmail: info.email }
-      navigate('/login', { replace: true, state: loginState })
       return
     }
 
@@ -425,16 +413,17 @@ export function SignupPage() {
           </h1>
           {step !== 1 ? (
             <p className="mt-2 break-keep text-slate-600">{signupSteps[step - 1].description}</p>
-          ) : isEmailSignup ? (
+          ) : googleSignup !== null ? (
             <p className="mt-2 break-keep text-slate-600">
-              이메일과 비밀번호로 가입해요. 이미 계정이 있다면{' '}
-              {/* h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다. */}
-              <Link
-                to="/login"
+              구글 계정으로 가입해요. 이름은 고칠 수 있어요.{' '}
+              {/* type="button": form 안의 버튼이라, 적지 않으면 눌렀을 때 가입 제출이 돼 버립니다. */}
+              <button
+                type="button"
+                onClick={handleLeaveGoogleSignup}
                 className="text-brand inline-flex h-10 items-center font-medium underline underline-offset-4"
               >
-                로그인
-              </Link>
+                다른 방법으로 시작하기
+              </button>
             </p>
           ) : (
             // 로그인한 채로 온 사람에게는 지금 로그인 상태라는 것과 나가는 길(로그아웃)을 같이 보여줍니다.
@@ -509,45 +498,15 @@ export function SignupPage() {
               placeholder="예) tmax@starflow.com"
               autoComplete="email"
               error={emailError ?? undefined}
+              // 구글로 온 사람의 이메일은 구글이 확인한 값이라 고칠 수 없습니다. (서버도 구글 값을 씁니다)
+              readOnly={googleSignup !== null}
               onChange={(event) => setEmail(event.target.value)}
               onBlur={() => setIsEmailTouched(true)}
-              className="h-12 text-base"
+              className={cn(
+                'h-12 text-base',
+                googleSignup !== null && 'bg-slate-50 text-slate-500',
+              )}
             />
-
-            {/* 이메일로 가입할 때만 비밀번호를 받습니다. (테스트 로그인은 비밀번호가 없습니다) */}
-            {isEmailSignup && (
-              <>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    id="password"
-                    // type="password": 적은 글자가 점(●)으로 가려집니다.
-                    type="password"
-                    label="비밀번호"
-                    value={password}
-                    // new-password: 브라우저가 "새 비밀번호" 로 알고 저장을 물어봅니다.
-                    autoComplete="new-password"
-                    error={passwordError ?? undefined}
-                    onChange={(event) => setPassword(event.target.value)}
-                    onBlur={() => setIsPasswordTouched(true)}
-                    className="h-12 text-base"
-                  />
-                  <p className="text-sm text-slate-500">
-                    {PASSWORD_MIN_LENGTH}자 이상, 영문과 숫자를 모두 넣어 주세요.
-                  </p>
-                </div>
-                <Input
-                  id="password-confirm"
-                  type="password"
-                  label="비밀번호 확인"
-                  value={passwordConfirm}
-                  autoComplete="new-password"
-                  error={passwordConfirmError ?? undefined}
-                  onChange={(event) => setPasswordConfirm(event.target.value)}
-                  onBlur={() => setIsPasswordConfirmTouched(true)}
-                  className="h-12 text-base"
-                />
-              </>
-            )}
           </>
         )}
 
@@ -664,11 +623,21 @@ export function SignupPage() {
         )}
 
         <div className="flex flex-col gap-2">
-          {/* 서버가 가입을 거절했거나 연결하지 못했을 때의 안내 (이메일 가입만) */}
+          {/* 서버가 가입을 거절했거나 연결하지 못했을 때의 안내 (구글 가입) */}
           {submitError !== null && (
             <p role="alert" className="text-center text-sm break-keep text-red-600">
               {submitError}
             </p>
+          )}
+          {/* 구글 확인은 한 시간이면 끝나서, 실패하면 로그인 화면에서 다시 시작하는 길을 같이 보여줍니다. */}
+          {submitError !== null && googleSignup !== null && (
+            <button
+              type="button"
+              onClick={handleLeaveGoogleSignup}
+              className="text-brand inline-flex h-10 items-center justify-center text-sm font-medium underline underline-offset-4"
+            >
+              로그인 화면에서 다시 Google로 시작하기
+            </button>
           )}
           <div className="flex gap-2">
             {/* 2 · 3단계에는 앞 단계로 돌아가는 버튼이 있습니다. (브라우저의 뒤로 가기와 같은 곳으로 갑니다) */}
@@ -695,7 +664,11 @@ export function SignupPage() {
                 className="min-w-0 flex-1"
                 disabled={!canSubmit || isSubmitting}
               >
-                {isSubmitting ? '가입하는 중…' : isEmailSignup ? '가입하기' : '다음 · 온보딩 시작'}
+                {isSubmitting
+                  ? '가입하는 중…'
+                  : googleSignup !== null
+                    ? '가입하기'
+                    : '다음 · 온보딩 시작'}
               </Button>
             )}
           </div>

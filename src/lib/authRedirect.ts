@@ -20,18 +20,6 @@ export function isPublicPath(pathname: string): boolean {
 export interface LoginRedirectState {
   /** 로그인한 뒤 돌아갈 주소. 예: '/records?date=2026-10-01' */
   from: string
-  /** 방금 이메일로 가입을 마치고 온 사람의 이메일. 로그인 칸에 미리 채워 둡니다. (가입 화면이 넘겨줍니다) */
-  signedUpEmail?: string
-}
-
-/**
- * 로그인 화면으로 넘어온 쪽지에서 "방금 가입한 이메일" 을 꺼냅니다. 없으면 null 입니다.
- * 있으면 로그인 화면이 "가입이 끝났어요. 로그인해 주세요." 를 보여주고 이메일 칸을 채워 둡니다.
- */
-export function getSignedUpEmail(state: unknown): string | null {
-  if (typeof state !== 'object' || state === null) return null
-  const email = (state as Record<string, unknown>).signedUpEmail
-  return typeof email === 'string' && email !== '' ? email : null
 }
 
 /**

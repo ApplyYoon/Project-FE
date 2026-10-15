@@ -64,8 +64,8 @@ export function AccountPage() {
       {isTestUser ? (
         <Card title="테스트 계정이에요">
           <p className="text-sm break-keep text-slate-600">
-            테스트 계정은 서버에 계정이 없어서 고칠 정보가 없어요. 이메일로 가입하면 내 정보를
-            고치고 탈퇴할 수 있어요.
+            테스트 계정은 서버에 계정이 없어서 고칠 정보가 없어요. 구글로 가입하면 내 정보를 고치고
+            탈퇴할 수 있어요.
           </p>
         </Card>
       ) : (
