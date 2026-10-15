@@ -1,3 +1,4 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoalAdjustModal } from '@/components/ui/GoalAdjustModal'
@@ -5,6 +6,8 @@ import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { PlayBadge } from '@/components/ui/PlayBadge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
@@ -31,7 +34,9 @@ import {
   markRoutinesFilled,
 } from '@/lib/routines'
 import { loadData, saveData } from '@/lib/storage'
-import { getNowLine, getTimeline } from '@/lib/timeline'
+import { busyTimesQuery, type BusyTime } from '@/lib/googleCalendar'
+import { formatMinutes, getNowLine, getTimeline, mergeBusyTimes } from '@/lib/timeline'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import type { PlanKind, Routine, StudyPlan, StudySession, Subject, SubjectColor } from '@/types'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -856,6 +861,8 @@ interface PlanTimelineProps {
   sessions: StudySession[]
   /** 오늘이면 "지금" 선을 그리고, 블록을 눌러 타이머를 시작할 수 있습니다 */
   isToday: boolean
+  /** 같은 날의 구글 캘린더 일정. 회색 블록으로 같이 그립니다 (#323). 연결 안 했으면 빈 배열 */
+  busyTimes: BusyTime[]
 }
 
 /**
@@ -863,7 +870,7 @@ interface PlanTimelineProps {
  * 블록 안쪽은 실제로 공부한 만큼 위에서부터 진하게 채워서, 계획과 실제가 한눈에 보입니다.
  * 계산(순서 · 높이 · 빈 시간 · 겹침 · "지금" 선의 자리)은 lib/timeline.ts 가 합니다.
  */
-function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelineProps) {
+function PlanTimeline({ title, plans, subjects, sessions, isToday, busyTimes }: PlanTimelineProps) {
   // "지금" 선을 1분마다 다시 그리려고 현재 시각을 들고 있습니다.
   const [now, setNow] = useState(() => new Date())
 
@@ -874,12 +881,19 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
   }, [])
 
   const { blocks } = getTimeline(plans)
+  // 내 계획 블록 사이로 구글 일정을 섞어 한 줄로 세웁니다. 빈 시간과 겹침도 구글 일정까지 보고 다시 셉니다. (#323)
+  const items = mergeBusyTimes(blocks, busyTimes)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
   // "지금" 선은 오늘 날짜에만 그립니다.
-  const nowLine = isToday ? getNowLine(blocks, nowMinutes) : null
+  const nowLine = isToday
+    ? getNowLine(
+        items.map((item) => item.block),
+        nowMinutes,
+      )
+    : null
   // '19:05' 처럼 두 자리로 맞춘 지금 시각
   const nowText = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  const hasOverlap = blocks.some((block) => block.isOverlapping)
+  const hasOverlap = items.some((item) => item.kind === 'plan' && item.block.isOverlapping)
 
   return (
     <Card>
@@ -890,7 +904,7 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
         )}
       </div>
 
-      {blocks.length === 0 ? (
+      {items.length === 0 ? (
         <p className="mt-3 text-sm break-keep text-slate-500">
           {plans.length === 0
             ? '이 날은 계획이 없어요. "목록" 보기에서 계획을 추가해 보세요.'
@@ -901,12 +915,64 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
           {/* 겹쳐도 막지는 않고 알려주기만 합니다. */}
           {hasOverlap && (
             <p className="mt-2 text-sm font-medium break-keep text-amber-700">
-              시간이 겹치는 계획이 있어요. 시작 시각이나 목표 시간을 확인해 보세요.
+              시간이 겹치는 계획이 있어요. (구글 일정과 겹친 것도 포함) 시작 시각이나 목표 시간을
+              확인해 보세요.
             </p>
           )}
 
           <ol className="mt-3 flex flex-col gap-2">
-            {blocks.map((block, index) => {
+            {items.map((item, index) => {
+              // "지금" 선. 왼쪽 시각 칸에 지금 시각을, 블록 위에 가로선을 그립니다.
+              // 선의 자리(top)는 시각에 따라 바뀌는 숫자라 style 을 씁니다. pointer-events-none: 선이 블록 누르는 것을 막지 않게 합니다.
+              const nowLineMark = nowLine?.blockIndex === index && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 z-10 flex -translate-y-1/2 items-center gap-2"
+                  style={{ top: `${nowLine.percent}%` }}
+                >
+                  <span className="w-11 shrink-0 rounded-full bg-slate-900 py-0.5 text-center text-xs font-semibold text-white tabular-nums">
+                    {nowText}
+                  </span>
+                  <span className="h-0.5 flex-1 bg-slate-900" />
+                </div>
+              )
+              // pl-13: 시각 칸(44px) + 간격(8px)만큼 들여써서 블록과 줄을 맞춥니다.
+              const gapLine = item.block.gapBeforeMinutes > 0 && (
+                <p className="pl-13 text-xs text-slate-500">
+                  빈 시간 {formatGap(item.block.gapBeforeMinutes)}
+                </p>
+              )
+
+              // 구글 캘린더 일정: 내 계획이 아니라서 누를 수 없고, 회색 점선 블록 + "구글 일정" 글자로 구분합니다. (#323)
+              if (item.kind === 'busy') {
+                const { startMinutes, endMinutes, heightPx } = item.block
+                return (
+                  <li
+                    key={`busy-${startMinutes}-${endMinutes}-${index}`}
+                    className="flex flex-col gap-2"
+                  >
+                    {gapLine}
+                    <div className="relative flex gap-2">
+                      <span className="w-11 shrink-0 pt-2 text-sm text-slate-400 tabular-nums">
+                        {formatMinutes(startMinutes)}
+                      </span>
+                      {/* 블록 높이는 일정 길이에 비례해서 바뀌는 숫자라 style 을 씁니다. */}
+                      <div
+                        className="flex min-w-0 flex-1 items-start justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
+                        style={{ height: heightPx }}
+                      >
+                        <span className="font-medium">구글 일정</span>
+                        <span className="shrink-0 tabular-nums">
+                          {formatMinutes(startMinutes)} ~ {formatMinutes(endMinutes)}
+                        </span>
+                      </div>
+                      {nowLineMark}
+                    </div>
+                  </li>
+                )
+              }
+
+              const block = item.block
               const { plan } = block
               const subject = subjects.find((item) => item.id === plan.subjectId)
               const progress = getPlanProgress(plan, sessions)
@@ -956,12 +1022,7 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
 
               return (
                 <li key={plan.id} className="flex flex-col gap-2">
-                  {/* pl-13: 시각 칸(44px) + 간격(8px)만큼 들여써서 블록과 줄을 맞춥니다. */}
-                  {block.gapBeforeMinutes > 0 && (
-                    <p className="pl-13 text-xs text-slate-500">
-                      빈 시간 {formatGap(block.gapBeforeMinutes)}
-                    </p>
-                  )}
+                  {gapLine}
 
                   <div className="relative flex gap-2">
                     <span className="w-11 shrink-0 pt-2 text-sm text-slate-500 tabular-nums">
@@ -986,20 +1047,7 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
                       )}
                     </div>
 
-                    {/* "지금" 선. 왼쪽 시각 칸에 지금 시각을, 블록 위에 가로선을 그립니다. */}
-                    {/* 선의 자리(top)는 시각에 따라 바뀌는 숫자라 style 을 씁니다. pointer-events-none: 선이 블록 누르는 것을 막지 않게 합니다. */}
-                    {nowLine?.blockIndex === index && (
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-x-0 z-10 flex -translate-y-1/2 items-center gap-2"
-                        style={{ top: `${nowLine.percent}%` }}
-                      >
-                        <span className="w-11 shrink-0 rounded-full bg-slate-900 py-0.5 text-center text-xs font-semibold text-white tabular-nums">
-                          {nowText}
-                        </span>
-                        <span className="h-0.5 flex-1 bg-slate-900" />
-                      </div>
-                    )}
+                    {nowLineMark}
                   </div>
                 </li>
               )
@@ -1009,6 +1057,7 @@ function PlanTimeline({ title, plans, subjects, sessions, isToday }: PlanTimelin
           <p className="mt-3 text-sm break-keep text-slate-500">
             블록 높이는 계획한 시간, 진하게 채워진 부분은 실제로 한 만큼이에요.
             {isToday && ' 검은 선은 지금 시각이에요.'}
+            {busyTimes.length > 0 && ' 점선 블록은 구글 캘린더 일정이에요.'}
           </p>
         </>
       )}
@@ -1021,6 +1070,105 @@ function getDayBeforeLabel(dateKey: string, todayKey: string): string {
   if (dateKey === todayKey) return '어제'
   if (dateKey === moveDateKey(todayKey, 1)) return '오늘'
   return '전날'
+}
+
+interface PlanTimelineWithGoogleProps extends Omit<PlanTimelineProps, 'busyTimes'> {
+  /** 구글 일정을 받아올 날짜 ('YYYY-MM-DD') */
+  dayKey: string
+}
+
+/** 그날 구글 일정을 받아와 플래너에 섞어 그립니다. 받아오는 부분이라 AsyncBoundary 안에서 씁니다. (#323) */
+function PlanTimelineWithGoogle({ dayKey, ...timelineProps }: PlanTimelineWithGoogleProps) {
+  const { data: busyTimes } = useSuspenseQuery(busyTimesQuery(dayKey))
+  return <PlanTimeline {...timelineProps} busyTimes={busyTimes} />
+}
+
+/** 시각(Date.now() 값)을 '15:00' 처럼 보여줍니다. */
+function formatClock(time: number): string {
+  const date = new Date(time)
+  return formatMinutes(date.getHours() * 60 + date.getMinutes())
+}
+
+interface GoogleDayChipsProps {
+  /** 구글 일정을 받아올 날짜 ('YYYY-MM-DD') */
+  dayKey: string
+}
+
+/** 그날 구글 캘린더 일정의 시간 칩. 받아오는 부분이라 AsyncBoundary 안에서 씁니다. (#323) */
+function GoogleDayChips({ dayKey }: GoogleDayChipsProps) {
+  const { data: busyTimes } = useSuspenseQuery(busyTimesQuery(dayKey))
+
+  if (busyTimes.length === 0) {
+    return <p className="py-1 text-sm text-slate-600">이 날은 구글 캘린더 일정이 없어요.</p>
+  }
+  return (
+    // flex-wrap: 일정이 많으면 다음 줄로 넘어가서 가로 스크롤이 생기지 않습니다.
+    <div className="flex flex-wrap items-center gap-2 py-1">
+      <span className="text-sm font-medium text-slate-700">구글 일정 {busyTimes.length}개</span>
+      {busyTimes.map((busy) => (
+        <span
+          key={`${busy.start}-${busy.end}`}
+          className="rounded bg-white px-2 py-1 text-sm text-slate-700 tabular-nums ring-1 ring-slate-200"
+        >
+          {formatClock(busy.start)} ~ {formatClock(busy.end)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+interface GoogleCalendarStripProps {
+  /** 구글 캘린더 연결 상태와 연결하기 (hooks/useCalendarConnect.ts) */
+  connection: CalendarConnection
+  /** 보고 있는 날짜 ('YYYY-MM-DD') */
+  dayKey: string
+}
+
+/**
+ * 계획 화면 위쪽의 구글 캘린더 한 줄입니다. (#323) 설정까지 가지 않아도 여기서 연결하고 그날 일정을 봅니다.
+ *   연결 안 함 -> 안내 + [구글 캘린더 연결] / 연결이 끝남 -> [다시 연결] / 연결됨 -> 그날 구글 일정 시간 칩
+ * 클라이언트 ID 가 없으면(lib/googleClient.ts) 아무것도 그리지 않습니다. 연결 끊기는 설정에 있습니다.
+ */
+function GoogleCalendarStrip({ connection, dayKey }: GoogleCalendarStripProps) {
+  const { status, isReady, isConnecting, errorMessage, connect } = connection
+  if (status === 'unavailable') return null
+
+  return (
+    <div className="mt-3 flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      {status === 'on' ? (
+        <AsyncBoundary
+          pendingFallback={<Skeleton className="h-10 w-full" />}
+          errorMessage="구글 캘린더 일정을 불러오지 못했어요."
+          // 날짜를 넘기면 실패 안내를 지우고 새 날짜로 다시 받아옵니다.
+          resetKeys={[dayKey]}
+        >
+          <GoogleDayChips dayKey={dayKey} />
+        </AsyncBoundary>
+      ) : (
+        // 모바일은 위아래로, sm 부터 글과 버튼을 한 줄에 둡니다.
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm break-keep text-slate-600">
+            {status === 'off'
+              ? '구글 캘린더를 연결하면 학원 · 약속 일정이 계획 옆에 같이 보이고, 계획도 캘린더에 들어가요.'
+              : '구글 캘린더 연결이 끝났어요. 구글이 한 시간마다 다시 확인해요.'}
+          </p>
+          <Button
+            variant="secondary"
+            className="shrink-0 bg-white"
+            disabled={isConnecting || !isReady}
+            onClick={connect}
+          >
+            {isConnecting ? '연결하는 중…' : status === 'off' ? '구글 캘린더 연결' : '다시 연결'}
+          </Button>
+        </div>
+      )}
+      {errorMessage && (
+        <p role="status" className="text-sm break-keep text-red-700">
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function PlannerPage() {
@@ -1074,6 +1222,8 @@ export function PlannerPage() {
 
   // 계획을 만들고 옮기고 지울 때 구글 캘린더도 같이 바꿉니다. (연결했을 때만, #316)
   const calendar = usePlanCalendarSync({ subjects, setGoogleEventId })
+  // 구글 캘린더 연결 상태. 위쪽 띠에서 연결하면 이 화면 전체가 다시 그려져서 계획 줄 · 플래너도 바로 바뀝니다. (#323)
+  const calendarConnection = useCalendarConnect()
 
   // 보고 있는 날짜에 아직 안 넣은 루틴이 있으면 계획으로 넣습니다. (오늘과 앞으로의 날짜만, 한 날짜에 한 번만)
   // [selectedDate, routines]: 날짜를 옮기거나 루틴이 바뀔 때 다시 확인합니다.
@@ -1267,6 +1417,15 @@ export function PlannerPage() {
     setSubjects((prev) => prev.filter((subject) => subject.id !== target.id))
   }
 
+  // 플래너 보기에 넘기는 값. 구글 일정을 섞을 때와 아닐 때 똑같이 씁니다.
+  const timelineProps = {
+    title: isToday ? '오늘 플래너' : `${month}월 ${day}일 플래너`,
+    plans,
+    subjects,
+    sessions: allSessions,
+    isToday,
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -1331,19 +1490,28 @@ export function PlannerPage() {
             시간은 순공에 넣지 않아요.
           </p>
         )}
+
+        {/* 구글 캘린더: 연결하기 · 그날 구글 일정 (#323) */}
+        <GoogleCalendarStrip connection={calendarConnection} dayKey={selectedDate} />
       </div>
 
       {view === 'timeline' ? (
         <>
           {/* 플래너 보기: 왼쪽에 시간 순서 블록, 오른쪽(모바일은 아래)에 시작 시각을 안 정한 계획 */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-            <PlanTimeline
-              title={isToday ? '오늘 플래너' : `${month}월 ${day}일 플래너`}
-              plans={plans}
-              subjects={subjects}
-              sessions={allSessions}
-              isToday={isToday}
-            />
+            {/* 구글 캘린더를 연결했으면 구글 일정도 섞어 그립니다. 받는 동안 · 실패해도 내 계획 플래너는 보입니다. (#323) */}
+            {calendarConnection.status === 'on' ? (
+              <AsyncBoundary
+                pendingFallback={<PlanTimeline {...timelineProps} busyTimes={[]} />}
+                errorMessage="구글 캘린더 일정을 불러오지 못해서 내 계획만 보여 줘요."
+                errorExtra={<PlanTimeline {...timelineProps} busyTimes={[]} />}
+                resetKeys={[selectedDate]}
+              >
+                <PlanTimelineWithGoogle {...timelineProps} dayKey={selectedDate} />
+              </AsyncBoundary>
+            ) : (
+              <PlanTimeline {...timelineProps} busyTimes={[]} />
+            )}
 
             <Card title="시간 미정">
               {unscheduledPlans.length === 0 ? (

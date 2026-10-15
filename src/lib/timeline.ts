@@ -106,9 +106,99 @@ export function getTimeline(plans: StudyPlan[]): Timeline {
   return { blocks, unscheduledPlans }
 }
 
+/** 플래너에 같이 그리는 구글 캘린더 일정 한 칸 (#323). 내 계획이 아니라서 누를 수 없습니다 */
+export interface BusyBlock {
+  /** 시작 시각 (자정부터 몇 분째) */
+  startMinutes: number
+  /** 끝나는 시각 (자정부터 몇 분째). 자정을 넘기면 1440(24:00)까지만 그립니다 */
+  endMinutes: number
+  heightPx: number
+  gapBeforeMinutes: number
+}
+
+/** 플래너 한 줄. 내 계획이거나 구글 일정입니다 */
+export type TimelineItem =
+  { kind: 'plan'; block: TimelineBlock } | { kind: 'busy'; block: BusyBlock }
+
+/** 시각(Date.now() 값)을 "자정부터 몇 분째" 로 바꿉니다. 내 컴퓨터의 시간대(한국 시간) 기준입니다. */
+function toMinutesOfDay(time: number): number {
+  const date = new Date(time)
+  return date.getHours() * 60 + date.getMinutes()
+}
+
+/**
+ * "자정부터 몇 분째" 를 'HH:MM' 으로 바꿉니다. 1440 은 '24:00' 입니다.
+ *   formatMinutes(1150) -> '19:10'   formatMinutes(1440) -> '24:00'
+ */
+export function formatMinutes(minutes: number): string {
+  const hour = Math.floor(minutes / 60)
+  return `${String(hour).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+/**
+ * 계획 블록(getTimeline 의 blocks)에 구글 캘린더의 바쁜 시간을 섞어 한 줄로 세웁니다. (#323)
+ * 들어온 blocks 는 고치지 않고 새 줄을 만듭니다.
+ *
+ * ■ 규칙
+ * 1. 계획과 구글 일정을 시작이 빠른 순서로 놓습니다. 시작이 같으면 계획이 먼저입니다.
+ * 2. 빈 시간은 계획과 구글 일정을 모두 보고 다시 계산합니다. (구글 일정이 있는 시간은 빈 시간이 아닙니다)
+ * 3. 계획이 구글 일정과 시간이 겹치면 그 계획도 "겹침" 입니다. (끝과 시작이 딱 붙은 것은 겹침이 아닙니다)
+ * 4. 구글 일정의 높이도 계획과 같은 규칙입니다. (1분 = 2px, 최소 40px)
+ *
+ * ■ 예시 (계획: 수학 19:00~20:00 / 구글: 18:00~19:30)
+ *   -> [구글 18:00~19:30, 수학 19:00~20:00 (겹침)]
+ */
+export function mergeBusyTimes(
+  blocks: TimelineBlock[],
+  busyTimes: { start: number; end: number }[],
+): TimelineItem[] {
+  const items: TimelineItem[] = blocks.map((block) => ({ kind: 'plan', block: { ...block } }))
+
+  for (const busy of busyTimes) {
+    const startMinutes = toMinutesOfDay(busy.start)
+    let endMinutes = toMinutesOfDay(busy.end)
+    // 자정을 넘기는 일정(23:00 ~ 01:00)은 끝이 시작보다 작아집니다. 그날 칸에서는 24:00 까지만 그립니다.
+    if (endMinutes <= startMinutes) endMinutes = 1440
+    items.push({
+      kind: 'busy',
+      block: {
+        startMinutes,
+        endMinutes,
+        heightPx: Math.max(MIN_BLOCK_PX, (endMinutes - startMinutes) * PX_PER_MINUTE),
+        gapBeforeMinutes: 0,
+      },
+    })
+  }
+
+  // 규칙 1. sort 는 값이 같으면 원래 순서(계획이 앞)를 지킵니다.
+  items.sort((a, b) => a.block.startMinutes - b.block.startMinutes)
+
+  // 규칙 2. latestEnd: 지금까지 본 줄 중 가장 늦게 끝나는 시각
+  let latestEnd = 0
+  items.forEach((item, index) => {
+    item.block.gapBeforeMinutes = index > 0 ? Math.max(0, item.block.startMinutes - latestEnd) : 0
+    latestEnd = Math.max(latestEnd, item.block.endMinutes)
+  })
+
+  // 규칙 3
+  for (const item of items) {
+    if (item.kind !== 'plan') continue
+    const plan = item.block
+    const hitsBusy = items.some(
+      (other) =>
+        other.kind === 'busy' &&
+        other.block.startMinutes < plan.endMinutes &&
+        plan.startMinutes < other.block.endMinutes,
+    )
+    if (hitsBusy) plan.isOverlapping = true
+  }
+
+  return items
+}
+
 /** "지금" 선을 그릴 자리 */
 export interface NowLine {
-  /** 선을 그릴 블록이 blocks 에서 몇 번째인지 (0 부터) */
+  /** 선을 그릴 블록이 blocks 에서 몇 번째인지 (0 부터). 구글 일정을 섞은 줄(mergeBusyTimes)을 넘겨도 됩니다 */
   blockIndex: number
   /** 그 블록의 위에서부터 몇 % 자리인지 (0 = 맨 위, 100 = 맨 아래) */
   percent: number
@@ -128,7 +218,10 @@ export interface NowLine {
  *   17:00 (1020분) -> { blockIndex: 0, percent: 0 }     첫 계획 전
  *   22:00 (1320분) -> { blockIndex: 2, percent: 100 }   다 지남
  */
-export function getNowLine(blocks: TimelineBlock[], nowMinutes: number): NowLine | null {
+export function getNowLine(
+  blocks: { startMinutes: number; endMinutes: number }[],
+  nowMinutes: number,
+): NowLine | null {
   if (blocks.length === 0) return null
 
   for (let index = 0; index < blocks.length; index++) {
