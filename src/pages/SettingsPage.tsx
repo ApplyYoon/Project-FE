@@ -1,17 +1,20 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
 import { logoutOnServer } from '@/lib/accountApi'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
+import { getTodayKey } from '@/lib/date'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
@@ -44,6 +47,15 @@ import {
   turnOnWebPush,
   type WebPushStatus,
 } from '@/lib/webPush'
+import {
+  CalendarError,
+  busyTimesQuery,
+  connectCalendar,
+  disconnectCalendar,
+  getCalendarStatus,
+  loadGoogleScript,
+  type CalendarStatus,
+} from '@/lib/googleCalendar'
 import { loadSignupProfile } from '@/lib/signup'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
@@ -563,6 +575,10 @@ export function SettingsPage() {
             </div>
           </Card>
 
+          <Card title="구글 캘린더">
+            <GoogleCalendarSection />
+          </Card>
+
           <Card title="내 데이터 관리">
             <div className="flex flex-col gap-4">
               <p className="text-sm text-slate-500">
@@ -792,6 +808,130 @@ function WebPushSection() {
           {mutation.error instanceof WebPushError
             ? mutation.error.message
             : '알림 설정을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// 연결 상태마다 보여 줄 안내 문장
+const calendarMessages: Record<CalendarStatus, string> = {
+  unavailable: '아직 준비 중이에요.',
+  off: '연결하면 학원·약속처럼 구글 캘린더에 있는 일정과 공부 계획이 겹치지 않게 도와줘요. 일정 제목은 가져오지 않고, 바쁜 시간만 봐요.',
+  expired: '연결이 끝났어요. 구글이 한 시간마다 다시 확인해서, 다시 연결을 한 번 눌러 주세요.',
+  on: '연결됐어요.',
+}
+
+/** 바쁜 시간 한 칸을 "15:00 ~ 16:30" 으로 보여 줍니다. */
+function formatBusyTime(start: number, end: number): string {
+  const toClock = (time: number) =>
+    new Date(time).toLocaleTimeString('ko-KR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  return `${toClock(start)} ~ ${toClock(end)}`
+}
+
+/** 오늘 구글 캘린더의 바쁜 시간. 연결이 잘 됐는지 눈으로 확인하는 곳입니다. (AsyncBoundary 안에서 씁니다) */
+function TodayBusyTimes() {
+  const { data: busyTimes } = useSuspenseQuery(busyTimesQuery(getTodayKey()))
+
+  if (busyTimes.length === 0) {
+    return <p className="text-sm text-slate-500">오늘 구글 캘린더에 시간이 정해진 일정이 없어요.</p>
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-sm text-slate-500">오늘 구글 캘린더의 바쁜 시간 {busyTimes.length}개</p>
+      <ul className="flex flex-wrap gap-2">
+        {busyTimes.map((busy) => (
+          <li
+            key={`${busy.start}-${busy.end}`}
+            className="rounded bg-slate-100 px-2 py-1 text-sm text-slate-700 tabular-nums"
+          >
+            {formatBusyTime(busy.start, busy.end)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * 구글 캘린더 연결 · 끊기. (lib/googleCalendar.ts, #314)
+ * 로그인은 이메일로 하고, 구글에서는 캘린더 권한만 받습니다.
+ */
+function GoogleCalendarSection() {
+  const queryClient = useQueryClient()
+  // 지금 연결 상태. 연결·끊기 뒤에 다시 읽어서 바꿉니다.
+  const [status, setStatus] = useState<CalendarStatus>(() => getCalendarStatus())
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // 구글 연결 창 스크립트를 미리 불러 둡니다. 버튼을 누른 순간 바로 창을 띄워야 팝업이 막히지 않습니다.
+  useEffect(() => {
+    if (status === 'unavailable') return
+    loadGoogleScript().catch((error: unknown) => {
+      if (error instanceof CalendarError) setErrorMessage(error.message)
+    })
+  }, [status])
+
+  function handleConnect() {
+    setErrorMessage(null)
+    setIsConnecting(true)
+    connectCalendar()
+      .then(() => {
+        // 새 출입증으로 바쁜 시간을 다시 받아오게, 예전에 받아 둔 것을 버립니다.
+        void queryClient.invalidateQueries({ queryKey: ['google-calendar'] })
+      })
+      .catch((error: unknown) => {
+        setErrorMessage(
+          error instanceof CalendarError ? error.message : '연결하지 못했어요. 다시 시도해 주세요.',
+        )
+      })
+      .finally(() => {
+        setIsConnecting(false)
+        setStatus(getCalendarStatus())
+      })
+  }
+
+  function handleDisconnect() {
+    disconnectCalendar()
+    queryClient.removeQueries({ queryKey: ['google-calendar'] })
+    setErrorMessage(null)
+    setStatus(getCalendarStatus())
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm break-keep text-slate-500">{calendarMessages[status]}</p>
+
+      {status === 'on' && (
+        <AsyncBoundary
+          pendingFallback={<Skeleton className="h-12 w-full" />}
+          errorMessage="구글 캘린더를 읽지 못했어요. 연결 끊기를 누른 뒤 다시 연결해 주세요."
+        >
+          <TodayBusyTimes />
+        </AsyncBoundary>
+      )}
+
+      {/* 모바일은 세로로 쌓고, sm 부터 가로로 나란히. 누르는 곳은 최소 40px(h-11 = 44px) */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        {(status === 'off' || status === 'expired') && (
+          <Button className="h-11 w-full sm:w-auto" disabled={isConnecting} onClick={handleConnect}>
+            {isConnecting ? '연결하는 중…' : status === 'off' ? '구글 캘린더 연결' : '다시 연결'}
+          </Button>
+        )}
+        {(status === 'on' || status === 'expired') && (
+          <Button variant="secondary" className="h-11 w-full sm:w-auto" onClick={handleDisconnect}>
+            연결 끊기
+          </Button>
+        )}
+      </div>
+
+      {errorMessage && (
+        <p role="status" className="text-sm break-keep text-red-700">
+          {errorMessage}
         </p>
       )}
     </div>
