@@ -117,6 +117,17 @@ export function usePlans() {
     })
   }
 
+  /** 그 계획에 구글 캘린더 일정 id 를 적습니다. undefined 를 주면 지웁니다. (#316) */
+  function setGoogleEventId(planId: string, googleEventId: string | undefined) {
+    setPlansByDate((prev) => {
+      const next: PlansByDate = {}
+      for (const [date, plans] of Object.entries(prev)) {
+        next[date] = plans.map((plan) => (plan.id === planId ? { ...plan, googleEventId } : plan))
+      }
+      return next
+    })
+  }
+
   /** 그 계획을 지웁니다. 그날 계획이 하나도 안 남으면 날짜 칸도 같이 지웁니다. */
   function deletePlan(planId: string) {
     setPlansByDate((prev) => {
@@ -145,5 +156,6 @@ export function usePlans() {
     completePlan,
     deletePlan,
     replaceDayPlans,
+    setGoogleEventId,
   }
 }

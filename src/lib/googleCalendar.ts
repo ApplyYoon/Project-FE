@@ -102,6 +102,46 @@ export function disconnectCalendar(): void {
   }).catch(() => {})
 }
 
+/* ---------- 구글 캘린더에 요청 보내기 (읽기 · 쓰기 공통) ---------- */
+
+/**
+ * 저장해 둔 출입증을 붙여 구글 캘린더 API 를 부릅니다. 구글의 답(Response)을 그대로 돌려줍니다.
+ *   path        : 'calendars/primary/events?…' 처럼 CALENDAR_API_URL 뒤에 붙는 부분
+ *   failMessage : 구글이 거절했을 때(401 말고) 화면에 보여 줄 문장
+ *   okStatuses  : 실패가 아니라고 볼 상태 번호 (예: 지우기의 404 = 이미 없음)
+ * 출입증이 없거나 끝났으면, 그리고 구글이 401 을 주면 "다시 연결" 안내로 실패합니다.
+ */
+async function calendarRequest(
+  path: string,
+  init: RequestInit,
+  failMessage: string,
+  okStatuses: number[] = [],
+): Promise<Response> {
+  const connection = loadConnection()
+  if (getCalendarStatus() !== 'on' || connection === null) {
+    throw new CalendarError(RECONNECT_MESSAGE)
+  }
+
+  const response = await fetch(`${CALENDAR_API_URL}/${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${connection.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+
+  if (response.status === 401) {
+    // 출입증이 끝났거나 구글에서 허락을 취소했습니다. "다시 연결" 이 보이게 끝난 것으로 표시합니다.
+    saveData<SavedConnection>(STORAGE_KEY, { ...connection, expiresAt: 0 })
+    throw new CalendarError(RECONNECT_MESSAGE)
+  }
+  if (!response.ok && !okStatuses.includes(response.status)) throw new CalendarError(failMessage)
+  return response
+}
+
+const RECONNECT_MESSAGE = '구글 캘린더 연결이 끝났어요. 다시 연결해 주세요.'
+
 /* ---------- 바쁜 시간 읽기 ---------- */
 
 /** 구글 캘린더에서 바쁜 시간 한 칸 (Date.now() 값). 일정 제목은 받지 않습니다 */
@@ -141,11 +181,6 @@ function getDayRange(dayKey: string): { start: Date; end: Date } {
  *  - fields 로 시작·끝·상태만 달라고 해서, 일정 제목은 이 앱으로 오지 않습니다.
  */
 export async function getBusyTimes(dayKey: string): Promise<BusyTime[]> {
-  const connection = loadConnection()
-  if (getCalendarStatus() !== 'on' || connection === null) {
-    throw new CalendarError('구글 캘린더 연결이 끝났어요. 다시 연결해 주세요.')
-  }
-
   const { start, end } = getDayRange(dayKey)
   const params = new URLSearchParams({
     timeMin: start.toISOString(),
@@ -154,19 +189,11 @@ export async function getBusyTimes(dayKey: string): Promise<BusyTime[]> {
     orderBy: 'startTime',
     fields: 'items(start,end,status,transparency)',
   })
-  const response = await fetch(`${CALENDAR_API_URL}/calendars/primary/events?${params}`, {
-    headers: { Authorization: `Bearer ${connection.accessToken}` },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
-
-  if (response.status === 401) {
-    // 출입증이 끝났거나 구글에서 허락을 취소했습니다. "다시 연결" 이 보이게 끝난 것으로 표시합니다.
-    saveData<SavedConnection>(STORAGE_KEY, { ...connection, expiresAt: 0 })
-    throw new CalendarError('구글 캘린더 연결이 끝났어요. 다시 연결해 주세요.')
-  }
-  if (!response.ok) {
-    throw new CalendarError('구글 캘린더를 읽지 못했어요. 잠시 후 다시 시도해 주세요.')
-  }
+  const response = await calendarRequest(
+    `calendars/primary/events?${params}`,
+    { method: 'GET' },
+    '구글 캘린더를 읽지 못했어요. 잠시 후 다시 시도해 주세요.',
+  )
 
   const body = (await response.json()) as { items?: CalendarEvent[] }
   const busyTimes: BusyTime[] = []
@@ -194,4 +221,64 @@ export function busyTimesQuery(dayKey: string) {
     queryFn: () => getBusyTimes(dayKey),
     staleTime: 60 * 1000,
   })
+}
+
+/* ---------- 일정 넣기 · 옮기기 · 지우기 (#316) ---------- */
+
+/** 구글 캘린더에 넣을 일정 한 개. 시각은 Date.now() 값입니다 */
+export interface CalendarEventInput {
+  /** 일정 제목. 예) '수학 · 문제집 3단원' */
+  title: string
+  start: number
+  end: number
+  /** 이 일정을 만든 우리 앱 계획의 id. 구글 일정 안에 몰래(private) 적어 두어서, 앱이 만든 일정인지 알 수 있게 합니다 */
+  planId: string
+}
+
+/** 구글 API 가 받는 일정 모양으로 바꿉니다. 시간대는 한국 시간입니다. */
+function toEventBody(input: CalendarEventInput) {
+  return {
+    summary: input.title,
+    description:
+      'STARFLOW 공부 계획에서 만든 일정이에요. 앱에서 계획을 옮기거나 지우면 여기도 같이 바뀌어요.',
+    start: { dateTime: new Date(input.start).toISOString(), timeZone: 'Asia/Seoul' },
+    end: { dateTime: new Date(input.end).toISOString(), timeZone: 'Asia/Seoul' },
+    extendedProperties: { private: { starflowPlanId: input.planId } },
+  }
+}
+
+/** 구글 캘린더에 일정을 만들고, 구글이 정해 준 일정 id 를 돌려줍니다. (POST) */
+export async function insertCalendarEvent(input: CalendarEventInput): Promise<string> {
+  const response = await calendarRequest(
+    'calendars/primary/events',
+    { method: 'POST', body: JSON.stringify(toEventBody(input)) },
+    '구글 캘린더에 넣지 못했어요. 잠시 후 다시 시도해 주세요.',
+  )
+  const body = (await response.json()) as { id?: unknown }
+  if (typeof body.id !== 'string') {
+    throw new CalendarError('구글 캘린더에 넣지 못했어요. 잠시 후 다시 시도해 주세요.')
+  }
+  return body.id
+}
+
+/** 앱이 만든 일정의 제목·시각을 바꿉니다. (PATCH: 보낸 칸만 바뀌고 나머지는 그대로입니다) */
+export async function moveCalendarEvent(eventId: string, input: CalendarEventInput): Promise<void> {
+  await calendarRequest(
+    `calendars/primary/events/${encodeURIComponent(eventId)}`,
+    { method: 'PATCH', body: JSON.stringify(toEventBody(input)) },
+    '구글 캘린더의 일정을 옮기지 못했어요. 잠시 후 다시 시도해 주세요.',
+  )
+}
+
+/**
+ * 앱이 만든 일정을 지웁니다. (DELETE)
+ * 구글에서 이미 지운 일정이면(404 · 410) 지울 것이 없으니 성공으로 봅니다.
+ */
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  await calendarRequest(
+    `calendars/primary/events/${encodeURIComponent(eventId)}`,
+    { method: 'DELETE' },
+    '구글 캘린더의 일정을 지우지 못했어요. 구글 캘린더에서 직접 지워 주세요.',
+    [404, 410],
+  )
 }

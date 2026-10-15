@@ -78,6 +78,8 @@ export interface StudyPlan {
   kind?: PlanKind
   /** 루틴이 만든 계획이면 그 루틴의 id (Routine 의 id) */
   routineId?: string
+  /** 구글 캘린더에 넣었으면 구글이 정해 준 일정 id. 앱이 만든 일정만 옮기고 지울 때 씁니다 (#316) */
+  googleEventId?: string
 }
 
 /** 타이머로 한 번 잰 기록 (시작 ~ 정지) */
