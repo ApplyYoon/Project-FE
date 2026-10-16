@@ -1,5 +1,4 @@
-import { hasGrantedAllScopesGoogle, useGoogleLogin, useGoogleOAuth } from '@react-oauth/google'
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
@@ -12,6 +11,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
+import { useCalendarConnect } from '@/hooks/useCalendarConnect'
 import { logoutOnServer } from '@/lib/accountApi'
 import { CALL_TIME_STORAGE_KEY, isIosWithoutInstall, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
@@ -48,14 +48,7 @@ import {
   turnOnWebPush,
   type WebPushStatus,
 } from '@/lib/webPush'
-import {
-  CALENDAR_SCOPE,
-  busyTimesQuery,
-  disconnectCalendar,
-  getCalendarStatus,
-  saveCalendarToken,
-  type CalendarStatus,
-} from '@/lib/googleCalendar'
+import { busyTimesQuery, type CalendarStatus } from '@/lib/googleCalendar'
 import { loadSignupProfile } from '@/lib/signup'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
@@ -862,60 +855,8 @@ function TodayBusyTimes() {
  * 로그인은 이메일로 하고, 구글에서는 캘린더 권한만 받습니다.
  */
 function GoogleCalendarSection() {
-  const queryClient = useQueryClient()
-  // 지금 연결 상태. 연결·끊기 뒤에 다시 읽어서 바꿉니다.
-  const [status, setStatus] = useState<CalendarStatus>(() => getCalendarStatus())
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-
-  // 구글 연결 창 스크립트가 준비됐는지. (App.tsx 의 GoogleOAuthProvider 가 미리 불러 둡니다)
-  const { scriptLoadedSuccessfully } = useGoogleOAuth()
-
-  // 누르면 구글 창을 띄워 캘린더 권한을 받는 함수를 만듭니다. (@react-oauth/google)
-  // flow: 'implicit' = 창에서 바로 출입증(access token)을 받는 방식. 서버가 필요 없습니다.
-  const openGoogleWindow = useGoogleLogin({
-    flow: 'implicit',
-    scope: CALENDAR_SCOPE,
-    onSuccess: (tokenResponse) => {
-      // 구글 창에서 캘린더 체크를 풀고 허락할 수도 있어서 한 번 더 확인합니다.
-      if (!hasGrantedAllScopesGoogle(tokenResponse, CALENDAR_SCOPE)) {
-        finishConnecting('캘린더 권한에 체크해야 연결돼요. 다시 연결해 주세요.')
-        return
-      }
-      saveCalendarToken(tokenResponse.access_token, tokenResponse.expires_in)
-      // 새 출입증으로 바쁜 시간을 다시 받아오게, 예전에 받아 둔 것을 버립니다.
-      void queryClient.invalidateQueries({ queryKey: ['google-calendar'] })
-      finishConnecting(null)
-    },
-    // 구글 창에서 허락하지 않았을 때
-    onError: () => finishConnecting('권한을 허락하지 않아서 연결하지 못했어요.'),
-    // 창을 그냥 닫았거나, 팝업이 막혀서 창이 안 떴을 때
-    onNonOAuthError: () =>
-      finishConnecting(
-        '연결을 마치지 않았어요. 창이 안 떴다면 브라우저의 팝업 차단을 풀어 주세요.',
-      ),
-  })
-
-  /** 구글 창이 끝났을 때. 실패했으면 안내 문장을 받고, 성공했으면 null 입니다. */
-  function finishConnecting(failMessage: string | null) {
-    setIsConnecting(false)
-    setErrorMessage(failMessage)
-    setStatus(getCalendarStatus())
-  }
-
-  function handleConnect() {
-    setErrorMessage(null)
-    setIsConnecting(true)
-    // 버튼을 누른 그 순간에 창을 띄웁니다. 중간에 기다렸다가 띄우면 브라우저가 팝업을 막습니다.
-    openGoogleWindow()
-  }
-
-  function handleDisconnect() {
-    disconnectCalendar()
-    queryClient.removeQueries({ queryKey: ['google-calendar'] })
-    setErrorMessage(null)
-    setStatus(getCalendarStatus())
-  }
+  // 연결 상태와 연결 · 끊기 (계획 화면과 같이 쓰는 훅, hooks/useCalendarConnect.ts)
+  const { status, isReady, isConnecting, errorMessage, connect, disconnect } = useCalendarConnect()
 
   return (
     <div className="flex flex-col gap-3">
@@ -935,14 +876,14 @@ function GoogleCalendarSection() {
         {(status === 'off' || status === 'expired') && (
           <Button
             className="h-11 w-full sm:w-auto"
-            disabled={isConnecting || !scriptLoadedSuccessfully}
-            onClick={handleConnect}
+            disabled={isConnecting || !isReady}
+            onClick={connect}
           >
             {isConnecting ? '연결하는 중…' : status === 'off' ? '구글 캘린더 연결' : '다시 연결'}
           </Button>
         )}
         {(status === 'on' || status === 'expired') && (
-          <Button variant="secondary" className="h-11 w-full sm:w-auto" onClick={handleDisconnect}>
+          <Button variant="secondary" className="h-11 w-full sm:w-auto" onClick={disconnect}>
             연결 끊기
           </Button>
         )}
