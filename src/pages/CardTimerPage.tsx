@@ -38,6 +38,24 @@ import {
 import { getCardResult } from '@/lib/cardResult'
 import { loadLatestCareStage } from '@/lib/careStage'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import {
+  REST_REASONS,
+  addRestDay,
+  getRestLeft,
+  loadRestDays,
+  needsRecoveryCheck,
+  type RestReason,
+} from '@/lib/restDays'
+import {
+  PLEDGE_GATE_SECONDS,
+  isStage4AbsoluteOn,
+  isStage4Now,
+  loadStage4Absolute,
+  pickStage4Absolute,
+  releaseStage4,
+  saveStage4Absolute,
+} from '@/lib/stage4'
+import { loadVoicePledge } from '@/lib/voicePledge'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildLateEntrySession, checkLateEntry, makeLateEntryReport } from '@/lib/lateEntry'
 import { loadData } from '@/lib/storage'
@@ -107,8 +125,11 @@ export function CardTimerPage() {
   // 방금 끝낸 기록. 있으면 종료 팝업을 띄웁니다. (#398)
   const [endedRecord, setEndedRecord] = useState<StudySession | null>(null)
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
-  // 5초 카운트다운 중인 카드 (#399). 카운트다운이 끝나면 세션을 시작합니다.
-  const [countdownCard, setCountdownCard] = useState<CardModel | null>(null)
+  // 카드를 시작하기 전에 거치는 화면 — 4단계면 다짐 듣기(#408) → 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
+  const [startFlow, setStartFlow] = useState<{
+    card: CardModel
+    step: 'pledge' | 'countdown'
+  } | null>(null)
   const [pageSettings] = useState(loadAutoSettings)
 
   const todayKey = getTodayKey()
@@ -172,11 +193,19 @@ export function CardTimerPage() {
     const id = setInterval(() => setListNow(Date.now()), 30 * 1000)
     return () => clearInterval(id)
   }, [])
-  const openCards = todayCards.filter(
-    (card) =>
-      !doneTodayIds.has(card.id) &&
-      !isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
-  )
+  // 휴식 처리한 날 (#407). 오늘을 쉰 날로 처리했으면 오늘 카드는 모두 처리된 것입니다.
+  const [restDays, setRestDays] = useState(loadRestDays)
+  const [isRestOpen, setIsRestOpen] = useState(false)
+  const [isRecoveryCheckOpen, setIsRecoveryCheckOpen] = useState(false)
+  const isTodayRest = restDays.some((day) => day.date === todayKey)
+  const restLeft = getRestLeft(restDays, todayKey)
+  const openCards = isTodayRest
+    ? []
+    : todayCards.filter(
+        (card) =>
+          !doneTodayIds.has(card.id) &&
+          !isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
+      )
   // 카드 시간이 끝났는데 시작도 처리도 안 한 카드 → [미루기] / [실패로 기록] 을 고르게 합니다.
   const unhandledCards = openCards.filter(
     (card) => getCardResult({ card, dateKey: todayKey, sessions: [] }, listNow) === 'unhandled',
@@ -184,7 +213,11 @@ export function CardTimerPage() {
   const waitingCards = openCards.filter((card) => !unhandledCards.includes(card))
   const routinePostponeLimit = pageSettings.postponeLimitRoutine.value
   // 관리 4단계에서는 미루기가 잠깁니다. (「5.4」, 강제 장치 전체는 #408)
-  const isPostponeLocked = loadLatestCareStage(todayKey)?.stage === 4
+  const isPostponeLocked = isStage4Now(todayKey)
+  // 회복 모드(관리 0단계, 「4.5」): 위로 · What if · 계획 축소. 안전 조건으로 0 이 된 것도 같이 보여 줍니다.
+  const latestStage = loadLatestCareStage(todayKey)
+  const isRecoveryMode =
+    latestStage?.stage === 0 && (latestStage.rule === 'recovery' || latestStage.rule === 'safety')
 
   function postponeLeft(card: CardModel): number {
     if (isPostponeLocked) return 0
@@ -244,20 +277,75 @@ export function CardTimerPage() {
     pageSettings.countdown.value,
     loadLocalCheckIn(todayKey)?.emotions,
   )
-  const paramCountdownCard = paramCard && isCountdownToday ? paramCard : null
+  // 관리 4단계(#408): 시작 전 다짐 녹음 10초 · 미루기 잠금 · 다음 반복 카드 1장 절대 · 증빙 필수
+  const isStage4 = isStage4Now(todayKey)
+  const pledge = isStage4 ? loadVoicePledge() : null
+  const hasPledgeAudio = pledge !== null && pledge.audioDataUrl !== null
+  const storedAbsolute = loadStage4Absolute()
+  const stage4Absolute = !isStage4
+    ? undefined
+    : storedAbsolute && storedAbsolute.dateKey >= todayKey
+      ? storedAbsolute
+      : pickStage4Absolute(cards, todayKey, listNow, doneTodayIds)
+  // 고른 절대 카드는 저장해서, 시간이 지나도 다른 카드로 바뀌지 않게 합니다.
+  // (객체는 화면을 그릴 때마다 새로 만들어져서, 바뀌었는지는 'id|날짜' 글자로 봅니다)
+  const stage4AbsoluteKey = stage4Absolute
+    ? `${stage4Absolute.cardId}|${stage4Absolute.dateKey}`
+    : ''
   useEffect(() => {
-    if (cardParam === '' || paramCountdownCard) return
+    if (stage4AbsoluteKey === '') return
+    const [cardId, dateKey] = stage4AbsoluteKey.split('|')
+    saveStage4Absolute({ cardId, dateKey })
+  }, [stage4AbsoluteKey])
+
+  /** 시작 전에 처음 거칠 화면. 없으면 null (바로 시작) */
+  function firstStartStep(): 'pledge' | 'countdown' | null {
+    if (isStage4 && hasPledgeAudio) return 'pledge'
+    return isCountdownToday ? 'countdown' : null
+  }
+  const paramStep = paramCard ? firstStartStep() : null
+  const paramFlow = paramCard && paramStep ? { card: paramCard, step: paramStep } : null
+  // 거칠 화면이 있으면 그 화면이 끝날 때 시작하고, 없으면 바로 시작합니다.
+  const hasParamFlow = paramFlow !== null
+  useEffect(() => {
+    if (cardParam === '' || hasParamFlow) return
     if (paramCard) session.start(paramCard, todayKey)
     setCardParam('')
-  }, [cardParam, paramCard, paramCountdownCard, session, todayKey, setCardParam])
+  }, [cardParam, paramCard, hasParamFlow, session, todayKey, setCardParam])
 
   /**
-   * 카드로 시작합니다. 5초 카운트다운이 켜져 있으면(설정 또는 오늘 감정 태그가 막막함·불안함) 카운트다운부터.
+   * 카드로 시작합니다. 4단계면 다짐 듣기부터, 5초 카운트다운이 켜져 있으면(설정 또는 오늘 막막함·불안함) 카운트다운부터.
    * [지금 시작] 즉석 카드는 할 일이 아직 없어서 바로 시작합니다.
    */
   function beginCard(card: CardModel) {
-    if (isCountdownToday) setCountdownCard(card)
+    const step = firstStartStep()
+    if (step) setStartFlow({ card, step })
     else session.start(card, todayKey)
+  }
+
+  /** 4단계에서 절대가 된 카드는 화면에서 절대 카드로 보입니다 (미루기 없음 · '꼭 해야 함') */
+  function withStage4(card: CardModel): CardModel {
+    return isStage4AbsoluteOn(stage4Absolute, card.id, todayKey)
+      ? { ...card, priority: 'absolute' }
+      : card
+  }
+
+  function handleRest(reason: RestReason) {
+    const next = addRestDay(todayKey, reason)
+    setRestDays(next)
+    setIsRestOpen(false)
+    setNotice('오늘은 쉰 날로 처리했어요. 오늘 카드는 실패로 세지 않아요. 푹 쉬어요.')
+    // 3일 연속이거나 이번 달 휴식을 다 썼으면 회복 모드 · 기분 점검으로 이어 줍니다.
+    if (needsRecoveryCheck(next, todayKey)) setIsRecoveryCheckOpen(true)
+  }
+
+  /** 회복 모드의 '지금 할 수 있는 가장 작은 것' 으로 15분 즉석 카드를 시작합니다 */
+  function handleRecoveryStart(smallStep: string) {
+    const base = createInstantCardNow(todayKey, RECOVERY_MINUTES)
+    const title = smallStep.trim() || '아주 작게 시작'
+    const card = { ...base, title, checklist: [{ id: `${base.id}-item-0`, text: title }] }
+    addCard(card)
+    session.start(card, todayKey)
   }
 
   function handleStartNow(minutes: number) {
@@ -271,18 +359,35 @@ export function CardTimerPage() {
     return <SessionView session={session} card={activeCard} now={now} onFinished={setEndedRecord} />
   }
 
-  const shownCountdownCard = countdownCard ?? paramCountdownCard
-  if (shownCountdownCard) {
+  const shownFlow = startFlow ?? paramFlow
+  if (shownFlow?.step === 'pledge' && pledge?.audioDataUrl) {
+    return (
+      <PledgeGate
+        cardTitle={shownFlow.card.title}
+        audioDataUrl={pledge.audioDataUrl}
+        text={pledge.text}
+        onDone={() => {
+          setCardParam('')
+          if (isCountdownToday) setStartFlow({ card: shownFlow.card, step: 'countdown' })
+          else {
+            session.start(shownFlow.card, todayKey)
+            setStartFlow(null)
+          }
+        }}
+      />
+    )
+  }
+  if (shownFlow?.step === 'countdown') {
     return (
       <CountdownView
-        card={shownCountdownCard}
+        card={shownFlow.card}
         onDone={() => {
-          session.start(shownCountdownCard, todayKey)
-          setCountdownCard(null)
+          session.start(shownFlow.card, todayKey)
+          setStartFlow(null)
           setCardParam('')
         }}
         onCancel={() => {
-          setCountdownCard(null)
+          setStartFlow(null)
           setCardParam('')
         }}
       />
@@ -317,6 +422,35 @@ export function CardTimerPage() {
         </p>
       </div>
 
+      {isRecoveryMode && (
+        <RecoveryCard reason={latestStage?.reason} onStart={handleRecoveryStart} />
+      )}
+
+      {isStage4 && (
+        <Card className="border-red-200 bg-red-50">
+          <p className="font-semibold text-red-800">관리 4단계 · 강제적 채찍</p>
+          <p className="mt-1 text-sm break-keep text-red-800">
+            {loadLatestCareStage(todayKey)?.reason}
+          </p>
+          <ul className="mt-2 list-disc pl-5 text-sm text-red-800">
+            <li>미루기가 잠겼어요.</li>
+            {stage4Absolute && (
+              <li>
+                '{cards.find((card) => card.id === stage4Absolute.cardId)?.title}' (
+                {stage4Absolute.dateKey.slice(5).replace('-', '/')}) 은 꼭 해야 하는 카드가 됐어요.
+              </li>
+            )}
+            <li>끝날 때 증빙이 있어야 한 것으로 쳐요.</li>
+            {hasPledgeAudio && (
+              <li>카드를 시작하기 전에 내 다짐을 {PLEDGE_GATE_SECONDS}초 들어요.</li>
+            )}
+          </ul>
+          <p className="mt-2 text-sm font-medium text-red-900">
+            증빙이 있는 실행을 한 번 하면 3단계로 내려가요.
+          </p>
+        </Card>
+      )}
+
       {notice && (
         <div
           role="status"
@@ -338,8 +472,18 @@ export function CardTimerPage() {
           <p className="text-sm text-slate-600">
             시작하지 못했어요. 미룰지, 못 했다고 남길지 골라요.
           </p>
+          {/* 아프거나 너무 지쳐서 오늘 전체를 못 한 날은 사후에 '쉰 날' 로 처리할 수 있어요. (월 4회, #407) */}
+          <button
+            type="button"
+            onClick={() => (restLeft > 0 ? setIsRestOpen(true) : setIsRecoveryCheckOpen(true))}
+            className="mt-2 h-10 text-sm font-medium text-slate-700 underline underline-offset-2"
+          >
+            {restLeft > 0
+              ? `아프거나 너무 지쳤어요 · 오늘은 쉰 날로 (이번 달 ${restLeft}번 남음)`
+              : '이번 달 쉬는 날을 다 썼어요'}
+          </button>
           <ul className="mt-3 flex flex-col gap-2">
-            {unhandledCards.map((card) => {
+            {unhandledCards.map(withStage4).map((card) => {
               const left = postponeLeft(card)
               return (
                 <li
@@ -395,7 +539,7 @@ export function CardTimerPage() {
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {waitingCards.map((card, index) => (
+              {waitingCards.map(withStage4).map((card, index) => (
                 <WaitingCardRow
                   key={card.id}
                   card={card}
@@ -453,6 +597,51 @@ export function CardTimerPage() {
         />
       )}
       <CrisisHelpModal isOpen={isCrisisOpen} onClose={() => setIsCrisisOpen(false)} />
+      <Modal
+        isOpen={isRestOpen}
+        onClose={() => setIsRestOpen(false)}
+        title="오늘은 쉰 날로 할까요?"
+      >
+        <p className="text-sm text-slate-700">
+          어쩔 수 없이 못 한 날만 쉰 날로 해요. 쉰 날의 카드는 실패로 세지 않아요. 이번 달{' '}
+          {restLeft}번 남았어요.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {REST_REASONS.map((item) => (
+            <Button
+              key={item.key}
+              variant="secondary"
+              className="h-12"
+              onClick={() => handleRest(item.key)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+      </Modal>
+      <Modal
+        isOpen={isRecoveryCheckOpen}
+        onClose={() => setIsRecoveryCheckOpen(false)}
+        title="요즘 많이 지쳤나 봐요"
+      >
+        <p className="text-sm break-keep text-slate-700">
+          쉬는 날이 이어지고 있어요. 앱은 회복 모드로 계획을 줄여서 갈게요. 혼자 버티기 힘들면 주변
+          어른이나 상담에 이야기해 보세요.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Button variant="secondary" onClick={() => setIsRecoveryCheckOpen(false)}>
+            알겠어요
+          </Button>
+          <Button
+            onClick={() => {
+              setIsRecoveryCheckOpen(false)
+              setIsCrisisOpen(true)
+            }}
+          >
+            도움 연결 보기
+          </Button>
+        </div>
+      </Modal>
 
       {endedRecord && (
         <EndPopup
@@ -467,6 +656,14 @@ export function CardTimerPage() {
           onRest={() => {
             setEndedRecord(null)
             document.getElementById(PLAY_SETUP_ID)?.scrollIntoView({ behavior: 'smooth' })
+          }}
+          proofRequired={isStage4}
+          onProofSaved={() => {
+            // 4단계에서 증빙이 있는 실행을 했으면 4단계를 풉니다. (「5.4」 해제 조건)
+            if (isStage4) {
+              releaseStage4(todayKey)
+              setNotice('증빙이 있는 실행을 해서 4단계를 풀고 3단계로 내려왔어요.')
+            }
           }}
         />
       )}
@@ -879,6 +1076,10 @@ interface EndPopupProps {
   onClose: () => void
   /** [쉬기 → 놀기 타이머] */
   onRest: () => void
+  /** 관리 4단계라 증빙이 꼭 필요한지 — 없으면 실행으로 인정하지 않습니다 (#408) */
+  proofRequired: boolean
+  /** 증빙을 남겼을 때 */
+  onProofSaved: () => void
 }
 
 /**
@@ -889,7 +1090,16 @@ interface EndPopupProps {
  * 4. 잘 된 이유: 체크리스트를 다 했을 때 N번에 1번만
  * 5. 다음 행동
  */
-function EndPopup({ record, card, onSave, onRenameCard, onClose, onRest }: EndPopupProps) {
+function EndPopup({
+  record,
+  card,
+  onSave,
+  onRenameCard,
+  onClose,
+  onRest,
+  proofRequired,
+  onProofSaved,
+}: EndPopupProps) {
   const [step, setStep] = useState<EndStep>('checklist')
   const [settings] = useState(loadAutoSettings)
   const report: SessionEndReport = record.endReport ?? { checked: {} }
@@ -930,7 +1140,14 @@ function EndPopup({ record, card, onSave, onRenameCard, onClose, onRest }: EndPo
     const text = proofText.trim()
     if (!skip && text !== '') {
       const isLink = /^https?:\/\//.test(text)
-      save({ proof: isLink ? { link: text } : { summary: text } })
+      save({
+        proof: isLink ? { link: text } : { summary: text },
+        ...(proofRequired ? { proofRequired } : {}),
+      })
+      onProofSaved()
+    } else if (proofRequired) {
+      // 증빙 없이 끝내면 이 세션은 실행으로 치지 않습니다. (cardResult.ts 가 뺍니다)
+      save({ proofRequired: true })
     }
     // 잘 된 이유는 체크리스트를 다 했을 때만, 설정의 빈도대로 가끔 묻습니다.
     const askGood =
@@ -1038,7 +1255,9 @@ function EndPopup({ record, card, onSave, onRenameCard, onClose, onRest }: EndPo
       {step === 'proof' && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-700">
-            한 것을 남겨 볼까요? 링크나 2~3줄 요약이면 돼요. 남기면 나무가 더 자라요.
+            {proofRequired
+              ? '관리 4단계라 증빙이 꼭 필요해요. 링크나 2~3줄 요약을 남겨야 한 것으로 쳐요.'
+              : '한 것을 남겨 볼까요? 링크나 2~3줄 요약이면 돼요. 남기면 나무가 더 자라요.'}
           </p>
           <textarea
             value={proofText}
@@ -1050,7 +1269,7 @@ function EndPopup({ record, card, onSave, onRenameCard, onClose, onRest }: EndPo
           />
           <div className="grid grid-cols-2 gap-3">
             <Button variant="secondary" onClick={() => handleProofDone(true)}>
-              건너뛰기
+              {proofRequired ? '증빙 없이 끝내기 (안 한 것으로)' : '건너뛰기'}
             </Button>
             <Button disabled={proofText.trim() === ''} onClick={() => handleProofDone(false)}>
               남기기
@@ -1315,5 +1534,102 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
         <p className="text-xs text-slate-500">0 이 되면 바로 시작해요.</p>
       </Card>
     </div>
+  )
+}
+
+interface PledgeGateProps {
+  cardTitle: string
+  audioDataUrl: string
+  /** 녹음할 때 적은 다짐 글 (없으면 빈 글자) */
+  text: string
+  onDone: () => void
+}
+
+/**
+ * 관리 4단계 — 카드 시작 전에 내 다짐 녹음을 10초 들려줍니다. 건너뛸 수 없습니다. (「5.4」 4단계, #408)
+ * 녹음은 기기에만 있고 서버로 보내지 않습니다.
+ */
+function PledgeGate({ cardTitle, audioDataUrl, text, onDone }: PledgeGateProps) {
+  const [seconds, setSeconds] = useState(PLEDGE_GATE_SECONDS)
+  const onDoneRef = useRef(onDone)
+  useEffect(() => {
+    onDoneRef.current = onDone
+  })
+
+  // 처음 한 번 재생하고, 10초가 지나면 멈춥니다.
+  useEffect(() => {
+    const audio = new Audio(audioDataUrl)
+    void audio.play().catch(() => {
+      // 브라우저가 소리를 막아도 10초는 기다립니다. (글로 된 다짐이 화면에 있음)
+    })
+    return () => audio.pause()
+  }, [audioDataUrl])
+
+  useEffect(() => {
+    if (seconds <= 0) {
+      onDoneRef.current()
+      return
+    }
+    const id = setTimeout(() => setSeconds((value) => value - 1), 1000)
+    return () => clearTimeout(id)
+  }, [seconds])
+
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+      <Card className="flex flex-col items-center gap-4 py-10 text-center">
+        <p className="text-sm font-medium text-red-700">관리 4단계 · {cardTitle} 시작 전에</p>
+        <p className="text-lg font-semibold text-slate-900">처음에 한 내 다짐을 들어요</p>
+        {text.trim() !== '' && (
+          <p className="max-w-sm text-base break-keep text-slate-700">“{text}”</p>
+        )}
+        <p className="text-6xl font-bold text-red-600 tabular-nums" aria-live="polite">
+          {Math.max(0, seconds)}
+        </p>
+        <p className="text-xs text-slate-500">
+          {PLEDGE_GATE_SECONDS}초가 지나면 바로 시작해요. 건너뛸 수 없어요.
+        </p>
+      </Card>
+    </div>
+  )
+}
+
+// 회복 모드에서 시작하는 즉석 카드 길이 (분)
+const RECOVERY_MINUTES = 15
+
+interface RecoveryCardProps {
+  /** 판정이 남긴 이유 한 줄 */
+  reason: string | undefined
+  onStart: (smallStep: string) => void
+}
+
+/**
+ * 회복 모드 카드 (최종 기획서 「4.5 상담」 회복 모드, #407)
+ * What if 기법 — 최악의 상황을 떠올린 뒤, 그래도 지금 할 수 있는 가장 작은 것 하나를 15분만 해 봅니다.
+ * 회복 모드에서는 나무가 시들지 않고 채찍도 쓰지 않습니다. 다음 날 다시 평가합니다.
+ */
+function RecoveryCard({ reason, onStart }: RecoveryCardProps) {
+  const [smallStep, setSmallStep] = useState('')
+  return (
+    <Card className="border-sky-200 bg-sky-50">
+      <p className="font-semibold text-sky-900">회복 모드</p>
+      {reason && <p className="mt-1 text-sm break-keep text-sky-900">{reason}</p>}
+      <ol className="mt-3 list-decimal pl-5 text-sm break-keep text-sky-900">
+        <li>오늘 최악의 경우는 뭘까? (아무것도 못 해도 괜찮아. 세상이 끝나지 않아)</li>
+        <li>그래도 지금 할 수 있는 가장 작은 것 하나는?</li>
+      </ol>
+      <input
+        value={smallStep}
+        onChange={(event) => setSmallStep(event.target.value)}
+        maxLength={60}
+        placeholder="예: 영어 단어 10개만 보기"
+        className="mt-3 h-10 w-full rounded-lg border border-sky-300 bg-white px-3 text-sm"
+      />
+      <Button className="mt-3 w-full" onClick={() => onStart(smallStep)}>
+        {RECOVERY_MINUTES}분만 해 보기
+      </Button>
+      <p className="mt-2 text-xs text-sky-800">
+        회복 모드에서는 나무가 시들지 않아요. 내일 다시 볼게요.
+      </p>
+    </Card>
   )
 }

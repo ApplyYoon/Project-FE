@@ -158,6 +158,8 @@ export interface SessionEndReport {
   proof?: { link?: string; summary?: string }
   /** 잘 된 이유 (물었을 때만) */
   goodReasons?: GoodReason[]
+  /** 관리 4단계라 증빙이 꼭 필요했던 세션이면 true — 증빙이 없으면 실행으로 인정하지 않습니다 (#408) */
+  proofRequired?: boolean
 }
 
 /** 딴생각 주차장 메모 한 줄 */
