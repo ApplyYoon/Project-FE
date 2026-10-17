@@ -137,7 +137,27 @@ export function loadSavedCards(): Card[] | undefined {
   return Array.isArray(saved) ? saved.filter(isCard) : []
 }
 
-/** 카드 목록을 저장합니다. */
-export function saveCards(cards: Card[]): void {
+/** 카드가 저장될 때마다 보내는 이벤트 이름입니다. useCards 가 다시 읽고, useCardSync 가 서버로 보냅니다. (#516) */
+export const CARDS_CHANGED_EVENT = 'study-cards-changed'
+
+/**
+ * 이벤트에 담는 값. 바뀌기 전 · 뒤의 카드 목록과 누가 바꿨는지입니다.
+ * - local: 이 기기에서 사람이 바꿈 → 서버로도 보냅니다
+ * - server: 서버에서 받은 것으로 맞춤(서버 번호 붙이기 · 다른 기기에서 만든 카드) → 다시 보내지 않습니다
+ */
+export interface CardsChangedDetail {
+  prev: Card[]
+  next: Card[]
+  source: 'local' | 'server'
+}
+
+/**
+ * 카드 목록을 저장하고, 바뀌었다고 알립니다.
+ * 카드를 저장하는 곳은 모두 이 함수를 써야 서버와 맞출 수 있습니다. (lib/cardSync.ts)
+ */
+export function saveCards(cards: Card[], source: 'local' | 'server' = 'local'): void {
+  const prev = loadSavedCards() ?? []
   saveData(CARDS_KEY, cards)
+  const detail: CardsChangedDetail = { prev, next: cards, source }
+  window.dispatchEvent(new CustomEvent(CARDS_CHANGED_EVENT, { detail }))
 }

@@ -51,6 +51,8 @@ export interface WebToAppPayloads {
   'call.schedule': { time: string | null; url: string }
   'screen.keepOn': { on: boolean }
   haptics: { kind: HapticKind }
+  /** 휴대폰 구글 계정으로 로그인해서 구글 ID 토큰 받기 (웹뷰 안 구글 로그인은 구글이 막음, components/ui/GoogleButton.tsx) */
+  'auth.googleSignIn': { webClientId: string }
 }
 
 /** 웹 → 앱 메시지의 이름들 ('ready' | 'notify.show' | …) */
@@ -175,6 +177,24 @@ export function readPermissionReply(reply: unknown): NotificationPermission | nu
   if (typeof reply !== 'object' || reply === null) return null
   const permission = (reply as Record<string, unknown>).permission
   return isPermission(permission) ? permission : null
+}
+
+/** 'auth.googleSignIn' 의 답: 성공이면 idToken, 아니면 error 이름 ('cancelled' · 'inProgress' · 'unavailable' · 'failed') */
+export type GoogleSignInReply = { idToken: string } | { error: string }
+
+/**
+ * 'auth.googleSignIn' 의 답을 확인해서 꺼냅니다. 모양이 틀리거나 답이 없었으면(시간 초과) null.
+ *
+ *   readGoogleSignInReply({ idToken: 'eyJ…' })       -> { idToken: 'eyJ…' }
+ *   readGoogleSignInReply({ error: 'cancelled' })    -> { error: 'cancelled' }   (계정 고르는 창을 닫음)
+ *   readGoogleSignInReply(null)                      -> null
+ */
+export function readGoogleSignInReply(reply: unknown): GoogleSignInReply | null {
+  if (typeof reply !== 'object' || reply === null) return null
+  const { idToken, error } = reply as Record<string, unknown>
+  if (typeof idToken === 'string' && idToken !== '') return { idToken }
+  if (typeof error === 'string') return { error }
+  return null
 }
 
 /**

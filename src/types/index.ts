@@ -19,6 +19,11 @@ export interface AuthUser {
   id: string
   /** 화면에 보이는 이름 */
   name: string
+  /**
+   * 서버가 "온보딩을 마쳤다" 고 알고 있는지 (BE PR #300). true 면 이 기기에 기록이 없어도 온보딩을 띄우지 않습니다.
+   * 테스트 로그인이나 옛 서버 응답에는 없을 수 있습니다.
+   */
+  onboarded?: boolean
 }
 
 /**
@@ -225,8 +230,10 @@ export interface CardAlert {
  * 반복 카드도 한 장으로 두고, 날마다 했는지는 세션 기록에 남깁니다. (매일 복사하지 않음)
  */
 export interface Card {
-  /** 카드를 구분하는 고유 값 */
+  /** 카드를 구분하는 고유 값 (이 기기에서 정한 값) */
   id: string
+  /** 서버에 올라간 카드의 번호 (BE /api/v1/cards 의 id). 아직 안 올라갔거나 테스트 로그인이면 없습니다 (#516) */
+  serverId?: string
   /** 무엇을 하는지 (예: '수학 문제집') */
   title: string
   /** 1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜 ('YYYY-MM-DD') */
@@ -266,6 +273,8 @@ export interface Card {
  */
 export interface FixedBlock {
   id: string
+  /** 서버에 올라간 고정 일정의 번호 (BE /api/v1/fixed-blocks 의 id). 아직 안 올라갔거나 테스트 로그인이면 없음 (#516) */
+  serverId?: string
   /** 무슨 일정인지 (예: '학교', '수학 학원') */
   title: string
   /** 반복 요일 (0 = 일요일 … 6 = 토요일). 1개 이상 */
@@ -306,6 +315,8 @@ export interface GoalTargetSnapshot {
 export interface Goal {
   /** 목표를 구분하는 고유 값 */
   id: string
+  /** 서버에 올라간 목표의 번호 (BE /api/v1/goals 의 id). 아직 안 올라갔거나 테스트 로그인이면 없음 (#516) */
+  serverId?: string
   kind: GoalKind
   /** W 소망 — 목표 한 줄 (예: '11월 학평 수학 3등급') */
   title: string
