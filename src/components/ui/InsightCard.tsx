@@ -19,6 +19,10 @@ interface InsightCardProps {
   sessions: StudySession[]
   /** true 면 내 기록으로 만든 발견이 아니라 미리 보기용 예시입니다. "예시" 표시가 붙습니다. */
   isExample?: boolean
+  /** 한 문장 아래에 붙이는 풀이 (AI 분석의 본문 등). 없으면 한 문장만 */
+  detail?: string
+  /** true 면 AI 가 쓴 문장입니다. "AI 가 쓴 글" 표시가 붙습니다. (#419 AI 분석) */
+  isAiWritten?: boolean
   className?: string
 }
 
@@ -34,7 +38,14 @@ interface InsightCardProps {
  * <InsightCard insight={insight} sessions={sessions} />
  * <InsightCard insight={insight} sessions={sessions} isExample />   // 예시일 때
  */
-export function InsightCard({ insight, sessions, isExample = false, className }: InsightCardProps) {
+export function InsightCard({
+  insight,
+  sessions,
+  isExample = false,
+  detail,
+  isAiWritten = false,
+  className,
+}: InsightCardProps) {
   const evidenceId = useId()
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false)
   // 처음에는 저장해 둔 반응을 불러옵니다. 저장된 게 없으면 인사이트가 들고 온 반응, 그것도 없으면 아직 안 고른 상태입니다.
@@ -64,6 +75,11 @@ export function InsightCard({ insight, sessions, isExample = false, className }:
             예시
           </span>
         )}
+        {isAiWritten && (
+          <span className="bg-brand-light text-brand rounded-full px-2 py-0.5 text-xs font-semibold">
+            AI 가 쓴 글
+          </span>
+        )}
         {insight.isHypothesis && (
           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
             가설
@@ -80,6 +96,7 @@ export function InsightCard({ insight, sessions, isExample = false, className }:
       >
         {insight.sentence}
       </p>
+      {detail && <p className="mt-1 text-sm break-keep text-slate-600">{detail}</p>}
       {dispute?.outcome === 'aiWrong' && (
         <p className="mt-1 text-sm font-medium text-violet-700">
           실험해 보니 AI가 틀렸어요. 이 발견은 철회했어요.

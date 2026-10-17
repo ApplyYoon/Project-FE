@@ -2,6 +2,7 @@ import { useQueryParam } from '@/hooks/useQueryParam'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AiAnalysisCard } from '@/components/ui/AiAnalysisCard'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -144,6 +145,9 @@ export function RecordsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">기록·통계</h1>
+
+      {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
+      <AiAnalysisCard />
 
       {/* 최근 4주 실행률 · 최근 7일 막대그래프 · 주간 리포트 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       {/* items-start: 높이가 다른 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
