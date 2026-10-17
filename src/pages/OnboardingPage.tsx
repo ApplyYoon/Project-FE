@@ -2,6 +2,7 @@ import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
 import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
@@ -18,7 +19,17 @@ import {
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
 import { loadData, removeData, saveData } from '@/lib/storage'
+import { loadSubjects } from '@/lib/subjects'
+import {
+  buildSubjectLevel,
+  getScoreRange,
+  parseScoreInput,
+  parseSubjectLevels,
+  serializeSubjectLevels,
+  type ScoreKind,
+} from '@/lib/subjectLevel'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
+import type { SubjectLevel } from '@/types'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
@@ -60,6 +71,196 @@ function loadDraft(stepCount: number): OnboardingDraft {
     ? Math.min(Math.max(0, savedIndex), stepCount - 1)
     : 0
   return { stepIndex, answers }
+}
+
+/** 과목 하나의 입력 상태. 성적은 적는 도중에 비어 있거나 범위 밖일 수 있어서 글자로 들고 있습니다. */
+interface LevelDraft {
+  /** 성적을 등급으로 넣는지, 점수로 넣는지 */
+  kind: ScoreKind
+  /** 성적 칸에 적은 글자 */
+  scoreText: string
+  /** 고른 자신감 (1~5). 아직 안 골랐으면 null */
+  confidence: number | null
+}
+
+const EMPTY_LEVEL_DRAFT: LevelDraft = { kind: 'grade', scoreText: '', confidence: null }
+
+/** 자신감 버튼에 보이는 숫자 (1 ~ 5) */
+const CONFIDENCE_CHOICES = [1, 2, 3, 4, 5]
+
+/** 성적 종류 고르기 버튼에 보이는 글자 */
+const SCORE_KIND_OPTIONS: { kind: ScoreKind; label: string }[] = [
+  { kind: 'grade', label: '등급' },
+  { kind: 'score', label: '점수' },
+]
+
+/** 저장된 답(글자)에서 과목별 입력 상태를 되살립니다. (이전 질문에 갔다가 돌아와도 적은 답이 보이도록) */
+function toLevelDrafts(value: string): Record<string, LevelDraft> {
+  const drafts: Record<string, LevelDraft> = {}
+  for (const level of parseSubjectLevels(value)) {
+    drafts[level.subjectId] = {
+      kind: level.grade !== undefined ? 'grade' : 'score',
+      scoreText: String(level.grade ?? level.score),
+      confidence: level.confidence,
+    }
+  }
+  return drafts
+}
+
+interface SubjectLevelInputProps {
+  /** 저장된 답 (과목별 수준 목록을 JSON 글자로 바꾼 것. 비어 있으면 빈 글자) */
+  value: string
+  onChange: (value: string) => void
+}
+
+/**
+ * 과목마다 최근 성적(등급 또는 점수)과 자신감(1~5)을 받는 입력칸입니다. (#88)
+ * 과목 목록은 과목 관리에서 만든 것(loadSubjects)을 그대로 씁니다.
+ *
+ * 성적과 자신감을 둘 다 적은 과목만 답으로 저장합니다. 한쪽만 적은 과목에는 안내 문구를 보여줍니다.
+ * 적지 않은 과목은 그냥 비워 두면 됩니다. (전부 비우면 "건너뛰기")
+ */
+function SubjectLevelInput({ value, onChange }: SubjectLevelInputProps) {
+  // 과목 목록은 처음 한 번만 불러옵니다.
+  const [subjects] = useState(loadSubjects)
+  const [drafts, setDrafts] = useState(() => toLevelDrafts(value))
+
+  function handleChangeDraft(subjectId: string, patch: Partial<LevelDraft>) {
+    const nextDrafts = {
+      ...drafts,
+      [subjectId]: { ...(drafts[subjectId] ?? EMPTY_LEVEL_DRAFT), ...patch },
+    }
+    setDrafts(nextDrafts)
+
+    // 성적과 자신감을 둘 다 적은 과목만 모아서 답으로 저장합니다.
+    const levels: SubjectLevel[] = []
+    for (const subject of subjects) {
+      const draft = nextDrafts[subject.id]
+      if (!draft) continue
+      const level = buildSubjectLevel(subject.id, draft.kind, draft.scoreText, draft.confidence)
+      if (level) levels.push(level)
+    }
+    onChange(serializeSubjectLevels(levels))
+  }
+
+  if (subjects.length === 0) {
+    return (
+      <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm break-keep text-slate-600">
+        등록된 과목이 없어요. 공부 계획 화면에서 과목을 먼저 추가한 뒤 다시 알려 주세요. 지금은
+        건너뛰어도 돼요.
+      </p>
+    )
+  }
+
+  return (
+    <ul className="flex flex-col gap-4">
+      {subjects.map((subject) => {
+        const draft = drafts[subject.id] ?? EMPTY_LEVEL_DRAFT
+        const hasScoreText = draft.scoreText.trim() !== ''
+        const range = getScoreRange(draft.kind)
+        const isScoreInvalid = hasScoreText && parseScoreInput(draft.kind, draft.scoreText) === null
+        // 한쪽만 적었으면(둘 다 비어 있거나 둘 다 적은 것이 아니면) 아직 저장되지 않습니다.
+        const isHalfFilled =
+          (hasScoreText || draft.confidence !== null) &&
+          buildSubjectLevel(subject.id, draft.kind, draft.scoreText, draft.confidence) === null
+
+        return (
+          <li
+            key={subject.id}
+            className="flex flex-col gap-3 rounded-xl border-2 border-slate-200 bg-white p-4"
+          >
+            <SubjectBadge name={subject.name} color={subject.color} className="self-start" />
+
+            {/* 등급 / 점수 고르기. 버튼 높이 h-10 = 40px */}
+            <div role="radiogroup" aria-label={`${subject.name} 성적 종류`} className="flex gap-2">
+              {SCORE_KIND_OPTIONS.map((option) => {
+                const isSelected = draft.kind === option.kind
+                return (
+                  <button
+                    key={option.kind}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    // 종류를 바꾸면 적던 숫자를 비웁니다. (등급 3 을 점수 3 으로 잘못 읽지 않게)
+                    onClick={() =>
+                      !isSelected &&
+                      handleChangeDraft(subject.id, { kind: option.kind, scoreText: '' })
+                    }
+                    className={cn(
+                      'h-10 flex-1 rounded-lg border-2 text-sm font-medium',
+                      isSelected
+                        ? 'border-brand bg-brand-light text-brand'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            <Input
+              name={`score-${subject.id}`}
+              label={`최근 ${draft.kind === 'grade' ? '등급' : '점수'} (${range.min}~${range.max})`}
+              inputMode="numeric"
+              maxLength={3}
+              placeholder={draft.kind === 'grade' ? '예) 2' : '예) 85'}
+              value={draft.scoreText}
+              // 숫자가 아닌 글자는 입력되지 않게 지웁니다.
+              onChange={(event) =>
+                handleChangeDraft(subject.id, { scoreText: event.target.value.replace(/\D/g, '') })
+              }
+              error={
+                isScoreInvalid ? `${range.min}~${range.max} 사이의 숫자를 적어 주세요.` : undefined
+              }
+              className="h-10 text-base"
+            />
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-slate-700">이 과목 자신감</span>
+              {/* 1~5 버튼은 크기가 같아서 375px 에서도 한 줄입니다. */}
+              <div
+                role="radiogroup"
+                aria-label={`${subject.name} 자신감`}
+                className="grid grid-cols-5 gap-2"
+              >
+                {CONFIDENCE_CHOICES.map((choice) => {
+                  const isSelected = draft.confidence === choice
+                  return (
+                    <button
+                      key={choice}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() => handleChangeDraft(subject.id, { confidence: choice })}
+                      className={cn(
+                        'h-10 rounded-lg border-2 text-sm font-medium',
+                        isSelected
+                          ? 'border-brand bg-brand-light text-brand'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                      )}
+                    >
+                      {choice}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>전혀 자신 없어요</span>
+                <span>아주 자신 있어요</span>
+              </div>
+            </div>
+
+            {isHalfFilled && !isScoreInvalid && (
+              <p className="text-xs break-keep text-amber-700">
+                성적과 자신감을 둘 다 입력해야 저장돼요.
+              </p>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
 
 interface StepInputProps {
@@ -138,6 +339,11 @@ function StepInput({ step, value, onChange }: StepInputProps) {
         })}
       </div>
     )
+  }
+
+  // 과목별 최근 성적·자신감 (#88)
+  if (step.type === 'subjectLevels') {
+    return <SubjectLevelInput value={value} onChange={onChange} />
   }
 
   // 한 줄 글자
