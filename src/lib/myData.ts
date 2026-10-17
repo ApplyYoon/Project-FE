@@ -75,6 +75,8 @@ const RECORD_KEYS = [
   'weekly-goals',
   // AI 가 써 준 "어제 한 줄" (그날 다시 묻지 않으려고 저장해 둔 것. lib/dailyCoach.ts)
   'daily-coach',
+  // AI 자기 분석 (같은 날 같은 숫자면 다시 묻지 않으려고 저장해 둔 것. lib/aiAnalysisApi.ts)
+  'ai-analysis',
   // 목표 조정 제안을 거절한 날짜, 수락한 날짜
   'goal-adjust-declined',
   'goal-adjust-accepted',
