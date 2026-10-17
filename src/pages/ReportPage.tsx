@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { InsightCard } from '@/components/ui/InsightCard'
+import { AnalysisExperimentSuggestion, AnalysisInsight } from '@/components/ui/AiAnalysisCard'
 import { useCards } from '@/hooks/useCards'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -11,7 +11,6 @@ import {
   getExperimentDay,
   loadExperiments,
 } from '@/lib/experiments'
-import { getInsightsToShow } from '@/lib/insights'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { findStrategy } from '@/lib/strategyCatalog'
@@ -189,9 +188,6 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
   // 이미 맞힌 주는 그때 낸 질문을, 아니면 이번 차례 질문을 냅니다. (lib/weeklyPrediction.ts)
   const kind = prediction?.kind ?? pickPredictionKind(mondayKey, getAvailableKinds(numbers))
   const isLocked = prediction === undefined && kind !== null
-  // 인사이트는 1개만 보여줍니다. (지금은 가상 데이터를 넣었을 때만 예시가 나옵니다. lib/insights.ts)
-  const { insights, isExample } = getInsightsToShow(sessions)
-  const insight = insights.at(0)
 
   function handlePredict(value: number) {
     if (kind === null) return
@@ -234,18 +230,8 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
             <h2 className="text-lg font-bold text-slate-900">
               {isCurrentWeek ? '이번 주 발견' : '지금까지의 발견'}
             </h2>
-            {insight === undefined ? (
-              <p className="mt-3 text-sm text-slate-500">
-                아직 데이터가 모자라요. 기록이 쌓이면 발견이 생겨요.
-              </p>
-            ) : (
-              <InsightCard
-                insight={insight}
-                sessions={sessions}
-                isExample={isExample}
-                className="mt-3"
-              />
-            )}
+            {/* 인사이트는 1개만. 최근 28일 기록으로 만든 AI 분석에서 '생각과 실제' 를 먼저 고릅니다. (#419) */}
+            <AnalysisInsight sessions={sessions} className="mt-3" />
           </section>
 
           {/* ④ 지난 실험 결과. 가장 최근 자기 실험(#412)이 진행 중이면 며칠째인지, 끝났으면 판정 */}
@@ -257,16 +243,8 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
           {/* ⑤ 다음 실험 제안. 고르는 일은 가설·실험 탭에서 합니다. 여기서는 그리로 안내만 합니다. */}
           <section>
             <h2 className="text-lg font-bold text-slate-900">다음 실험 제안</h2>
-            <p className="mt-2 text-sm break-keep text-slate-500">
-              다음에 해 볼 실험은{' '}
-              <Link
-                to="/analysis?tab=experiment"
-                className="text-brand inline-flex min-h-10 items-center font-semibold hover:underline"
-              >
-                가설·실험
-              </Link>
-              에서 내 기록으로 골라 줘요.
-            </p>
+            {/* AI 분석이 고른 실험 하나를 보여 주고, 고르는 일은 가설·실험 탭으로 안내합니다. (#419) */}
+            <AnalysisExperimentSuggestion className="mt-2" />
           </section>
         </>
       )}
