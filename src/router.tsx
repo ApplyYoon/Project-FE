@@ -1,7 +1,13 @@
 import { Layout } from '@/components/layout/Layout'
 import { RedirectWithQuery } from '@/components/layout/RedirectWithQuery'
 import { RequireAuth } from '@/components/layout/RequireAuth'
-import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
+import {
+  ONBOARDING_CARE_PATH,
+  ONBOARDING_HYPOTHESES_PATH,
+  ONBOARDING_INTRO_PATH,
+  ONBOARDING_RESULT_PATH,
+  ONBOARDING_RESUME_PATH,
+} from '@/lib/onboardingProgress'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
 import { ANALYSIS_PATH } from '@/lib/tabMenu'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
@@ -31,6 +37,9 @@ const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
+const CardEditPage = lazy(() =>
+  import('@/pages/CardEditPage').then((m) => ({ default: m.CardEditPage })),
+)
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
 const CheckPage = lazy(() => import('@/pages/CheckPage').then((m) => ({ default: m.CheckPage })))
 const CounselPage = lazy(() =>
@@ -41,6 +50,9 @@ const ExamResultPage = lazy(() =>
   import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
 )
 const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
+const GoalNewPage = lazy(() =>
+  import('@/pages/GoalNewPage').then((m) => ({ default: m.GoalNewPage })),
+)
 const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 const NotFoundPage = lazy(() =>
@@ -51,6 +63,15 @@ const NotificationsPage = lazy(() =>
 )
 const OnboardingDonePage = lazy(() =>
   import('@/pages/OnboardingDonePage').then((m) => ({ default: m.OnboardingDonePage })),
+)
+const OnboardingCarePage = lazy(() =>
+  import('@/pages/OnboardingCarePage').then((m) => ({ default: m.OnboardingCarePage })),
+)
+const OnboardingResultPage = lazy(() =>
+  import('@/pages/OnboardingResultPage').then((m) => ({ default: m.OnboardingResultPage })),
+)
+const OnboardingIntroPage = lazy(() =>
+  import('@/pages/OnboardingIntroPage').then((m) => ({ default: m.OnboardingIntroPage })),
 )
 const OnboardingPage = lazy(() =>
   import('@/pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })),
@@ -113,6 +134,11 @@ export const router = createBrowserRouter([
       { path: 'about', element: <AboutPage /> },
       // 아래 탭 5개: 홈 · 카드 · 타이머 · 상담 · 분석 (기획서 3장, #386)
       { path: 'cards', element: <CardsPage /> },
+      // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
+      { path: 'cards/new', element: <CardEditPage /> },
+      { path: 'cards/:cardId/edit', element: <CardEditPage /> },
+      // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
+      { path: 'goals/new', element: <GoalNewPage /> },
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
       { path: 'timer', element: <TimerRoute /> },
       { path: 'counsel', element: <CounselPage /> },
@@ -167,6 +193,19 @@ export const router = createBrowserRouter([
     ),
   },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
+  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
+  {
+    path: ONBOARDING_INTRO_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingIntroPage />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  // 학년 (OnboardingPage 의 basic 묶음)
   {
     path: '/onboarding',
     errorElement: <ErrorPage />,
@@ -176,6 +215,41 @@ export const router = createBrowserRouter([
           <SubjectsGate>
             <OnboardingPage />
           </SubjectsGate>
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  // 자기 인식 4문항 = 내 가설 (OnboardingPage 의 hypotheses 묶음). 심리검사 다음에 나옵니다.
+  {
+    path: ONBOARDING_HYPOTHESES_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingPage mode="hypotheses" />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  // 관리 설정 동의 → 결과 (#389). 4문항 다음에 나옵니다.
+  {
+    path: ONBOARDING_CARE_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingCarePage />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: ONBOARDING_RESULT_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingResultPage />
         </PageBoundary>
       </RequireAuth>
     ),
@@ -204,7 +278,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 생각 습관 테스트. 온보딩 질문 다음, 처음 계획 앞에 나옵니다. 안 했으면 RequireAuth 가 여기로 보냅니다. (lib/thinkingTest.ts)
+  // 생각 습관 테스트. 온보딩에서는 빠졌고(#388), 기록 화면에서 다시 할 때 씁니다. (lib/thinkingTest.ts)
   {
     path: THINKING_TEST_PATH,
     errorElement: <ErrorPage />,
@@ -216,7 +290,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 온보딩 심리검사 14문항. 온보딩 순서에 넣는 것은 #388 에서 합니다. (lib/psychTest.ts)
+  // 온보딩 심리검사 14문항. 학년 다음, 자기 인식 4문항 앞에 나옵니다. (lib/psychTest.ts)
   {
     path: PSYCH_TEST_PATH,
     errorElement: <ErrorPage />,
@@ -228,7 +302,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 처음 계획 세우기. 온보딩 질문이 끝난 뒤 "준비 끝" 앞에 나옵니다. (#240)
+  // 처음 계획 세우기. 온보딩에서는 빠졌고(#388), 설정에서 다시 세울 때 씁니다. (#240)
   {
     path: '/onboarding/plan',
     errorElement: <ErrorPage />,
@@ -242,7 +316,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 처음의 나에게 한마디(목소리·글) 남기기. 가입 직후 맨 처음, 온보딩 질문 앞에 나옵니다. 건너뛸 수 있습니다. (#241)
+  // 처음의 나에게 한마디(목소리·글) 남기기. 온보딩에서는 빠졌고 첫 목표를 만들 때로 옮깁니다(#388 → #391). (#241)
   {
     path: '/onboarding/voice',
     errorElement: <ErrorPage />,

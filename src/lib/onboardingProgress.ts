@@ -2,20 +2,52 @@
  * 온보딩(가입 직후 처음 한 번 하는 설정)이 어디까지 됐는지 계산하고, 처음부터 다시 하게 지웁니다.
  * React 없이 저장된 값만 봅니다.
  *
- *   순서: 처음 다짐 → 온보딩 질문 → 생각 습관 테스트 → 처음 계획 → (준비 끝)
+ *   순서: 앱 소개 → 학년 → 심리검사 14문항 → 자기 인식 4문항(내 가설) → 관리 설정 동의 → 결과   (기획서 4.1, 약 3분, #388 · #389)
+ *   첫 목표 만들기(#391, 건너뛰기 가능)는 그 이슈에서 이 목록에 더합니다.
+ *   (처음 다짐 녹음은 첫 목표를 만들 때로, 생각 습관 테스트 · 처음 계획은 온보딩에서 빠졌습니다)
  *
  * 끝나지 않은 첫 단계가 "이어서 할 자리" 입니다. RequireAuth 가 이 자리로 보내서,
  * 로고나 홈을 눌러도 하던 곳으로 돌아옵니다. 온보딩을 다 끝내야 앱의 다른 화면이 열립니다.
  * 하다 만 사람이 다음에 다시 들어오면 "이어하기 / 처음부터 다시" 를 먼저 고르게 합니다. (OnboardingResumePage)
  */
-import { loadInitialPlan } from '@/lib/initialPlan'
-import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
-import { loadData, removeData } from '@/lib/storage'
-import { THINKING_TEST_PATH, hasThinkingTest } from '@/lib/thinkingTest'
-import { PLEDGE_PATH, hasSeenPledge } from '@/lib/voicePledge'
+import { loadMyHypotheses } from '@/lib/myHypotheses'
+import { hasCareConsent, hasSeenOnboardingResult, resetOnboardingCare } from '@/lib/onboardingCare'
+import {
+  getFirstSteps,
+  isFirstStageDone,
+  loadOnboardingAnswers,
+  onboardingSteps,
+} from '@/lib/onboardingSteps'
+import { PSYCH_TEST_PATH, hasPsychTest } from '@/lib/psychTest'
+import { loadData, removeData, saveData } from '@/lib/storage'
 
 /** "이어하기 / 처음부터 다시" 를 고르는 화면의 주소 */
 export const ONBOARDING_RESUME_PATH = '/onboarding/resume'
+
+/** 앱 소개 화면의 주소 */
+export const ONBOARDING_INTRO_PATH = '/onboarding/intro'
+
+/** 자기 인식 4문항(내 가설) 화면의 주소. OnboardingPage 를 mode="hypotheses" 로 씁니다. */
+export const ONBOARDING_HYPOTHESES_PATH = '/onboarding/hypotheses'
+
+/** 관리 설정 동의 화면의 주소 (#389) */
+export const ONBOARDING_CARE_PATH = '/onboarding/care'
+
+/** 결과 화면의 주소 (#389) */
+export const ONBOARDING_RESULT_PATH = '/onboarding/result'
+
+// 앱 소개를 봤다는 표시를 넣어 두는 이름입니다.
+const INTRO_SEEN_KEY = 'onboarding-intro-seen'
+
+/** 앱 소개 화면을 봤는지 */
+export function hasSeenOnboardingIntro(): boolean {
+  return loadData<unknown>(INTRO_SEEN_KEY, false) === true
+}
+
+/** 앱 소개 화면을 봤다고 적어 둡니다. */
+export function markOnboardingIntroSeen(): void {
+  saveData(INTRO_SEEN_KEY, true)
+}
 
 /** 온보딩 단계 하나 */
 interface OnboardingStage {
@@ -28,17 +60,23 @@ interface OnboardingStage {
 }
 
 const STAGES: OnboardingStage[] = [
-  { label: '처음 다짐', path: PLEDGE_PATH, isDone: hasSeenPledge },
-  // 하다 만 질문이 있으면 OnboardingPage 가 그 질문부터 보여 줍니다.
-  { label: '온보딩 질문', path: '/onboarding', isDone: () => loadOnboardingAnswers() !== null },
-  // 답하다 만 문제가 있으면 OnboardingThinkingPage 가 그 문제부터 보여 줍니다.
-  // from=onboarding: 테스트가 끝나면 홈이 아니라 처음 계획으로 이어지게 합니다.
+  { label: '앱 소개', path: ONBOARDING_INTRO_PATH, isDone: hasSeenOnboardingIntro },
   {
-    label: '생각 습관 테스트',
-    path: `${THINKING_TEST_PATH}?from=onboarding`,
-    isDone: hasThinkingTest,
+    label: '학년',
+    path: '/onboarding',
+    isDone: () => isFirstStageDone(loadOnboardingAnswers(), 'basic'),
   },
-  { label: '처음 계획', path: '/onboarding/plan', isDone: () => loadInitialPlan() !== null },
+  // 답하다 만 문장이 있으면 OnboardingPsychTestPage 가 그 문장부터 보여 줍니다.
+  { label: '심리검사', path: PSYCH_TEST_PATH, isDone: hasPsychTest },
+  // 하다 만 질문이 있으면 OnboardingPage 가 그 질문부터 보여 줍니다.
+  {
+    label: '나에 대한 4문항',
+    path: ONBOARDING_HYPOTHESES_PATH,
+    isDone: () => loadMyHypotheses() !== undefined,
+  },
+  // [이대로 할게요] 를 눌러 동의해야 끝납니다. (명시적 동의)
+  { label: '관리 설정', path: ONBOARDING_CARE_PATH, isDone: hasCareConsent },
+  { label: '결과', path: ONBOARDING_RESULT_PATH, isDone: hasSeenOnboardingResult },
 ]
 
 /** 단계마다 이름과 끝냈는지를 돌려줍니다. "이어하기" 화면에서 어디까지 했는지 보여줄 때 씁니다. */
@@ -52,8 +90,8 @@ export function getOnboardingResumePath(): string | null {
   return nextStage ? nextStage.path : null
 }
 
-// 하다 만 답을 임시로 넣어 두는 이름들입니다. (OnboardingPage · OnboardingThinkingPage 의 DRAFT_KEY)
-const DRAFT_KEYS = ['onboarding-draft', 'thinking-test-draft']
+// 하다 만 답을 임시로 넣어 두는 이름들입니다. (OnboardingPage 의 묶음별 DRAFT_KEY · OnboardingPsychTestPage 의 DRAFT_KEY)
+const DRAFT_KEYS = ['onboarding-draft', 'onboarding-hypotheses-draft', 'psych-test-draft']
 
 /** 온보딩을 조금이라도 해 둔 게 있는지. 끝낸 단계나 하다 만 답이 하나라도 있으면 true 입니다. */
 export function hasOnboardingProgress(): boolean {
@@ -64,13 +102,30 @@ export function hasOnboardingProgress(): boolean {
 
 /**
  * 온보딩을 처음부터 다시 하도록 지금까지의 답을 지웁니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다)
- * - 처음 다짐의 녹음은 지우지 않습니다. 다짐 화면에 그대로 보이고, 거기서 다시 녹음할 수 있습니다.
- * - 처음 계획은 마지막 단계라서, 온보딩이 안 끝난 동안에는 아직 없습니다. 그래서 지울 것이 없습니다.
+ * - 온보딩 질문의 답은 처음 온보딩에서 묻는 칸(학년 · 자기 인식 4문항)만 지웁니다.
+ *   "내 정보 더 알려주기" 에서 적은 시험 날짜 같은 칸은 리포트가 쓰고 있어서 남깁니다.
+ * - 옛 온보딩에서 한 생각 습관 테스트 · 처음 다짐 녹음 · 처음 계획은 지금 온보딩의 단계가 아니라서 지우지 않습니다.
  */
 export function resetOnboarding(): void {
-  // 온보딩 질문의 답 (OnboardingPage 의 STORAGE_KEY), 생각 습관 테스트 결과 (lib/thinkingTest.ts)
-  removeData('onboarding-answers')
-  removeData('thinking-test')
+  removeData(INTRO_SEEN_KEY)
+  const answers = loadOnboardingAnswers()
+  if (answers !== null) {
+    const firstKeys = new Set(
+      [...getFirstSteps('basic'), ...getFirstSteps('hypotheses')].map((step) => step.key),
+    )
+    const kept: Record<string, string> = {}
+    for (const step of onboardingSteps) {
+      if (!firstKeys.has(step.key) && step.key in answers) kept[step.key] = answers[step.key]
+    }
+    // 남길 칸이 없으면 통째로 지워서 "설문을 안 한 사람" 으로 돌아가게 합니다.
+    if (Object.keys(kept).length === 0) removeData('onboarding-answers')
+    else saveData('onboarding-answers', kept)
+  }
+  // 심리검사 결과 (lib/psychTest.ts) · 내 가설 (lib/myHypotheses.ts) · 관리 설정 동의와 결과 표시 (lib/onboardingCare.ts)
+  // 동의 때 정한 설정 값(한도 · 연락 금지 등)은 지우지 않습니다. 다시 동의할 때 그 값을 보고 고치면 됩니다.
+  removeData('psych-test')
+  removeData('my-hypotheses')
+  resetOnboardingCare()
   for (const key of DRAFT_KEYS) removeData(key)
 }
 

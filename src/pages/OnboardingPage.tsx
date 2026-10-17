@@ -8,16 +8,20 @@ import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
 import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
+import { loadMyHypotheses, saveMyHypotheses, toMyHypotheses } from '@/lib/myHypotheses'
+import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import {
-  firstSteps,
   getDaysUntil,
+  getFirstSteps,
   getUnansweredSteps,
   isAnswerValid,
+  isFirstStageDone,
   loadOnboardingAnswers,
   onboardingSteps,
   parseMultiAnswer,
   toChoiceOption,
   toggleMultiAnswer,
+  type FirstStage,
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
 import { loadData, removeData, saveData } from '@/lib/storage'
@@ -30,7 +34,6 @@ import {
   serializeSubjectLevels,
   type ScoreKind,
 } from '@/lib/subjectLevel'
-import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import type { SubjectLevel } from '@/types'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
@@ -38,9 +41,13 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 // 설문을 끝내고 답을 저장하는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-onboarding-answers' 가 됩니다)
 const STORAGE_KEY = 'onboarding-answers'
 
-// 설문을 끝내기 전에, 고르던 답과 보고 있던 질문 번호를 임시로 넣어 두는 이름입니다.
-// 새로고침하거나 다른 화면에 다녀와도 하던 질문부터 이어서 할 수 있습니다. 설문을 끝내면 지웁니다.
-const DRAFT_KEY = 'onboarding-draft'
+// 설문을 끝내기 전에, 고르던 답과 보고 있던 질문 번호를 임시로 넣어 두는 이름입니다. 묶음마다 따로 둡니다.
+// 새로고침하거나 다른 화면에 다녀와도 하던 질문부터 이어서 할 수 있습니다. 묶음을 끝내면 지웁니다.
+// (lib/onboardingProgress.ts 의 DRAFT_KEYS 와 같은 이름이어야 "처음부터 다시" 가 같이 지웁니다)
+const DRAFT_KEYS: Record<FirstStage, string> = {
+  basic: 'onboarding-draft',
+  hypotheses: 'onboarding-hypotheses-draft',
+}
 
 /** 설문 도중에 임시로 저장해 두는 값 */
 interface OnboardingDraft {
@@ -54,9 +61,9 @@ interface OnboardingDraft {
  * 임시로 저장해 둔 값을 불러옵니다. 없거나 모양이 틀리면 "처음부터" 입니다.
  * stepCount 는 질문 수입니다. 저장된 번호가 질문 수를 넘지 않게 맞춥니다. (질문 목록이 바뀌었을 수 있습니다)
  */
-function loadDraft(stepCount: number): OnboardingDraft {
+function loadDraft(draftKey: string, stepCount: number): OnboardingDraft {
   const empty: OnboardingDraft = { stepIndex: 0, answers: {} }
-  const saved = loadData<unknown>(DRAFT_KEY, null)
+  const saved = loadData<unknown>(draftKey, null)
   if (typeof saved !== 'object' || saved === null) return empty
 
   const draft = saved as Record<string, unknown>
@@ -412,21 +419,23 @@ function StepInput({ step, value, onChange }: StepInputProps) {
 
 interface OnboardingPageProps {
   /**
-   * first: 처음 실행할 때의 짧은 설문입니다. (기본값. 주소: /onboarding)
+   * basic: 처음 온보딩의 학년 질문입니다. (기본값. 주소: /onboarding)
+   * hypotheses: 처음 온보딩의 자기 인식 4문항(내 가설)입니다. 심리검사 다음에 나옵니다. (주소: /onboarding/hypotheses)
    * more: 설정의 "내 정보 더 알려주기" 입니다. 아직 안 답한 질문만 이어서 묻습니다. (주소: /onboarding/more)
    */
-  mode?: 'first' | 'more'
+  mode?: FirstStage | 'more'
 }
 
 /**
  * 온보딩 설문입니다. 한 화면에 질문 하나씩 보여주고 "다음" 으로 넘어갑니다.
  * 질문 목록은 lib/onboardingSteps.ts 한 곳에서 관리합니다.
  *
- * ■ 처음 설문 (mode 가 'first')
- *   꼭 필요한 질문만 묻습니다. 마지막에 "완료" 를 누르면 답을 저장하고 처음 계획 세우기(/onboarding/plan)로 갑니다.
- *   관리 강도 한도와 메시지 설정은 묻지 않고 기본값으로 시작합니다. (설정에서 언제든 바꿉니다) (#239)
- *   위쪽의 "나중에 하기" 를 누르면 홈으로 갑니다. 고르던 답은 임시로 저장되어 있어서, 다시 오면 하던 질문부터 이어집니다.
- *   이미 설문을 마친 사람(저장된 답이 있는 사람)이 오면 바로 홈으로 돌려보냅니다.
+ * ■ 처음 온보딩 (mode 가 'basic' · 'hypotheses')
+ *   그 묶음의 질문만 묻습니다. 마지막에 "다음" 을 누르면 답을 저장하고 온보딩의 다음 단계로 갑니다. (lib/onboardingProgress.ts)
+ *   basic 을 끝낼 때 관리 강도 한도와 메시지 설정을 기본값으로 시작합니다. (설정에서 언제든 바꿉니다) (#239)
+ *   hypotheses 를 끝내면 답을 '내 가설' 로도 저장합니다. (lib/myHypotheses.ts)
+ *   위쪽의 "로그인 화면으로" 를 눌러도 고르던 답은 임시로 저장되어 있어서, 다시 오면 하던 질문부터 이어집니다.
+ *   그 묶음을 이미 끝낸 사람이 오면 온보딩의 다음 단계(다 끝났으면 홈)로 보냅니다.
  *
  * ■ 내 정보 더 알려주기 (mode 가 'more')
  *   아직 안 답한 질문만 이어서 묻습니다. "다음" 을 누를 때마다 그 답을 바로 저장해서, 중간에 나가도 남습니다.
@@ -434,7 +443,7 @@ interface OnboardingPageProps {
  *
  * 메뉴·하단 탭이 없는 틀(PlainLayout)로 감싸서 시안처럼 앱 이름만 위에 보입니다.
  */
-export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
+export function OnboardingPage({ mode = 'basic' }: OnboardingPageProps) {
   const navigate = useNavigate()
   const isMore = mode === 'more'
   // 저장된 답. 설문을 한 번도 안 했으면 null 입니다.
@@ -449,17 +458,32 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   // 이번에 물어볼 질문들. 화면이 처음 그려질 때 한 번만 정합니다.
   // (답할 때마다 목록이 줄어들면 "3 / 12" 같은 번호가 흔들리기 때문입니다)
   const [steps] = useState(() => {
-    if (!isMore) return firstSteps
+    if (!isMore) return getFirstSteps(mode)
     return editOneStep ? [editOneStep] : getUnansweredSteps(savedAnswers ?? {})
   })
-  // 처음 설문은 전에 하다 만 곳이 있으면 거기서부터 이어서 합니다. (새로고침해도 답이 남습니다)
+  // 처음 온보딩은 전에 하다 만 곳이 있으면 거기서부터 이어서 합니다. (새로고침해도 답이 남습니다)
   // 한 질문만 고치러 온 경우에는 저장된 답으로 시작해서, 적어 둔 것을 보고 고칠 수 있게 합니다.
   const [draft] = useState(() => {
-    if (!isMore) return loadDraft(firstSteps.length)
+    if (!isMore) {
+      const loaded = loadDraft(DRAFT_KEYS[mode], getFirstSteps(mode).length)
+      if (Object.keys(loaded.answers).length > 0 || savedAnswers === null) return loaded
+      // 옛 온보딩에서 이미 답한 칸(하루 공부 시간 등)이 있으면 미리 골라 둡니다. 보고 그대로 넘기면 됩니다.
+      const prefilled: Record<string, string> = {}
+      for (const step of getFirstSteps(mode)) {
+        if (savedAnswers[step.key]) prefilled[step.key] = savedAnswers[step.key]
+      }
+      return { stepIndex: 0, answers: prefilled }
+    }
     const startAnswers = editOneStep
       ? { [editOneStep.key]: savedAnswers?.[editOneStep.key] ?? '' }
       : {}
     return { stepIndex: 0, answers: startAnswers }
+  })
+  // 처음 온보딩: 이 묶음을 이미 끝냈는지. 끝냈으면 아래에서 다음 단계로 보냅니다.
+  const [isStageDone] = useState(() => {
+    if (mode === 'more') return false
+    if (mode === 'hypotheses') return loadMyHypotheses() !== undefined
+    return isFirstStageDone(savedAnswers, mode)
   })
   const [stepIndex, setStepIndex] = useState(draft.stepIndex)
   // 지금 화면에서 고른 답. 예) { grade: '고2', targetExam: '수능' }
@@ -468,12 +492,13 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   // (더 알려주기에서만) 지금까지 저장된 답. 질문 하나를 넘길 때마다 여기에 더해서 저장합니다.
   const [storedAnswers, setStoredAnswers] = useState<Record<string, string>>(savedAnswers ?? {})
 
-  // 처음 설문을 하는 동안에는 답을 고르거나 질문을 넘길 때마다 임시로 저장합니다.
-  // (이미 설문을 마친 사람은 아래에서 홈으로 보내므로 저장하지 않습니다)
-  const shouldSaveDraft = !isMore && savedAnswers === null
+  // 처음 온보딩을 하는 동안에는 답을 고르거나 질문을 넘길 때마다 임시로 저장합니다.
+  // (이 묶음을 이미 끝낸 사람은 아래에서 다음 단계로 보내므로 저장하지 않습니다)
+  const draftKey = mode === 'more' ? null : DRAFT_KEYS[mode]
+  const shouldSaveDraft = draftKey !== null && !isStageDone
   useEffect(() => {
-    if (shouldSaveDraft) saveData(DRAFT_KEY, { stepIndex, answers })
-  }, [shouldSaveDraft, stepIndex, answers])
+    if (shouldSaveDraft) saveData(draftKey, { stepIndex, answers })
+  }, [shouldSaveDraft, draftKey, stepIndex, answers])
 
   // 질문이 바뀌면 키보드 포커스를 새 질문 제목으로 옮깁니다.
   // ("다음" 을 누르면 누른 버튼이 잠깐 꺼지면서 포커스가 사라져서, 스크린리더가 새 질문을 읽어 주지 않았습니다)
@@ -488,8 +513,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
     titleRef.current?.focus()
   }, [stepIndex])
 
-  // 처음 설문: 이미 마친 사람은 홈으로 보냅니다. (Navigate: 화면을 그리는 대신 주소를 바꿔 주는 부품)
-  if (!isMore && savedAnswers !== null) return <Navigate to="/" replace />
+  // 처음 온보딩: 이 묶음을 이미 끝낸 사람은 다음 단계로, 다 끝났으면 홈으로 보냅니다. (Navigate: 화면을 그리는 대신 주소를 바꿔 주는 부품)
+  if (isStageDone) return <Navigate to={getOnboardingResumePath() ?? '/'} replace />
   // 더 알려주기: 처음 설문을 안 한 사람은 처음 설문부터 하게 하고, 남은 질문이 없으면 설정으로 돌려보냅니다.
   if (isMore && savedAnswers === null) return <Navigate to="/onboarding" replace />
   if (steps.length === 0) return <Navigate to="/settings" replace />
@@ -504,8 +529,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   // 현재 몇 번째 질문까지 왔는지를 0~100 으로 바꿉니다. (예: 10개 중 3번째 = 30)
   const progress = ((stepIndex + 1) / steps.length) * 100
 
-  // 넘어가는 버튼에 보여줄 글자
-  let nextLabel = isLastStep ? '완료' : '다음'
+  // 넘어가는 버튼에 보여줄 글자. 처음 온보딩은 묶음이 끝나도 다음 단계가 이어져서 "다음" 입니다.
+  let nextLabel = isLastStep && isMore ? '완료' : '다음'
   if (isMore && isEmpty) nextLabel = isLastStep ? '건너뛰고 끝내기' : '건너뛰기'
   // 한 질문만 고치러 온 경우: 저장하면 설정으로 돌아갑니다. 비워서 저장하면 "답하지 않음" 이 됩니다.
   if (editOneStep) nextLabel = isEmpty ? '비워서 저장' : '저장'
@@ -538,22 +563,28 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
       return
     }
 
-    if (isLastStep) {
+    if (isLastStep && draftKey !== null) {
       // 앞뒤 빈칸은 떼고 저장합니다. 빈칸만 적은 선택 질문은 답하지 않은 것으로 보고 저장하지 않습니다.
       const trimmedAnswers: Record<string, string> = {}
       for (const [key, answer] of Object.entries(answers)) {
         if (answer.trim() !== '') trimmedAnswers[key] = answer.trim()
       }
-      saveData(STORAGE_KEY, trimmedAnswers)
-      // 설문을 끝냈으니 임시로 저장해 둔 답은 지웁니다.
-      removeData(DRAFT_KEY)
-      // 관리 강도 한도 · 독설 수위 · 메시지 설정은 묻지 않고 기본값으로 시작합니다. (#239)
-      // getCareLimits · getMessageSettings 는 저장된 게 없으면 기본값을 돌려줍니다.
-      const limits = getCareLimits()
-      setInitialCareLimits(limits.maxCareLevel, limits.maxHarshness)
-      saveMessageSettings(getMessageSettings())
-      // 질문이 끝나면 생각 습관 테스트를 하고, 그다음 처음 계획을 세우러 갑니다. 거기서 "준비 끝" 화면으로 이어집니다. (#240)
-      navigate(`${THINKING_TEST_PATH}?from=onboarding`)
+      // 앞 묶음이나 "내 정보 더 알려주기" 에서 저장한 답은 그대로 두고, 이 묶음의 답만 더합니다.
+      saveData(STORAGE_KEY, { ...(savedAnswers ?? {}), ...trimmedAnswers })
+      // 묶음을 끝냈으니 임시로 저장해 둔 답은 지웁니다.
+      removeData(draftKey)
+      if (mode === 'basic') {
+        // 관리 강도 한도 · 독설 수위 · 메시지 설정은 묻지 않고 기본값으로 시작합니다. (#239)
+        // getCareLimits · getMessageSettings 는 저장된 게 없으면 기본값을 돌려줍니다.
+        const limits = getCareLimits()
+        setInitialCareLimits(limits.maxCareLevel, limits.maxHarshness)
+        saveMessageSettings(getMessageSettings())
+      } else {
+        // 자기 인식 4문항은 '내 가설' 로도 저장합니다. 2주 동안 기록으로 확인합니다. (#411)
+        saveMyHypotheses(toMyHypotheses(trimmedAnswers, Date.now()))
+      }
+      // 온보딩의 다음 단계로 갑니다. 다 끝났으면 홈입니다. (순서: lib/onboardingProgress.ts)
+      navigate(getOnboardingResumePath() ?? '/')
       return
     }
     setStepIndex((index) => index + 1)
@@ -629,7 +660,7 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
         <p className="text-center text-sm break-keep text-slate-500">
           {isMore
             ? '안 해도 앱은 그대로 쓸 수 있어요. 답은 넘어갈 때마다 저장돼요.'
-            : `질문 ${steps.length}개면 끝나요. 나머지는 나중에 알려줘도 돼요.`}
+            : '온보딩은 3분이면 끝나요.'}
         </p>
       </form>
     </PlainLayout>

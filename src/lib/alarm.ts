@@ -1,3 +1,5 @@
+import { isInApp, sendToApp } from '@/lib/appBridge'
+
 /**
  * 구간이 끝났을 때 짧은 알림음과 진동으로 알려줍니다.
  *
@@ -5,8 +7,11 @@
  * 에러 없이 조용히 넘어갑니다. 화면 안내가 따로 있으니 소리는 "있으면 좋은 것"입니다.
  */
 export function playAlarm(): void {
-  // 진동: 지원하는 기기에서만 있습니다. (200ms 진동 - 100ms 쉬기 - 200ms 진동)
-  if ('vibrate' in navigator) {
+  // 휴대폰 앱 안에서는 앱이 진동을 맡습니다. (lib/appBridge.ts) 소리는 아래에서 똑같이 냅니다.
+  if (isInApp()) {
+    sendToApp('haptics', { kind: 'warning' })
+  } else if ('vibrate' in navigator) {
+    // 진동: 지원하는 기기에서만 있습니다. (200ms 진동 - 100ms 쉬기 - 200ms 진동)
     navigator.vibrate([200, 100, 200])
   }
 
