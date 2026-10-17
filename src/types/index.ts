@@ -104,6 +104,80 @@ export interface StudySession {
   stopReason?: MissReason
   /** 공부 기록인지 노는 기록인지. 없으면 공부(study)로 봅니다 */
   kind?: PlanKind
+
+  /*
+   * 아래는 카드 기준으로 넓힌 칸입니다. (최종 기획서 「4.4 타이머」, #380)
+   * 옛 기록에는 없습니다. 없을 때 어떻게 볼지는 lib/sessionRecords.ts 의 함수가 정합니다.
+   */
+  /** 어느 카드의 세션인지 (Card 의 id). 새 세션은 꼭 있습니다. 옛 기록은 planId 로 찾습니다 */
+  cardId?: string
+  /** 세션을 잰 방법. 없으면 normal */
+  mode?: SessionMode
+  /** 일시정지 한 번 한 번 (이유 태그 포함). 있으면 pauseCount · pausedMs 는 이 값에서 계산한 것입니다 */
+  pauses?: SessionPause[]
+  /** 예정 종료 전에 [끝내기] 를 눌렀으면 true (중도 종료) */
+  endedEarly?: boolean
+  /** 종료 팝업에서 받은 것. 팝업을 닫아 버렸으면 없음 */
+  endReport?: SessionEndReport
+  /** 딴생각 주차장에 쓴 한 줄 메모 */
+  memos?: SessionMemo[]
+  /** 노는 기록일 때 무엇을 했는지 */
+  playTag?: PlayTag
+  /** 노는 기록일 때, 놀기가 끝난 뒤 [카드 시작] · [놀기 끝] 을 누를 때까지 더 쉰 시간 (밀리초) */
+  overRestMs?: number
+}
+
+/** 세션을 잰 방법 — normal: 타이머, offline: 폰을 내고 앱이 잰 세션(야자 등), selfReport: 끝난 뒤 사후 입력 */
+export type SessionMode = 'normal' | 'offline' | 'selfReport'
+
+/** 일시정지 이유 (1탭). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+export type PauseTag = 'toilet' | 'snack' | 'phone' | 'mindWander' | 'stuck' | 'external' | 'other'
+
+/** 일시정지 한 번 */
+export interface SessionPause {
+  /** 일시정지를 누른 시각 */
+  startedAt: number
+  /** 다시 시작한 시각. 일시정지한 채로 끝냈으면 세션이 끝난 시각 */
+  endedAt: number
+  /** 이유 */
+  tag: PauseTag
+  /** '기타' 를 골랐을 때 쓴 글 (빈칸 허용) */
+  note?: string
+}
+
+/** 체크리스트를 다 못 했을 때 고르는 이유. 이름표는 lib/sessionTags.ts */
+export type ShortfallReason =
+  'tooMuch' | 'stuck' | 'phone' | 'mindWander' | 'tired' | 'external' | 'etc'
+
+/** 잘 된 이유 (체크리스트를 다 했을 때 가끔 묻습니다). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+export type GoodReason = 'focus' | 'goodPlan' | 'condition' | 'environment' | 'helped' | 'luck'
+
+/** 세션 중에 같이 한 것 — 즐거움 묶기를 대신합니다 */
+export type WithWhat = 'music' | 'video' | 'none'
+
+/** 노는 기록의 종류 */
+export type PlayTag = 'youtube' | 'game' | 'sns' | 'webtoon' | 'rest' | 'etc'
+
+/** 종료 팝업에서 받은 것 (산출물 말고는 모두 1탭) */
+export interface SessionEndReport {
+  /** 체크한 체크리스트 항목 (ChecklistItem 의 id → 체크한 시각) */
+  checked: Record<string, number>
+  /** 다 못 했을 때 고른 이유 */
+  shortfallReason?: ShortfallReason
+  /** 같이 한 것 */
+  withWhat?: WithWhat
+  /** 산출물 증빙 — 링크 또는 2~3줄 요약 (사진은 저장소가 정해진 뒤) */
+  proof?: { link?: string; summary?: string }
+  /** 잘 된 이유 (물었을 때만) */
+  goodReasons?: GoodReason[]
+}
+
+/** 딴생각 주차장 메모 한 줄 */
+export interface SessionMemo {
+  /** 쓴 시각 */
+  at: number
+  /** 한 줄 */
+  text: string
 }
 
 /** 요일마다 반복되는 계획의 틀. 그 요일의 계획에 자동으로 들어옵니다 */
