@@ -2,7 +2,9 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ApiError } from '@/lib/api'
+import { loadSinceLastCall } from '@/lib/callCard'
 import { saveCallToCheckIn } from '@/lib/callCheckIn'
+import { recordFinishedCall } from '@/lib/callLog'
 import {
   finishCall,
   readCallResultState,
@@ -46,6 +48,9 @@ export function CallResultPage() {
     // 결론을 받으면 바로 오늘 체크인에 저장합니다. (#38) 저장했는지도 같이 돌려줘서 화면이 안내 문장을 고릅니다.
     mutationFn: async (state: CallResultState) => {
       const conclusion = await finishCall(state)
+      // 통화가 끝났다고 적습니다. 다음 통화의 학생 카드는 이 시각 이후로 결산합니다. (#414, lib/callLog.ts)
+      // 넣은 조건부 모듈은 통화를 시작할 때와 같은 기록으로 다시 계산합니다. (기록에 적기 전이라 같은 값이 나옵니다)
+      recordFinishedCall(loadSinceLastCall().callModule, Date.now())
       return { conclusion, isSavedToCheckIn: saveCallToCheckIn(conclusion) }
     },
     onSuccess: () => {

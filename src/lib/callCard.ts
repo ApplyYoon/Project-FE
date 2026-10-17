@@ -5,23 +5,84 @@
  * 여기서 숫자로 정리해 한 장으로 보냅니다. 서버는 이 카드로 AI 의 지침(대본)을 만듭니다.
  * (서버의 약속: BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27 · #28)
  *
+ * ■ "지난 통화 이후" 칸 (#414, 최종 기획서 「4.5」 통화 대본)
+ *   대본이 아침이든 밤이든 같은 구조가 되도록, 결산은 '어제' 가 아니라 '지난 통화 이후' 의 카드로 합니다.
+ *   (결산 → 처리 안 된 카드 → 다음 통화까지의 카드 → 조건부 모듈 1개 → 마무리)
+ *   어제 순공 · 스트릭 같은 옛 칸은 서버 대본(BE#28)이 새 칸으로 바뀔 때까지 같이 보냅니다. 바뀐 뒤 지웁니다.
+ *
  * ⚠️ 카드에는 숫자와 정해진 분류값만 담습니다. 계획 내용·일기·이름·약속 문장 같은 "내가 쓴 글" 은 넣지 않습니다.
  *    글은 AI 회사(OpenAI)로 그대로 넘어가기 때문입니다. 새 값을 더할 때도 이 원칙을 지켜 주세요.
  */
 import { loadAwayRecords } from '@/lib/away'
 import { getAwaySummary } from '@/lib/awaySummary'
-import { loadStudySessions } from '@/lib/dailyRecords'
-import { getTodayKey, moveDateKey } from '@/lib/date'
+import { loadCallLog } from '@/lib/callLog'
+import {
+  MODULE_COUNT_DAYS,
+  PREDICT_REVEAL_EVERY_DAYS,
+  countRecentModule,
+  pickCallModule,
+  type CallModule,
+  type CallModuleConditions,
+} from '@/lib/callModules'
+import { buildJudgedCardDays } from '@/lib/cardDays'
+import { loadCardMarks, type CardFailCause } from '@/lib/cardMarks'
+import { isMissResult } from '@/lib/cardResult'
+import { getCardsOnDate, loadSavedCards } from '@/lib/cards'
+import { loadLatestCareStage } from '@/lib/careStage'
+import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
+import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
-import { getFacts } from '@/lib/facts'
+import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
+import { getFacts, getPlannedStartAt } from '@/lib/facts'
 import { loadUnlockRecords, type FocusUnlockRecord } from '@/lib/focusMode'
+import { isGoalCheckDue } from '@/lib/goalProgress'
+import { loadGoals } from '@/lib/goals'
+import { getRelapseSignal, type JudgedCardDay } from '@/lib/relapseSignal'
+import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
+import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import { loadAutoSettings } from '@/lib/settingsMapping'
 import { loadRecord } from '@/lib/storage'
 import { getStudyStreak } from '@/lib/streak'
 import { MIN_COMPLETION_SAMPLES, getMondayKey } from '@/lib/weeklyFacts'
-import type { AwayRecord, CheckIn, MissReason, StudyPlan, StudySession } from '@/types'
+import type {
+  AwayRecord,
+  Card,
+  CheckIn,
+  EmotionTag,
+  MissReason,
+  StudyPlan,
+  StudySession,
+} from '@/types'
+
+/**
+ * 학생 카드의 "지난 통화 이후" 칸 (#414). 서버 CallSessionRequest.Card 에 같은 이름으로 더합니다.
+ * 숫자와 정해진 분류값만 담습니다. (카드 제목 같은 글은 넣지 않습니다)
+ */
+export interface SinceLastCallFields {
+  /** 지난 통화가 끝난 뒤 몇 시간 지났는지. 통화한 적이 없으면 null → 최근 24시간을 봅니다 */
+  hoursSinceLastCall: number | null
+  /** 지난 통화 이후 실행한 카드 수 (제때 · 늦게 · 중간에 끝냄 · 나중에 적음) */
+  doneCardCount: number
+  /** 실행한 카드의 평균 실행률 (0 ~ 100). 실행한 카드가 없으면 null */
+  cardRunRate: number | null
+  /** 미루거나 못 한 카드 수 (아직 정리 안 한 카드 포함) */
+  missedCardCount: number
+  /** 그중 아직 미루기 · 실패를 고르지 않은 카드 수 — 통화에서 원인을 묻고, 나눌지 · 휴식으로 할지 정합니다 */
+  unhandledCardCount: number
+  /** 미실행 원인 중 가장 많은 것 (CardFailCause 글자: MissReason + 'procrastinated' 미루다 보니). 없으면 null */
+  mainMissCause: CardFailCause | null
+  /** 다음 통화까지(앞으로 24시간) 할 카드 수 */
+  nextCardCount: number
+  /** 그중 절대(미룰 수 없는) 카드 수 */
+  nextAbsoluteCardCount: number
+  /** 오늘 감정 태그를 안 골랐으면 true — 결산 전에 묻습니다 */
+  emotionTagsMissing: boolean
+  /** 이번 통화에 넣을 조건부 모듈 (lib/callModules.ts 의 우선순위). 없으면 null */
+  callModule: CallModule | null
+}
 
 /** 서버에 보내는 학생 카드. 모르는 값은 null 입니다. (0 과 "모름" 은 다릅니다) */
-export interface CallCard {
+export interface CallCard extends Partial<SinceLastCallFields> {
   /** 어제의 순공시간 (분) */
   yesterdayStudyMinutes: number | null
   /** 어제 계획의 목표 시간 합계 (분). 계획이 없었으면 0 */
@@ -177,16 +238,181 @@ function loadAllPlans(): StudyPlan[] {
   return plans
 }
 
+/** 지난 통화 기록이 없을 때 결산하는 기간 (시간) */
+const DEFAULT_SINCE_HOURS = 24
+/** 다음 통화까지로 보는 기간 (시간) */
+const NEXT_CALL_HOURS = 24
+const MS_PER_HOUR = 60 * 60 * 1000
+const MAX_CARD_COUNT = 50
+const MAX_HOURS_SINCE = 24 * 365
+
+/** 실행으로 치는 카드 결과 (휴식 · 미실행이 아닌 것) */
+function isRunResult(result: JudgedCardDay['result']): boolean {
+  return result !== 'rest' && !isMissResult(result)
+}
+
+export interface SinceLastCallInput {
+  /** 저장된 카드 전체 */
+  cards: Pick<Card, 'id' | 'date' | 'repeatDays' | 'startTime' | 'priority'>[]
+  /** 카드 하루치 판정 (cardDays.ts). 지난 통화 무렵부터 오늘까지 */
+  judgedDays: JudgedCardDay[]
+  /** 지난 통화가 끝난 시각. 없으면 null */
+  lastCallAt: number | null
+  now: number
+  todayKey: string
+  /** 오늘 고른 감정 태그. 오늘 체크인이 없거나 태그를 안 골랐으면 undefined 또는 빈 목록 */
+  todayEmotions: EmotionTag[] | undefined
+  /** 조건부 모듈마다 조건이 됐는지 */
+  moduleConditions: CallModuleConditions
+}
+
+/**
+ * "지난 통화 이후" 칸을 계산합니다. React 도 저장소도 쓰지 않는 순수 함수입니다.
+ * 카드 하루치는 그 카드의 예정 시작 시각이 지난 통화 이후 ~ 지금 사이인 것만 셉니다.
+ *
+ *   지난 통화 어제 21:00, 그 뒤 카드 3개: 제때(실행률 0.9) · 늦게(0.7) · 처리 안 함
+ *     -> { hoursSinceLastCall: (지금 - 어제 21시), doneCardCount: 2, cardRunRate: 80,
+ *          missedCardCount: 1, unhandledCardCount: 1, … }
+ *   통화한 적 없음                    -> 최근 24시간의 카드로 셈, hoursSinceLastCall: null
+ *   앞으로 24시간 안의 카드 2개(그중 절대 1개) -> nextCardCount: 2, nextAbsoluteCardCount: 1
+ *   오늘 감정 태그 없음               -> emotionTagsMissing: true
+ */
+export function buildSinceLastCall(input: SinceLastCallInput): SinceLastCallFields {
+  const sinceAt = input.lastCallAt ?? input.now - DEFAULT_SINCE_HOURS * MS_PER_HOUR
+  const startTimeById = new Map(input.cards.map((card) => [card.id, card.startTime]))
+  // 예정 시작 시각을 모르는 옛 카드는 그날 낮 12시로 봅니다.
+  const startAtOf = (day: JudgedCardDay) =>
+    getPlannedStartAt({ date: day.dateKey, startTime: startTimeById.get(day.cardId) }) ??
+    new Date(`${day.dateKey}T12:00:00`).getTime()
+  const days = input.judgedDays.filter((day) => {
+    const startAt = startAtOf(day)
+    return startAt >= sinceAt && startAt <= input.now
+  })
+
+  const runDays = days.filter((day) => isRunResult(day.result))
+  const missDays = days.filter((day) => isMissResult(day.result))
+  // 미실행 원인 중 가장 많은 것 (같으면 먼저 나온 것)
+  const causeCounts = new Map<CardFailCause, number>()
+  for (const day of missDays) {
+    if (day.missReason) causeCounts.set(day.missReason, (causeCounts.get(day.missReason) ?? 0) + 1)
+  }
+  let mainMissCause: CardFailCause | null = null
+  for (const [cause, count] of causeCounts) {
+    if (mainMissCause === null || count > (causeCounts.get(mainMissCause) ?? 0))
+      mainMissCause = cause
+  }
+
+  // 다음 통화까지 = 지금부터 24시간. 오늘 · 내일 카드 중 예정 시작 시각이 그 안인 것
+  const untilAt = input.now + NEXT_CALL_HOURS * MS_PER_HOUR
+  const tomorrowKey = moveDateKey(input.todayKey, 1)
+  const nextCards = [input.todayKey, tomorrowKey].flatMap((dateKey) =>
+    getCardsOnDate(input.cards as Card[], dateKey).filter((card) => {
+      const startAt = getPlannedStartAt({ date: dateKey, startTime: card.startTime })
+      return startAt !== null && startAt > input.now && startAt <= untilAt
+    }),
+  )
+
+  const runRateSum = runDays.reduce((sum, day) => sum + day.runRate, 0)
+  return {
+    hoursSinceLastCall:
+      input.lastCallAt === null
+        ? null
+        : clampOrNull(Math.floor((input.now - input.lastCallAt) / MS_PER_HOUR), 0, MAX_HOURS_SINCE),
+    doneCardCount: Math.min(runDays.length, MAX_CARD_COUNT),
+    cardRunRate: runDays.length === 0 ? null : Math.round((runRateSum / runDays.length) * 100),
+    missedCardCount: Math.min(missDays.length, MAX_CARD_COUNT),
+    unhandledCardCount: Math.min(
+      days.filter((day) => day.result === 'unhandled').length,
+      MAX_CARD_COUNT,
+    ),
+    mainMissCause,
+    nextCardCount: Math.min(nextCards.length, MAX_CARD_COUNT),
+    nextAbsoluteCardCount: Math.min(
+      nextCards.filter((card) => card.priority === 'absolute').length,
+      MAX_CARD_COUNT,
+    ),
+    emotionTagsMissing: (input.todayEmotions ?? []).length === 0,
+    callModule: pickCallModule(input.moduleConditions),
+  }
+}
+
+/** 저장된 기록으로 "지난 통화 이후" 칸을 만듭니다. (통화를 시작할 때 · 끝났을 때 같은 값이 나옵니다) */
+export function loadSinceLastCall(
+  now: number = Date.now(),
+  todayKey: string = getTodayKey(),
+): SinceLastCallFields {
+  const cards = loadSavedCards() ?? []
+  const restDays = loadRestDays()
+  const marks = loadCardMarks()
+  const lastCallAt = loadCallLog().at(-1)?.endedAt ?? null
+  // 재발 신호(② 최근 7일 vs 기준선 14일)까지 보려고 21일치를 판정합니다.
+  const judgedDays = buildJudgedCardDays(
+    cards,
+    loadAllSessions(),
+    moveDateKey(todayKey, -20),
+    todayKey,
+    now,
+    (cardId, dateKey) => getCardDayMarkInfo(cardId, dateKey, restDays, marks),
+  )
+
+  const { texts, moods } = loadSavedWritings()
+  const brake = getSafetyBrakeResult({
+    now: new Date(now),
+    recentTexts: texts,
+    recentMoods: moods,
+    exams: loadExamDates(),
+  })
+  const careStage = loadLatestCareStage(todayKey)
+  const log = loadCallLog()
+  const weekFromKey = moveDateKey(todayKey, -(MODULE_COUNT_DAYS - 1))
+  const sinceKey = lastCallAt === null ? moveDateKey(todayKey, -1) : toDayKey(lastCallAt)
+  const moduleConditions: CallModuleConditions = {
+    safetyBrake: brake.stopWhip,
+    // 오늘 판정이 회복(0) 이거나 안전 브레이크가 회복 모드를 켰을 때
+    recovery: (careStage?.dateKey === todayKey && careStage.stage === 0) || brake.recoveryMode,
+    // 지난 통화 이후 새로 생긴 미실행으로 재발 신호가 났을 때
+    review4: getRelapseSignal(judgedDays, todayKey, sinceKey).hasSignal,
+    goalCheck: loadGoals().some((goal) => isGoalCheckDue(goal, todayKey)),
+    // 최근 7일에 넣은 횟수가 설정한 주 횟수(1 또는 2)보다 적을 때
+    distortionFeedback:
+      countRecentModule(log, 'distortionFeedback', weekFromKey) <
+      loadAutoSettings().distortionFeedbackPerWeek.value,
+    predictReveal:
+      countRecentModule(
+        log,
+        'predictReveal',
+        moveDateKey(todayKey, -(PREDICT_REVEAL_EVERY_DAYS - 1)),
+      ) === 0,
+  }
+
+  return buildSinceLastCall({
+    cards,
+    judgedDays,
+    lastCallAt,
+    now,
+    todayKey,
+    todayEmotions: loadRecord<CheckIn>('checkins')[todayKey]?.emotions,
+    moduleConditions,
+  })
+}
+
 /** 이 브라우저에 저장된 기록으로 학생 카드를 만듭니다. 통화 화면이 통화를 시작할 때 부릅니다. */
 export function loadCallCard(): CallCard | null {
   try {
-    return buildCallCard(
+    const card = buildCallCard(
       loadAllPlans(),
       // 모양이 틀린 기록과 노는 기록은 빼고 불러옵니다. (홈 · 리포트와 같은 방법)
       loadStudySessions(),
       loadRecord<CheckIn>('checkins'),
       { awayRecords: loadAwayRecords(), unlockRecords: loadUnlockRecords() },
     )
+    if (card === null) return null
+    // "지난 통화 이후" 칸을 더합니다. 이 계산이 실패해도 옛 칸만으로 통화는 걸리게 합니다.
+    try {
+      return { ...card, ...loadSinceLastCall() }
+    } catch {
+      return card
+    }
   } catch {
     // 저장된 값이 깨져 있어도 통화는 걸려야 합니다. 카드 없이(처음 온 사람처럼) 겁니다.
     return null
