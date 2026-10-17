@@ -198,7 +198,7 @@ export const router = createBrowserRouter([
     ),
   },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
-  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
+  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 생각 습관 테스트 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
   {
     path: ONBOARDING_INTRO_PATH,
     errorElement: <ErrorPage />,
@@ -283,7 +283,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 생각 습관 테스트. 온보딩에서는 빠졌고(#388), 기록 화면에서 다시 할 때 씁니다. (lib/thinkingTest.ts)
+  // 생각 습관 테스트. 온보딩에서 심리검사 다음에 하고, 기록 화면에서 다시 할 때도 씁니다. (lib/thinkingTest.ts)
   {
     path: THINKING_TEST_PATH,
     errorElement: <ErrorPage />,
@@ -295,7 +295,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 온보딩 심리검사 14문항. 학년 다음, 자기 인식 4문항 앞에 나옵니다. (lib/psychTest.ts)
+  // 온보딩 심리검사 14문항. 학년 다음, 생각 습관 테스트 앞에 나옵니다. (lib/psychTest.ts)
   {
     path: PSYCH_TEST_PATH,
     errorElement: <ErrorPage />,
