@@ -16,9 +16,6 @@ export const NICKNAME_MAX_LENGTH = 10
 
 export const EMAIL_MAX_LENGTH = 100
 
-export const PASSWORD_MIN_LENGTH = 8
-export const PASSWORD_MAX_LENGTH = 64
-
 // 서버 로그인으로 들어온 기존 회원은 이 기기에 가입 정보가 없을 수 있습니다.
 // 그때 "가입은 이미 마쳤다" 고 적어 두는 표시의 저장 이름입니다. (값은 true)
 const SIGNUP_DONE_KEY = 'signup-done'
@@ -147,44 +144,6 @@ export function getEmailError(email: string): string | null {
   if (trimmed.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(trimmed)) {
     return '이메일 주소를 다시 확인해 주세요. (예: tmax@starflow.com)'
   }
-  return null
-}
-
-/**
- * 비밀번호가 규칙에 맞는지 확인합니다. 맞으면 null, 틀리면 화면에 보여줄 안내 문구입니다.
- * 규칙: 8 ~ 64자, 영문과 숫자를 모두 포함. (서버도 같은 규칙으로 한 번 더 확인해야 합니다)
- *
- *   getPasswordError('')           -> '비밀번호를 입력해 주세요.'
- *   getPasswordError('abc123')     -> '비밀번호는 8자 이상으로 적어 주세요.'
- *   getPasswordError('abcdefgh')   -> '비밀번호에 영문과 숫자를 모두 넣어 주세요.'
- *   getPasswordError('12345678')   -> '비밀번호에 영문과 숫자를 모두 넣어 주세요.'
- *   getPasswordError('study2026')  -> null
- */
-export function getPasswordError(password: string): string | null {
-  if (password === '') return '비밀번호를 입력해 주세요.'
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `비밀번호는 ${PASSWORD_MIN_LENGTH}자 이상으로 적어 주세요.`
-  }
-  if (password.length > PASSWORD_MAX_LENGTH) {
-    return `비밀번호는 ${PASSWORD_MAX_LENGTH}자 이하로 적어 주세요.`
-  }
-  // /[a-zA-Z]/ 는 영문이 하나라도 있는지, /[0-9]/ 는 숫자가 하나라도 있는지 봅니다.
-  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
-    return '비밀번호에 영문과 숫자를 모두 넣어 주세요.'
-  }
-  return null
-}
-
-/**
- * "비밀번호 확인" 칸이 맞는지 확인합니다. 맞으면 null 입니다.
- *
- *   getPasswordConfirmError('study2026', '')          -> '비밀번호를 한 번 더 입력해 주세요.'
- *   getPasswordConfirmError('study2026', 'study2025') -> '두 비밀번호가 서로 달라요.'
- *   getPasswordConfirmError('study2026', 'study2026') -> null
- */
-export function getPasswordConfirmError(password: string, confirm: string): string | null {
-  if (confirm === '') return '비밀번호를 한 번 더 입력해 주세요.'
-  if (password !== confirm) return '두 비밀번호가 서로 달라요.'
   return null
 }
 
