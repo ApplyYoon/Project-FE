@@ -6,12 +6,13 @@ import {
   loggedOutState,
   type AuthState,
 } from '@/lib/authStorage'
+import { clearServerMessages } from '@/lib/aiMessagesApi'
 import { disconnectCalendar } from '@/lib/googleCalendar'
 import { queryClient } from '@/lib/queryClient'
-import { saveData } from '@/lib/storage'
+import { makeKey, saveData } from '@/lib/storage'
 import { unsubscribeThisDevice } from '@/lib/webPush'
 import type { AuthUser } from '@/types'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 interface AuthProviderProps {
   children: ReactNode
@@ -32,8 +33,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
     saveData(AUTH_STORAGE_KEY, auth)
   }, [auth])
 
+  // 지금 로그인 정보를 함수들 안에서 바로 읽으려고 ref 에도 담아 둡니다. (useCallback 안에서는 처음 값만 보이기 때문입니다)
+  const authRef = useRef(auth)
+  useEffect(() => {
+    authRef.current = auth
+  }, [auth])
+
+  // 다른 탭(또는 홈 화면 앱)에서 로그인·로그아웃하면 이 탭도 맞춥니다.
+  // 브라우저는 다른 탭이 localStorage 를 바꾸면 'storage' 이벤트로 알려 줍니다. (같은 탭에서 바꾼 것은 오지 않습니다)
+  useEffect(() => {
+    function handleStorage(event: StorageEvent) {
+      // event.key 가 null 이면 저장소가 통째로 지워진 것입니다. (모든 기록 지우기 등)
+      if (event.key !== null && event.key !== makeKey(AUTH_STORAGE_KEY)) return
+      const next = loadAuth()
+      const current = authRef.current
+      if (next.token === current.token && next.user?.id === current.user?.id) return
+      // 사람이 바뀌었거나 로그아웃됐으니 서버에서 받아 둔 것을 비우고 따라갑니다. (로그아웃이면 문지기가 로그인 화면으로 보냅니다)
+      queryClient.clear()
+      setAuth(next)
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
   // useCallback: 렌더링될 때마다 함수가 새로 만들어지지 않게 해서, 받아 쓰는 쪽이 괜히 다시 그려지지 않게 합니다.
   const login = useCallback((user: AuthUser, token: string) => {
+    // 새로 로그인할 때마다 서버에서 받아 보관해 둔 것(내 정보 등)을 비웁니다.
+    // 로그인한 채로 /login 에서 다른 계정으로 로그인하면, 안 비울 때 앞사람의 정보가 '내 계정' 칸에 남고 저장하면 새 계정에 덮어써집니다.
+    queryClient.clear()
+    // 다른 사람으로 바뀌었으면 앞사람의 서버 메시지와 구글 캘린더 연결도 이 기기에서 정리합니다. (로그아웃과 같은 이유)
+    const previous = authRef.current
+    if (previous.user !== null && previous.user.id !== user.id) {
+      clearServerMessages()
+      disconnectCalendar()
+    }
     setAuth({ user, token })
   }, [])
 
@@ -43,6 +76,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // 구글 캘린더 연결도 끊습니다. (이 기기의 출입증을 지우고 구글 쪽 허락도 취소)
     // 안 끊으면 같은 기기에서 다음 사람이 로그인했을 때 앞사람의 구글 일정이 보이고, 새 계획이 앞사람의 캘린더에 들어갑니다.
     disconnectCalendar()
+    // 서버에서 받은 메시지도 이 기기에서 뺍니다. 안 빼면 다음 사람에게 앞사람 메시지가 보이고, 앞사람의 마지막 번호로 받기를 이어서 다음 사람의 메시지가 빠집니다.
+    clearServerMessages()
     setAuth(loggedOutState)
   }, [])
 

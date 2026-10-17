@@ -39,7 +39,7 @@ import {
 import { getNotificationPermission } from '@/lib/notifications'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import { missReasonOptions } from '@/lib/missReasons'
-import { loadSubjects } from '@/lib/subjects'
+import { useSubjects } from '@/hooks/useSubjects'
 import { getPlanProgress } from '@/lib/planProgress'
 import {
   BREAK_MINUTES,
@@ -105,7 +105,7 @@ export function TimerPage() {
   const { sessions, allSessions, addSession } = useStudySessions()
 
   // 계획 화면에서 저장한 과목 목록을 그대로 불러옵니다. (저장된 게 없으면 가짜 데이터)
-  const [subjects] = useState<Subject[]>(loadSubjects)
+  const subjects = useSubjects()
   // 고른 과목도 저장해 둡니다. 새로고침했는데 과목만 사라지면 "공부 중인데 무슨 과목인지 모르는" 상태가 되기 때문입니다.
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(() =>
     loadData<string | null>('timer-subject', null),
@@ -236,10 +236,12 @@ export function TimerPage() {
   // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
   // 30분 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. (#234)
   // 뽀모도로 휴식 중이거나 노는 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
+  // 다만 뽀모도로 휴식은 끝나는 시각이 있어서, 휴식이 끝났는데도 안 돌아오면 그때부터 딴짓으로 기록합니다. (breakRemainingSeconds)
   const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({
     isStarted,
     isRunning,
     isResting: isBreak || isPlay,
+    breakRemainingSeconds: isBreak && !isPlay ? pomodoro.remainingSeconds : null,
     subjectId: selectedSubjectId,
     // 저절로 멈출 때는 일시정지 횟수를 올리지 않는 autoPause 를 씁니다. (횟수는 내가 직접 멈춘 것만 셉니다)
     pause: autoPause,
@@ -785,7 +787,7 @@ export function TimerPage() {
               </p>
             )}
             <Link
-              to="/planner"
+              to="/cards"
               className="text-brand inline-flex h-10 items-center self-center text-sm font-medium underline underline-offset-4"
             >
               계획 화면에서 고르기
@@ -1225,16 +1227,9 @@ function FocusModeScreen({
 const barColorStyles: Record<SubjectColor, string> = {
   red: 'bg-red-500',
   orange: 'bg-orange-500',
-  yellow: 'bg-yellow-500',
-  lime: 'bg-lime-500',
   green: 'bg-green-500',
-  teal: 'bg-teal-500',
-  sky: 'bg-sky-500',
   blue: 'bg-blue-500',
-  indigo: 'bg-indigo-500',
   purple: 'bg-purple-500',
-  pink: 'bg-pink-500',
-  slate: 'bg-slate-500',
 }
 
 // 분 단위 숫자를 '2시간 14분', '40분' 처럼 바꿔줍니다.

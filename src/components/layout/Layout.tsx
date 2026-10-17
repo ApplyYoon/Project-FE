@@ -1,9 +1,10 @@
-import { BackToRecordsLink } from '@/components/layout/BackToRecordsLink'
+import { BackToTabLink } from '@/components/layout/BackToTabLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
+import { DailyTagBar } from '@/components/layout/DailyTagBar'
 import { Header } from '@/components/layout/Header'
 import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
 import { PageBoundary } from '@/components/layout/PageBoundary'
-import { RecordsSubNav } from '@/components/layout/RecordsSubNav'
+import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
 import { useAiMessageSync } from '@/hooks/useAiMessageSync'
@@ -13,7 +14,8 @@ import { useCallReminder } from '@/hooks/useCallReminder'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { cn } from '@/lib/cn'
-import { isRecordsCardPath, isRecordsTabPath } from '@/lib/recordsMenu'
+import { needsSubjectsPath } from '@/lib/dataMode'
+import { getBackToTabLink } from '@/lib/tabMenu'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 /**
@@ -32,8 +34,8 @@ export function Layout() {
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  // 로그인 전(로그인 화면)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
-  // (헤더는 로그인 전이면 스스로 "로그인" 만 보여줍니다. Header.tsx)
+  // 로그인 전에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
+  // (로그인 화면은 Layout 밖의 PlainLayout 을 씁니다. 헤더는 로그인 전이면 스스로 "로그인" 만 보여줍니다. Header.tsx)
   const { isLoggedIn } = useAuth()
 
   // 집중 모드(#69). 켜진 동안 설정·안전 브레이크를 계속 확인해서, 필요하면 자동으로 풉니다.
@@ -41,6 +43,10 @@ export function Layout() {
   const focusAutoUnlock = useFocusModeAutoUnlock(focusMode.isOn)
   // 집중 모드 중에 타이머가 아닌 주소로 가려고 하면(뒤로 가기·주소 직접 입력 등) 해제 화면을 먼저 보여줍니다.
   const isBlockedByFocusMode = focusMode.isOn && pathname !== '/timer'
+  // 탭 아래에 묶인 화면(시험·일기 등)이면 맨 위에 "‹ 분석" · "‹ 상담" 돌아가기 링크를 둡니다. 아니면 null (lib/tabMenu.ts)
+  const backToTab = getBackToTabLink(pathname)
+  // 과목이 필요한 화면인지. 그렇다면 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만)
+  const needsSubjects = needsSubjectsPath(pathname)
 
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
@@ -48,12 +54,13 @@ export function Layout() {
       <Header />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
+        {/* 그날 처음이면 어느 화면이든 맨 위에 "오늘 컨디션 + 감정 태그" 한 줄을 띄웁니다. 화면을 막지 않습니다. (#387) */}
+        <DailyTagBar />
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
         {/* 홈에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되기 때문입니다. */}
         {pathname === '/' && <IosInstallGuide />}
-        {/* 기록 아래 화면에는 맨 위에 하위 탭 막대(기록·리포트·사용설명서)나 "‹ 기록" 돌아가기 링크를 둡니다. (#101) */}
-        {isRecordsTabPath(pathname) && <RecordsSubNav />}
-        {isRecordsCardPath(pathname) && <BackToRecordsLink />}
+        {/* 분석 탭의 하위 탭 막대(기록·리포트·사용설명서)는 AnalysisPage 가 직접 그립니다. */}
+        {backToTab && <BackToTabLink to={backToTab.to} label={backToTab.label} />}
 
         {/* 집중 모드가 자동으로 풀렸을 때(설정을 껐거나 안전 브레이크) 한 번 알려 줍니다. */}
         {focusAutoUnlock.message && (
@@ -77,7 +84,14 @@ export function Layout() {
         ) : (
           // 화면 파일을 받는 동안에는 이 본문 칸에만 스켈레톤을 보여줍니다. 헤더 · 하단 탭은 그대로입니다. (PageBoundary)
           <PageBoundary>
-            <Outlet />
+            {/* 과목이 필요한 화면은 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만. components/layout/SubjectsGate.tsx) */}
+            {needsSubjects ? (
+              <SubjectsGate>
+                <Outlet />
+              </SubjectsGate>
+            ) : (
+              <Outlet />
+            )}
           </PageBoundary>
         )}
       </main>

@@ -27,7 +27,7 @@ import {
   toDateKey,
 } from '@/lib/dailyRecords'
 import { getTodayKey, isDateKey, isMonthKey, toDayDate } from '@/lib/date'
-import { loadSubjects } from '@/lib/subjects'
+import { useSubjects } from '@/hooks/useSubjects'
 import { loadData } from '@/lib/storage'
 import { getStudyStreak, hasStudiedToday } from '@/lib/streak'
 import { thinkingHabitsQuery } from '@/lib/thinkingHabits'
@@ -86,7 +86,7 @@ export function RecordsPage() {
 
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
-  const [subjects] = useState<Subject[]>(loadSubjects)
+  const subjects = useSubjects()
 
   // 최근 날짜가 맨 앞에 오도록 날짜별로 묶습니다.
   const days = groupSessionsByDate(sessions)
@@ -125,7 +125,10 @@ export function RecordsPage() {
 
         <Card title="주간 리포트">
           <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
-          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/report')}>
+          <Button
+            className="mt-4 w-full sm:w-auto"
+            onClick={() => navigate('/analysis?tab=report')}
+          >
             주간 리포트 보기
           </Button>
         </Card>
@@ -600,7 +603,7 @@ interface StudyCalendarProps {
 function StudyCalendar({ days, subjects }: StudyCalendarProps) {
   const todayKey = getTodayKey()
 
-  // 고른 날짜와 보고 있는 달은 주소에 둡니다. (/records?date=2026-10-01 , /records?month=2026-09)
+  // 고른 날짜와 보고 있는 달은 주소에 둡니다. (/analysis?date=2026-10-01 , /analysis?month=2026-09)
   // 새로고침해도 보던 날이 그대로이고, 주소를 보내면 같은 날의 기록이 열립니다.
   // replace: 날짜를 여러 번 눌러도 뒤로 가기 한 번이면 기록 화면을 떠납니다.
   const [dateParam, setDateParam] = useQueryParam('date', todayKey, { replace: true })

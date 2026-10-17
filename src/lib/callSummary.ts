@@ -1,6 +1,6 @@
-import { formatMinutes, toDateKey } from '@/lib/dailyRecords'
+import { formatMinutes, loadStudySessions, toDateKey } from '@/lib/dailyRecords'
 import { getDaySummary } from '@/lib/daySummary'
-import { loadData } from '@/lib/storage'
+import { loadData, loadRecord } from '@/lib/storage'
 import type { CareLevel, CheckIn, Evaluation, MissReason, StudyPlan, StudySession } from '@/types'
 
 /**
@@ -135,6 +135,40 @@ function makeMissReason(checkIn: CheckIn): string | null {
 
   const note = checkIn.missReasonNote?.trim() ?? ''
   return checkIn.missReason === 'etc' && note !== '' ? `${label} (${note})` : label
+}
+
+/** 통화가 끝난 직후 결과 화면(#38)에 보여 줄 "오늘 통화 요약" 카드의 재료입니다. */
+export interface TodayCallCard {
+  /** 어제 요약 한 줄. 예: "어제 순공 3시간 10분, 계획의 80%" */
+  headline: string
+  /** 어제 계획을 못 채운 이유. 오늘 체크인에서 고르지 않았으면 null */
+  missReason: string | null
+  /** 오늘 예상 순공시간 (분). 오늘 체크인이 없으면 null */
+  expectedMinutes: number | null
+  /** 오늘의 약속 한 문장. 정하지 않았으면 null */
+  promise: string | null
+}
+
+/**
+ * 저장소에서 오늘 체크인과 공부 기록을 꺼내 "오늘 통화 요약" 카드를 만듭니다.
+ * 통화에서 정한 약속을 체크인에 저장한 "뒤에" 불러야 약속이 같이 나옵니다. (lib/callCheckIn.ts)
+ *
+ *   loadTodayCallCard('2026-10-17')
+ *   -> { headline: '어제 순공 3시간 10분, 계획의 80%', missReason: '폰·SNS', expectedMinutes: 240, promise: '만약 … → …' }
+ */
+export function loadTodayCallCard(todayKey: string): TodayCallCard {
+  const checkIn = loadCheckInsByDate()[todayKey]
+  // 계획은 { 날짜: 계획 목록 } 모양으로 저장돼 있어서 한 줄로 펼칩니다. 배열이 아닌 값(깨진 값)은 건너뜁니다.
+  const plans = Object.values(loadRecord<unknown>('plans'))
+    .filter((dayPlans): dayPlans is StudyPlan[] => Array.isArray(dayPlans))
+    .flat()
+
+  return {
+    headline: makeHeadline(dayBefore(todayKey), plans, loadStudySessions()),
+    missReason: checkIn ? makeMissReason(checkIn) : null,
+    expectedMinutes: checkIn ? checkIn.expectedMinutes : null,
+    promise: checkIn ? makePromise(checkIn) : null,
+  }
 }
 
 /**

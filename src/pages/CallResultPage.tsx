@@ -2,13 +2,21 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { ApiError } from '@/lib/api'
+import { saveCallToCheckIn } from '@/lib/callCheckIn'
 import {
   finishCall,
   readCallResultState,
   type CallConclusion,
+  type CallResultState,
   type ThinkingHabit,
 } from '@/lib/callReview'
+import { loadTodayCallCard } from '@/lib/callSummary'
+import { careThemes } from '@/lib/careTheme'
+import { cn } from '@/lib/cn'
+import { formatMinutes } from '@/lib/dailyRecords'
+import { getTodayKey } from '@/lib/date'
 import { SUPPORT_PATH, helpLines } from '@/lib/helpLines'
+import { getTodayCareLevel } from '@/lib/todayCare'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -20,6 +28,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
  *  - 대답에서 보인 생각 습관(인지편향): 이름 · 어떤 생각인지 · 근거 · 다음에 해 볼 행동
  *  - 오늘의 약속, 지난 약속을 지켰는지
  *  - 통화 요약
+ * 이 결론과 이 브라우저의 기록(어제 공부·오늘 체크인)을 합쳐 "오늘 통화 요약" 카드로 보여 주고,
+ * 약속은 오늘 체크인에 저장합니다. (#38, lib/callCheckIn.ts)
  * 위기 표현이 감지된 통화면 결론 대신 도움 안내를 먼저 보여 줍니다.
  *
  * 생각 습관의 이름은 "생각" 에 붙입니다. "너는 ~형이야" 처럼 사람에게 붙이지 않습니다.
@@ -32,7 +42,11 @@ export function CallResultPage() {
 
   // useMutation: 서버에 "통화를 마무리해 줘" 라고 보내는 요청입니다. 보내는 중·실패를 대신 관리해 줍니다. (docs/DATA-FETCHING.md 5장)
   const mutation = useMutation({
-    mutationFn: finishCall,
+    // 결론을 받으면 바로 오늘 체크인에 저장합니다. (#38) 저장했는지도 같이 돌려줘서 화면이 안내 문장을 고릅니다.
+    mutationFn: async (state: CallResultState) => {
+      const conclusion = await finishCall(state)
+      return { conclusion, isSavedToCheckIn: saveCallToCheckIn(conclusion) }
+    },
     onSuccess: () => {
       // 정리가 끝났으면 방문 기록에 남아 있는 자막을 지웁니다. (화면에 보이는 결론은 그대로입니다)
       navigate(location.pathname, { replace: true, state: null })
@@ -71,14 +85,19 @@ export function CallResultPage() {
         <FinishError error={mutation.error} onRetry={handleRetry} />
       )}
 
-      {mutation.isSuccess && <ConclusionView conclusion={mutation.data} />}
+      {mutation.isSuccess && (
+        <ConclusionView
+          conclusion={mutation.data.conclusion}
+          isSavedToCheckIn={mutation.data.isSavedToCheckIn}
+        />
+      )}
 
       {/* 모바일에서는 버튼을 위아래로, PC 에서는 나란히 놓습니다. */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button
           variant="secondary"
           className="w-full sm:w-auto"
-          onClick={() => navigate('/records')}
+          onClick={() => navigate('/analysis')}
         >
           내 기록 보기
         </Button>
@@ -137,40 +156,103 @@ function FinishError({ error, onRetry }: FinishErrorProps) {
 
 interface ConclusionViewProps {
   conclusion: CallConclusion
+  /** 통화 결과를 오늘 체크인에 저장했는지 (lib/callCheckIn.ts) */
+  isSavedToCheckIn: boolean
 }
 
 /** 오늘의 결론. 위기 표현이 감지됐으면 도움 안내만 보여 줍니다. */
-function ConclusionView({ conclusion }: ConclusionViewProps) {
+function ConclusionView({ conclusion, isSavedToCheckIn }: ConclusionViewProps) {
   if (conclusion.showHelp) return <HelpCard />
 
-  const hasPromise = conclusion.promiseIf !== null && conclusion.promiseThen !== null
   return (
     <div className="flex flex-col gap-4">
+      <SummaryCard conclusion={conclusion} isSavedToCheckIn={isSavedToCheckIn} />
       <HabitCard habit={conclusion.bias} />
+    </div>
+  )
+}
 
-      {(hasPromise || conclusion.promiseKept !== null) && (
-        <Card title="오늘의 약속">
-          {conclusion.promiseKept !== null && (
-            <p className="mb-2 text-sm break-keep text-slate-600">
-              {conclusion.promiseKept
-                ? '지난 약속은 지켰다고 했어요. 잘했어요!'
-                : '지난 약속은 이번엔 못 지켰어요. 괜찮아요, 다시 해 보면 돼요.'}
-            </p>
-          )}
-          {hasPromise && (
-            <p className="text-base break-keep text-slate-900">
-              만약 <strong>{conclusion.promiseIf}</strong> →{' '}
-              <strong>{conclusion.promiseThen}</strong>
-            </p>
-          )}
-        </Card>
-      )}
+/**
+ * "오늘 통화 요약" 카드 (#38, 시안 call-mobile.png)
+ * 어제 요약은 이 브라우저의 공부 기록으로 계산하고, 미달 원인·오늘 예상은 오늘 체크인에서 꺼냅니다.
+ * 약속은 통화에서 정한 것을 먼저 보여 주고, 없으면 체크인에 적어 둔 약속을 보여 줍니다.
+ */
+function SummaryCard({ conclusion, isSavedToCheckIn }: ConclusionViewProps) {
+  // 처음 그릴 때 한 번만 저장소에서 읽습니다. (체크인 저장이 끝난 뒤에 이 화면이 그려집니다)
+  const [card] = useState(() => loadTodayCallCard(getTodayKey()))
+  // 오늘의 관리 강도에 맞는 이름과 색입니다. (통화 수신 화면과 같은 값, lib/todayCare.ts)
+  const theme = careThemes[getTodayCareLevel()]
 
-      {conclusion.summary !== null && (
-        <Card title="통화 요약">
-          <p className="text-sm break-keep text-slate-700">{conclusion.summary}</p>
-        </Card>
+  const callPromise =
+    conclusion.promiseIf !== null && conclusion.promiseThen !== null
+      ? `만약 ${conclusion.promiseIf} → ${conclusion.promiseThen}`
+      : null
+  const promise = callPromise ?? card.promise
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-lg font-bold text-slate-900">오늘 통화 요약</h2>
+        <span
+          className={cn(
+            'shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white',
+            theme.avatarBackground,
+          )}
+        >
+          {theme.name} 모드
+        </span>
+      </div>
+
+      {/* 모바일은 이름 아래에 값, PC 는 이름 옆에 값 (시안과 같은 배치) */}
+      <dl className="mt-3 divide-y divide-slate-100">
+        <SummaryRow label="어제 요약" value={card.headline} />
+        {card.missReason !== null && <SummaryRow label="못 채운 이유" value={card.missReason} />}
+        {conclusion.promiseKept !== null && (
+          <SummaryRow label="지난 약속" value={conclusion.promiseKept ? '지켰어' : '못 지켰어'} />
+        )}
+        {/* 0분이면 formatMinutes 가 '1분 미만' 이라고 써서, 정해진 시간이 있을 때만 보여 줍니다. */}
+        {card.expectedMinutes !== null && card.expectedMinutes > 0 && (
+          <SummaryRow label="오늘 예상" value={formatMinutes(card.expectedMinutes)} />
+        )}
+        {promise !== null && <SummaryRow label="오늘의 약속" value={promise} />}
+        {conclusion.summary !== null && (
+          <SummaryRow label="AI 한마디" value={`"${conclusion.summary}"`} />
+        )}
+      </dl>
+
+      {isSavedToCheckIn ? (
+        <p className="mt-3 text-xs break-keep text-slate-500">
+          통화 내용은 오늘 체크인으로 자동 저장됐어요.
+        </p>
+      ) : (
+        <div className="mt-3">
+          <p className="text-xs break-keep text-slate-500">
+            오늘 체크인을 아직 안 해서 통화 내용을 저장하지 못했어요.
+          </p>
+          {/* 누르는 곳은 최소 40px(h-10) */}
+          <Link
+            to="/check"
+            className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
+          >
+            체크인하러 가기
+          </Link>
+        </div>
       )}
+    </Card>
+  )
+}
+
+interface SummaryRowProps {
+  label: string
+  value: string
+}
+
+/** 요약 카드의 한 줄 (이름 + 값) */
+function SummaryRow({ label, value }: SummaryRowProps) {
+  return (
+    <div className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-4">
+      <dt className="shrink-0 text-xs text-slate-500 sm:w-24 sm:text-sm">{label}</dt>
+      <dd className="text-sm font-semibold break-keep text-slate-900">{value}</dd>
     </div>
   )
 }
