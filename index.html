@@ -5,7 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Tmax IT 희망학교 프론트엔드 팀 프로젝트" />
-    <title>Project FE</title>
+    <!-- PWA: 휴대폰 홈 화면에 앱처럼 설치하기 위한 설정 (#105) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#4f46e5" />
+    <!-- 아이폰은 manifest 의 아이콘 대신 이 그림을 홈 화면 아이콘으로 씁니다. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- 홈 화면에서 열었을 때 주소창 없이 열리게 합니다. (아이폰 Safari 용) -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="STARFLOW" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>STARFLOW</title>
   </head>
   <body>
     <div id="root"></div>

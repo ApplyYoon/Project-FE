@@ -5,12 +5,12 @@ description: 작업한 브랜치를 GitHub에 올리고 PR을 만듭니다 (체�
 ## 1. 준비 상태 확인
 
 ```bash
-git symbolic-ref --short -q HEAD && git status --short && git log origin/dev..HEAD --oneline
+git symbolic-ref --short -q HEAD && git status --short && git log origin/develop..HEAD --oneline
 ```
 
-- `main` / `dev` 브랜치면 중단하고 `/start` 를 안내합니다.
-- **PR 의 대상(base)은 `main` 이 아니라 `dev` 입니다.**
-  (`dev → main` PR 은 배포 시점에 사람이 직접 엽니다. AI 가 먼저 만들지 마세요.)
+- `main` / `develop` 브랜치면 중단하고 `/start` 를 안내합니다.
+- **PR 의 대상(base)은 `main` 이 아니라 `develop` 입니다.**
+  (`develop → main` PR 은 배포 시점에 사람이 직접 엽니다. AI 가 먼저 만들지 마세요.)
 - 커밋 안 된 변경이 남아 있으면 `/save` 를 먼저 하자고 안내합니다.
 - 커밋이 하나도 없으면 "아직 저장한 작업이 없어요" 라고 알립니다.
 
@@ -27,11 +27,11 @@ pnpm run build
 
 그리고 아래도 직접 확인합니다.
 
-| 항목        | 확인 방법                                                            |
-| ----------- | -------------------------------------------------------------------- |
-| 디버깅 흔적 | `git diff origin/dev..HEAD \| grep -n 'console\.log\|debugger'`      |
-| 비밀키      | `git diff origin/dev..HEAD \| grep -iE 'api[_-]?key\|secret\|token'` |
-| 커밋 컨벤션 | `git log origin/dev..HEAD --format=%s` 가 `타입: 설명` 형식인지      |
+| 항목        | 확인 방법                                                                |
+| ----------- | ------------------------------------------------------------------------ |
+| 디버깅 흔적 | `git diff origin/develop..HEAD \| grep -n 'console\.log\|debugger'`      |
+| 비밀키      | `git diff origin/develop..HEAD \| grep -iE 'api[_-]?key\|secret\|token'` |
+| 커밋 컨벤션 | `git log origin/develop..HEAD --format=%s` 가 `타입: 설명` 형식인지      |
 
 - **실패한 게 있으면 PR을 올리지 말고 먼저 고칩니다.**
 - 고친 뒤에는 `/save` 로 다시 커밋하고 이 단계를 처음부터 다시 합니다.
@@ -46,8 +46,8 @@ git push -u origin <현재 브랜치>
 
 `.github/PULL_REQUEST_TEMPLATE.md` 를 읽고 다음과 같이 채웁니다.
 
-- **무엇을 했나요 / 왜 이렇게 했나요** — `git log origin/dev..HEAD` 와 `git diff origin/dev..HEAD` 를 읽고 직접 씁니다.
-- **바뀐 파일** — `git diff --name-only origin/dev..HEAD` 결과에 각각 한 줄 설명을 붙입니다.
+- **무엇을 했나요 / 왜 이렇게 했나요** — `git log origin/develop..HEAD` 와 `git diff origin/develop..HEAD` 를 읽고 직접 씁니다.
+- **바뀐 파일** — `git diff --name-only origin/develop..HEAD` 결과에 각각 한 줄 설명을 붙입니다.
 - **✅ 자동 확인** — 2번에서 **실제로 통과한 항목만** `[x]` 로 바꿉니다.
   안 돌려봤거나 실패한 항목은 `[ ]` 로 남기고, 본문에 왜 그런지 한 줄 적습니다.
   **돌려보지 않은 것을 체크하지 마세요. 그게 가장 나쁜 행동입니다.**
@@ -65,7 +65,7 @@ git push -u origin <현재 브랜치>
 `gh` CLI 또는 GitHub MCP 중 되는 것을 씁니다. 제목은 대표 커밋과 같은 형식 — `feat: 로그인 폼 추가`
 
 ```bash
-gh pr create --base dev --title "feat: ..." --body "$(cat <<'BODY'
+gh pr create --base develop --title "feat: ..." --body "$(cat <<'BODY'
 ...채운 템플릿...
 BODY
 )"
@@ -76,11 +76,11 @@ BODY
 
 ## 6. 리뷰어
 
-정해지지 않았다면 사용자에게 물어보세요.
+리뷰는 **선택**입니다. 사용자에게 한 번만 물어보세요.
 
-> "누구한테 검토 부탁할까요? (팀원 GitHub 아이디)"
+> "리뷰받고 싶은 팀원 있어요? 없으면 건너뛸게요. (팀원 GitHub 아이디)"
 
-답을 들으면 `gh pr edit <번호> --add-reviewer <아이디>`
+아이디를 말하면 `gh pr edit <번호> --add-reviewer <아이디>`, 없다고 하면 그대로 넘어갑니다.
 
 ## 7. 보고 — 반드시 링크와 함께
 
@@ -90,6 +90,6 @@ BODY
 > 자동 검사: typecheck ✅ lint ✅ format ✅ build ✅ (체크리스트에 반영했어요)
 > 남은 것: 모바일 화면 직접 확인 + 스크린샷 붙이기 → PR 페이지에서 체크해 주세요
 >
-> 팀원이 승인하면 GitHub 웹에서 Merge 버튼을 눌러주세요.
+> 화면 확인과 스크린샷이 끝나면 GitHub 웹에서 직접 Merge 버튼을 눌러주세요. (리뷰를 부탁했다면 답을 받은 뒤에)
 
 **merge 는 절대 직접 하지 마세요.**

@@ -78,25 +78,25 @@ git symbolic-ref --short -q HEAD && git status --short
 
 이슈 번호를 이미 알고 있다면 후보에 번호를 넣어 제시하세요. (`feat/12-login-page`)
 
-## 3. 최신 dev 에서 브랜치 만들기
+## 3. 최신 develop 에서 브랜치 만들기
 
-작업 브랜치는 **`main` 이 아니라 `dev` 에서** 땁니다.
-(브랜치 전략: `작업 브랜치 → dev → main`)
+작업 브랜치는 **`main` 이 아니라 `develop` 에서** 땁니다.
+(브랜치 전략: `작업 브랜치 → develop → main`)
 
 ```bash
-git switch dev
-git pull origin dev
+git switch develop
+git pull origin develop
 git switch -c <고른-이름>
 ```
 
-`dev` 가 없다는 에러가 나면 원격에서 받아옵니다.
+`develop` 이 없다는 에러가 나면 원격에서 받아옵니다.
 
 ```bash
-git fetch origin && git switch -c dev origin/dev
+git fetch origin && git switch -c develop origin/develop
 ```
 
-그래도 없으면 아직 dev 가 안 만들어진 것입니다. 사용자에게 알리고,
-허락을 받은 뒤 `main` 에서 dev 를 만드세요. (`git switch -c dev main`)
+그래도 없으면 아직 develop 이 안 만들어진 것입니다. 사용자에게 알리고,
+허락을 받은 뒤 `main` 에서 develop 을 만드세요. (`git switch -c develop main`)
 
 `git pull` 이 실패해도(인터넷/권한) 그대로 진행하되 사용자에게 알려주세요.
 

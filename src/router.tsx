@@ -1,21 +1,169 @@
 import { Layout } from '@/components/layout/Layout'
+import { RequireAuth } from '@/components/layout/RequireAuth'
+import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
+import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
+import { AccountPage } from '@/pages/AccountPage'
+import { CallActivePage } from '@/pages/CallActivePage'
+import { CallPage } from '@/pages/CallPage'
+import { CallResultPage } from '@/pages/CallResultPage'
+import { CheckPage } from '@/pages/CheckPage'
+import { DiaryPage } from '@/pages/DiaryPage'
+import { ErrorPage } from '@/pages/ErrorPage'
+import { ExamResultPage } from '@/pages/ExamResultPage'
+import { ExamsPage } from '@/pages/ExamsPage'
 import { HomePage } from '@/pages/HomePage'
+import { LoginPage } from '@/pages/LoginPage'
+import { ManualPage } from '@/pages/ManualPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { createBrowserRouter } from 'react-router-dom'
+import { NotificationsPage } from '@/pages/NotificationsPage'
+import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
+import { OnboardingPage } from '@/pages/OnboardingPage'
+import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
+import { OnboardingThinkingPage } from '@/pages/OnboardingThinkingPage'
+import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
+import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
+import { PlannerPage } from '@/pages/PlannerPage'
+import { RecordsPage } from '@/pages/RecordsPage'
+import { ReflectionPage } from '@/pages/ReflectionPage'
+import { ReportPage } from '@/pages/ReportPage'
+import { SettingsPage } from '@/pages/SettingsPage'
+import { SignupPage } from '@/pages/SignupPage'
+import { SuggestionsPage } from '@/pages/SuggestionsPage'
+import { SupportPage } from '@/pages/SupportPage'
+import { TimerPage } from '@/pages/TimerPage'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 /**
  * 페이지(주소)를 추가하려면 children 배열에 한 줄 추가하면 됩니다.
  *   { path: 'todo', element: <TodoPage /> }  ->  http://localhost:5173/todo
+ *
+ * 로그인 안 한 사람은 RequireAuth 가 /login 으로 보냅니다. 새 페이지는 따로 할 일 없이 자동으로 막힙니다.
+ * 로그인 없이 열려야 하는 주소(로그인·회원가입·도움 연결 안내)만 lib/authRedirect.ts 의 PUBLIC_PATHS 에 적어 둡니다.
  */
+// errorElement: 그 주소의 화면을 그리다가 에러가 나면 대신 보여줄 화면입니다. (저장된 값이 깨져 있을 때 등)
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Layout />,
+    errorElement: <ErrorPage />,
+    // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다. (login 은 PUBLIC_PATHS 에 있어서 열려 있습니다)
+    // 로그인한 사람은 RequireDailyCheckIn 이 한 번 더 확인합니다. 그날 처음이면 기분 1탭 체크인부터 합니다. (#242)
+    element: (
+      <RequireAuth>
+        <RequireDailyCheckIn>
+          <Layout />
+        </RequireDailyCheckIn>
+      </RequireAuth>
+    ),
     children: [
       { index: true, element: <HomePage /> },
       { path: 'about', element: <AboutPage /> },
+      { path: 'planner', element: <PlannerPage /> },
+      { path: 'timer', element: <TimerPage /> },
+      { path: 'check', element: <CheckPage /> },
+      { path: 'diary', element: <DiaryPage /> },
+      { path: 'diary/reflection', element: <ReflectionPage /> },
+      { path: 'exams', element: <ExamsPage /> },
+      { path: 'phone-focus', element: <PhoneFocusGuidePage /> },
+      { path: 'exams/:examId/result', element: <ExamResultPage /> },
+      { path: 'call/result', element: <CallResultPage /> },
+      { path: 'records', element: <RecordsPage /> },
+      { path: 'report', element: <ReportPage /> },
+      { path: 'manual', element: <ManualPage /> },
+      { path: 'suggestions', element: <SuggestionsPage /> },
+      { path: 'settings', element: <SettingsPage /> },
+      // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
+      { path: 'settings/account', element: <AccountPage /> },
+      { path: 'notifications', element: <NotificationsPage /> },
+      // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
+      { path: 'messages', element: <Navigate to="/notifications" replace /> },
+      { path: 'login', element: <LoginPage /> },
+      // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
   },
+  // Layout 밖의 화면은 하나씩 RequireAuth 로 감쌉니다.
+  // 전화 화면은 헤더·하단 탭 없이 화면 전체를 쓰므로 Layout 밖에 둡니다.
+  {
+    path: '/call',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <CallPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/call/active',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <CallActivePage />
+      </RequireAuth>
+    ),
+  },
+  // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
+  {
+    path: '/onboarding',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingPage />
+      </RequireAuth>
+    ),
+  },
+  // 설정의 "내 정보 더 알려주기". 같은 설문 화면으로 아직 안 답한 질문만 이어서 묻습니다. (#239)
+  {
+    path: '/onboarding/more',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingPage mode="more" />
+      </RequireAuth>
+    ),
+  },
+  // 생각 습관 테스트. 온보딩 질문 다음, 처음 계획 앞에 나옵니다. 안 했으면 RequireAuth 가 여기로 보냅니다. (lib/thinkingTest.ts)
+  {
+    path: THINKING_TEST_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingThinkingPage />
+      </RequireAuth>
+    ),
+  },
+  // 처음 계획 세우기. 온보딩 질문이 끝난 뒤 "준비 끝" 앞에 나옵니다. (#240)
+  {
+    path: '/onboarding/plan',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingPlanPage />
+      </RequireAuth>
+    ),
+  },
+  // 처음의 나에게 한마디(목소리·글) 남기기. 처음 계획 다음, "준비 끝" 앞에 나옵니다. (#241)
+  {
+    path: '/onboarding/voice',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingVoicePage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/onboarding/done',
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingDonePage />
+      </RequireAuth>
+    ),
+  },
+  // 가입 화면은 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
+  { path: '/signup', element: <SignupPage />, errorElement: <ErrorPage /> },
+  // 도움 연결 안내는 헤더·하단 탭 없이 화면 전체를 쓰고, 힘든 순간에 로그인 때문에 막히면 안 돼서
+  // RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
+  { path: '/support', element: <SupportPage />, errorElement: <ErrorPage /> },
 ])

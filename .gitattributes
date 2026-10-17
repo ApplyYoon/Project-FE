@@ -1,0 +1,11 @@
+# 줄바꿈 문자를 모든 컴퓨터에서 LF 로 맞춥니다.
+# Windows 는 기본이 CRLF 라서, 이 설정이 없으면 Prettier 검사(format:check)가 모든 파일을 실패로 봅니다.
+* text=auto eol=lf
+
+# 그림 파일은 글자가 아니므로 줄바꿈을 건드리지 않습니다.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary

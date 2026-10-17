@@ -5,6 +5,15 @@ description: 이 프로젝트에 새 화면(페이지)을 추가할 때 사용�
 
 # 새 페이지 추가하기
 
+## 0. 시안 먼저 보기
+
+[`docs/design/README.md`](../../../docs/design/README.md) 에서 만들 화면을 찾아,
+데스크톱·모바일 그림(`docs/design/screens/<화면>-desktop.png`, `<화면>-mobile.png`)을 **둘 다 Read 로 열어** 봅니다.
+
+- 시안의 카드 순서·문구·버튼 배치를 따릅니다. 그림 속 숫자는 예시라서 가짜 데이터(`src/lib/mock.ts`)로 바꿉니다.
+- 시안이 없는 화면은 README 의 "시안이 없는 화면" 표에서 참고할 화면을 찾습니다.
+- 시안과 이 스킬·CLAUDE.md 규칙이 부딪히면 **규칙이 이깁니다.** (예: 버튼은 최소 `h-10`)
+
 ## 1. 무엇을 만들지 확인
 
 사용자에게 한 번에 하나씩만 물어보세요. (이미 답이 있으면 묻지 않습니다)
@@ -44,6 +53,12 @@ export function TodoPage() {
 ```tsx
 { path: 'todo', element: <TodoPage /> },
 ```
+
+로그인 안 한 사람은 `RequireAuth` 가 알아서 `/login` 으로 보내므로, **새 페이지는 따로 할 일이 없습니다.** 자동으로 막힙니다.
+로그인·회원가입·SNS 콜백처럼 **로그인 없이 열려야 하는 화면**만 `src/lib/authRedirect.ts` 의 `PUBLIC_PATHS` 에 주소를 적습니다.
+헷갈리면 사용자에게 "로그인 안 한 사람도 봐야 하는 화면인가요?" 라고 한 번 물어보세요.
+
+Layout 밖에 두는 화면(전화·온보딩처럼 헤더·탭이 없는 화면)은 `element` 를 `<RequireAuth>…</RequireAuth>` 로 감싸 주세요.
 
 ⚠️ `{ path: '*', element: <NotFoundPage /> }` 는 **항상 맨 마지막**에 있어야 합니다.
 그 뒤에 추가하면 새 페이지가 404로 빠집니다.

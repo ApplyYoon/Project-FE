@@ -62,8 +62,13 @@ src/pages/TodoPage.tsx   →   http://localhost:5173/todo
 ```tsx
 // src/router.tsx
 { path: 'todo', element: <TodoPage /> },
+// ...
 { path: '*', element: <NotFoundPage /> },   // ← 이건 항상 맨 마지막!
 ```
+
+로그인 안 한 사람이 들어오면 `RequireAuth` 가 `/login` 으로 보내고, 로그인하면 원래 가려던 주소로 돌아옵니다.
+그래서 새 페이지는 따로 할 일이 없습니다. 자동으로 막힙니다.
+로그인·회원가입처럼 **로그인 없이 열려야 하는 화면**만 `src/lib/authRedirect.ts` 의 `PUBLIC_PATHS` 에 주소를 적습니다.
 
 ### 🧩 `components/ui/` — 어디서나 쓰는 조각
 

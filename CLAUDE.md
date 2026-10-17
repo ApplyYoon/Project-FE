@@ -21,17 +21,19 @@ Claude Code(및 다른 AI 에이전트)가 이 저장소에서 작업할 때 **�
 
 ## 1. 기술 스택 (임의로 바꾸지 말 것)
 
-| 구분          | 사용 기술                         |
-| ------------- | --------------------------------- |
-| 프레임워크    | React 19 + TypeScript             |
-| 빌드 도구     | Vite 8                            |
-| 스타일        | Tailwind CSS v4 (+ `cn()` 유틸)   |
-| 라우팅        | React Router v7                   |
-| 린트/포맷     | oxlint + Prettier                 |
-| 패키지 매니저 | **pnpm** — `npm`/`yarn` 사용 금지 |
+| 구분          | 사용 기술                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| 프레임워크    | React 19 + TypeScript                                                                               |
+| 빌드 도구     | Vite 8                                                                                              |
+| 스타일        | Tailwind CSS v4 (+ `cn()` 유틸)                                                                     |
+| 라우팅        | React Router v7                                                                                     |
+| 서버 데이터   | TanStack Query v5 (`queryOptions` + `useSuspenseQuery`) + Suspense(스켈레톤) + react-error-boundary |
+| 린트/포맷     | oxlint + Prettier                                                                                   |
+| 패키지 매니저 | **pnpm** — `npm`/`yarn` 사용 금지                                                                   |
 
 **새 라이브러리 설치는 반드시 허락을 받고 하세요.** "이거 쓰면 편한데 설치할까요?" 라고 먼저 묻습니다.
-특히 상태관리(zustand/redux), 데이터패칭(react-query), UI킷(MUI 등)은 팀이 합의해야 합니다.
+특히 상태관리(zustand/redux), UI킷(MUI 등)은 팀이 합의해야 합니다.
+(데이터패칭은 2026-10-10 에 TanStack Query 로 정했습니다. 다른 데이터패칭 라이브러리를 더하지 않습니다.)
 **라이브러리를 늘리는 것보다, 지금 있는 것으로 만드는 법을 알려주는 게 이 프로젝트의 목적입니다.**
 
 ---
@@ -67,10 +69,12 @@ src/
 - `className` 을 합칠 때는 **항상 `cn()`** (`@/lib/cn`). 문자열 템플릿으로 붙이면 Tailwind 충돌이 안 잡힙니다.
 - `cn()` 에서 **`className` props 는 맨 마지막**. 그래야 쓰는 쪽에서 덮어쓸 수 있습니다.
 - import 는 **`@/` 별칭**. `../../` 금지.
+- **탭·날짜·단계처럼 "지금 무엇을 보고 있는지" 는 주소에 둔다.** `useState` 대신 `useQueryParam`(`@/hooks/useQueryParam`)을 쓰면 새로고침해도 유지되고 뒤로 가기가 자연스럽습니다. 주소에서 받은 값은 쓰기 전에 꼭 확인하고, 비밀번호·이름 같은 개인 내용은 주소에 담지 않습니다.
 - 컴포넌트·페이지는 **PascalCase + named export**. 훅·유틸은 **camelCase**.
 - props 타입은 `interface XxxProps` 로 명시.
 - 이벤트 핸들러는 `handleXxx`, props 로 받는 함수는 `onXxx`.
 - 조금이라도 헷갈릴 코드에는 **한국어 주석 한 줄**.
+- **서버에서 받아오는 데이터는 TanStack Query 로.** 쿼리 설정은 `lib/` 에 `queryOptions` 로 두고, 화면에서는 `useSuspenseQuery` 로 받아온 뒤 바깥을 `AsyncBoundary`(스켈레톤 + 실패 안내)로 감쌉니다. `useEffect` 안에서 `fetch` 하지 않습니다. → [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)
 
 ### 금지
 
@@ -96,6 +100,10 @@ src/
 <nav className="hidden sm:flex">                     {/* PC 전용 */}
 <button className="sm:hidden">                       {/* 모바일 전용 */}
 ```
+
+**화면을 만들기 전에 시안부터 봅니다.** [docs/design/README.md](./docs/design/README.md) 에서 그 화면을 찾아
+데스크톱·모바일 그림(`docs/design/screens/*.png`)을 **둘 다 Read 로 열어** 보고 만드세요.
+시안은 모양 참고용이고 이 문서의 규칙이 우선입니다. 시안이 없는 화면은 README 의 "시안이 없는 화면" 표를 따릅니다.
 
 화면을 만들거나 고친 뒤에는 **항상** 아래를 확인하고 보고하세요.
 
@@ -131,23 +139,23 @@ pnpm run build       # 빌드 성공
 
 ```
 feat/login-form ─┐
-fix/header-bug  ─┼─▶  dev  ─▶  main
-chore/prettier  ─┘   (개발 통합)   (최종본)
+fix/header-bug  ─┼─▶  develop  ─▶  main
+chore/prettier  ─┘   (개발 통합)       (최종본)
 ```
 
 | 브랜치        | 무엇                          | 직접 커밋 |
 | ------------- | ----------------------------- | --------- |
 | `main`        | 최종본. 안정적으로 도는 코드  | ❌ 금지   |
-| `dev`         | 개발 통합. 작업물이 모이는 곳 | ❌ 금지   |
+| `develop`     | 개발 통합. 작업물이 모이는 곳 | ❌ 금지   |
 | `feat/...` 등 | 실제로 작업하는 브랜치        | ✅        |
 
-- 작업 브랜치는 **항상 `dev` 에서** 딴다. (`main` 이 아니다)
-- 작업이 끝나면 **`dev` 로 PR** 을 올린다.
-- `dev → main` PR 은 **사람이** 연다. AI 가 먼저 만들지 않는다.
+- 작업 브랜치는 **항상 `develop` 에서** 딴다. (`main` 이 아니다)
+- 작업이 끝나면 **`develop` 으로 PR** 을 올린다.
+- `develop → main` PR 은 **사람이** 연다. AI 가 먼저 만들지 않는다.
 
 ### 6-1. 브랜치를 먼저 만든다 — 이름은 **물어본다**
 
-**`main` 과 `dev` 에 직접 커밋하는 것은 절대 금지입니다.**
+**`main` 과 `develop` 에 직접 커밋하는 것은 절대 금지입니다.**
 (`.claude/hooks/guard-git.sh` 가 실제로 막습니다. 차단당하면 우회하지 말고 규칙을 따르세요.)
 작업 요청을 받으면 코드를 건드리기 **전에** 브랜치부터 만듭니다.
 
@@ -172,10 +180,10 @@ chore/prettier  ─┘   (개발 통합)   (최종본)
 한국어 → 영어 사전과 후보 만드는 요령: `.claude/commands/start.md`
 
 ```bash
-git switch dev && git pull origin dev && git switch -c feat/12-login-form
+git switch develop && git pull origin develop && git switch -c feat/12-login-form
 ```
 
-`dev` 가 없다는 에러가 나면: `git fetch origin && git switch -c dev origin/dev`
+`develop` 이 없다는 에러가 나면: `git fetch origin && git switch -c develop origin/develop`
 
 ### 6-2. 커밋 메시지는 **당신이 쓴다**
 
@@ -210,22 +218,22 @@ Refs: #12
 
 ### 6-3. Pull Request
 
-- **base 브랜치는 `dev`** — `gh pr create --base dev ...`
+- **base 브랜치는 `develop`** — `gh pr create --base develop ...`
 - 제목은 커밋과 같은 형식: `feat: 로그인 폼 추가`
 - 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 를 **실제 내용으로** 채웁니다. 빈칸 금지.
 - **체크리스트는 당신이 직접 검증해서 채웁니다.** 사용자에게 확인했냐고 묻지 마세요.
   단, **돌려보지 않은 항목을 체크하는 것은 절대 금지**입니다. 특히 "눈으로 확인" 항목은
   사람이 브라우저로 봐야 하므로 기본적으로 비워두고 사용자에게 안내합니다.
 - 관련 이슈는 `Closes #12` 로 연결.
-- 리뷰어 1명 이상 지정. 승인 전 merge 금지.
+- 리뷰는 선택. 사용자가 원할 때만 리뷰어를 지정합니다. merge 는 PR 을 올린 사람이 직접 확인한 뒤 GitHub 웹에서 합니다.
 - PR 하나는 **파일 10개 / 300줄 이내** 목표.
 
 ### 6-4. 절대 혼자 하지 않는 것
 
 - `git push --force`, `git reset --hard`, `git rebase`
 - 브랜치 삭제, PR merge / close
-- `main` / `dev` 로의 직접 push
-- `dev → main` PR 생성·merge (사람이 합니다)
+- `main` / `develop` 으로의 직접 push
+- `develop → main` PR 생성·merge (사람이 합니다)
 - 이미 올라간 커밋 수정 (`commit --amend`)
 - 파일·폴더 삭제, 의존성 제거
 - 저장소 설정 변경(공개 범위, 협업자 등)
@@ -236,7 +244,7 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 `reflog expire`, `gc --prune`, `remote set-url`, `rm -rf .git` 등입니다.
 
 여기에 더해 `.husky/` 의 git 훅이 커밋·푸시 시점에 한 번 더 검사합니다.
-(main·dev 직접 커밋/푸시, 커밋 메시지 형식, 강제 푸시, 브랜치 삭제 푸시)
+(main·develop 직접 커밋/푸시, 커밋 메시지 형식, 강제 푸시, 브랜치 삭제 푸시)
 
 **차단당하면 우회하지 마세요.** 다른 명령으로 같은 결과를 내려는 시도도 금지입니다.
 특히 `--no-verify` 로 husky 를 건너뛰는 것은 **절대 금지**입니다.
@@ -245,12 +253,12 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 ### 6-5. 작업 흐름 (요청 하나 = 이 순서)
 
 1. **확인** — `git status` 로 현재 브랜치와 수정 파일 확인. 남의 작업이 섞여 있으면 멈추고 묻는다.
-2. **브랜치** — 이름 후보를 제시해 고르게 하고, 최신 **`dev`** 에서 새 브랜치를 판다.
+2. **브랜치** — 이름 후보를 제시해 고르게 하고, 최신 **`develop`** 에서 새 브랜치를 판다.
 3. **작업** — 작은 단위로. 반응형 규칙을 지킨다.
 4. **검증** — `typecheck` → `lint` → `format` → `build` 전부 통과.
 5. **커밋** — 컨벤션대로 직접 작성. 여러 일을 했으면 커밋을 나눈다.
 6. **푸시** — `git push -u origin <브랜치명>`
-7. **PR** — **base 는 `dev`.** 템플릿을 채우고 체크리스트를 검증해서 표시. 이슈 연결, 리뷰어 지정.
+7. **PR** — **base 는 `develop`.** 템플릿을 채우고 체크리스트를 검증해서 표시. 이슈 연결, 리뷰어는 원할 때만 지정.
 8. **보고** — **PR 링크 + 바꾼 것 3줄 요약.**
 
 **merge 는 사람이 합니다. AI는 merge 하지 않습니다.**
@@ -260,7 +268,7 @@ force push(`--force`/`-f`/`+refspec`), `--mirror`, `--delete`, `--prune`,
 MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 똑같습니다.**
 
 - 브랜치 이름은 물어보고, 커밋 메시지는 컨벤션대로 직접 씁니다.
-- MCP 로 파일을 직접 고쳐 `main`·`dev` 에 바로 올리는 기능은 쓰지 마세요.
+- MCP 로 파일을 직접 고쳐 `main`·`develop` 에 바로 올리는 기능은 쓰지 마세요.
   항상 로컬 브랜치 → 커밋 → 푸시 → PR 순서를 따릅니다.
 
 ---
@@ -278,15 +286,18 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 
 ## 8. 참고 문서
 
-| 문서                                                   | 내용                      |
-| ------------------------------------------------------ | ------------------------- |
-| [README.md](./README.md)                               | 설치·실행 방법, 명령어    |
-| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약            |
-| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표      |
-| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트 |
-| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문           |
-| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법    |
-| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러            |
+| 문서                                                   | 내용                                  |
+| ------------------------------------------------------ | ------------------------------------- |
+| [README.md](./README.md)                               | 설치·실행 방법, 명령어                |
+| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약                        |
+| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표                  |
+| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트             |
+| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문                       |
+| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법                |
+| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                        |
+| [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)       | 서버 데이터 받아오기 (TanStack Query) |
+| [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림)      |
+| [docs/AI-FEATURES.md](./docs/AI-FEATURES.md)           | 앱 안의 AI(GPT) 기능 — 원칙·지금·다음 |
 
 스킬(`.claude/skills/`): `github-flow` · `new-page` · `new-component` · `responsive-ui`
 명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/check` `/sync` `/run` `/fix`
