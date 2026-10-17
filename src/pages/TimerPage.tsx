@@ -785,7 +785,7 @@ export function TimerPage() {
               </p>
             )}
             <Link
-              to="/planner"
+              to="/cards"
               className="text-brand inline-flex h-10 items-center self-center text-sm font-medium underline underline-offset-4"
             >
               계획 화면에서 고르기

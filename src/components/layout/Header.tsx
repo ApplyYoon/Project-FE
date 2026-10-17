@@ -62,7 +62,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
                   // 메뉴를 누르면 맨 위로 올립니다. 지금 보고 있는 메뉴를 다시 눌러도 올라갑니다. (하단 탭과 같은 규칙)
                   onClick={scrollToTop}
                   className={({ isActive }) =>
-                    // 기록 아래 화면(리포트·사용설명서 등)에서도 "기록" 이 선택된 모양이 되게 합니다.
+                    // 분석·상담 아래 화면(시험·일기 등)에서도 그 탭이 선택된 모양이 되게 합니다.
                     navLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
                   }
                 >

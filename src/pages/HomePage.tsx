@@ -168,7 +168,7 @@ export function HomePage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex items-end justify-between gap-3">
+      <section className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-slate-500">
             {formatToday(toDayDate(new Date()))}
@@ -179,10 +179,21 @@ export function HomePage() {
             오늘도 같이 시작해 볼까?
           </h1>
         </div>
-        {/* 체크인은 꼭 해야 하는 일이 아니라서, 큰 카드 대신 작은 글자로 둡니다. (#243) */}
-        <Link to="/check" className={cn(textLinkClass, 'shrink-0 whitespace-nowrap')}>
-          자세히 체크인
-        </Link>
+        {/* 오른쪽 위에 설정 아이콘, 그 아래에 체크인 글자 링크를 둡니다. */}
+        <div className="flex shrink-0 flex-col items-end">
+          {/* 설정은 아래 탭에서 빠지고 여기로 옵니다. (기획서 3장, #386) 누르기 쉽게 44×44px(h-11 w-11) */}
+          <Link
+            to="/settings"
+            aria-label="설정"
+            className="-mt-2 -mr-2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+          >
+            <SettingsIcon />
+          </Link>
+          {/* 체크인은 꼭 해야 하는 일이 아니라서, 큰 카드 대신 작은 글자로 둡니다. (#243) */}
+          <Link to="/check" className={cn(textLinkClass, 'whitespace-nowrap')}>
+            자세히 체크인
+          </Link>
+        </div>
       </section>
 
       {/* 열자마자 공부를 시작할 수 있게 "지금 할 일" 을 맨 위에 둡니다. PC 에서는 "처음의 나" 와 나란히 놓입니다. (#243) */}
@@ -214,7 +225,10 @@ export function HomePage() {
           sessions={sessions}
           initialPlan={initialPlan}
           action={
-            <Link to="/report" className={cn(textLinkClass, 'shrink-0 whitespace-nowrap')}>
+            <Link
+              to="/analysis?tab=report"
+              className={cn(textLinkClass, 'shrink-0 whitespace-nowrap')}
+            >
               리포트에서 자세히
             </Link>
           }
@@ -241,7 +255,7 @@ export function HomePage() {
                 <p className="text-sm text-slate-600">
                   {FIRST_REPORT_DAYS}일치 기록이 다 쌓였어요!
                 </p>
-                <Button onClick={() => navigate('/report')}>첫 리포트 보기</Button>
+                <Button onClick={() => navigate('/analysis?tab=report')}>첫 리포트 보기</Button>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -412,7 +426,7 @@ function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: N
           ? '더 하고 싶으면 계획을 하나 더 세워 보세요.'
           : '할 일을 하나만 정해도 여기서 바로 시작할 수 있어요.'}
       </p>
-      <Link to="/planner" className={cn(bigLinkClass, 'mt-4')}>
+      <Link to="/cards" className={cn(bigLinkClass, 'mt-4')}>
         {hasPlansToday ? '계획 더 세우기' : '오늘 계획 세우기'}
       </Link>
       <Link to="/timer" className={cn(textLinkClass, 'mt-1')}>
@@ -698,7 +712,7 @@ function TodayCard({ plans, subjects, sessions }: TodayCardProps) {
         </>
       )}
 
-      <Link to="/planner" className={cn(textLinkClass, 'mt-2')}>
+      <Link to="/cards" className={cn(textLinkClass, 'mt-2')}>
         계획 화면에서 체크·수정하기
       </Link>
     </Card>
@@ -949,5 +963,24 @@ function YesterdayAiLine({ dateKey, fallbackSentence, request }: YesterdayAiLine
         <span className="break-keep">{fallbackSentence}</span>
       </p>
     </div>
+  )
+}
+
+/* 톱니바퀴 모양 설정 아이콘 (라이브러리 없이 SVG 를 직접 그립니다) */
+function SettingsIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
   )
 }

@@ -1,7 +1,9 @@
 import { Layout } from '@/components/layout/Layout'
+import { RedirectWithQuery } from '@/components/layout/RedirectWithQuery'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
+import { ANALYSIS_PATH } from '@/lib/tabMenu'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
@@ -20,6 +22,9 @@ const AboutPage = lazy(() => import('@/pages/AboutPage').then((m) => ({ default:
 const AccountPage = lazy(() =>
   import('@/pages/AccountPage').then((m) => ({ default: m.AccountPage })),
 )
+const AnalysisPage = lazy(() =>
+  import('@/pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })),
+)
 const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
 )
@@ -27,7 +32,11 @@ const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
+const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
 const CheckPage = lazy(() => import('@/pages/CheckPage').then((m) => ({ default: m.CheckPage })))
+const CounselPage = lazy(() =>
+  import('@/pages/CounselPage').then((m) => ({ default: m.CounselPage })),
+)
 const DiaryPage = lazy(() => import('@/pages/DiaryPage').then((m) => ({ default: m.DiaryPage })))
 const ExamResultPage = lazy(() =>
   import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
@@ -35,7 +44,6 @@ const ExamResultPage = lazy(() =>
 const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
 const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
-const ManualPage = lazy(() => import('@/pages/ManualPage').then((m) => ({ default: m.ManualPage })))
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 )
@@ -66,16 +74,9 @@ const OnboardingVoicePage = lazy(() =>
 const PhoneFocusGuidePage = lazy(() =>
   import('@/pages/PhoneFocusGuidePage').then((m) => ({ default: m.PhoneFocusGuidePage })),
 )
-const PlannerPage = lazy(() =>
-  import('@/pages/PlannerPage').then((m) => ({ default: m.PlannerPage })),
-)
-const RecordsPage = lazy(() =>
-  import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
-)
 const ReflectionPage = lazy(() =>
   import('@/pages/ReflectionPage').then((m) => ({ default: m.ReflectionPage })),
 )
-const ReportPage = lazy(() => import('@/pages/ReportPage').then((m) => ({ default: m.ReportPage })))
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -113,9 +114,13 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'about', element: <AboutPage /> },
-      { path: 'planner', element: <PlannerPage /> },
+      // 아래 탭 5개: 홈 · 카드 · 타이머 · 상담 · 분석 (기획서 3장, #386)
+      { path: 'cards', element: <CardsPage /> },
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
       { path: 'timer', element: <TimerRoute /> },
+      { path: 'counsel', element: <CounselPage /> },
+      // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
+      { path: 'analysis', element: <AnalysisPage /> },
       { path: 'check', element: <CheckPage /> },
       { path: 'diary', element: <DiaryPage /> },
       { path: 'diary/reflection', element: <ReflectionPage /> },
@@ -123,9 +128,6 @@ export const router = createBrowserRouter([
       { path: 'phone-focus', element: <PhoneFocusGuidePage /> },
       { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
-      { path: 'records', element: <RecordsPage /> },
-      { path: 'report', element: <ReportPage /> },
-      { path: 'manual', element: <ManualPage /> },
       { path: 'suggestions', element: <SuggestionsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
@@ -133,6 +135,11 @@ export const router = createBrowserRouter([
       { path: 'notifications', element: <NotificationsPage /> },
       // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
       { path: 'messages', element: <Navigate to="/notifications" replace /> },
+      // 탭 이름을 바꾸기 전의 옛 주소들. ?date= 같은 값은 그대로 가져갑니다. (#386)
+      { path: 'planner', element: <RedirectWithQuery to="/cards" /> },
+      { path: 'records', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
+      { path: 'report', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="report" /> },
+      { path: 'manual', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="manual" /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
