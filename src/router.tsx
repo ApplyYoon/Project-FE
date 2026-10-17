@@ -96,7 +96,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     errorElement: <ErrorPage />,
-    // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다. (login 은 PUBLIC_PATHS 에 있어서 열려 있습니다)
+    // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다.
     // 로그인한 사람은 RequireDailyCheckIn 이 한 번 더 확인합니다. 그날 처음이면 기분 1탭 체크인부터 합니다. (#242)
     element: (
       <RequireAuth>
@@ -127,7 +127,6 @@ export const router = createBrowserRouter([
       { path: 'notifications', element: <NotificationsPage /> },
       // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
       { path: 'messages', element: <Navigate to="/notifications" replace /> },
-      { path: 'login', element: <LoginPage /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
@@ -238,6 +237,17 @@ export const router = createBrowserRouter([
           <OnboardingDonePage />
         </PageBoundary>
       </RequireAuth>
+    ),
+  },
+  // 로그인 화면도 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 써서 Layout 밖에 둡니다.
+  // 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
+  {
+    path: '/login',
+    errorElement: <ErrorPage />,
+    element: (
+      <PageBoundary fullScreen>
+        <LoginPage />
+      </PageBoundary>
     ),
   },
   // 가입 화면은 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
