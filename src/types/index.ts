@@ -578,6 +578,10 @@ export interface Exam {
   subjectScores: ExamSubjectScore[]
   /** 시험 후 회고 (#81, 시험 날짜가 지나야 입력합니다) */
   reflection?: ExamReflection
+  /** 이 시험을 붙인 점수형 목표의 id (#403). 없으면 목표와 상관없는 시험 */
+  goalId?: string
+  /** 시험 3일 전에 고른 목표 기준 예상 (예: '3등급', '72점'). 아직 안 골랐으면 없음 (#403) */
+  goalPrediction?: string
 }
 
 /** 과거에 공부 계획이 무너졌던 때 (#89, 여러 개 고를 수 있습니다) */
