@@ -22,10 +22,12 @@
  *
  * ■ 테스트 로그인(서버가 모르는 가짜 토큰)일 때는 서버를 부르지 않고 지금처럼 이 기기에만 저장합니다. (canSyncCheckIns)
  *
- * ⚠️ 체크인의 글(기타 이유 · 약속)은 console.log 로 찍지 않습니다.
+ * ⚠️ 체크인의 글(기타 이유)은 console.log 로 찍지 않습니다.
+ *
+ * ■ 예상 순공 · 오늘의 약속 · 개선안 실천(v2 체크인)은 #417 에서 지웠습니다. 서버가 그 칸을 줘도 읽지 않고, 보내지도 않습니다.
  */
 import { api } from '@/lib/api'
-import { getPlannedMinutesOf, hasCheckIn, isEmotionTag, saveLocalCheckIn } from '@/lib/quickCheckIn'
+import { hasCheckIn, isEmotionTag, saveLocalCheckIn } from '@/lib/quickCheckIn'
 import { loadData, saveData } from '@/lib/storage'
 import { TEST_TOKEN } from '@/lib/testLogin'
 import type { CheckIn, EmotionTag, MissReason } from '@/types'
@@ -33,9 +35,6 @@ import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 늦어도 체크인 화면에 오래 갇히지 않게 합니다. */
 const REQUEST_TIMEOUT_MS = 10000
-
-/** 서버가 받는 예상 순공시간의 최대값(분) = 하루 */
-const MAX_EXPECTED_MINUTES = 1440
 
 /** 서버에 못 보낸 체크인의 날짜들을 적어 두는 저장 키. "모든 기록 지우기" 로 같이 지워집니다. (lib/myData.ts) */
 export const UNSENT_CHECKINS_KEY = 'checkins-unsent'
@@ -61,10 +60,6 @@ export interface ServerCheckIn {
   mood: number | null
   missReason: MissReason | null
   missReasonNote: string | null
-  expectedMinutes: number | null
-  promiseIf: string | null
-  promiseThen: string | null
-  suggestionKept: boolean | null
   /** 감정 태그 (BE#220). 아직 이 칸을 주지 않는 서버도 있어서 없을 수 있습니다. */
   emotions?: unknown
 }
@@ -76,10 +71,6 @@ interface CheckInBody {
   mood: number
   missReason: MissReason | null
   missReasonNote: string | null
-  expectedMinutes: number
-  promiseIf: string | null
-  promiseThen: string | null
-  suggestionKept: boolean | null
   /** 감정 태그 (BE#220). 모르면 null. 이 칸을 아직 모르는 서버는 무시합니다. (Spring Boot 기본 설정) */
   emotions: EmotionTag[] | null
 }
@@ -107,11 +98,7 @@ function isServerCheckIn(value: unknown): value is ServerCheckIn {
     isNumberOrNull(checkIn.condition) &&
     isNumberOrNull(checkIn.mood) &&
     (checkIn.missReason === null || MISS_REASONS.includes(checkIn.missReason as MissReason)) &&
-    isStringOrNull(checkIn.missReasonNote) &&
-    isNumberOrNull(checkIn.expectedMinutes) &&
-    isStringOrNull(checkIn.promiseIf) &&
-    isStringOrNull(checkIn.promiseThen) &&
-    (checkIn.suggestionKept === null || typeof checkIn.suggestionKept === 'boolean')
+    isStringOrNull(checkIn.missReasonNote)
   )
 }
 
@@ -143,32 +130,21 @@ export function fillBlanksFromServer(local: CheckIn, server: ServerCheckIn): Che
   ) {
     filled.emotions = serverEmotions
   }
-  // 약속은 두 칸이 한 쌍이라, 이 기기에 약속이 없을 때만 두 칸을 같이 가져옵니다.
-  if (
-    filled.promiseIf === undefined &&
-    filled.promiseThen === undefined &&
-    server.promiseIf !== null &&
-    server.promiseThen !== null
-  ) {
-    filled.promiseIf = server.promiseIf
-    filled.promiseThen = server.promiseThen
-  }
   return filled
 }
 
 /**
  * 서버의 체크인을 이 기기의 체크인 모양으로 바꿉니다. 이 기기에 그날 체크인이 없을 때(다른 기기에서 했을 때) 씁니다.
  * 기분이 없는 체크인(기분을 말하지 않은 통화 등)은 null 입니다. 이 기기의 체크인은 기분이 꼭 있어야 해서, 그날은 다시 묻습니다.
- * 컨디션이 비었으면 기분과 같은 값으로, 예상 시간이 비었으면 plannedMinutes 로 채웁니다. (1탭 체크인과 같은 규칙. lib/quickCheckIn.ts)
- * 자세히 체크인(manual)이 아니면 isQuick 을 붙입니다. 그래야 /check 가 "자세히 체크인을 아직 안 했다" 고 봅니다.
+ * 컨디션이 비었으면 기분과 같은 값으로 채웁니다. (1탭 체크인과 같은 규칙. lib/quickCheckIn.ts)
+ * 예전 자세히 체크인(manual)이 아니면 isQuick 을 붙입니다. (다시 보낼 때 출처를 정하는 데 씁니다)
  */
-export function fromServerCheckIn(server: ServerCheckIn, plannedMinutes: number): CheckIn | null {
+export function fromServerCheckIn(server: ServerCheckIn): CheckIn | null {
   if (server.mood === null) return null
   const checkIn: CheckIn = {
     date: server.date,
     condition: server.condition ?? server.mood,
     mood: server.mood,
-    expectedMinutes: server.expectedMinutes ?? plannedMinutes,
   }
   if (server.source !== 'manual') checkIn.isQuick = true
   return fillBlanksFromServer(checkIn, server)
@@ -176,9 +152,8 @@ export function fromServerCheckIn(server: ServerCheckIn, plannedMinutes: number)
 
 /**
  * 이 기기의 체크인을 서버로 보내는 모양으로 바꿉니다.
- *   - 서버에 없는 칸(promiseKept · phoneFocusKept · isQuick)은 보내지 않습니다. 이 기기에만 남습니다.
+ *   - isQuick 은 서버에 없는 칸이라 보내지 않습니다.
  *   - 1탭 체크인인데 서버의 그날 체크인이 AI 통화(call)로 만든 것이면 call 을 그대로 둡니다.
- *   - 개선안 실천 여부(suggestionKept)는 이 기기의 체크인에 칸이 없어서, 서버 값을 그대로 다시 보냅니다. (덮어쓰기로 지워지지 않게)
  */
 export function toServerBody(checkIn: CheckIn, server: ServerCheckIn | null): CheckInBody {
   let source: CheckInSource = 'manual'
@@ -190,13 +165,6 @@ export function toServerBody(checkIn: CheckIn, server: ServerCheckIn | null): Ch
     missReason: checkIn.missReason ?? null,
     // 서버는 '기타' 가 아닐 때 이유 글을 받지 않습니다.
     missReasonNote: checkIn.missReason === 'etc' ? (checkIn.missReasonNote ?? null) : null,
-    expectedMinutes: Math.min(
-      Math.max(Math.round(checkIn.expectedMinutes), 0),
-      MAX_EXPECTED_MINUTES,
-    ),
-    promiseIf: checkIn.promiseIf ?? null,
-    promiseThen: checkIn.promiseThen ?? null,
-    suggestionKept: server?.suggestionKept ?? null,
     // 하루 첫 한 줄에서 고른 감정 태그. 자세히 체크인처럼 태그를 묻지 않은 체크인은 null("모름")로 보냅니다.
     emotions: checkIn.emotions ?? null,
   }
@@ -241,7 +209,7 @@ export async function sendCheckIn(checkIn: CheckIn): Promise<CheckIn> {
 async function copyTodayFromServer(todayKey: string): Promise<ServerCheckIn | null> {
   const server = await fetchServerCheckIn(todayKey)
   if (server !== null && !hasCheckIn(todayKey)) {
-    const checkIn = fromServerCheckIn(server, getPlannedMinutesOf(todayKey))
+    const checkIn = fromServerCheckIn(server)
     if (checkIn !== null) saveLocalCheckIn(checkIn)
   }
   return server

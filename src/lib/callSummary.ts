@@ -20,19 +20,15 @@ export interface CallSummary {
   date: string
   /** 어제 요약 한 줄. 예: "어제 순공 3시간 10분, 계획의 80%" */
   headline: string
-  /** 오늘의 약속 한 문장. 예: "만약 학원에서 돌아오면 → 영어 단어 20개". 정하지 않았으면 null */
-  promise: string | null
   /** 어제 계획을 못 채운 이유 글자. 고르지 않았으면 null. 예: "폰·SNS" */
   missReason: string | null
-  /** 오늘 예상 순공시간 (분) */
-  expectedMinutes: number
   /** AI 가 남긴 한마디. 저장된 것이 없으면 null */
   aiComment: string | null
   /** 그날의 관리 강도. 저장된 것이 없으면 null */
   careLevel: CareLevel | null
 }
 
-/** 미달 원인 글자. 미달 원인 버튼(MissReasonPicker)의 글자와 같습니다. */
+/** 미달 원인 글자. lib/missReasons.ts 의 버튼 글자와 같습니다. */
 export const missReasonLabels: Record<MissReason, string> = {
   tired: '피곤·수면',
   event: '약속·행사',
@@ -51,16 +47,15 @@ function dayBefore(dateKey: string): string {
   return toDateKey(new Date(year, month - 1, day - 1))
 }
 
-/** 체크인 하나가 우리가 아는 모양인지 확인합니다. (저장된 값이 깨져 있어도 화면이 멈추지 않게) */
+/**
+ * 체크인 하나가 우리가 아는 모양인지 확인합니다. (저장된 값이 깨져 있어도 화면이 멈추지 않게)
+ * 날짜만 봅니다. 예전에는 '오늘 예상 순공' 도 꼭 있어야 했지만 그 칸은 #417 에서 지웠습니다.
+ * (하루 첫 한 줄의 체크인에도 그 칸이 없어서, 그 칸까지 보면 모든 체크인이 버려집니다)
+ */
 function isCheckIn(value: unknown): value is CheckIn {
   if (typeof value !== 'object' || value === null) return false
   const item = value as Record<string, unknown>
-  return (
-    typeof item.date === 'string' &&
-    DATE_KEY_PATTERN.test(item.date) &&
-    typeof item.expectedMinutes === 'number' &&
-    Number.isFinite(item.expectedMinutes)
-  )
+  return typeof item.date === 'string' && DATE_KEY_PATTERN.test(item.date)
 }
 
 /** 평가 하나가 우리가 아는 모양인지 확인합니다. */
@@ -119,14 +114,6 @@ function makeHeadline(yesterday: string, plans: StudyPlan[], sessions: StudySess
   return `어제 순공 ${formatMinutes(studyMinutes)}, 계획의 ${achievementRate}%`
 }
 
-/** 오늘의 약속을 한 문장으로 만듭니다. 둘 중 하나라도 비어 있으면 약속이 아니므로 null 입니다. */
-function makePromise(checkIn: CheckIn): string | null {
-  const ifText = checkIn.promiseIf?.trim() ?? ''
-  const thenText = checkIn.promiseThen?.trim() ?? ''
-  if (ifText === '' || thenText === '') return null
-  return `만약 ${ifText} → ${thenText}`
-}
-
 /** 미달 원인을 글자로 바꿉니다. '기타' 에 적은 한 줄이 있으면 괄호로 붙입니다. */
 function makeMissReason(checkIn: CheckIn): string | null {
   if (checkIn.missReason === undefined) return null
@@ -143,18 +130,13 @@ export interface TodayCallCard {
   headline: string
   /** 어제 계획을 못 채운 이유. 오늘 체크인에서 고르지 않았으면 null */
   missReason: string | null
-  /** 오늘 예상 순공시간 (분). 오늘 체크인이 없으면 null */
-  expectedMinutes: number | null
-  /** 오늘의 약속 한 문장. 정하지 않았으면 null */
-  promise: string | null
 }
 
 /**
  * 저장소에서 오늘 체크인과 공부 기록을 꺼내 "오늘 통화 요약" 카드를 만듭니다.
- * 통화에서 정한 약속을 체크인에 저장한 "뒤에" 불러야 약속이 같이 나옵니다. (lib/callCheckIn.ts)
  *
  *   loadTodayCallCard('2026-10-17')
- *   -> { headline: '어제 순공 3시간 10분, 계획의 80%', missReason: '폰·SNS', expectedMinutes: 240, promise: '만약 … → …' }
+ *   -> { headline: '어제 순공 3시간 10분, 계획의 80%', missReason: '폰·SNS' }
  */
 export function loadTodayCallCard(todayKey: string): TodayCallCard {
   const checkIn = loadCheckInsByDate()[todayKey]
@@ -166,8 +148,6 @@ export function loadTodayCallCard(todayKey: string): TodayCallCard {
   return {
     headline: makeHeadline(dayBefore(todayKey), plans, loadStudySessions()),
     missReason: checkIn ? makeMissReason(checkIn) : null,
-    expectedMinutes: checkIn ? checkIn.expectedMinutes : null,
-    promise: checkIn ? makePromise(checkIn) : null,
   }
 }
 
@@ -195,9 +175,7 @@ export function buildCallSummaries(
       return {
         date,
         headline: makeHeadline(dayBefore(date), plans, sessions),
-        promise: makePromise(checkIn),
         missReason: makeMissReason(checkIn),
-        expectedMinutes: checkIn.expectedMinutes,
         aiComment: evaluation?.summary.trim() ? evaluation.summary : null,
         careLevel: evaluation ? evaluation.careLevel : null,
       }

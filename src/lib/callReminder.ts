@@ -158,7 +158,6 @@ export function isBusyForCall(pathname: string, isFocusModeOn: boolean): boolean
   return (
     pathname === '/diary' ||
     pathname === '/diary/reflection' ||
-    pathname === '/check' ||
     /^\/exams\/[^/]+\/result$/.test(pathname)
   )
 }

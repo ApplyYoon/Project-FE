@@ -40,7 +40,7 @@ export function buildEvidenceRows(
 }
 
 /**
- * 저장해 둔 체크인을 날짜별로 불러옵니다. (저장 이름은 useCheckIns 의 'checkins' 와 같습니다)
+ * 저장해 둔 체크인을 날짜별로 불러옵니다. (저장 이름은 lib/quickCheckIn.ts 의 'checkins' 와 같습니다)
  * 저장된 값이 깨져 있거나 객체가 아니면 빈 객체로 처리합니다.
  */
 export function loadCheckInsByDate(): Record<string, CheckIn> {

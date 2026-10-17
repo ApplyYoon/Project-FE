@@ -51,11 +51,7 @@ export interface CallConclusion {
   summary: string | null
   /** 대답에서 보인 생각 습관. 뚜렷하지 않았으면 null */
   bias: ThinkingHabit | null
-  /** 오늘의 약속 "만약 ~하면 → ~한다". 정하지 않았으면 둘 다 null */
-  promiseIf: string | null
-  promiseThen: string | null
-  /** 지난 약속을 지켰다고 했는지. 이야기가 없었으면 null */
-  promiseKept: boolean | null
+  // 서버가 주는 오늘의 약속 · 지난 약속(promiseIf · promiseThen · promiseKept)은 v2 체크인과 함께 #417 에서 쓰지 않기로 해서 읽지 않습니다.
 }
 
 /** 결과 화면으로 넘기는 값입니다. 통화 화면이 navigate 의 state 로 넘깁니다. */
@@ -67,7 +63,7 @@ export interface CallResultState {
 /**
  * 말풍선 목록을 서버에 보낼 자막으로 바꿉니다.
  * 글자를 기다리던 자리('…')와 빈 말풍선은 빼고, 서버의 한도(200줄 · 한 줄 500자)에 맞게 자릅니다.
- * 줄이 너무 많으면 앞(오래된 것)을 버리고 뒤를 남깁니다. 약속은 통화 끝에 정하기 때문입니다.
+ * 줄이 너무 많으면 앞(오래된 것)을 버리고 뒤를 남깁니다. 마무리 이야기는 통화 끝에 하기 때문입니다.
  */
 export function toCallLines(messages: SubtitleMessage[]): CallLine[] {
   const lines = messages
@@ -117,10 +113,7 @@ function isCallConclusion(value: unknown): value is CallConclusion {
     typeof result.callId === 'string' &&
     typeof result.showHelp === 'boolean' &&
     isStringOrNull(result.summary) &&
-    (result.bias === null || isThinkingHabit(result.bias)) &&
-    isStringOrNull(result.promiseIf) &&
-    isStringOrNull(result.promiseThen) &&
-    (result.promiseKept === null || typeof result.promiseKept === 'boolean')
+    (result.bias === null || isThinkingHabit(result.bias))
   )
 }
 

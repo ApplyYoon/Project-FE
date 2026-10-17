@@ -105,7 +105,7 @@ export function DailyTagBar() {
   }
 
   if (!isLoggedIn || closedDate === todayKey || isDailyTagSkipped(todayKey)) return null
-  // 오늘 체크인이 이미 있으면(자세히 체크인 · 다른 기기 · 통화) 묻지 않습니다. 이 한 줄에서 방금 저장한 것은 닫을 때까지 둡니다.
+  // 오늘 체크인이 이미 있으면(다른 기기 · 통화) 묻지 않습니다. 이 한 줄에서 방금 저장한 것은 닫을 때까지 둡니다.
   if (!isSavedHere && hasCheckIn(todayKey)) return null
 
   const bar = (

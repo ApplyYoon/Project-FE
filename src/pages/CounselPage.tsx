@@ -92,9 +92,6 @@ export function CounselPage() {
             <div className="flex flex-col gap-1 text-sm">
               <p className="text-slate-500">{latestSummary.date}</p>
               <p className="font-medium break-keep text-slate-900">{latestSummary.headline}</p>
-              {latestSummary.promise && (
-                <p className="break-words text-slate-600">약속 · {latestSummary.promise}</p>
-              )}
             </div>
           )}
           <Button

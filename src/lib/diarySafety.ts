@@ -21,7 +21,7 @@ function loadEntries<T>(key: string): T[] {
   return Object.values(saved as Record<string, T>)
 }
 
-/** 저장해 둔 체크인에서 날짜·기분만 꺼냅니다. (저장 이름은 useCheckIns 의 'checkins' 와 같습니다) */
+/** 저장해 둔 체크인에서 날짜·기분만 꺼냅니다. (저장 이름은 lib/quickCheckIn.ts 의 'checkins' 와 같습니다) */
 function loadCheckInMoods(): MoodRecordInput[] {
   const checkIns = loadEntries<CheckIn>('checkins')
   return checkIns.map((checkIn) => ({ date: checkIn.date, mood: checkIn.mood }))
@@ -44,7 +44,7 @@ function loadUnlockReasons(): string[] {
 /**
  * 지금까지 저장된 글과 기분을 모두 모아서 돌려줍니다. (알림을 보내기 전 안전 브레이크 확인용)
  *
- * - 체크인(#24): 기분 + 오늘의 약속 글 + 못 채운 이유 '기타' 에 적은 한 줄
+ * - 체크인(#24): 기분 + 못 채운 이유 '기타' 에 적은 한 줄
  * - 일기(#63): 기분 + 일기 원문 (저장 이름 'diary', useDiaryEntries 와 같습니다)
  * - 성찰 일기(#70): 답변 글 (저장 이름 'reflection-entries', useReflectionEntries 와 같습니다)
  * - 주간 회고(#82) · 시험 회고(#80) · 집중 모드 해제 이유(#69): 적은 글
@@ -56,11 +56,7 @@ export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[]
 
   return {
     texts: [
-      ...checkIns.flatMap((checkIn) => [
-        textOf(checkIn.promiseIf),
-        textOf(checkIn.promiseThen),
-        textOf(checkIn.missReasonNote),
-      ]),
+      ...checkIns.map((checkIn) => textOf(checkIn.missReasonNote)),
       ...diaries.map((diary) => diary.content ?? ''),
       ...reflections.flatMap((reflection) => reflection.answers ?? []),
       ...loadWeeklyReviews().flatMap((review) => [review.best, review.regret, review.change]),
