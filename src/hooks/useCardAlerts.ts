@@ -1,5 +1,6 @@
 import { getCardsOnDate, loadSavedCards } from '@/lib/cards'
 import { getDueCardAlerts } from '@/lib/cardAlerts'
+import { loadCardMarks } from '@/lib/cardMarks'
 import { loadAllSessions } from '@/lib/dailyRecords'
 import { toDayKey } from '@/lib/date'
 import { getMessageSettings } from '@/lib/messageSettings'
@@ -28,12 +29,16 @@ function checkCardAlerts(): void {
   if (cards.length === 0) return
   const sentByDate = loadRecord<string[]>(SENT_KEY)
   const sentKeys = new Set(sentByDate[dateKey] ?? [])
-  const startedCardIds = new Set(
-    loadAllSessions()
+  // 오늘 시작한 카드와 미루기 · 실패로 처리한 카드는 알리지 않습니다.
+  const startedCardIds = new Set([
+    ...loadAllSessions()
       .filter((session) => toDayKey(session.startedAt) === dateKey)
       .map((session) => getSessionCardId(session, {}))
       .filter((id): id is string => id !== undefined),
-  )
+    ...loadCardMarks()
+      .filter((mark) => mark.dateKey === dateKey)
+      .map((mark) => mark.cardId),
+  ])
   const earlyMinutes = loadAutoSettings().earlyAlertMinutes.value
   const due = getDueCardAlerts(cards, dateKey, now, sentKeys, startedCardIds, earlyMinutes)
   if (due.length === 0) return
@@ -44,7 +49,8 @@ function checkCardAlerts(): void {
       title: alert.title,
       body: alert.body,
       tag: alert.key,
-      url: `/timer?card=${encodeURIComponent(alert.cardId)}`,
+      // 시간이 끝난 카드는 대기 화면의 '시간이 끝난 카드' 로, 그 밖에는 그 카드로 바로 시작합니다.
+      url: alert.kind === 'missed' ? '/timer' : `/timer?card=${encodeURIComponent(alert.cardId)}`,
     })
   }
   // 오늘 것만 남겨서 저장소가 계속 커지지 않게 합니다.

@@ -4,6 +4,9 @@ import { Card } from '@/components/ui/Card'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
+import { FailCardModal } from '@/components/ui/FailCardModal'
+import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
 import { useCardSession } from '@/hooks/useCardSession'
 import { useCards } from '@/hooks/useCards'
 import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
@@ -12,7 +15,7 @@ import { playAlarm } from '@/lib/alarm'
 import { formatClock } from '@/lib/away'
 import {
   LONG_PAUSE_MINUTES,
-  createInstantCard,
+  createInstantCardNow,
   getRemainingMs,
   getRunMs,
   shouldAlertLongPause,
@@ -20,6 +23,20 @@ import {
 import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
 import { getTodayKey, toDayKey } from '@/lib/date'
+import {
+  addCardMark,
+  getCardDayMark,
+  getPostponeLeft,
+  getPostponedMinutesThisMonth,
+  hasFalseConsensus,
+  isHandledOnDate,
+  loadCardMarks,
+  placePostponedCardNow,
+  type CardFailCause,
+} from '@/lib/cardMarks'
+import { getCardResult } from '@/lib/cardResult'
+import { loadLatestCareStage } from '@/lib/careStage'
+import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
@@ -99,34 +116,110 @@ export function CardTimerPage() {
       .filter((id): id is string => id !== undefined),
   )
   const todayCards = getCards(todayKey)
-  const waitingCards = todayCards.filter((card) => !doneTodayIds.has(card.id))
+  // 미루기 · 실패 표시 (#400). 표시가 있는 카드는 처리된 것이라 대기 목록에서 뺍니다.
+  const [marks, setMarks] = useState(loadCardMarks)
+  const [missTarget, setMissTarget] = useState<{
+    card: CardModel
+    action: 'postpone' | 'fail'
+  } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [isCrisisOpen, setIsCrisisOpen] = useState(false)
+  // 대기 화면의 '지금'. 30초마다 바꿔서 시간이 끝난 카드가 '시간이 끝난 카드' 로 옮겨 가게 합니다.
+  const [listNow, setListNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setListNow(Date.now()), 30 * 1000)
+    return () => clearInterval(id)
+  }, [])
+  const openCards = todayCards.filter(
+    (card) =>
+      !doneTodayIds.has(card.id) &&
+      !isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
+  )
+  // 카드 시간이 끝났는데 시작도 처리도 안 한 카드 → [미루기] / [실패로 기록] 을 고르게 합니다.
+  const unhandledCards = openCards.filter(
+    (card) => getCardResult({ card, dateKey: todayKey, sessions: [] }, listNow) === 'unhandled',
+  )
+  const waitingCards = openCards.filter((card) => !unhandledCards.includes(card))
+  const routinePostponeLimit = pageSettings.postponeLimitRoutine.value
+  // 관리 4단계에서는 미루기가 잠깁니다. (「5.4」, 강제 장치 전체는 #408)
+  const isPostponeLocked = loadLatestCareStage(todayKey)?.stage === 4
+
+  function postponeLeft(card: CardModel): number {
+    if (isPostponeLocked) return 0
+    return getPostponeLeft(card, todayKey, marks, routinePostponeLimit)
+  }
+
+  function handlePostpone(card: CardModel, reason: string, newDate: string, newStartTime: string) {
+    setMarks(
+      addCardMark({
+        cardId: card.id,
+        dateKey: todayKey,
+        mark: 'postponed',
+        reason,
+        newDate,
+        newStartTime,
+      }),
+    )
+    const placed = placePostponedCardNow(card, newDate, newStartTime)
+    if ('update' in placed) updateCard(card.id, placed.update)
+    else addCard(placed.create)
+    setMissTarget(null)
+    // 미루기 사유도 안전 브레이크가 봅니다. 위기 표현이 있으면 도움 연결 안내부터. (「4.5」 안전 브레이크)
+    if (
+      getSafetyBrakeResult({
+        now: new Date(listNow),
+        recentTexts: [reason],
+        recentMoods: [],
+        exams: [],
+      }).stopWhip
+    ) {
+      setIsCrisisOpen(true)
+      return
+    }
+    // "다들 미뤄" 같은 말이 있으면 보편성은 반박하지 않고 내 비용만 보여 줍니다. (「8.2」 허위 합의)
+    if (hasFalseConsensus(reason)) {
+      const minutes = getPostponedMinutesThisMonth(marks, cards, todayKey) + card.durationMinutes
+      setNotice(
+        `흔한 건 맞아. 근데 흔하다고 너한테 비용이 없는 건 아니야. 이번 달 미룬 시간 ${formatMinutes(minutes)}.`,
+      )
+    } else {
+      setNotice(`${newDate.slice(5).replace('-', '/')} ${newStartTime} 로 옮겼어요.`)
+    }
+  }
+
+  function handleFail(card: CardModel, cause: CardFailCause) {
+    setMarks(addCardMark({ cardId: card.id, dateKey: todayKey, mark: 'failed', cause }))
+    setMissTarget(null)
+    setNotice('기록했어요. 다음 통화에서 같이 돌아봐요.')
+  }
 
   // 알림으로 들어오면(?card=) 사전 질문 없이 바로 시작합니다. (「4.4」 시작)
   // 시작한 뒤에는 주소에서 card 값을 지워서, 새로고침해도 다시 시작하지 않게 합니다.
+  // 카운트다운이 켜져 있으면 주소의 카드로 카운트다운 화면을 그리고(paramCountdownCard), 끝나거나 그만두면 주소를 지웁니다.
+  const paramCard =
+    cardParam === '' || active ? undefined : cards.find((item) => item.id === cardParam)
+  const isCountdownToday = isCountdownOn(
+    pageSettings.countdown.value,
+    loadLocalCheckIn(todayKey)?.emotions,
+  )
+  const paramCountdownCard = paramCard && isCountdownToday ? paramCard : null
   useEffect(() => {
-    if (cardParam === '') return
-    const card = cards.find((item) => item.id === cardParam)
-    if (card && !active) {
-      const emotions = loadLocalCheckIn(todayKey)?.emotions
-      if (isCountdownOn(pageSettings.countdown.value, emotions)) setCountdownCard(card)
-      else session.start(card, todayKey)
-    }
+    if (cardParam === '' || paramCountdownCard) return
+    if (paramCard) session.start(paramCard, todayKey)
     setCardParam('')
-  }, [cardParam, cards, active, session, todayKey, setCardParam, pageSettings])
+  }, [cardParam, paramCard, paramCountdownCard, session, todayKey, setCardParam])
 
   /**
    * 카드로 시작합니다. 5초 카운트다운이 켜져 있으면(설정 또는 오늘 감정 태그가 막막함·불안함) 카운트다운부터.
    * [지금 시작] 즉석 카드는 할 일이 아직 없어서 바로 시작합니다.
    */
   function beginCard(card: CardModel) {
-    const emotions = loadLocalCheckIn(todayKey)?.emotions
-    if (isCountdownOn(pageSettings.countdown.value, emotions)) setCountdownCard(card)
+    if (isCountdownToday) setCountdownCard(card)
     else session.start(card, todayKey)
   }
 
   function handleStartNow(minutes: number) {
-    const startedAt = Date.now()
-    const card = createInstantCard(`card-${startedAt}`, todayKey, startedAt, minutes)
+    const card = createInstantCardNow(todayKey, minutes)
     addCard(card)
     session.start(card, todayKey)
   }
@@ -136,15 +229,20 @@ export function CardTimerPage() {
     return <SessionView session={session} card={activeCard} now={now} onFinished={setEndedRecord} />
   }
 
-  if (countdownCard) {
+  const shownCountdownCard = countdownCard ?? paramCountdownCard
+  if (shownCountdownCard) {
     return (
       <CountdownView
-        card={countdownCard}
+        card={shownCountdownCard}
         onDone={() => {
-          session.start(countdownCard, todayKey)
+          session.start(shownCountdownCard, todayKey)
           setCountdownCard(null)
+          setCardParam('')
         }}
-        onCancel={() => setCountdownCard(null)}
+        onCancel={() => {
+          setCountdownCard(null)
+          setCardParam('')
+        }}
       />
     )
   }
@@ -177,6 +275,67 @@ export function CardTimerPage() {
         </p>
       </div>
 
+      {notice && (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-800"
+        >
+          <p className="break-keep">{notice}</p>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="h-10 shrink-0 rounded-md px-3 font-medium hover:bg-slate-200"
+          >
+            확인
+          </button>
+        </div>
+      )}
+
+      {unhandledCards.length > 0 && (
+        <Card title="시간이 끝난 카드">
+          <p className="text-sm text-slate-600">
+            시작하지 못했어요. 미룰지, 못 했다고 남길지 골라요.
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {unhandledCards.map((card) => {
+              const left = postponeLeft(card)
+              return (
+                <li
+                  key={card.id}
+                  className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900">{card.title}</p>
+                    <p className="text-sm text-slate-600">
+                      {card.startTime} · {formatMinutes(card.durationMinutes)}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Button
+                      variant="secondary"
+                      disabled={left === 0}
+                      onClick={() => setMissTarget({ card, action: 'postpone' })}
+                    >
+                      {card.priority === 'absolute'
+                        ? '미룰 수 없음'
+                        : isPostponeLocked
+                          ? '미루기 잠김'
+                          : `미루기 (${left}회 남음)`}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setMissTarget({ card, action: 'fail' })}
+                    >
+                      실패로 기록
+                    </Button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <Card title="오늘 남은 카드">
           {waitingCards.length === 0 ? (
@@ -190,7 +349,10 @@ export function CardTimerPage() {
                   key={card.id}
                   card={card}
                   isNext={index === 0}
+                  postponeLeft={postponeLeft(card)}
                   onStart={() => beginCard(card)}
+                  onPostpone={() => setMissTarget({ card, action: 'postpone' })}
+                  onFail={() => setMissTarget({ card, action: 'fail' })}
                 />
               ))}
             </ul>
@@ -200,6 +362,29 @@ export function CardTimerPage() {
         <InstantStart onStart={handleStartNow} />
         <PlaySetup onStart={session.startPlay} />
       </div>
+
+      {missTarget?.action === 'postpone' && (
+        <PostponeCardModal
+          isOpen
+          cardTitle={missTarget.card.title}
+          leftCount={postponeLeft(missTarget.card)}
+          defaultDate={todayKey}
+          defaultTime={formatClock(listNow + 60 * MS_PER_MINUTE)}
+          onClose={() => setMissTarget(null)}
+          onPostpone={(reason, newDate, newTime) =>
+            handlePostpone(missTarget.card, reason, newDate, newTime)
+          }
+        />
+      )}
+      {missTarget?.action === 'fail' && (
+        <FailCardModal
+          isOpen
+          cardTitle={missTarget.card.title}
+          onClose={() => setMissTarget(null)}
+          onFail={(cause) => handleFail(missTarget.card, cause)}
+        />
+      )}
+      <CrisisHelpModal isOpen={isCrisisOpen} onClose={() => setIsCrisisOpen(false)} />
 
       {endedRecord && (
         <EndPopup
@@ -224,11 +409,26 @@ export function CardTimerPage() {
 interface WaitingCardRowProps {
   card: CardModel
   isNext: boolean
+  /** 남은 미루기 횟수 (0 이면 [실패로 기록] 만) */
+  postponeLeft: number
   onStart: () => void
+  onPostpone: () => void
+  onFail: () => void
 }
 
-/** 대기 화면의 카드 한 줄. 맨 위(다음 카드)는 크게 보입니다 */
-function WaitingCardRow({ card, isNext, onStart }: WaitingCardRowProps) {
+/**
+ * 대기 화면의 카드 한 줄. 맨 위(다음 카드)는 크게 보입니다.
+ * 미루기는 일부러 ⋯ 메뉴 안에 둡니다 (찾기 조금 불편하게, 「4.4」). 절대 카드는 미루기가 없습니다.
+ */
+function WaitingCardRow({
+  card,
+  isNext,
+  postponeLeft,
+  onStart,
+  onPostpone,
+  onFail,
+}: WaitingCardRowProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
   return (
     <li
       className={cn(
@@ -244,9 +444,47 @@ function WaitingCardRow({ card, isNext, onStart }: WaitingCardRowProps) {
           {card.priority === 'absolute' && ' · 꼭 해야 함'}
         </p>
       </div>
-      <Button size={isNext ? 'md' : 'sm'} className="h-10 shrink-0" onClick={onStart}>
-        시작
-      </Button>
+      <div className="relative flex shrink-0 items-center gap-1">
+        <Button size={isNext ? 'md' : 'sm'} className="h-10" onClick={onStart}>
+          시작
+        </Button>
+        <button
+          type="button"
+          aria-label={`${card.title} 메뉴`}
+          aria-expanded={isMenuOpen}
+          onClick={() => setIsMenuOpen((value) => !value)}
+          className="h-10 w-10 rounded-lg text-lg text-slate-500 hover:bg-slate-100"
+        >
+          ⋯
+        </button>
+        {isMenuOpen && (
+          <div className="absolute top-11 right-0 z-10 flex w-40 flex-col rounded-lg border border-slate-200 bg-white p-1 shadow-md">
+            {card.priority !== 'absolute' && (
+              <button
+                type="button"
+                disabled={postponeLeft === 0}
+                onClick={() => {
+                  setIsMenuOpen(false)
+                  onPostpone()
+                }}
+                className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50 disabled:text-slate-400"
+              >
+                미루기 ({postponeLeft}회 남음)
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setIsMenuOpen(false)
+                onFail()
+              }}
+              className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50"
+            >
+              못 했다고 기록
+            </button>
+          </div>
+        )}
+      </div>
     </li>
   )
 }
