@@ -29,6 +29,7 @@ import {
 } from '@/lib/signup'
 import { removeAllData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
+import { unsubscribeThisDevice } from '@/lib/webPush'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -380,7 +381,10 @@ function WithdrawCard() {
 
   const mutation = useMutation({
     mutationFn: () => withdraw(password),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // 이 기기의 푸시 구독도 지웁니다. 남겨 두면 같은 기기에서 다른 사람이 로그인했을 때, 설정에 "켜져 있어요" 가 뜨고 앞사람 알림이 옵니다.
+      // 서버의 계정은 이미 지워졌으니 브라우저의 구독만 지웁니다. (지우지 못해도 탈퇴는 계속합니다)
+      await unsubscribeThisDevice()
       // 서버의 계정이 지워졌으니, 이 기기에 저장된 것도 전부 지웁니다. (로그인 정보 · 기록 · 설정 · 다짐 녹음)
       removeAllData()
       // 화면을 통째로 새로 엽니다. 그냥 주소만 옮기면, 화면이 기억하고 있던 값이 저장소에 다시 적힐 수 있기 때문입니다.
