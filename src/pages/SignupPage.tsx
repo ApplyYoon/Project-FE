@@ -21,6 +21,7 @@ import {
   getNameError,
   getNicknameError,
   hasRequiredConsents,
+  hasSignupInfo,
   isAllConsented,
   makeAllConsents,
   parseSignupStep,
@@ -259,6 +260,9 @@ export function SignupPage() {
   // 구글로 처음 온 사람이면 구글이 준 정보(신분증·이름·이메일). 아니면 null (lib/googleSignup.ts)
   // 아래 값들은 화면이 처음 그려질 때 한 번만 정합니다. 가입하는 도중에 로그인 상태가 바뀌어도 화면이 달라지지 않게 하려는 것입니다.
   const [googleSignup] = useState(() => (isLoggedIn ? null : loadPendingGoogleSignup()))
+  // 로그인했고 가입도 이미 마친 사람인지. (주소창에 /signup 을 직접 친 경우)
+  // 처음 한 번만 정하는 이유: 가입을 막 마친 순간에도 가입 정보가 생기는데, 그때 홈으로 튕기면 안 되기 때문입니다.
+  const [isAlreadySignedUp] = useState(() => isLoggedIn && hasSignupInfo())
   const [name, setName] = useState(googleSignup?.name ?? '')
   const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState(googleSignup?.email ?? '')
@@ -282,6 +286,11 @@ export function SignupPage() {
   // 로그인도 안 했고 구글로 시작하지도 않았으면 가입할 방법이 없습니다. 로그인 화면에서 [Google로 시작하기] 를 누르게 합니다.
   // (이 탭의 구글 정보가 지워졌을 때도 여기로 옵니다. 예: 탭을 닫았다 다시 열기)
   if (!isLoggedIn && googleSignup === null) return <Navigate to="/login" replace />
+
+  // 이미 가입한 사람은 다시 가입할 수 없습니다. 그대로 두면 닉네임·동의 기록(agreedAt 포함)을 새 값으로 덮어써 버립니다.
+  // 홈으로 보내면, 온보딩을 다 안 끝낸 사람은 문지기(RequireAuth)가 하던 단계로 다시 보내 줍니다.
+  // 내 정보를 바꾸는 곳은 설정 → 내 계정(/settings/account) 입니다.
+  if (isAlreadySignedUp) return <Navigate to="/" replace />
 
   // 만 14세 미만이면 입력 화면 대신 안내 화면을 보여줍니다.
   if (isOver14 === false) return <UnderFourteenView />
