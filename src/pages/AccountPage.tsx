@@ -1,30 +1,28 @@
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { GoogleButton } from '@/components/ui/GoogleButton'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolField } from '@/components/ui/SchoolField'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  changePassword,
   getAccountErrorMessage,
   profileQuery,
   updateProfile,
   withdraw,
   type Profile,
 } from '@/lib/accountApi'
+import { isGoogleConfigured } from '@/lib/googleClient'
 import type { School } from '@/lib/schoolSearch'
 import {
   NAME_MAX_LENGTH,
   NAME_MIN_LENGTH,
   NICKNAME_MAX_LENGTH,
   NICKNAME_MIN_LENGTH,
-  PASSWORD_MIN_LENGTH,
   getNameError,
   getNicknameError,
-  getPasswordConfirmError,
-  getPasswordError,
   updateSavedSignupProfile,
 } from '@/lib/signup'
 import { removeAllData } from '@/lib/storage'
@@ -36,7 +34,8 @@ import { Link } from 'react-router-dom'
 
 /**
  * 내 계정 화면입니다. 설정의 계정 카드에서 들어옵니다. (주소 /settings/account · #296)
- *   내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴
+ *   내 정보 고치기 · 탈퇴
+ * 계정은 모두 구글 계정이라 비밀번호가 없습니다. 그래서 비밀번호 바꾸기는 없고, 탈퇴는 구글로 한 번 더 확인합니다.
  *
  * 내 정보는 서버에서 받아옵니다. 받아오는 동안에는 스켈레톤, 실패하면 안내를 AsyncBoundary 가 보여줍니다.
  * 테스트 로그인으로 들어온 사람은 서버에 계정이 없어서, 서버를 부르지 않고 안내만 보여줍니다.
@@ -57,9 +56,7 @@ export function AccountPage() {
           <span aria-hidden>‹</span> 설정
         </Link>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">내 계정</h1>
-        <p className="mt-2 break-keep text-slate-600">
-          내 정보를 고치고, 비밀번호를 바꾸고, 탈퇴할 수 있어요.
-        </p>
+        <p className="mt-2 break-keep text-slate-600">내 정보를 고치고, 탈퇴할 수 있어요.</p>
       </div>
 
       {isTestUser ? (
@@ -81,21 +78,20 @@ export function AccountPage() {
   )
 }
 
-/** 내 정보를 받아오는 동안 보여주는 자리 표시입니다. 카드 세 장의 대략적인 높이로 그립니다. */
+/** 내 정보를 받아오는 동안 보여주는 자리 표시입니다. 카드 두 장의 대략적인 높이로 그립니다. */
 function AccountSkeleton() {
   return (
     // role="status": "받아오는 중" 이라는 것을 스크린리더에도 알려 줍니다. (회색 상자는 읽지 않습니다)
     <div role="status" className="flex flex-col gap-6">
       <span className="sr-only">내 정보를 받아오는 중이에요</span>
       <Skeleton className="h-96 w-full rounded-xl" />
-      <Skeleton className="h-72 w-full rounded-xl" />
       <Skeleton className="h-32 w-full rounded-xl" />
     </div>
   )
 }
 
 /**
- * 서버에서 내 정보를 받아와서 카드 세 장을 보여줍니다.
+ * 서버에서 내 정보를 받아와서 카드 두 장을 보여줍니다.
  * useSuspenseQuery 는 받아오는 동안 이 컴포넌트를 "잠깐 멈춰" 둡니다. 그래서 여기서는 data 가 있을 때만 그리면 됩니다.
  */
 function AccountSections() {
@@ -104,7 +100,6 @@ function AccountSections() {
   return (
     <>
       <ProfileCard profile={profile} />
-      <PasswordCard />
       <WithdrawCard />
     </>
   )
@@ -172,7 +167,7 @@ function ProfileCard({ profile }: ProfileCardProps) {
           {/* break-all: 긴 이메일이 화면 밖으로 나가지 않게 줄바꿈합니다. */}
           <p className="text-base break-all text-slate-900">{profile.email}</p>
           <p className="text-sm break-keep text-slate-500">
-            로그인에 쓰는 주소라서 지금은 바꿀 수 없어요.
+            로그인에 쓰는 구글 계정 주소라서 바꿀 수 없어요.
           </p>
         </div>
 
@@ -271,116 +266,17 @@ function ProfileCard({ profile }: ProfileCardProps) {
   )
 }
 
-/** 비밀번호를 바꾸는 카드입니다. 적은 비밀번호는 서버로 보내기만 하고 어디에도 저장하지 않습니다. */
-function PasswordCard() {
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  // "바꾸기" 를 한 번이라도 눌렀는지. 누르기 전에는 빈 칸에 빨간 글씨를 보여주지 않습니다.
-  const [isTried, setIsTried] = useState(false)
-  const [isChanged, setIsChanged] = useState(false)
-
-  const currentError = currentPassword === '' ? '지금 비밀번호를 입력해 주세요.' : null
-  const newError = getPasswordError(newPassword)
-  const confirmError = getPasswordConfirmError(newPassword, confirm)
-
-  const mutation = useMutation({
-    mutationFn: () => changePassword(currentPassword, newPassword),
-    onSuccess: () => {
-      // 바꾼 뒤에는 칸을 비웁니다. 비밀번호가 화면에 남아 있지 않게 합니다.
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirm('')
-      setIsTried(false)
-      setIsChanged(true)
-    },
-  })
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setIsTried(true)
-    setIsChanged(false)
-    if (currentError !== null || newError !== null || confirmError !== null) return
-    if (mutation.isPending) return
-    mutation.mutate()
-  }
-
-  return (
-    <Card title="비밀번호 바꾸기">
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <p className="text-sm break-keep text-slate-500">
-          바꾸면 이 기기는 그대로 로그인돼 있고, 다른 기기에서는 로그아웃돼요.
-        </p>
-        <Input
-          id="account-current-password"
-          // type="password": 적은 글자가 점(●)으로 가려집니다.
-          type="password"
-          label="지금 비밀번호"
-          value={currentPassword}
-          autoComplete="current-password"
-          error={isTried ? (currentError ?? undefined) : undefined}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          className="h-12 text-base"
-        />
-        <div className="flex flex-col gap-2">
-          <Input
-            id="account-new-password"
-            type="password"
-            label="새 비밀번호"
-            value={newPassword}
-            // new-password: 브라우저가 "새 비밀번호" 로 알고 저장을 물어봅니다.
-            autoComplete="new-password"
-            error={isTried ? (newError ?? undefined) : undefined}
-            onChange={(event) => setNewPassword(event.target.value)}
-            className="h-12 text-base"
-          />
-          <p className="text-sm text-slate-500">
-            {PASSWORD_MIN_LENGTH}자 이상, 영문과 숫자를 모두 넣어 주세요.
-          </p>
-        </div>
-        <Input
-          id="account-new-password-confirm"
-          type="password"
-          label="새 비밀번호 확인"
-          value={confirm}
-          autoComplete="new-password"
-          error={isTried ? (confirmError ?? undefined) : undefined}
-          onChange={(event) => setConfirm(event.target.value)}
-          className="h-12 text-base"
-        />
-
-        {mutation.isError && (
-          <p role="alert" className="text-sm break-keep text-red-600">
-            {getAccountErrorMessage(mutation.error)}
-          </p>
-        )}
-        {isChanged && (
-          <p role="status" className="text-sm font-medium break-keep text-emerald-700">
-            비밀번호를 바꿨어요. 다른 기기에서는 로그아웃됐어요.
-          </p>
-        )}
-
-        <Button
-          type="submit"
-          size="lg"
-          variant="secondary"
-          className="w-full sm:w-auto sm:self-end"
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? '바꾸는 중…' : '비밀번호 바꾸기'}
-        </Button>
-      </form>
-    </Card>
-  )
-}
-
-/** 탈퇴 카드입니다. 되돌릴 수 없는 일이라, 확인 창에서 비밀번호를 한 번 더 받습니다. */
+/**
+ * 탈퇴 카드입니다. 되돌릴 수 없는 일이라, 확인 창에서 구글로 한 번 더 확인합니다.
+ * 구글 버튼을 누르면 구글이 신분증(credential)을 주고, 서버가 그것으로 가입한 그 구글 계정이 맞는지 본 뒤 지웁니다.
+ */
 function WithdrawCard() {
   const [isOpen, setIsOpen] = useState(false)
-  const [password, setPassword] = useState('')
+  // 구글 창을 끝까지 마치지 않았을 때 보여줄 안내. 없으면 null
+  const [googleError, setGoogleError] = useState<string | null>(null)
 
   const mutation = useMutation({
-    mutationFn: () => withdraw(password),
+    mutationFn: withdraw,
     onSuccess: async () => {
       // 이 기기의 푸시 구독도 지웁니다. 남겨 두면 같은 기기에서 다른 사람이 로그인했을 때, 설정에 "켜져 있어요" 가 뜨고 앞사람 알림이 옵니다.
       // 서버의 계정은 이미 지워졌으니 브라우저의 구독만 지웁니다. (지우지 못해도 탈퇴는 계속합니다)
@@ -396,14 +292,15 @@ function WithdrawCard() {
   function handleClose() {
     if (mutation.isPending) return
     setIsOpen(false)
-    setPassword('')
+    setGoogleError(null)
     mutation.reset()
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (password === '' || mutation.isPending) return
-    mutation.mutate()
+  /** 구글이 신분증을 줬을 때. 서버에 보내서 탈퇴합니다. */
+  function handleCredential(credential: string) {
+    if (mutation.isPending) return
+    setGoogleError(null)
+    mutation.mutate(credential)
   }
 
   return (
@@ -421,45 +318,54 @@ function WithdrawCard() {
       </Button>
 
       <Modal isOpen={isOpen} onClose={handleClose} title="정말 탈퇴할까요?">
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <p className="text-sm break-keep text-slate-600">
-            계정과 모든 기록이 지워지고 되돌릴 수 없어요. 같은 이메일로 다시 가입할 수는 있어요.
+            계정과 모든 기록이 지워지고 되돌릴 수 없어요. 같은 구글 계정으로 다시 가입할 수는
+            있어요.
           </p>
-          <Input
-            id="account-withdraw-password"
-            type="password"
-            label="비밀번호를 한 번 더 입력해 주세요"
-            value={password}
-            autoComplete="current-password"
-            onChange={(event) => setPassword(event.target.value)}
-            className="h-12 text-base"
-          />
+          <p className="text-sm break-keep text-slate-600">
+            본인이 맞는지 보려고, 가입한 구글 계정으로 한 번 더 확인하면 바로 탈퇴돼요.
+          </p>
+
+          {/* 클라이언트 ID 가 없으면(lib/googleClient.ts) 구글 버튼 대신 안내를 보여줍니다. */}
+          {isGoogleConfigured ? (
+            <GoogleButton
+              onCredential={handleCredential}
+              onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
+            />
+          ) : (
+            <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm break-keep text-slate-500">
+              구글 확인이 아직 준비 중이라 탈퇴할 수 없어요.
+            </p>
+          )}
+
+          {mutation.isPending && (
+            <p role="status" className="text-sm text-slate-500">
+              탈퇴하는 중…
+            </p>
+          )}
+          {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}
+          {googleError !== null && (
+            <p role="alert" className="text-sm break-keep text-red-600">
+              {googleError}
+            </p>
+          )}
           {mutation.isError && (
             <p role="alert" className="text-sm break-keep text-red-600">
               {getAccountErrorMessage(mutation.error)}
             </p>
           )}
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              size="lg"
-              className="flex-1"
-              onClick={handleClose}
-              disabled={mutation.isPending}
-            >
-              취소
-            </Button>
-            <Button
-              type="submit"
-              variant="danger"
-              size="lg"
-              className="flex-1"
-              disabled={password === '' || mutation.isPending}
-            >
-              {mutation.isPending ? '탈퇴하는 중…' : '탈퇴하기'}
-            </Button>
-          </div>
-        </form>
+
+          <Button
+            variant="secondary"
+            size="lg"
+            className="w-full"
+            onClick={handleClose}
+            disabled={mutation.isPending}
+          >
+            취소
+          </Button>
+        </div>
       </Modal>
     </Card>
   )

@@ -4,12 +4,11 @@
  * 서버(BE)와 정한 약속입니다. (BE 저장소의 docs/API.md "내 계정", BE 이슈 #101) 전부 로그인이 필요합니다.
  *   내 정보 보기    GET  /auth/profile                                                    -> 200 Profile
  *   내 정보 고치기  PUT  /auth/profile   { name, nickname, schoolCode, schoolName, diaryAnalysis } -> 200 Profile
- *   비밀번호 바꾸기 PUT  /auth/password  { currentPassword, newPassword }                  -> 204
  *   로그아웃        POST /auth/logout                                                     -> 204
- *   탈퇴            POST /auth/withdraw  { password }                                      -> 204
- *   실패            값이 틀리거나 "지금 비밀번호" 가 틀리면 400 / 로그인이 풀렸으면 401
+ *   탈퇴            POST /auth/withdraw  { credential }                                    -> 204
+ *   실패            값이 틀리거나 구글 확인에 실패하면 400 / 로그인이 풀렸으면 401
  *
- * ⚠️ 비밀번호는 서버로 보내기만 합니다. 브라우저 저장소에 넣지 않고, console.log 로도 찍지 않습니다.
+ * 계정은 모두 구글 계정이라 비밀번호가 없습니다. 그래서 비밀번호 바꾸기는 없고, 탈퇴할 때는 구글로 한 번 더 확인합니다.
  */
 import { ApiError, api, isConnectionError } from '@/lib/api'
 import { getAuthToken } from '@/lib/authStorage'
@@ -84,15 +83,6 @@ export async function updateProfile(input: ProfileUpdateInput): Promise<Profile>
   return result
 }
 
-/** 비밀번호를 바꿉니다. 실패하면 에러를 던집니다. (지금 비밀번호가 틀리면 400) */
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  await api<void>('/auth/password', {
-    method: 'PUT',
-    body: JSON.stringify({ currentPassword, newPassword }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
-}
-
 /**
  * 서버의 로그인 토큰을 지웁니다. 실패해도 에러를 던지지 않습니다.
  *
@@ -127,11 +117,14 @@ export async function logoutOnServer(): Promise<void> {
   ])
 }
 
-/** 탈퇴합니다. 서버의 계정과 기록이 지워집니다. 실패하면 에러를 던집니다. (비밀번호가 틀리면 400) */
-export async function withdraw(password: string): Promise<void> {
+/**
+ * 탈퇴합니다. 서버의 계정과 기록이 지워집니다. 실패하면 에러를 던집니다.
+ * credential 은 구글 버튼을 한 번 더 눌러 받은 신분증(ID 토큰)입니다. 서버가 가입한 그 구글 계정이 맞는지 확인합니다. (다르면 400)
+ */
+export async function withdraw(credential: string): Promise<void> {
   await api<void>('/auth/withdraw', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ credential }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
 }
@@ -139,7 +132,7 @@ export async function withdraw(password: string): Promise<void> {
 /**
  * 계정 관련 요청이 실패했을 때 화면에 보여줄 한 줄을 고릅니다.
  *
- *   서버가 거절(400 · 404 등) -> 서버가 준 메시지  (예: '비밀번호가 맞지 않아요', '이메일로 가입한 계정이 없어요')
+ *   서버가 거절(400 · 404 등) -> 서버가 준 메시지  (예: '이름은 2자 이상으로 적어 주세요')
  *   서버에 닿지 못함      -> '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.'
  */
 export function getAccountErrorMessage(error: unknown): string {

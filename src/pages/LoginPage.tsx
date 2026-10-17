@@ -1,27 +1,18 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
+import { GoogleButton } from '@/components/ui/GoogleButton'
 import { useAuth } from '@/hooks/useAuth'
-import {
-  getGoogleAuthErrorMessage,
-  getPasswordAuthErrorMessage,
-  loginWithPassword,
-  startWithGoogle,
-} from '@/lib/authApi'
+import { getGoogleAuthErrorMessage, startWithGoogle } from '@/lib/authApi'
 import { getAfterLoginPath, getReturnPath } from '@/lib/authRedirect'
 import { isGoogleConfigured } from '@/lib/googleClient'
 import { savePendingGoogleSignup } from '@/lib/googleSignup'
-import { getEmailError, hasSignupInfo, markSignupDone } from '@/lib/signup'
+import { hasSignupInfo, markSignupDone } from '@/lib/signup'
 import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
-import { GoogleLogin } from '@react-oauth/google'
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 // 테스트 로그인을 보여줄지. `.env` 값은 앱이 켜진 뒤에 바뀌지 않아서, 화면 밖에서 한 번만 정합니다.
 const isTestLoginOn = isTestLoginEnabled(import.meta.env.VITE_TEST_LOGIN)
-
-// 구글 버튼의 가장 넓은 폭(px). 구글이 400 보다 넓게는 그려 주지 않습니다.
-const GOOGLE_BUTTON_MAX_WIDTH = 400
 
 /* 왼쪽 소개에 나오는 세 줄. 아이콘은 글자를 꾸미는 것이라 화면 읽기 프로그램이 건너뜁니다(aria-hidden). */
 const features: { icon: ReactNode; text: string }[] = [
@@ -44,52 +35,6 @@ const features: { icon: ReactNode; text: string }[] = [
   },
 ]
 
-interface GoogleStartButtonProps {
-  /** 구글이 신분증(credential)을 줬을 때 */
-  onCredential: (credential: string) => void
-  /** 구글 창이 실패했을 때 */
-  onFail: () => void
-}
-
-/**
- * [Google로 시작하기] 버튼입니다. 버튼은 구글이 직접 그립니다. (@react-oauth/google 의 GoogleLogin)
- * 구글 버튼은 폭을 숫자(px)로만 받아서, 감싼 칸의 폭을 재서 넘겨줍니다. 화면을 돌려 폭이 바뀌면 다시 잽니다.
- */
-function GoogleStartButton({ onCredential, onFail }: GoogleStartButtonProps) {
-  const boxRef = useRef<HTMLDivElement>(null)
-  // 감싼 칸의 폭. 재기 전에는 null 이라 버튼을 그리지 않습니다.
-  const [width, setWidth] = useState<number | null>(null)
-
-  useEffect(() => {
-    const box = boxRef.current
-    if (!box) return
-    // ResizeObserver: 칸의 크기가 바뀔 때마다 알려 주는 브라우저 기능입니다.
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(Math.min(GOOGLE_BUTTON_MAX_WIDTH, Math.floor(entry.contentRect.width)))
-    })
-    observer.observe(box)
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    // min-h-10: 버튼이 그려지기 전에도 자리를 잡아 두어서 아래 내용이 들썩이지 않게 합니다.
-    <div ref={boxRef} className="flex min-h-10 w-full justify-center">
-      {width !== null && (
-        <GoogleLogin
-          onSuccess={(response) => {
-            if (response.credential) onCredential(response.credential)
-            else onFail()
-          }}
-          onError={onFail}
-          text="continue_with"
-          shape="rectangular"
-          width={width}
-        />
-      )}
-    </div>
-  )
-}
-
 interface TestLoginPanelProps {
   /** "테스트로 시작하기" 를 눌렀을 때 */
   onStart: () => void
@@ -97,7 +42,7 @@ interface TestLoginPanelProps {
 
 /**
  * 서버 없이도 앱을 끝까지 써 볼 수 있게 하는 테스트용 영역입니다. (lib/testLogin.ts)
- * 가짜라서 누구나 "로그인" 할 수 있습니다. 서버를 배포해 이메일 로그인이 되면 VITE_TEST_LOGIN=false 로 끕니다.
+ * 가짜라서 누구나 "로그인" 할 수 있습니다. 서버가 배포돼 구글로 시작하기가 되면 VITE_TEST_LOGIN=false 로 끕니다.
  */
 function TestLoginPanel({ onStart }: TestLoginPanelProps) {
   const { user, isLoggedIn, logout } = useAuth()
@@ -135,8 +80,8 @@ function TestLoginPanel({ onStart }: TestLoginPanelProps) {
 /**
  * 로그인 화면입니다. 시안(docs/design/screens/login-*.png)처럼 왼쪽은 앱 소개, 오른쪽은 "시작하기" 카드입니다.
  *  - [Google로 시작하기] : 가입한 구글 계정이면 바로 로그인, 처음이면 가입 화면으로 이어집니다. (#319)
- *  - 이메일 · 비밀번호 로그인 (이미 이메일로 가입한 사람만. 새 가입은 구글로만 받습니다, 2026-10-15)
- *  - 테스트 모드 (서버 배포 전까지)
+ *    로그인은 구글 하나뿐입니다. 이메일 가입이 없어서 이메일 로그인도 뺐습니다. (2026-10-17)
+ *  - 테스트 모드 (VITE_TEST_LOGIN=false 가 아닐 때만)
  * 모바일은 소개 → 카드 순서로 위아래로 쌓고, PC(lg)에서 두 칸으로 나눕니다.
  */
 export function LoginPage() {
@@ -149,13 +94,6 @@ export function LoginPage() {
   // 로그인 안 하고 막힌 페이지에 갔다가 여기로 왔다면, 가려던 주소가 들어 있습니다. (RequireAuth 가 넘겨줌)
   const returnPath = getReturnPath(location.state)
 
-  // 일반 로그인(이메일·비밀번호) 칸에 적은 값. 비밀번호는 화면에만 두고 어디에도 저장하지 않습니다.
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  // 서버 답을 기다리는 중인지. 기다리는 동안 버튼을 또 누르지 못하게 합니다.
-  const [isLoggingIn, setIsLoggingIn] = useState(false)
-  // 로그인에 실패했을 때 보여줄 안내. 없으면 null
-  const [loginError, setLoginError] = useState<string | null>(null)
   // 구글로 시작하는 중인지(서버 확인을 기다림), 실패했을 때 보여줄 안내
   const [isGoogleWorking, setIsGoogleWorking] = useState(false)
   const [googleError, setGoogleError] = useState<string | null>(null)
@@ -192,40 +130,8 @@ export function LoginPage() {
     }
   }
 
-  /** 이메일·비밀번호로 로그인합니다. 맞는지 확인하는 것은 서버입니다. (lib/authApi.ts) */
-  async function handlePasswordLogin(event: FormEvent<HTMLFormElement>) {
-    // form 이 기본으로 하는 "페이지 새로고침" 을 막습니다.
-    event.preventDefault()
-    if (isLoggingIn) return
-
-    // 서버에 보내기 전에, 눈에 보이는 실수(빈 칸·이메일 모양)는 먼저 알려 줍니다.
-    const emailError = getEmailError(email)
-    if (emailError !== null) {
-      setLoginError(emailError)
-      return
-    }
-    if (password === '') {
-      setLoginError('비밀번호를 입력해 주세요.')
-      return
-    }
-
-    setIsLoggingIn(true)
-    setLoginError(null)
-    try {
-      const result = await loginWithPassword(email.trim(), password)
-      // 이메일로 로그인되는 사람은 가입을 이미 마친 회원입니다. 이 기기에 가입 정보가 없어도 가입 화면으로 보내지 않습니다.
-      markSignupDone()
-      login(result.user, result.token)
-      setHasJustLoggedIn(true)
-    } catch (error) {
-      setLoginError(getPasswordAuthErrorMessage(error))
-    } finally {
-      setIsLoggingIn(false)
-    }
-  }
-
   // 로그인이 되면 갈 곳으로 보냅니다. 가려던 페이지가 있으면 거기로, 없으면 홈입니다.
-  // (구글 · 이메일 · 테스트 로그인은 모두 위에서 "가입 마침" 표시를 해 두어서 가입 화면으로 가지 않습니다)
+  // (구글 · 테스트 로그인은 모두 위에서 "가입 마침" 표시를 해 두어서 가입 화면으로 가지 않습니다)
   // replace: 로그인 화면을 기록에 남기지 않습니다.
   // 가려던 주소 없이 /login 을 직접 연 "이미 로그인한 사람" 은 그대로 둡니다. (로그아웃 버튼을 쓸 수 있어야 하기 때문입니다)
   if (isLoggedIn && (hasJustLoggedIn || returnPath !== null)) {
@@ -266,7 +172,8 @@ export function LoginPage() {
       </section>
 
       {/* ---------- 오른쪽: 시작하기 ---------- */}
-      <div className="flex flex-col gap-6">
+      {/* max-w-md(448px): 구글 버튼은 400px 보다 넓어지지 않아서, 칸을 이만큼으로 두어야 버튼이 카드 폭을 꽉 채웁니다. */}
+      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <Card title="시작하기" className="flex flex-col gap-4">
           <p className="-mt-1 text-sm break-keep text-slate-500">
             구글 계정으로 바로 시작해요. 처음이면 가입으로 이어져요.
@@ -274,7 +181,7 @@ export function LoginPage() {
 
           {/* 구글로 시작하기. 클라이언트 ID 가 없으면(lib/googleClient.ts) 버튼 대신 안내를 보여줍니다. */}
           {isGoogleConfigured ? (
-            <GoogleStartButton
+            <GoogleButton
               onCredential={(credential) => void handleGoogleCredential(credential)}
               onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
             />
@@ -293,55 +200,6 @@ export function LoginPage() {
               {googleError}
             </p>
           )}
-
-          {/* 가운데 글자가 있는 가로줄 */}
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="h-px flex-1 bg-slate-200" />
-            이메일로 가입했다면
-            <span className="h-px flex-1 bg-slate-200" />
-          </div>
-
-          {/* 일반 로그인 (이메일 · 비밀번호) */}
-          {/* noValidate: 브라우저의 기본 안내 풍선 대신, 아래의 우리 안내 문구를 씁니다. */}
-          <form onSubmit={handlePasswordLogin} noValidate className="flex flex-col gap-3">
-            <Input
-              id="login-email"
-              // type="email": 휴대폰에서 @ 가 있는 키보드가 뜹니다.
-              type="email"
-              label="이메일"
-              value={email}
-              placeholder="예) tmax@starflow.com"
-              // autoComplete: 브라우저(비밀번호 관리자)가 저장해 둔 값을 채워 줍니다.
-              autoComplete="email"
-              onChange={(event) => setEmail(event.target.value)}
-              className="h-12 text-base"
-            />
-            <Input
-              id="login-password"
-              // type="password": 적은 글자가 점(●)으로 가려집니다.
-              type="password"
-              label="비밀번호"
-              value={password}
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-              className="h-12 text-base"
-            />
-            {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}
-            {loginError !== null && (
-              <p role="alert" className="text-sm break-keep text-red-600">
-                {loginError}
-              </p>
-            )}
-            <Button
-              type="submit"
-              variant="secondary"
-              size="lg"
-              className="w-full"
-              disabled={isLoggingIn}
-            >
-              {isLoggingIn ? '로그인하는 중…' : '이메일로 로그인'}
-            </Button>
-          </form>
 
           <div className="border-t border-slate-100 pt-3 text-xs break-keep text-slate-500">
             <p>약관 동의는 다음 화면에서 따로 받아요.</p>

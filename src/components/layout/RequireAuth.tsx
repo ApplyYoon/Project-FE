@@ -55,7 +55,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
   }
 
   // 로그인은 했지만 가입 정보(이름·동의 등)를 아직 안 적은 사람은 가입 화면으로 보냅니다.
-  // 이메일로 로그인한 사람은 서버에 가입을 마친 회원이라, 로그인할 때 "가입 마침" 표시를 해 둡니다. (LoginPage 의 markSignupDone)
+  // 구글로 로그인한 사람(이미 가입한 구글 계정)은 서버에 가입을 마친 회원이라, 로그인할 때 "가입 마침" 표시를 해 둡니다. (LoginPage 의 markSignupDone)
   // 테스트 로그인(lib/testLogin.ts)은 앱을 바로 둘러보려는 것이라 가입 화면으로 보내지 않습니다.
   // (테스트 로그인도 "가입 마침" 표시를 하지만, 그 표시가 생기기 전에 로그인해 둔 브라우저도 풀어 주려고 토큰으로 한 번 더 봅니다)
   const isTestLogin = token === TEST_TOKEN
