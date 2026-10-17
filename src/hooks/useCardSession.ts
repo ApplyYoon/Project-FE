@@ -5,13 +5,31 @@ import {
   getScheduledEndAt,
   type ActiveCardSession,
 } from '@/lib/cardSession'
+import {
+  finishPlay as buildPlayRecord,
+  startPlay as createPlay,
+  type ActivePlay,
+} from '@/lib/playSession'
 import { loadData, removeData, saveData } from '@/lib/storage'
-import type { Card, PauseTag, StudySession } from '@/types'
+import type { Card, PauseTag, PlayTag, StudySession } from '@/types'
 import { useEffect, useRef, useState } from 'react'
 
 // 진행 중인 카드 세션을 넣어 두는 이름입니다. (실제 키는 'study-card-session')
 // 새로고침하거나 앱을 닫았다 열어도 세션 화면으로 돌아오기 위해 저장합니다.
 export const CARD_SESSION_KEY = 'card-session'
+
+// 진행 중인 놀기 (실제 키는 'study-play-session', #401)
+export const PLAY_SESSION_KEY = 'play-session'
+
+/** 저장된 진행 중 놀기. 없거나 모양이 틀리면 null */
+function loadActivePlay(): ActivePlay | null {
+  const saved = loadData<Partial<ActivePlay> | null>(PLAY_SESSION_KEY, null)
+  const isValid =
+    typeof saved?.startedAt === 'number' &&
+    typeof saved.endAt === 'number' &&
+    typeof saved.tag === 'string'
+  return isValid ? (saved as ActivePlay) : null
+}
 
 /** 저장된 진행 중 세션. 없거나 모양이 틀리면 null */
 export function loadActiveCardSession(): ActiveCardSession | null {
@@ -37,6 +55,8 @@ export function useCardSession() {
   // 끝낸 기록을 붙이는 곳과 화면이 읽는 곳이 같아야 해서, 기록 목록도 이 훅이 같이 돌려줍니다.
   const { allSessions, addSession, updateSession } = useStudySessions()
   const [active, setActive] = useState<ActiveCardSession | null>(loadActiveCardSession)
+  // 놀기 타이머 (#401). 공부 세션과 동시에 돌지 않습니다.
+  const [play, setPlay] = useState<ActivePlay | null>(loadActivePlay)
   const [now, setNow] = useState(() => Date.now())
   // 같은 세션을 두 번 저장하지 않게, 마지막으로 끝낸 세션의 시작 시각을 기억합니다.
   // (예정 시각이 지난 채로 화면을 열면 끝내기가 화면 그리기마다 불릴 수 있어서)
@@ -48,12 +68,40 @@ export function useCardSession() {
     else removeData(CARD_SESSION_KEY)
   }, [active])
 
-  // 세션이 있는 동안만 1초마다 시계를 움직입니다.
   useEffect(() => {
-    if (!active) return
+    if (play) saveData(PLAY_SESSION_KEY, play)
+    else removeData(PLAY_SESSION_KEY)
+  }, [play])
+
+  // 세션이나 놀기가 있는 동안만 1초마다 시계를 움직입니다.
+  const isTicking = active !== null || play !== null
+  useEffect(() => {
+    if (!isTicking) return
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [active])
+  }, [isTicking])
+
+  /** 놀기를 시작합니다. 공부 세션이나 다른 놀기가 진행 중이면 아무것도 하지 않습니다. */
+  function startPlay(minutes: number, tag: PlayTag) {
+    if (active || play) return
+    const startedAt = Date.now()
+    setNow(startedAt)
+    setPlay(createPlay(startedAt, minutes, tag))
+  }
+
+  /** 알림을 보냈다고 적어 둡니다 — warned: 1분 전 알림, endAlerted: 끝났다는 알림 (새로고침해도 다시 안 보냄) */
+  function markPlayAlert(flag: 'warned' | 'endAlerted') {
+    setPlay((prev) => (prev ? { ...prev, [flag]: true } : prev))
+  }
+
+  /** 놀기를 끝내고 기록으로 저장합니다. 놀기가 끝난 뒤 누른 것이면 그 사이가 초과 휴식으로 남습니다. */
+  function finishPlay(): StudySession | null {
+    if (!play) return null
+    const record = buildPlayRecord(play, Date.now(), `play-${Date.now()}`)
+    addSession(record)
+    setPlay(null)
+    return record
+  }
 
   /** 카드로 세션을 시작합니다. 이미 진행 중이면 아무것도 하지 않습니다. */
   function start(card: Card, dateKey: string, mode: ActiveCardSession['mode'] = 'normal') {
@@ -137,6 +185,10 @@ export function useCardSession() {
     resume,
     markLongPauseAlerted,
     updateSession,
+    play,
+    startPlay,
+    markPlayAlert,
+    finishPlay,
     toggleCheck,
     addMemo,
     finish,
