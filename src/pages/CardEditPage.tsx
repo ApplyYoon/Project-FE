@@ -1,17 +1,19 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
 import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
-import { requestChecklist } from '@/lib/aiCardApi'
+import { failCauseOptionsQuery, requestChecklist } from '@/lib/aiCardApi'
 import {
   ALERT_MINUTES_OPTIONS,
   ALERT_TEXT_MAX_LENGTH,
@@ -26,6 +28,8 @@ import {
   isAiChecklistItem,
   mergeAiChecklist,
   shouldSuggestSelfChecklist,
+  splitFailCauses,
+  toggleFailCause,
   validateCardForm,
   type CardFormValues,
 } from '@/lib/cardForm'
@@ -71,6 +75,44 @@ interface CardFormProps {
   allCards: CardData[]
   fixedBlocks: FixedBlock[]
   onSave: (card: CardData) => void
+}
+
+interface FailCauseOptionsProps {
+  /** 제목 칸에서 나갈 때 정해진 카드 제목 (글자를 칠 때마다 묻지 않으려고) */
+  title: string
+  /** 지금 예상 실패 원인 칸의 글 (쉼표로 나뉨) */
+  value: string
+  onToggle: (cause: string) => void
+}
+
+/**
+ * AI 가 내 최근 30일 기록으로 만든 예상 실패 원인 선지 3개 (#419 표 3번, BE POST /ai/fail-cause-options).
+ * 누르면 칸에 넣고, 다시 누르면 뺍니다. 기록이 모자라거나 못 받으면 아무것도 안 보입니다 (주관식 그대로).
+ */
+function FailCauseOptions({ title, value, onToggle }: FailCauseOptionsProps) {
+  const { data: options } = useSuspenseQuery(failCauseOptionsQuery(title))
+  if (!options) return null
+  const picked = splitFailCauses(value)
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs break-keep text-slate-500">
+        <span className="font-semibold text-violet-700">AI 추천</span> 내 기록으로 고른 선지예요.
+        눌러서 넣어요.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <ChipButton
+            key={option.text}
+            selected={picked.includes(option.text)}
+            onClick={() => onToggle(option.text)}
+          >
+            {/* 내 행동에서 나오는 원인은 글자로도 표시합니다 */}
+            {option.inner ? `${option.text} · 내 쪽` : option.text}
+          </ChipButton>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /** AI 가 체크리스트를 만들어 달라는 부탁 하나. auto 는 제목 칸에서 나갈 때 저절로 부탁한 것입니다. */
@@ -134,8 +176,14 @@ function CardForm({
   })
   const goalTitle = goalOptions.find((goal) => goal.id === values.goalId)?.title
 
+  // 예상 실패 원인 선지(#419)는 제목 칸에서 나갈 때 정해진 제목으로 묻습니다.
+  const [committedTitle, setCommittedTitle] = useState(initialValues.title.trim())
+  // 테스트 로그인이면 서버의 AI 를 쓸 수 없습니다.
+  const isAiEnabled = aiChecklist !== 'off'
+
   function handleTitleBlur() {
     const title = values.title.trim()
+    setCommittedTitle(title)
     if (aiChecklist !== 'auto' || title === '' || title === autoAskedTitle) return
     if (getFilledChecklist(values.checklist).length > 0) return
     setAutoAskedTitle(title)
@@ -236,14 +284,28 @@ function CardForm({
 
   // 예상 실패 원인 칸. 성향상 꼭 받아야 하면 필수 칸 쪽에, 아니면 접힌 칸 안에 둡니다.
   const failCauseField = (
-    <Input
-      id="card-fail-causes"
-      label={failCauseRequired ? '예상 실패 원인 (필수)' : '예상 실패 원인'}
-      value={values.failCauses}
-      onChange={(event) => change('failCauses', event.target.value)}
-      placeholder="예: 폰을 책상에 두면 계속 보게 돼요"
-      error={shownErrors.failCauses}
-    />
+    <div className="flex flex-col gap-2">
+      <Input
+        id="card-fail-causes"
+        label={failCauseRequired ? '예상 실패 원인 (필수)' : '예상 실패 원인'}
+        value={values.failCauses}
+        onChange={(event) => change('failCauses', event.target.value)}
+        placeholder="예: 폰을 책상에 두면 계속 보게 돼요"
+        error={shownErrors.failCauses}
+      />
+      {isAiEnabled && committedTitle !== '' && (
+        <AsyncBoundary
+          pendingFallback={<Skeleton className="h-10 w-full rounded-lg" />}
+          resetKeys={[committedTitle]}
+        >
+          <FailCauseOptions
+            title={committedTitle}
+            value={values.failCauses}
+            onToggle={(cause) => change('failCauses', toggleFailCause(values.failCauses, cause))}
+          />
+        </AsyncBoundary>
+      )}
+    </div>
   )
 
   return (

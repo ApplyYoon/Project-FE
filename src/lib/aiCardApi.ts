@@ -1,3 +1,4 @@
+import { queryOptions } from '@tanstack/react-query'
 import { ApiError, api } from '@/lib/api'
 import { isServerDataMode } from '@/lib/dataMode'
 
@@ -86,4 +87,69 @@ export async function requestChecklist(title: string, goal?: string): Promise<st
     if (error instanceof ApiError && error.status === 401) throw error
     return null
   }
+}
+
+/** 예상 실패 원인 선지 하나 (BE `POST /ai/fail-cause-options`) */
+export interface FailCauseOption {
+  /** 원인 이름 (체크인의 못 채운 이유와 같은 글자, 예: 'phone') */
+  reason: string
+  /** 이 카드에서 일어날 법한 장면 한 구절 (30자까지) */
+  text: string
+  /** 내 행동에서 나오는 원인인지 (폰·SNS · 하기 싫음). 코드(서버)가 정합니다 */
+  inner: boolean
+}
+
+/**
+ * 카드 제목으로 "이번에 못 한다면 무엇 때문일지" 선지 3개를 받습니다. (#419 표 3번)
+ * 어떤 원인을 고를지는 서버가 내 최근 30일 기록으로 정하고, AI 는 문장만 씁니다.
+ * 기록이 모자라거나(3일 미만) 못 받으면 null → 화면은 주관식 그대로입니다.
+ *
+ *   await requestFailCauseOptions('수학 문제집')
+ *     -> [{ reason: 'phone', text: '문제 막힐 때 폰부터 집기', inner: true }, …]   (못 받으면 null)
+ */
+export async function requestFailCauseOptions(title: string): Promise<FailCauseOption[] | null> {
+  if (!isServerDataMode()) return null
+  const trimmed = title.trim().slice(0, 200)
+  if (trimmed === '') return null
+  try {
+    const result = await api<unknown>('/ai/fail-cause-options', {
+      method: 'POST',
+      body: JSON.stringify({ title: trimmed }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    const record = (typeof result === 'object' && result !== null ? result : {}) as Record<
+      string,
+      unknown
+    >
+    if (record.showHelp === true || !Array.isArray(record.options)) return null
+    // 모양이 맞는 선지만 씁니다. (쉼표는 실패 원인 칸을 나누는 글자라 빼 둡니다)
+    const options: FailCauseOption[] = []
+    for (const value of record.options) {
+      if (typeof value !== 'object' || value === null) continue
+      const option = value as Record<string, unknown>
+      if (typeof option.text !== 'string' || option.text.trim() === '') continue
+      options.push({
+        reason: typeof option.reason === 'string' ? option.reason : 'etc',
+        text: option.text.replaceAll(',', ' ').trim(),
+        inner: option.inner === true,
+      })
+    }
+    return options.length > 0 ? options : null
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) throw error
+    return null
+  }
+}
+
+/**
+ * 예상 실패 원인 선지의 쿼리 설정입니다. 화면에서는 useSuspenseQuery(failCauseOptionsQuery(제목)) 로 받습니다.
+ * 같은 제목이면 다시 묻지 않습니다(하루 한도가 있어서). 실패해도 null 로 끝나서 다시 시도하지 않습니다.
+ */
+export function failCauseOptionsQuery(title: string) {
+  return queryOptions({
+    queryKey: ['ai', 'fail-cause-options', title],
+    queryFn: () => requestFailCauseOptions(title),
+    staleTime: Infinity,
+    retry: false,
+  })
 }
