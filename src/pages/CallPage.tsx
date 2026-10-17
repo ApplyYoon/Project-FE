@@ -22,6 +22,10 @@ export function CallPage() {
   const [micError, setMicError] = useState<MicError | null>(null)
   // 권한 창이 떠 있는 동안 받기를 또 누르지 못하게 합니다.
   const [isRequesting, setIsRequesting] = useState(false)
+  // 마이크 안내 화면에서 "다시 시도" 를 눌렀는데 또 막혔는지. (#460)
+  // 한 번 "차단" 하면 브라우저가 기억해서, 권한을 바꾸지 않고 누르면 묻지도 않고 바로 같은 화면이 나옵니다.
+  // 화면이 하나도 안 바뀌면 버튼이 고장 난 것처럼 보여서, 이때는 "아직 막혀 있어요" 를 알려 줍니다.
+  const [isStillBlocked, setIsStillBlocked] = useState(false)
   // 오늘의 관리 강도에 맞는 색과 인사말입니다. (아직 진짜 값이 없어서 고정값이에요. 자세한 건 todayCare.ts)
   const careLevel = getTodayCareLevel()
   const theme = careThemes[careLevel]
@@ -38,6 +42,8 @@ export function CallPage() {
     try {
       // https 주소나 localhost 가 아니면 mediaDevices 자체가 없습니다.
       if (!navigator.mediaDevices) {
+        // micError 가 이미 있으면 안내 화면에서 "다시 시도" 를 누른 것입니다.
+        if (micError !== null) setIsStillBlocked(true)
         setMicError('unavailable')
         return
       }
@@ -52,6 +58,7 @@ export function CallPage() {
     } catch (error) {
       // NotAllowedError = 사용자가 거부했거나 브라우저에서 막아 둔 경우
       const isDenied = error instanceof DOMException && error.name === 'NotAllowedError'
+      if (micError !== null) setIsStillBlocked(true)
       setMicError(isDenied ? 'denied' : 'unavailable')
     } finally {
       setIsRequesting(false)
@@ -101,24 +108,32 @@ export function CallPage() {
                 <span className="text-brand flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-semibold">
                   3
                 </span>
-                <span className="break-keep">허용으로 바꾸고 다시 시도를 눌러</span>
+                <span className="break-keep">허용으로 바꾸고 아래 다시 시도를 눌러</span>
               </li>
             </ol>
           </section>
 
           {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
+          {/* 권한을 바꾸기 전에는 "다시 시도" 가 소용없어서, 바로 할 수 있는 체크인을 첫 번째(진한) 버튼으로 둡니다. (#460) */}
           <div className="mt-auto flex w-full flex-col gap-3 pt-10">
-            <Button size="lg" className="w-full" disabled={isRequesting} onClick={handleAccept}>
-              다시 시도
+            <Button size="lg" className="w-full" onClick={() => navigate('/check')}>
+              말 대신 체크인 화면으로
             </Button>
             <Button
               size="lg"
               variant="secondary"
               className="w-full"
-              onClick={() => navigate('/check')}
+              disabled={isRequesting}
+              onClick={handleAccept}
             >
-              말 대신 체크인 화면으로
+              마이크를 허용했어요 · 다시 시도
             </Button>
+            {/* role="alert": 화면을 읽어 주는 프로그램도 바로 알려 줍니다. */}
+            {isStillBlocked && (
+              <p role="alert" className="text-sm break-keep text-red-600">
+                아직 마이크가 막혀 있어요. 위 1~3단계로 허용으로 바꾼 뒤 다시 눌러 줘.
+              </p>
+            )}
           </div>
         </div>
       </div>
