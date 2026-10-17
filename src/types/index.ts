@@ -255,6 +255,24 @@ export interface Card {
   createdAt: number
 }
 
+/**
+ * 고정 일정 블록 (최종 기획서 「4.3 카드」, #393)
+ * 학교·학원처럼 요일마다 정해진 시간. 카드가 아니라서 타이머가 없고, 의지력·순공 계산에서 빠집니다.
+ * 공부 가능 시간 계산 · 버퍼 · 수면 보호에만 씁니다. 칸은 BE(Project-BE#223)와 같은 뜻입니다.
+ */
+export interface FixedBlock {
+  id: string
+  /** 무슨 일정인지 (예: '학교', '수학 학원') */
+  title: string
+  /** 반복 요일 (0 = 일요일 … 6 = 토요일). 1개 이상 */
+  repeatDays: number[]
+  /** 시작 시각 'HH:MM' */
+  startTime: string
+  /** 끝 시각 'HH:MM' (시작보다 뒤) */
+  endTime: string
+  createdAt: number
+}
+
 /*
  * ── 목표 (최종 기획서 「4.7 목표와 숲」, #391) ──
  * 목표 = D-day 가 있는 장기 결과. 카드는 목표를 위한 일상 행동이고, 카드의 goalId 로 이어집니다.
