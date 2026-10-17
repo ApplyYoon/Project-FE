@@ -18,6 +18,7 @@
  * 화면을 옮길 때 색 고르기를 5가지로 줄이려면 SERVER_SUBJECT_COLORS 를 쓰세요.
  */
 import { ApiError, api } from '@/lib/api'
+import { shouldRetryQuery } from '@/lib/queryRetry'
 import { SUBJECT_COLORS } from '@/lib/subjects'
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import type { Subject, SubjectColor } from '@/types'
@@ -72,8 +73,8 @@ export function subjectsQuery() {
   return queryOptions({
     queryKey: ['subjects'],
     queryFn: fetchSubjects,
-    // 400·404 같은 거절은 다시 시도해도 같아서, 다시 시도하지 않습니다.
-    retry: false,
+    // 일시적인 문제(연결 끊김 · 시간 초과 · 서버 5xx)만 최대 2번 다시 시도하고, 400 · 404 같은 거절은 다시 시도하지 않습니다. (lib/queryRetry.ts)
+    retry: shouldRetryQuery,
   })
 }
 
