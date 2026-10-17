@@ -120,6 +120,65 @@ export function getFilledChecklist(checklist: ChecklistItem[]): ChecklistItem[] 
     .filter((item) => item.text !== '')
 }
 
+/** AI 가 추천한 체크리스트 항목의 id 앞머리 (#413). 폼에서 'AI' 표시를 붙이는 데 씁니다. */
+export const AI_ITEM_ID_PREFIX = 'ai-'
+
+/** AI 가 추천해서 들어간 항목인지 */
+export function isAiChecklistItem(item: ChecklistItem): boolean {
+  return item.id.startsWith(AI_ITEM_ID_PREFIX)
+}
+
+/**
+ * AI 가 추천한 항목을 폼의 체크리스트에 넣습니다. (#413)
+ * 내가 이미 적은 항목은 그대로 앞에 두고, 빈 칸은 지우고, 같은 글은 한 번만 넣습니다.
+ * stamp 는 id 를 겹치지 않게 하는 숫자입니다 (보통 Date.now()).
+ *
+ *   mergeAiChecklist([{ id: 'a', text: '' }], ['문제 풀기', '채점'], 7)
+ *     -> [{ id: 'ai-7-0', text: '문제 풀기' }, { id: 'ai-7-1', text: '채점' }]
+ *   mergeAiChecklist([{ id: 'a', text: '채점' }], ['문제 풀기', '채점'], 7)
+ *     -> [{ id: 'a', text: '채점' }, { id: 'ai-7-0', text: '문제 풀기' }]
+ */
+export function mergeAiChecklist(
+  current: ChecklistItem[],
+  aiItems: string[],
+  stamp: number,
+): ChecklistItem[] {
+  const kept = getFilledChecklist(current)
+  const seen = new Set(kept.map((item) => item.text))
+  const added: ChecklistItem[] = []
+  aiItems.forEach((text, index) => {
+    const trimmed = text.trim().slice(0, CHECKLIST_ITEM_MAX_LENGTH)
+    if (trimmed === '' || seen.has(trimmed)) return
+    seen.add(trimmed)
+    added.push({ id: `${AI_ITEM_ID_PREFIX}${stamp}-${index}`, text: trimmed })
+  })
+  const merged = [...kept, ...added]
+  // 넣을 것이 하나도 없으면 원래 칸을 그대로 둡니다. (빈 칸 하나는 남아 있어야 적을 수 있습니다)
+  return merged.length > 0 ? merged : current
+}
+
+/** 체크리스트를 직접 써 보자고 권하기까지 기다리는 날 (#385 "2주 뒤 직접 써볼까요?") */
+export const SUGGEST_SELF_CHECKLIST_DAYS = 14
+
+/**
+ * 성향 설정이 '2주 뒤 직접 써 보기' 이고, 첫 카드를 만든 지 14일이 지났으면 true 입니다. (#413, #385)
+ * true 면 폼이 AI 추천을 저절로 받지 않고 "이번엔 직접 써 볼까요?" 를 보여 줍니다.
+ *
+ *   shouldSuggestSelfChecklist('suggestSelf', [{ createdAt: 15일 전 }], now) -> true
+ *   shouldSuggestSelfChecklist('suggestSelf', [{ createdAt: 3일 전 }], now)  -> false
+ *   shouldSuggestSelfChecklist('ai', [{ createdAt: 30일 전 }], now)          -> false
+ *   shouldSuggestSelfChecklist('suggestSelf', [], now)                      -> false
+ */
+export function shouldSuggestSelfChecklist(
+  writer: 'ai' | 'suggestSelf',
+  cards: Pick<Card, 'createdAt'>[],
+  now: number,
+): boolean {
+  if (writer !== 'suggestSelf' || cards.length === 0) return false
+  const firstCreatedAt = Math.min(...cards.map((card) => card.createdAt))
+  return now - firstCreatedAt >= SUGGEST_SELF_CHECKLIST_DAYS * 24 * 60 * 60 * 1000
+}
+
 /** '수학, 영어 ,' → ['수학', '영어'] */
 export function splitFailCauses(text: string): string[] {
   return text
