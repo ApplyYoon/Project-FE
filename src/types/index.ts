@@ -524,59 +524,21 @@ export interface Exam {
   goalPrediction?: string
 }
 
-/** 과거에 공부 계획이 무너졌던 때 (#89, 여러 개 고를 수 있습니다) */
-export type PastFailureCause =
-  | 'afterExam' // 시험 끝난 직후
-  | 'weekend' // 주말
-  | 'lateAcademy' // 학원 늦게 끝난 날
-  | 'phone' // 폰 보다가
-  | 'tooMuchPlan' // 계획이 많아서
-
 /** 아침형 / 밤형 (#89 자기 인식) */
 export type Chronotype = 'morning' | 'night'
 
-/** 온보딩에서 받은 과목별 현재 수준 (#88) */
-export interface SubjectLevel {
-  /** 어떤 과목인지 (Subject 의 id) */
-  subjectId: string
-  /** 최근 등급 (1 ~ 9). 점수로 입력했으면 없습니다 */
-  grade?: number
-  /** 최근 점수. 등급으로 입력했으면 없습니다 */
-  score?: number
-  /** 이 과목에 대한 자신감 (1 ~ 5) */
-  confidence: number
-}
-
 /**
- * 온보딩 설문 답 (#58, #88, #89)
- * 처음에는 학년 · 시험 · 시험 날짜 · 하루 공부 가능 시간만 꼭 묻습니다.
- * ? 가 붙은 항목은 나중에 "내 정보 더 알려주기" 에서 답하는 것이라 없을 수 있습니다. (#239)
+ * 온보딩 설문 답 (#58, #88, #89 → 최종 기획서 「4.1」)
+ * 처음 온보딩은 학년과 자기 인식 4문항만 묻고, 취침 · 기상 시각은 관리 설정 화면이 같은 칸에 저장합니다.
+ * (예전 "내 정보 더 알려주기" 의 질문은 #417 에서 지웠습니다. 시험 이름 · 날짜 · 공부 이유는 옛 답이 있으면 다짐 녹음 화면이 읽습니다)
  */
 export interface OnboardingAnswers {
   /** 학년 */
   grade: '고1' | '고2' | '고3' | 'N수' | '대학생'
-  /** 목표로 하는 시험 이름 (예: '수능') */
-  targetExam: string
-  /** 목표 시험 날짜 (D-day 계산용) */
-  targetExamDate: string
-  /** 목표 대학 (선택) */
-  targetUniversity?: string
-  /** 목표 점수 (선택) */
-  targetScore?: string
-  /** 평소 기상 시각 ('HH:MM') */
+  /** 평소 기상 시각 ('HH:MM'). 관리 설정의 수면 보호 */
   wakeUpTime?: string
-  /** 평소 취침 시각 ('HH:MM') */
+  /** 평소 취침 시각 ('HH:MM'). 관리 설정의 수면 보호 */
   sleepTime?: string
-  /** 학교 끝나는 시각 ('HH:MM') */
-  schoolEndTime?: string
-  /** 학원 끝나는 시각 ('HH:MM') */
-  academyEndTime?: string
-  /** 주로 공부하는 장소 */
-  studyPlace?: string
-  /** 과목별 최근 성적·자신감 (#88, 건너뛰면 빈 배열) */
-  subjectLevels?: SubjectLevel[]
-  /** 과거에 계획이 무너졌던 때 (여러 개) */
-  pastFailureCauses?: PastFailureCause[]
   /** 아침형 / 밤형 */
   chronotype?: Chronotype
   /** 한 번에 집중 가능한 시간(분) */
@@ -585,10 +547,12 @@ export interface OnboardingAnswers {
   biggestDistraction?: string
   /** 하루 공부 가능 시간(분) */
   dailyAvailableMinutes: number
-  /** 공부하는 이유 (한 줄, 최대 50자). 비워 둘 수 있습니다 */
+  /** (옛 답) 목표로 하는 시험 이름 (예: '수능') */
+  targetExam?: string
+  /** (옛 답) 목표 시험 날짜 */
+  targetExamDate?: string
+  /** (옛 답) 공부하는 이유 (한 줄) */
   motivationReason?: string
-  /** 목표를 이루면 하고 싶은 것 (한 줄, 최대 50자) */
-  goalReward?: string
 }
 
 /** 나 사용설명서 항목의 분류 (#87) */

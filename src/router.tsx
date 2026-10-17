@@ -10,7 +10,6 @@ import {
 } from '@/lib/onboardingProgress'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
 import { ANALYSIS_PATH } from '@/lib/tabMenu'
-import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { ErrorPage } from '@/pages/ErrorPage'
@@ -90,9 +89,6 @@ const OnboardingPsychTestPage = lazy(() =>
 )
 const OnboardingResumePage = lazy(() =>
   import('@/pages/OnboardingResumePage').then((m) => ({ default: m.OnboardingResumePage })),
-)
-const OnboardingThinkingPage = lazy(() =>
-  import('@/pages/OnboardingThinkingPage').then((m) => ({ default: m.OnboardingThinkingPage })),
 )
 const OnboardingVoicePage = lazy(() =>
   import('@/pages/OnboardingVoicePage').then((m) => ({ default: m.OnboardingVoicePage })),
@@ -206,7 +202,7 @@ export const router = createBrowserRouter([
     ),
   },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
-  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 생각 습관 테스트 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
+  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
   {
     path: ONBOARDING_INTRO_PATH,
     errorElement: <ErrorPage />,
@@ -279,31 +275,10 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 설정의 "내 정보 더 알려주기". 같은 설문 화면으로 아직 안 답한 질문만 이어서 묻습니다. (#239)
-  {
-    path: '/onboarding/more',
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <OnboardingPage mode="more" />
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
-  // 생각 습관 테스트. 온보딩에서 심리검사 다음에 하고, 기록 화면에서 다시 할 때도 씁니다. (lib/thinkingTest.ts)
-  {
-    path: THINKING_TEST_PATH,
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <OnboardingThinkingPage />
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
-  // 온보딩 심리검사 14문항. 학년 다음, 생각 습관 테스트 앞에 나옵니다. (lib/psychTest.ts)
+  // 설정의 "내 정보 더 알려주기"(/onboarding/more)와 생각 습관 테스트(/onboarding/thinking)는 #417 에서 지웠습니다. 옛 링크는 설정 · 홈으로 보냅니다.
+  { path: '/onboarding/more', element: <Navigate to="/settings" replace /> },
+  { path: '/onboarding/thinking', element: <Navigate to="/" replace /> },
+  // 온보딩 심리검사. 학년 다음, 자기 인식 4문항 앞에 나옵니다. (lib/psychTest.ts)
   {
     path: PSYCH_TEST_PATH,
     errorElement: <ErrorPage />,

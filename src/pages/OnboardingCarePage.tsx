@@ -65,7 +65,7 @@ export function OnboardingCarePage() {
 
   const [callTime, setCallTime] = useState(loadCallTime)
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
-  // 수면 보호 시간은 온보딩 답의 취침·기상 시각 칸에 저장합니다. ("내 정보 더 알려주기" 의 같은 질문과 같은 칸)
+  // 수면 보호 시간은 온보딩 답의 취침·기상 시각 칸(wakeUpTime · sleepTime)에 저장합니다. 카드 폼 · 고정 일정이 이 칸을 읽습니다.
   const [bedTime, setBedTime] = useState(savedAnswers?.sleepTime || DEFAULT_BED_TIME)
   const [wakeTime, setWakeTime] = useState(savedAnswers?.wakeUpTime || DEFAULT_WAKE_TIME)
   const [maxCareLevel, setMaxCareLevel] = useState<CareLevel>(proposal.maxCareLevel)
