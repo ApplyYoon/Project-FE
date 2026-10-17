@@ -1,5 +1,6 @@
 import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
+import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
@@ -20,6 +21,7 @@ import { NotificationsPage } from '@/pages/NotificationsPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
+import { OnboardingResumePage } from '@/pages/OnboardingResumePage'
 import { OnboardingThinkingPage } from '@/pages/OnboardingThinkingPage'
 import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
 import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
@@ -109,6 +111,16 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <OnboardingPage />
+      </RequireAuth>
+    ),
+  },
+  // 온보딩을 하다 만 사람이 다음에 들어왔을 때 "이어하기 / 처음부터 다시" 를 고르는 화면. RequireAuth 가 보냅니다.
+  {
+    path: ONBOARDING_RESUME_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingResumePage />
       </RequireAuth>
     ),
   },
