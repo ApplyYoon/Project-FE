@@ -7,6 +7,7 @@
  * ⚠️ 이 기능은 **앱(웹 페이지)이 열려 있을 때만** 동작합니다.
  *    앱이 닫혀 있을 때 알림을 보내려면 서버가 보내는 웹 푸시와 서비스 워커(#105)가 필요합니다.
  */
+import { isInApp } from '@/lib/appBridge'
 import { showSystemNotification } from '@/lib/notifications'
 import { isWithinQuietHours, type QuietHours } from '@/lib/safetyBrake'
 
@@ -90,6 +91,8 @@ export function shouldRingNow(now: Date, savedTime: unknown, lastRingAt: unknown
  * 아이폰은 홈 화면에 추가한 앱만 알림을 받을 수 있어서, 이 경우에만 안내를 보여줍니다.
  */
 export function isIosWithoutInstall(): boolean {
+  // 휴대폰 앱 안이면 설치할 필요가 없습니다. (lib/appBridge.ts)
+  if (isInApp()) return false
   const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent)
   if (!isIos) return false
 
@@ -106,6 +109,8 @@ export function isIosWithoutInstall(): boolean {
  * 띄우는 방법은 lib/notifications.ts 의 showSystemNotification 을 보세요. (휴대폰은 서비스 워커로 띄웁니다)
  */
 export function showCallNotification(): void {
+  // 휴대폰 앱 안에서는 앱이 같은 시각에 전화 알림을 이미 띄우므로(call.schedule) 겹치지 않게 건너뜁니다. (docs/APP-BRIDGE.md)
+  if (isInApp()) return
   // void: 알림이 떴는지 기다리지 않고 넘어갑니다. 못 띄워도 전화 화면은 그대로 열립니다.
   void showSystemNotification({
     title: 'AI 선생님에게 전화가 왔어요',

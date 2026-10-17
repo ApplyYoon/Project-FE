@@ -8,6 +8,7 @@
  * 지원하지 않는 브라우저거나 기기가 거절하면(배터리 절약 모드 등) 에러 없이 조용히 넘어갑니다.
  * 화면이 꺼지는 것을 못 막을 뿐, 타이머는 그대로 동작합니다. (lib/alarm.ts 와 같은 방식)
  */
+import { isInApp, sendToApp } from '@/lib/appBridge'
 
 // 지금 걸어 둔 "화면 꺼짐 방지". 안 걸었으면 null 입니다.
 let screenLock: WakeLockSentinel | null = null
@@ -20,6 +21,11 @@ let isWanted = false
 
 /** 화면이 자동으로 꺼지지 않게 합니다. 이미 걸려 있거나 거는 중이면 아무것도 새로 하지 않습니다. */
 export async function keepScreenOn(): Promise<void> {
+  // 휴대폰 앱 안에서는 앱에게 화면을 켜 두라고 부탁합니다. (lib/appBridge.ts)
+  if (isInApp()) {
+    sendToApp('screen.keepOn', { on: true })
+    return
+  }
   if (!('wakeLock' in navigator)) return
   isWanted = true
   // released: 브라우저가 스스로 풀어 버렸는지. (다른 탭에 다녀오면 풀립니다)
@@ -47,6 +53,10 @@ export async function keepScreenOn(): Promise<void> {
 
 /** 화면 꺼짐 방지를 풉니다. 배터리를 아끼려고, 타이머가 멈추면 바로 풉니다. */
 export async function letScreenSleep(): Promise<void> {
+  if (isInApp()) {
+    sendToApp('screen.keepOn', { on: false })
+    return
+  }
   isWanted = false
   const lock = screenLock
   screenLock = null

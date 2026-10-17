@@ -279,6 +279,9 @@ export function SignupPage() {
   const [isOver14, setIsOver14] = useState<boolean | null>(null)
   // 2단계에서 만 14세를 안 고르고 "다음" 을 눌렀는지. 눌렀을 때만 빨간 안내를 보여줍니다.
   const [isAgeMissing, setIsAgeMissing] = useState(false)
+  // "아니요" 를 고른 채로 "다음" 을 눌렀는지. 이때만 만 14세 미만 안내 화면으로 바뀝니다. (#448)
+  // 고르기만 해서는 바뀌지 않게 따로 둡니다. 라디오 버튼은 방향키 한 번에도 선택이 바뀌어서, 실수로 쓰던 내용을 잃을 수 있기 때문입니다.
+  const [isUnderFourteenConfirmed, setIsUnderFourteenConfirmed] = useState(false)
   const [consents, setConsents] = useState<SignupConsents>(makeAllConsents(false))
   // "보기" 로 열어 둔 동의 항목. 아무것도 안 열었으면 null
   const [openedKey, setOpenedKey] = useState<ConsentKey | null>(null)
@@ -292,8 +295,8 @@ export function SignupPage() {
   // 내 정보를 바꾸는 곳은 설정 → 내 계정(/settings/account) 입니다.
   if (isAlreadySignedUp) return <Navigate to="/" replace />
 
-  // 만 14세 미만이면 입력 화면 대신 안내 화면을 보여줍니다.
-  if (isOver14 === false) return <UnderFourteenView />
+  // 만 14세 미만이라고 고르고 "다음" 까지 눌렀으면 입력 화면 대신 안내 화면을 보여줍니다.
+  if (isUnderFourteenConfirmed) return <UnderFourteenView />
 
   // 테스트 로그인으로 들어온 사람인지. (lib/testLogin.ts)
   const isTestUser = user?.id === testUser.id
@@ -336,6 +339,10 @@ export function SignupPage() {
         return
       }
       goToStep(2)
+      return
+    }
+    if (isOver14 === false) {
+      setIsUnderFourteenConfirmed(true)
       return
     }
     if (!isAgeReady) {
@@ -540,8 +547,15 @@ export function SignupPage() {
                     setIsAgeMissing(false)
                   }}
                 />
-                {/* "아니요" 를 누르면 바로 안내 화면으로 바뀌어서, 이 입력 화면에서는 선택된 모양이 될 일이 없습니다. */}
-                <ChoiceCard label="아니요" isSelected={false} onSelect={() => setIsOver14(false)} />
+                {/* "아니요" 를 골라도 바로 넘어가지 않고, "다음" 을 눌러야 안내 화면으로 바뀝니다. (#448) */}
+                <ChoiceCard
+                  label="아니요"
+                  isSelected={isOver14 === false}
+                  onSelect={() => {
+                    setIsOver14(false)
+                    setIsAgeMissing(false)
+                  }}
+                />
               </div>
               <p className="text-sm break-keep text-slate-500">
                 만 14세 미만은 보호자 동의 기능이 생긴 뒤에 가입할 수 있어요.
