@@ -7,6 +7,7 @@ import { getGoogleAuthErrorMessage, startWithGoogle } from '@/lib/authApi'
 import { getAfterLoginPath, getReturnPath } from '@/lib/authRedirect'
 import { isGoogleConfigured } from '@/lib/googleClient'
 import { savePendingGoogleSignup } from '@/lib/googleSignup'
+import { markOnboardingDoneOnServer } from '@/lib/onboardingProgress'
 import { hasSignupInfo, markSignupDone } from '@/lib/signup'
 import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
 import { cn } from '@/lib/cn'
@@ -122,6 +123,8 @@ export function LoginPage() {
       if (result.status === 'LOGGED_IN') {
         // 구글로 이미 가입한 사람입니다. 이 기기에 가입 정보가 없어도 가입 화면으로 보내지 않습니다.
         markSignupDone()
+        // 서버가 온보딩을 마쳤다고 하면, 이 기기에 기록이 없어도 온보딩을 다시 하지 않습니다. (다른 기기에서 처음 로그인한 경우, BE PR #300)
+        if (result.auth.user.onboarded === true) markOnboardingDoneOnServer()
         login(result.auth.user, result.auth.token)
         setHasJustLoggedIn(true)
         return

@@ -19,6 +19,11 @@ export interface AuthUser {
   id: string
   /** 화면에 보이는 이름 */
   name: string
+  /**
+   * 서버가 "온보딩을 마쳤다" 고 알고 있는지 (BE PR #300). true 면 이 기기에 기록이 없어도 온보딩을 띄우지 않습니다.
+   * 테스트 로그인이나 옛 서버 응답에는 없을 수 있습니다.
+   */
+  onboarded?: boolean
 }
 
 /**

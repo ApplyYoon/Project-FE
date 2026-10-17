@@ -2,6 +2,7 @@ import { ConsentRequiredListener } from '@/components/layout/ConsentRequiredList
 import { useAuth } from '@/hooks/useAuth'
 import { isPublicPath, type LoginRedirectState } from '@/lib/authRedirect'
 import { CONSENT_PATH } from '@/lib/consentApi'
+import { isServerDataToken } from '@/lib/dataMode'
 import {
   ONBOARDING_RESUME_PATH,
   getOnboardingResumePath,
@@ -61,8 +62,10 @@ export function RequireAuth({ children }: RequireAuthProps) {
   // 구글로 로그인한 사람(이미 가입한 구글 계정)은 서버에 가입을 마친 회원이라, 로그인할 때 "가입 마침" 표시를 해 둡니다. (LoginPage 의 markSignupDone)
   // 테스트 로그인(lib/testLogin.ts)은 앱을 바로 둘러보려는 것이라 가입 화면으로 보내지 않습니다.
   // (테스트 로그인도 "가입 마침" 표시를 하지만, 그 표시가 생기기 전에 로그인해 둔 브라우저도 풀어 주려고 토큰으로 한 번 더 봅니다)
+  // 서버가 준 진짜 토큰이 있는 사람도 보내지 않습니다. 서버는 가입을 마친 사람에게만 토큰을 주기 때문입니다.
+  // (예전에는 이 기기에 표시가 없다는 이유로 이미 가입한 사람을 가입 화면에 보냈고, 거기서 다시 적은 이름 · 동의가 이 기기에만 저장됐습니다)
   const isTestLogin = token === TEST_TOKEN
-  if (!hasSignupInfo() && !isTestLogin) {
+  if (!hasSignupInfo() && !isTestLogin && !isServerDataToken(token)) {
     return <Navigate to="/signup" replace />
   }
 

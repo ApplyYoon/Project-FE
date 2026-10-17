@@ -10,6 +10,9 @@
  * 끝나지 않은 첫 단계가 "이어서 할 자리" 입니다. RequireAuth 가 이 자리로 보내서,
  * 로고나 홈을 눌러도 하던 곳으로 돌아옵니다. 온보딩을 다 끝내야 앱의 다른 화면이 열립니다.
  * 하다 만 사람이 다음에 다시 들어오면 "이어하기 / 처음부터 다시" 를 먼저 고르게 합니다. (OnboardingResumePage)
+ *
+ * 서버가 "이 사람은 온보딩을 마쳤다" 고 알려 준 기기는 단계를 보지 않고 다 끝난 것으로 봅니다. (markOnboardingDoneOnServer)
+ * 단계 기록은 이 기기에만 있어서, 이미 가입한 사람도 다른 기기에서 로그인하면 처음부터 다시 했기 때문입니다. (BE PR #300)
  */
 import { loadMyHypotheses } from '@/lib/myHypotheses'
 import { hasCareConsent, hasSeenOnboardingResult, resetOnboardingCare } from '@/lib/onboardingCare'
@@ -80,10 +83,32 @@ export function getOnboardingStages(): { label: string; isDone: boolean }[] {
   return STAGES.map((stage) => ({ label: stage.label, isDone: stage.isDone() }))
 }
 
-/** 온보딩을 이어서 할 주소(끝나지 않은 첫 단계)입니다. 다 끝났으면 null 입니다. */
+// 서버가 "온보딩을 마쳤다" 고 알고 있다는 표시를 넣어 두는 이름입니다. (실제 키는 'study-onboarding-done-on-server')
+const SERVER_DONE_KEY = 'onboarding-done-on-server'
+
+/** 서버가 이 사람의 온보딩을 마친 것으로 알고 있는지 (로그인 응답의 user.onboarded, 또는 마침 표시를 보낸 뒤) */
+export function isOnboardingDoneOnServer(): boolean {
+  return loadData<unknown>(SERVER_DONE_KEY, false) === true
+}
+
+/** 서버가 온보딩을 마친 것으로 알고 있다고 적어 둡니다. 이 기기에 단계 기록이 없어도 온보딩을 띄우지 않습니다. */
+export function markOnboardingDoneOnServer(): void {
+  saveData(SERVER_DONE_KEY, true)
+}
+
+/**
+ * 온보딩을 이어서 할 주소(끝나지 않은 첫 단계)입니다. 다 끝났으면 null 입니다.
+ * 서버가 마쳤다고 알려 준 기기면 이 기기의 단계 기록과 상관없이 null 입니다.
+ */
 export function getOnboardingResumePath(): string | null {
+  if (isOnboardingDoneOnServer()) return null
   const nextStage = STAGES.find((stage) => !stage.isDone())
   return nextStage ? nextStage.path : null
+}
+
+/** 이 기기의 단계를 다 끝냈는지 (서버 표시는 보지 않습니다). 서버에 마침 표시를 보낼지 정할 때 씁니다. */
+export function hasFinishedAllStages(): boolean {
+  return STAGES.every((stage) => stage.isDone())
 }
 
 // 하다 만 답을 임시로 넣어 두는 이름들입니다.
@@ -105,6 +130,8 @@ export function hasOnboardingProgress(): boolean {
  */
 export function resetOnboarding(): void {
   removeData(INTRO_SEEN_KEY)
+  // 처음부터 다시 하기로 했으니 "서버가 마쳤다고 안다" 는 표시도 지웁니다. 다시 끝내면 마침 표시를 또 보냅니다. (서버는 처음 마친 시각을 그대로 둠)
+  removeData(SERVER_DONE_KEY)
   const answers = loadOnboardingAnswers()
   if (answers !== null) {
     const firstKeys = new Set(
