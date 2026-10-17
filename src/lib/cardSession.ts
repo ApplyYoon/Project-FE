@@ -22,8 +22,8 @@ export interface ActiveCardSession {
   plannedMinutes: number
   /** 끝난 일시정지들 */
   pauses: SessionPause[]
-  /** 지금 일시정지 중이면 시작한 시각과 이유 */
-  pausedNow?: { startedAt: number; tag: PauseTag; note?: string }
+  /** 지금 일시정지 중이면 시작한 시각과 이유. alerted: 15분 복귀 알림을 이미 보냈는지 */
+  pausedNow?: { startedAt: number; tag: PauseTag; note?: string; alerted?: boolean }
   /** 체크한 체크리스트 항목 (항목 id → 체크한 시각) */
   checked: Record<string, number>
   /** 딴생각 주차장 메모 */
@@ -95,7 +95,7 @@ export function finishActiveSession(
   const pauses = active.pausedNow
     ? [
         ...active.pauses,
-        { ...active.pausedNow, endedAt: Math.max(active.pausedNow.startedAt, endedAt) },
+        closePause(active.pausedNow, Math.max(active.pausedNow.startedAt, endedAt)),
       ]
     : active.pauses
   return {
@@ -113,6 +113,36 @@ export function finishActiveSession(
     endReport: { checked: active.checked },
     ...(active.memos.length > 0 ? { memos: active.memos } : {}),
   }
+}
+
+/** 지금의 일시정지를 끝난 일시정지로 바꿉니다. 알림을 보냈는지(alerted)는 기록에 남기지 않습니다 */
+export function closePause(
+  pausedNow: NonNullable<ActiveCardSession['pausedNow']>,
+  endedAt: number,
+): SessionPause {
+  return {
+    startedAt: pausedNow.startedAt,
+    endedAt,
+    tag: pausedNow.tag,
+    ...(pausedNow.note ? { note: pausedNow.note } : {}),
+  }
+}
+
+/** 일시정지가 이만큼(분) 넘으면 복귀 알림을 한 번 보냅니다 (「4.4」 일시정지) */
+export const LONG_PAUSE_MINUTES = 15
+
+/**
+ * 복귀 알림을 보낼 때인지 — 일시정지 중이고, 15분이 지났고, 아직 안 보냈으면 true
+ *
+ *   19:20 에 멈춤, 지금 19:34 -> false     지금 19:35 -> true     이미 보냄 -> false
+ */
+export function shouldAlertLongPause(
+  active: Pick<ActiveCardSession, 'pausedNow'>,
+  now: number,
+): boolean {
+  const paused = active.pausedNow
+  if (!paused || paused.alerted) return false
+  return now - paused.startedAt >= LONG_PAUSE_MINUTES * MS_PER_MINUTE
 }
 
 /** 시각을 'HH:MM' 으로 (카드의 startTime 모양) */

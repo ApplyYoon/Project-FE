@@ -1,5 +1,10 @@
 import { useStudySessions } from '@/hooks/useStudySessions'
-import { finishActiveSession, getScheduledEndAt, type ActiveCardSession } from '@/lib/cardSession'
+import {
+  closePause,
+  finishActiveSession,
+  getScheduledEndAt,
+  type ActiveCardSession,
+} from '@/lib/cardSession'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import type { Card, PauseTag, StudySession } from '@/types'
 import { useEffect, useRef, useState } from 'react'
@@ -82,8 +87,15 @@ export function useCardSession() {
     setActive((prev) => {
       if (!prev?.pausedNow) return prev
       const { pausedNow, ...rest } = prev
-      return { ...rest, pauses: [...prev.pauses, { ...pausedNow, endedAt: Date.now() }] }
+      return { ...rest, pauses: [...prev.pauses, closePause(pausedNow, Date.now())] }
     })
+  }
+
+  /** 15분 복귀 알림을 보냈다고 적어 둡니다. 새로고침해도 다시 보내지 않게 세션에 남깁니다. */
+  function markLongPauseAlerted() {
+    setActive((prev) =>
+      prev?.pausedNow ? { ...prev, pausedNow: { ...prev.pausedNow, alerted: true } } : prev,
+    )
   }
 
   /** 체크리스트 항목을 체크하거나 풉니다. 체크한 시각을 같이 남깁니다. */
@@ -116,5 +128,16 @@ export function useCardSession() {
     return record
   }
 
-  return { active, now, allSessions, start, pause, resume, toggleCheck, addMemo, finish }
+  return {
+    active,
+    now,
+    allSessions,
+    start,
+    pause,
+    resume,
+    markLongPauseAlerted,
+    toggleCheck,
+    addMemo,
+    finish,
+  }
 }
