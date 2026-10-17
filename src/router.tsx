@@ -142,7 +142,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 처음의 나에게 한마디(목소리·글) 남기기. 처음 계획 다음, "준비 끝" 앞에 나옵니다. (#241)
+  // 처음의 나에게 한마디(목소리·글) 남기기. 가입 직후 맨 처음, 온보딩 질문 앞에 나옵니다. 건너뛸 수 있습니다. (#241)
   {
     path: '/onboarding/voice',
     errorElement: <ErrorPage />,
