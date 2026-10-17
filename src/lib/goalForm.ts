@@ -1,5 +1,6 @@
 import { moveDateKey, isDateKey } from '@/lib/date'
-import { suggestRoutineCards } from '@/lib/goals'
+import { suggestRoutineCards, toRoutineCards } from '@/lib/goals'
+import type { RoutineCardSuggestion } from '@/lib/routineCardsApi'
 import { loadData } from '@/lib/storage'
 import type { Card, Goal, GoalKind } from '@/types'
 
@@ -168,19 +169,23 @@ export function buildGoal(draft: GoalDraft, id: string, now: number): Goal {
 
 /**
  * [목표 저장] 을 눌렀을 때: 초안 → 목표 + 고른 루틴 카드. 카드는 그 목표에 이어집니다(goalId).
- * pickedIndexes 는 루틴 카드 제안(lib/goals.ts 의 suggestRoutineCards) 중 고른 번호입니다.
+ * aiSuggestions 가 있으면 AI 제안(lib/routineCardsApi.ts)을, 없으면(null) 기본 제안(lib/goals.ts 의 suggestRoutineCards)을 씁니다.
+ * pickedIndexes 는 그 제안 중 고른 번호입니다.
  * now 를 안 넘기면 지금 시각입니다. (예시처럼 시각을 넘기면 결과가 늘 같아서 확인하기 쉽습니다)
  *
- *   createGoalWithCards(초안, [0], '2026-10-17', 1000)
- *     -> { goal: { id: 'goal-1000', … }, cards: [ 평일 루틴 카드 (goalId: 'goal-1000') ] }
+ *   createGoalWithCards(초안, [0], '2026-10-17', null, 1000)
+ *     -> { goal: { id: 'goal-1000', … }, cards: [ 기본 제안의 평일 루틴 카드 (goalId: 'goal-1000') ] }
  */
 export function createGoalWithCards(
   draft: GoalDraft,
   pickedIndexes: number[],
   todayKey: string,
+  aiSuggestions: RoutineCardSuggestion[] | null,
   now: number = Date.now(),
 ): { goal: Goal; cards: Card[] } {
   const goal = buildGoal(draft, `goal-${now}`, now)
-  const suggestions = suggestRoutineCards(goal, todayKey, now)
+  const suggestions = aiSuggestions
+    ? toRoutineCards(aiSuggestions, goal, todayKey, now)
+    : suggestRoutineCards(goal, todayKey, now)
   return { goal, cards: suggestions.filter((_, index) => pickedIndexes.includes(index)) }
 }
