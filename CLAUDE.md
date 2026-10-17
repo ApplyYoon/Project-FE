@@ -74,6 +74,7 @@ src/
 - props 타입은 `interface XxxProps` 로 명시.
 - 이벤트 핸들러는 `handleXxx`, props 로 받는 함수는 `onXxx`.
 - 조금이라도 헷갈릴 코드에는 **한국어 주석 한 줄**.
+- **카드 · 목표 · 고정 일정은 `saveCards` · `saveGoals` · `saveFixedBlocks`(또는 `useCards` 등 훅)로만 저장.** `saveData` 로 바로 쓰면 서버로 가지 않습니다. → [docs/SERVER-SYNC.md](./docs/SERVER-SYNC.md)
 - **서버에서 받아오는 데이터는 TanStack Query 로.** 쿼리 설정은 `lib/` 에 `queryOptions` 로 두고, 화면에서는 `useSuspenseQuery` 로 받아온 뒤 바깥을 `AsyncBoundary`(스켈레톤 + 실패 안내)로 감쌉니다. `useEffect` 안에서 `fetch` 하지 않습니다. → [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)
 
 ### 금지
@@ -296,6 +297,7 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 | [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법                   |
 | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                           |
 | [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)       | 서버 데이터 받아오기 (TanStack Query)    |
+| [docs/SERVER-SYNC.md](./docs/SERVER-SYNC.md)           | 이 기기의 데이터를 서버와 맞추기 (#516)  |
 | [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림)         |
 | [docs/AI-FEATURES.md](./docs/AI-FEATURES.md)           | 앱 안의 AI(GPT) 기능 — 원칙·지금·다음    |
 | [docs/PLAN.md](./docs/PLAN.md)                         | 최종 기획서 (2026-10-17) — 이슈의 「장」 |
