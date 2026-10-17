@@ -1,6 +1,7 @@
 import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
+import { PSYCH_TEST_PATH } from '@/lib/psychTest'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
@@ -48,6 +49,9 @@ const OnboardingPage = lazy(() =>
 )
 const OnboardingPlanPage = lazy(() =>
   import('@/pages/OnboardingPlanPage').then((m) => ({ default: m.OnboardingPlanPage })),
+)
+const OnboardingPsychTestPage = lazy(() =>
+  import('@/pages/OnboardingPsychTestPage').then((m) => ({ default: m.OnboardingPsychTestPage })),
 )
 const OnboardingResumePage = lazy(() =>
   import('@/pages/OnboardingResumePage').then((m) => ({ default: m.OnboardingResumePage })),
@@ -201,6 +205,18 @@ export const router = createBrowserRouter([
       <RequireAuth>
         <PageBoundary fullScreen>
           <OnboardingThinkingPage />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  // 온보딩 심리검사 14문항. 온보딩 순서에 넣는 것은 #388 에서 합니다. (lib/psychTest.ts)
+  {
+    path: PSYCH_TEST_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingPsychTestPage />
         </PageBoundary>
       </RequireAuth>
     ),
