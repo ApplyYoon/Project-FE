@@ -16,6 +16,7 @@ import { useCardAlerts } from '@/hooks/useCardAlerts'
 import { useCardSync } from '@/hooks/useCardSync'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useGoalSync } from '@/hooks/useGoalSync'
+import { useMarkSync } from '@/hooks/useMarkSync'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { useSessionSync } from '@/hooks/useSessionSync'
 import { useTimerLock } from '@/hooks/useTimerLock'
@@ -45,6 +46,8 @@ export function Layout() {
   useGoalSync()
   // 진짜 로그인이면 끝난 공부 기록을 서버로 보냅니다. (끝나고 10분 뒤, 받아 오지는 않습니다, #516)
   useSessionSync()
+  // 진짜 로그인이면 미루기 · 실패 · 휴식 · 사후 입력도 서버로 보냅니다. (한도 · 기한은 서버가 다시 봅니다, #516)
+  useMarkSync()
   // 다른 화면으로 옮기면 맨 위부터 보이게 합니다. (같은 화면 안의 탭 · 날짜 바꾸기와 뒤로 가기는 그대로 둡니다)
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
