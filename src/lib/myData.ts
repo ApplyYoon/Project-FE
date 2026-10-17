@@ -83,8 +83,8 @@ const RECORD_KEYS = [
   ...DIARY_KEYS,
 ]
 
-/** diary: 일기만 / all: 모든 기록 */
-export type DeleteKind = 'diary' | 'all'
+/** all: 모든 기록 (일기만 지우기는 일기 기능과 함께 #417 에서 지웠습니다. 옛 일기는 모든 기록 지우기로 같이 지워집니다) */
+export type DeleteKind = 'all'
 
 export interface DeleteResult {
   /** 전부 실제로 사라졌으면 true */
@@ -96,10 +96,11 @@ export interface DeleteResult {
 /**
  * 내 데이터를 지우고, 정말 사라졌는지 확인한 결과를 돌려줍니다.
  *
- *   const { isSuccess } = deleteMyData('diary')
+ *   const { isSuccess } = deleteMyData('all')
  */
 export function deleteMyData(kind: DeleteKind): DeleteResult {
-  const keys = kind === 'diary' ? DIARY_KEYS : RECORD_KEYS
+  // 지금은 '모든 기록' 한 가지뿐입니다. (kind 는 나중에 종류가 늘 때를 위해 남겨 둡니다)
+  const keys = kind === 'all' ? RECORD_KEYS : []
 
   // 하나가 실패해도 나머지는 계속 지웁니다. (일부만 지워진 채로 멈추지 않게)
   const failedKeys = keys.filter((key) => !removeData(key))

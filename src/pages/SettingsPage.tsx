@@ -1,7 +1,6 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { Card } from '@/components/ui/Card'
@@ -11,7 +10,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
-import { useCalendarConnect } from '@/hooks/useCalendarConnect'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { logoutOnServer } from '@/lib/accountApi'
@@ -32,12 +30,10 @@ import {
   parseCallTime,
 } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
-import { getTodayKey } from '@/lib/date'
 import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
-import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
   setAllowFocusMode,
@@ -66,7 +62,6 @@ import {
   turnOnWebPush,
   type WebPushStatus,
 } from '@/lib/webPush'
-import { busyTimesQuery, type CalendarStatus } from '@/lib/googleCalendar'
 import { loadSignupProfile } from '@/lib/signup'
 import {
   AUTO_SETTING_ROWS,
@@ -88,16 +83,8 @@ import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
 import { loadVoicePledge, removeVoicePledge } from '@/lib/voicePledge'
 
-// 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
-const DIARY_ENABLED_KEY = 'diary-enabled'
-
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
-  diary: {
-    question: '일기를 모두 지울까요?',
-    detail: '쓴 일기가 전부 사라져요.',
-    done: '일기를 모두 지웠어요.',
-  },
   all: {
     question: '모든 기록을 지울까요?',
     detail:
@@ -214,13 +201,6 @@ export function SettingsPage() {
     })
     setIsTestNotificationShown(isShown)
   }
-
-  // 일기 기능을 켰는지. 켜면 기록 화면에 일기 메뉴가 보입니다. (기본은 꺼짐 — #63 "원할 때만 켜는 기능")
-  const [isDiaryEnabled, setIsDiaryEnabled] = useState(() => loadData(DIARY_ENABLED_KEY, false))
-
-  useEffect(() => {
-    saveData(DIARY_ENABLED_KEY, isDiaryEnabled)
-  }, [isDiaryEnabled])
 
   function handleChangeMessageSettings(next: MessageSettings) {
     setMessageSettings(next)
@@ -457,26 +437,6 @@ export function SettingsPage() {
               </label>
             </div>
           </Card>
-
-          {/* 웹은 다른 앱을 못 잠가서, 휴대폰 기본 기능으로 직접 잠그는 법을 안내합니다. (#106) */}
-          <Card title="휴대폰 집중 모드">
-            <p className="text-sm text-slate-500">
-              공부 시간에 SNS 앱을 잠그고 싶다면, 휴대폰의 스크린 타임·집중 모드를 켜는 법을
-              알려줄게요.
-            </p>
-            {/* 집중 모드 잠금(강제적 채찍)을 허용한 사람에게는 이 안내를 한 번 더 권합니다. */}
-            {limits.allowFocusMode && (
-              <p className="mt-2 text-sm font-medium text-slate-700">
-                집중 모드 잠금을 허용했어요. 휴대폰에서도 SNS 앱을 같이 잠가 두면 더 잘 지켜져요.
-              </p>
-            )}
-            <Link
-              to={PHONE_FOCUS_PATH}
-              className="text-brand mt-2 inline-flex h-11 items-center text-sm font-medium underline"
-            >
-              휴대폰 집중 모드 켜는 법 보기
-            </Link>
-          </Card>
         </div>
 
         <div className="flex flex-col gap-6">
@@ -526,33 +486,6 @@ export function SettingsPage() {
                 value={messageSettings}
                 onChange={handleChangeMessageSettings}
               />
-            </div>
-          </Card>
-
-          <Card title="일기 쓰기">
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-slate-500">
-                원할 때만 쓰는 자유 일기예요. 켜면 기록 화면에 일기 메뉴가 보여요.
-              </p>
-
-              <div className="flex gap-3">
-                <Button
-                  variant={isDiaryEnabled ? 'primary' : 'secondary'}
-                  aria-pressed={isDiaryEnabled}
-                  className="h-11 flex-1"
-                  onClick={() => setIsDiaryEnabled(true)}
-                >
-                  켜기
-                </Button>
-                <Button
-                  variant={!isDiaryEnabled ? 'primary' : 'secondary'}
-                  aria-pressed={!isDiaryEnabled}
-                  className="h-11 flex-1"
-                  onClick={() => setIsDiaryEnabled(false)}
-                >
-                  끄기
-                </Button>
-              </div>
             </div>
           </Card>
 
@@ -611,25 +544,12 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="구글 캘린더">
-            <GoogleCalendarSection />
-          </Card>
-
           <Card title="내 데이터 관리">
             <div className="flex flex-col gap-4">
-              <p className="text-sm text-slate-500">
-                일기 원문은 나만 볼 수 있어요. 지우면 되돌릴 수 없어요.
-              </p>
+              <p className="text-sm text-slate-500">지우면 되돌릴 수 없어요.</p>
 
               {/* 모바일은 세로로 쌓고, sm 부터 가로로 나란히. 누르는 곳은 최소 40px(h-11 = 44px) */}
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  variant="secondary"
-                  className="h-11 w-full sm:flex-1"
-                  onClick={() => setPendingKind('diary')}
-                >
-                  일기만 지우기
-                </Button>
                 <Button
                   variant="danger"
                   className="h-11 w-full sm:flex-1"
@@ -1158,97 +1078,6 @@ function WebPushSection() {
             : '알림 설정을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.'
           : ''}
       </p>
-    </div>
-  )
-}
-
-// 연결 상태마다 보여 줄 안내 문장
-const calendarMessages: Record<CalendarStatus, string> = {
-  unavailable: '아직 준비 중이에요.',
-  off: '연결하면 학원·약속처럼 구글 캘린더에 있는 일정과 공부 계획이 겹치지 않게 도와줘요. 일정 제목은 가져오지 않고, 바쁜 시간만 봐요.',
-  expired: '연결이 끝났어요. 구글이 한 시간마다 다시 확인해서, 다시 연결을 한 번 눌러 주세요.',
-  on: '연결됐어요.',
-}
-
-/** 바쁜 시간 한 칸을 "15:00 ~ 16:30" 으로 보여 줍니다. */
-function formatBusyTime(start: number, end: number): string {
-  const toClock = (time: number) =>
-    new Date(time).toLocaleTimeString('ko-KR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-  return `${toClock(start)} ~ ${toClock(end)}`
-}
-
-/** 오늘 구글 캘린더의 바쁜 시간. 연결이 잘 됐는지 눈으로 확인하는 곳입니다. (AsyncBoundary 안에서 씁니다) */
-function TodayBusyTimes() {
-  const { data: busyTimes } = useSuspenseQuery(busyTimesQuery(getTodayKey()))
-
-  if (busyTimes.length === 0) {
-    return <p className="text-sm text-slate-500">오늘 구글 캘린더에 시간이 정해진 일정이 없어요.</p>
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="text-sm text-slate-500">오늘 구글 캘린더의 바쁜 시간 {busyTimes.length}개</p>
-      <ul className="flex flex-wrap gap-2">
-        {busyTimes.map((busy) => (
-          <li
-            key={`${busy.start}-${busy.end}`}
-            className="rounded bg-slate-100 px-2 py-1 text-sm text-slate-700 tabular-nums"
-          >
-            {formatBusyTime(busy.start, busy.end)}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-/**
- * 구글 캘린더 연결 · 끊기. (lib/googleCalendar.ts, #314)
- * 로그인은 이메일로 하고, 구글에서는 캘린더 권한만 받습니다.
- */
-function GoogleCalendarSection() {
-  // 연결 상태와 연결 · 끊기 (계획 화면과 같이 쓰는 훅, hooks/useCalendarConnect.ts)
-  const { status, isReady, isConnecting, errorMessage, connect, disconnect } = useCalendarConnect()
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm break-keep text-slate-500">{calendarMessages[status]}</p>
-
-      {status === 'on' && (
-        <AsyncBoundary
-          pendingFallback={<Skeleton className="h-12 w-full" />}
-          errorMessage="구글 캘린더를 읽지 못했어요. 연결 끊기를 누른 뒤 다시 연결해 주세요."
-        >
-          <TodayBusyTimes />
-        </AsyncBoundary>
-      )}
-
-      {/* 모바일은 세로로 쌓고, sm 부터 가로로 나란히. 누르는 곳은 최소 40px(h-11 = 44px) */}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        {(status === 'off' || status === 'expired') && (
-          <Button
-            className="h-11 w-full sm:w-auto"
-            disabled={isConnecting || !isReady}
-            onClick={connect}
-          >
-            {isConnecting ? '연결하는 중…' : status === 'off' ? '구글 캘린더 연결' : '다시 연결'}
-          </Button>
-        )}
-        {(status === 'on' || status === 'expired') && (
-          <Button variant="secondary" className="h-11 w-full sm:w-auto" onClick={disconnect}>
-            연결 끊기
-          </Button>
-        )}
-      </div>
-
-      {errorMessage && (
-        <p role="status" className="text-sm break-keep text-red-700">
-          {errorMessage}
-        </p>
-      )}
     </div>
   )
 }
