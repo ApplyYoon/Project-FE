@@ -42,7 +42,6 @@ import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadAutoSettings } from '@/lib/settingsMapping'
 import { loadRecord } from '@/lib/storage'
-import { getStudyStreak } from '@/lib/streak'
 import { MIN_COMPLETION_SAMPLES, getMondayKey } from '@/lib/weeklyFacts'
 import type {
   AwayRecord,
@@ -103,8 +102,6 @@ export interface CallCard extends Partial<SinceLastCallFields> {
   weekStartDelayMinutes: number | null
   /** 최근 7일의 기분 (1 ~ 5). 오래된 날부터 */
   recentMoods: number[]
-  /** 연속으로 공부한 날 수 */
-  streakDays: number | null
   /** 어제 공부하다가 다른 탭·앱으로 나갔다 온 횟수 (딴짓 감지) */
   yesterdayAwayCount: number | null
   /** 어제 가장 자주 나간 시간대 (0 ~ 23시). 나간 적이 없으면 null */
@@ -123,7 +120,6 @@ export interface FocusRecords {
 const MAX_MINUTES_PER_DAY = 1440
 const MAX_START_DELAY_MINUTES = 600
 const MAX_PLAN_COUNT = 50
-const MAX_STREAK_DAYS = 3650
 const MAX_AWAY_COUNT = 200
 const MAX_UNLOCK_COUNT = 50
 const MOOD_DAYS = 7
@@ -144,11 +140,11 @@ function isClockTime(value: unknown): value is string {
  *
  * ■ 예시 — 오늘이 2026-10-07(수)
  *   어제(10/06) 계획 240분, 순공 190분 · 오늘 체크인에서 못 채운 이유로 '폰·SNS' 를 고름
- *   오늘 계획 3개(합쳐서 180분, 가장 이른 시작 19:00) · 최근 기분 3, 2, 4 · 4일 연속 공부
+ *   오늘 계획 3개(합쳐서 180분, 가장 이른 시작 19:00) · 최근 기분 3, 2, 4
  *   -> { yesterdayStudyMinutes: 190, yesterdayPlanMinutes: 240, yesterdayMissReason: 'phone',
  *        todayPlanCount: 3, todayPlanMinutes: 180, todayFirstStart: '19:00',
  *        weekPlanRate: (이번 주 월 ~ 오늘 계산), weekCompletionRate: (타이머 5번 미만이면 null), weekStartDelayMinutes: …,
- *        recentMoods: [3, 2, 4], streakDays: 4,
+ *        recentMoods: [3, 2, 4],
  *        yesterdayAwayCount: 3, yesterdayAwayPeakHour: 21, yesterdayUnlockCount: 1 }
  *     (어제 공부하다 3번 나갔고 그중 2번이 밤 9시대 · 집중 모드를 스스로 1번 풂)
  *
@@ -218,7 +214,7 @@ export function buildCallCard(
         : null,
     weekStartDelayMinutes: clampOrNull(week.startDelayMinutes.value, 0, MAX_START_DELAY_MINUTES),
     recentMoods,
-    streakDays: clampOrNull(getStudyStreak(sessions, now), 0, MAX_STREAK_DAYS),
+    // 연속 공부 일수(streakDays)는 보내지 않습니다. 기획서가 스트릭을 지웠습니다(「4.6」 "스트릭 대신 4주 실행률", #417). 서버는 이 칸이 선택입니다.
     yesterdayAwayCount: clampOrNull(yesterdayFocus.awayCount, 0, MAX_AWAY_COUNT),
     yesterdayAwayPeakHour: yesterdayFocus.peakHour?.hour ?? null,
     yesterdayUnlockCount: clampOrNull(yesterdayFocus.unlockCount, 0, MAX_UNLOCK_COUNT),

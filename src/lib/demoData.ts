@@ -31,9 +31,10 @@ interface DemoManifest {
   checkinDates: string[]
   careStageDates: string[]
   restDates: string[]
-  /** 지난 주들의 예측 · 회고를 넣은 주 (그 주의 월요일 날짜) */
+  /** 지난 주들의 예측을 넣은 주 (그 주의 월요일 날짜) */
   predictionWeeks: string[]
-  reviewWeeks: string[]
+  /** 예전에 넣은 주간 회고의 주. 주간 회고는 #417 에서 지워서 이제 넣지 않고, 예전에 넣은 것을 지울 때만 읽습니다 */
+  reviewWeeks?: string[]
   /** 인사이트 반응을 넣은 인사이트 id */
   insightIds: string[]
 }
@@ -78,7 +79,6 @@ export function addDemoData(): void {
     careStageDates: [],
     restDates: [],
     predictionWeeks: [],
-    reviewWeeks: [],
     insightIds: [],
   }
 
@@ -112,13 +112,6 @@ export function addDemoData(): void {
   )
   saveData('predictions', [...predictions, ...newPredictions])
   manifest.predictionWeeks = newPredictions.map((item) => item.weekStart)
-
-  const reviews = loadData<{ weekStart: string }[]>('weekly-reviews', [])
-  const newReviews = persona.weeklyReviews.filter(
-    (item) => !reviews.some((saved) => saved.weekStart === item.weekStart),
-  )
-  saveData('weekly-reviews', [...reviews, ...newReviews])
-  manifest.reviewWeeks = newReviews.map((item) => item.weekStart)
 
   // 3) 날짜별 저장값 — 내 기록이 없는 날짜에만
   const checkins = loadData<Record<string, unknown>>('checkins', {})
@@ -198,7 +191,7 @@ export function removeDemoData(): void {
     saveData(
       'weekly-reviews',
       loadData<{ weekStart: string }[]>('weekly-reviews', []).filter(
-        (item) => !manifest.reviewWeeks.includes(item.weekStart),
+        (item) => !(manifest.reviewWeeks ?? []).includes(item.weekStart),
       ),
     )
     const checkins = loadData<Record<string, unknown>>('checkins', {})
