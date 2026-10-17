@@ -916,22 +916,20 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
   }
 }
 
-/** 심리검사 14문항의 답 (시작 저항 · 주의 분산 · 계획 낙관이 높은 편) */
+/** 심리검사 35문항의 답 (시작 저항 · 주의 분산 · 계획 낙관이 높은 편, 기록 부담은 낮은 편) */
 const DEMO_PSYCH_ANSWERS: Record<string, number> = {
-  S1: 6,
-  S2: 5,
-  A1: 5,
-  A2: 6,
-  P1: 6,
-  P2: 5,
-  R1: 3,
-  R2: 2,
-  F1: 4,
-  F2: 5,
-  E1: 3,
-  E2: 3,
-  C1: 4,
-  C2: 5,
+  ...answersFor('S', [6, 5, 6, 5, 6]),
+  ...answersFor('A', [5, 6, 5, 6, 6]),
+  ...answersFor('P', [6, 5, 6, 6, 5]),
+  ...answersFor('R', [3, 2, 3, 2, 3]),
+  ...answersFor('F', [4, 5, 4, 4, 5]),
+  ...answersFor('E', [3, 3, 2, 3, 3]),
+  ...answersFor('C', [4, 5, 4, 5, 4]),
+}
+
+/** 'S' 와 [6, 5, …] → { S1: 6, S2: 5, … } (심리검사 문항 코드는 척도 글자 + 번호) */
+function answersFor(letter: string, values: number[]): Record<string, number> {
+  return Object.fromEntries(values.map((value, index) => [`${letter}${index + 1}`, value]))
 }
 
 /**
