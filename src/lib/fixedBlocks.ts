@@ -20,8 +20,26 @@ export function loadFixedBlocks(): FixedBlock[] {
   return Array.isArray(saved) ? (saved as FixedBlock[]) : []
 }
 
-export function saveFixedBlocks(blocks: FixedBlock[]): void {
+/** 고정 일정이 저장될 때마다 보내는 이벤트 이름입니다. useFixedBlocks 가 다시 읽고, useFixedBlockSync 가 서버로 보냅니다. (#516) */
+export const FIXED_BLOCKS_CHANGED_EVENT = 'study-fixed-blocks-changed'
+
+/**
+ * 이벤트에 담는 값. 바뀌기 전 · 뒤의 목록과 누가 바꿨는지입니다. (카드의 CardsChangedDetail 과 같은 약속)
+ * - local: 이 기기에서 사람이 바꿈 → 서버로도 보냅니다
+ * - server: 서버에서 받은 것으로 맞춤 → 다시 보내지 않습니다
+ */
+export interface FixedBlocksChangedDetail {
+  prev: FixedBlock[]
+  next: FixedBlock[]
+  source: 'local' | 'server'
+}
+
+/** 고정 일정 목록을 저장하고, 바뀌었다고 알립니다. 저장하는 곳은 모두 이 함수를 씁니다. (lib/fixedBlockSync.ts) */
+export function saveFixedBlocks(blocks: FixedBlock[], source: 'local' | 'server' = 'local'): void {
+  const prev = loadFixedBlocks()
   saveData(FIXED_BLOCKS_KEY, blocks)
+  const detail: FixedBlocksChangedDetail = { prev, next: blocks, source }
+  window.dispatchEvent(new CustomEvent(FIXED_BLOCKS_CHANGED_EVENT, { detail }))
 }
 
 /**
