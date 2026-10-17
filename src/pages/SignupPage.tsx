@@ -30,11 +30,9 @@ import {
 import { saveData } from '@/lib/storage'
 import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument } from '@/lib/terms'
 import { testUser } from '@/lib/testLogin'
+import { PLEDGE_PATH } from '@/lib/voicePledge'
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-
-// 가입이 끝나면 가는 첫 화면: "처음의 나에게 한마디" (#241). 건너뛰면 온보딩 질문으로 이어집니다.
-const PLEDGE_PATH = '/onboarding/voice'
 
 /*
  * ⚠️ 이 화면의 동의 문구("쓰는 곳" 안내)와 "보기" 로 여는 약관 전문(lib/terms.ts)은 초안입니다.
