@@ -246,6 +246,26 @@ const MS_PER_HOUR = 60 * 60 * 1000
 const MAX_CARD_COUNT = 50
 const MAX_HOURS_SINCE = 24 * 365
 
+/**
+ * 카드 하루치 중 예정 시작 시각이 지난 통화 이후 ~ 지금 사이인 것. 통화한 적이 없으면 최근 24시간.
+ * 예정 시작 시각을 모르는 옛 카드는 그날 낮 12시로 봅니다. (통화 결과 화면의 카드 처리 #415 도 같은 기준)
+ */
+export function getDaysSinceLastCall(
+  judgedDays: JudgedCardDay[],
+  cards: Pick<Card, 'id' | 'startTime'>[],
+  lastCallAt: number | null,
+  now: number,
+): JudgedCardDay[] {
+  const sinceAt = lastCallAt ?? now - DEFAULT_SINCE_HOURS * MS_PER_HOUR
+  const startTimeById = new Map(cards.map((card) => [card.id, card.startTime]))
+  return judgedDays.filter((day) => {
+    const startAt =
+      getPlannedStartAt({ date: day.dateKey, startTime: startTimeById.get(day.cardId) }) ??
+      new Date(`${day.dateKey}T12:00:00`).getTime()
+    return startAt >= sinceAt && startAt <= now
+  })
+}
+
 /** 실행으로 치는 카드 결과 (휴식 · 미실행이 아닌 것) */
 function isRunResult(result: JudgedCardDay['result']): boolean {
   return result !== 'rest' && !isMissResult(result)
@@ -278,16 +298,7 @@ export interface SinceLastCallInput {
  *   오늘 감정 태그 없음               -> emotionTagsMissing: true
  */
 export function buildSinceLastCall(input: SinceLastCallInput): SinceLastCallFields {
-  const sinceAt = input.lastCallAt ?? input.now - DEFAULT_SINCE_HOURS * MS_PER_HOUR
-  const startTimeById = new Map(input.cards.map((card) => [card.id, card.startTime]))
-  // 예정 시작 시각을 모르는 옛 카드는 그날 낮 12시로 봅니다.
-  const startAtOf = (day: JudgedCardDay) =>
-    getPlannedStartAt({ date: day.dateKey, startTime: startTimeById.get(day.cardId) }) ??
-    new Date(`${day.dateKey}T12:00:00`).getTime()
-  const days = input.judgedDays.filter((day) => {
-    const startAt = startAtOf(day)
-    return startAt >= sinceAt && startAt <= input.now
-  })
+  const days = getDaysSinceLastCall(input.judgedDays, input.cards, input.lastCallAt, input.now)
 
   const runDays = days.filter((day) => isRunResult(day.result))
   const missDays = days.filter((day) => isMissResult(day.result))
@@ -336,15 +347,14 @@ export function buildSinceLastCall(input: SinceLastCallInput): SinceLastCallFiel
   }
 }
 
-/** 저장된 기록으로 "지난 통화 이후" 칸을 만듭니다. (통화를 시작할 때 · 끝났을 때 같은 값이 나옵니다) */
-export function loadSinceLastCall(
-  now: number = Date.now(),
-  todayKey: string = getTodayKey(),
-): SinceLastCallFields {
+/** 저장된 카드 · 기록 · 표시로 최근 21일 카드 하루치를 판정합니다. 지난 통화 시각도 같이 돌려줍니다. */
+export function loadCallJudgedDays(
+  now: number,
+  todayKey: string,
+): { cards: Card[]; judgedDays: JudgedCardDay[]; lastCallAt: number | null } {
   const cards = loadSavedCards() ?? []
   const restDays = loadRestDays()
   const marks = loadCardMarks()
-  const lastCallAt = loadCallLog().at(-1)?.endedAt ?? null
   // 재발 신호(② 최근 7일 vs 기준선 14일)까지 보려고 21일치를 판정합니다.
   const judgedDays = buildJudgedCardDays(
     cards,
@@ -354,6 +364,15 @@ export function loadSinceLastCall(
     now,
     (cardId, dateKey) => getCardDayMarkInfo(cardId, dateKey, restDays, marks),
   )
+  return { cards, judgedDays, lastCallAt: loadCallLog().at(-1)?.endedAt ?? null }
+}
+
+/** 저장된 기록으로 "지난 통화 이후" 칸을 만듭니다. (통화를 시작할 때 · 끝났을 때 같은 값이 나옵니다) */
+export function loadSinceLastCall(
+  now: number = Date.now(),
+  todayKey: string = getTodayKey(),
+): SinceLastCallFields {
+  const { cards, judgedDays, lastCallAt } = loadCallJudgedDays(now, todayKey)
 
   const { texts, moods } = loadSavedWritings()
   const brake = getSafetyBrakeResult({

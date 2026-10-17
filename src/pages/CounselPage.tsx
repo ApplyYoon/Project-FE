@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { usePlans } from '@/hooks/usePlans'
+import { loadLastCallSummary } from '@/lib/callLog'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildCallSummaries, loadCheckInsByDate } from '@/lib/callSummary'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -39,6 +40,8 @@ export function CounselPage() {
   const [checkIns] = useState(loadCheckInsByDate)
   const [sessions] = useState(loadStudySessions)
   const latestSummary = buildCallSummaries(checkIns, allPlans, sessions)[0] ?? null
+  // 통화가 끝날 때 서버가 정리한 요약 문장(AI 가 쓴 글)이 있으면 그것을 먼저 보여 줍니다. (#415, lib/callLog.ts)
+  const [aiSummary] = useState(loadLastCallSummary)
   const hasCalledToday = checkIns[getTodayKey()] !== undefined
 
   return (
@@ -76,7 +79,12 @@ export function CounselPage() {
         </Card>
 
         <Card title="지난 통화 요약">
-          {latestSummary === null ? (
+          {aiSummary !== undefined ? (
+            <div className="flex flex-col gap-1 text-sm">
+              <p className="text-slate-500">{aiSummary.dateKey} · AI 가 정리했어요</p>
+              <p className="break-keep text-slate-900">{aiSummary.summary}</p>
+            </div>
+          ) : latestSummary === null ? (
             <p className="text-sm break-keep text-slate-600">
               아직 통화한 기록이 없어요. 통화하면 여기에 요약이 남아요.
             </p>
