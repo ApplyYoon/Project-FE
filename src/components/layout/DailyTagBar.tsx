@@ -1,4 +1,5 @@
 import { useAuth } from '@/hooks/useAuth'
+import { usePsychTestSync } from '@/hooks/usePsychTestSync'
 import { useSendCheckIn, useUnsentCheckInRetry } from '@/hooks/useCheckInSync'
 import { todayServerCheckInQuery } from '@/lib/checkInsApi'
 import { cn } from '@/lib/cn'
@@ -58,6 +59,8 @@ export function DailyTagBar() {
   // 앱을 켜 둔 채 날이 바뀌어도(새벽 4시), 다음에 화면을 옮길 때 "오늘 체크인" 을 다시 확인하게 됩니다.
   useLocation()
   const send = useSendCheckIn()
+  // 아직 서버에 안 간 심리검사 결과를 앱을 열 때 보냅니다. (hooks/usePsychTestSync.ts)
+  usePsychTestSync()
   // 예전에 서버로 못 보낸 체크인을 앱을 열 때 다시 보냅니다.
   useUnsentCheckInRetry()
 

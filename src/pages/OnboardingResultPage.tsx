@@ -1,6 +1,7 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { AUTO_SETTING_ROWS } from '@/lib/autoSettingOptions'
 import { getCareLevelInfo } from '@/lib/careLevelInfo'
 import { getCareLimits } from '@/lib/careLimits'
@@ -13,8 +14,10 @@ import {
 } from '@/lib/onboardingCare'
 import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import { loadPsychTest } from '@/lib/psychTest'
+import { profileLinesQuery, signatureOf } from '@/lib/psychTestApi'
 import { loadAutoSettings, proposeCareLimits } from '@/lib/settingsMapping'
-import { useState } from 'react'
+import { useSuspenseQuery } from '@tanstack/react-query'
+import { Suspense, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 /** 결과 화면의 설정 한 줄 */
@@ -62,12 +65,56 @@ function getHypothesisLines(hypotheses: MyHypotheses): string[] {
  * 온보딩 6번 "결과 화면" 입니다. (주소: /onboarding/result, 기획서 4.1, #389)
  * 성향 요약 3줄 + 검사로 맞춘 설정(설정마다 이유 한 줄) + "2주 동안 네 가설을 확인해볼게."
  *
- * - 성향 요약은 지금은 코드가 고른 문장입니다. (lib/onboardingCare.ts 의 getTraitSummary)
- *   서버 GPT 가 쓴 문장(BE#219)이 생기면 그 문장을 먼저 보여 주고, 못 받으면 이 문장을 씁니다. (2026-10-17 결정)
+ * - 성향 요약: 진짜 로그인이면 서버 AI 가 점수를 보고 쓴 문장(BE /ai/profile-lines)을 보여 줍니다.
+ *   받는 동안 · 못 받으면 코드가 고른 문장(lib/onboardingCare.ts 의 getTraitSummary)을 씁니다. (2026-10-17 결정)
  * - 시안이 없어서 "준비 끝" 화면과 설정의 관리 강도 카드 모양을 따랐습니다.
  */
+interface TraitListProps {
+  lines: string[]
+  /** 문장 아래에 붙이는 작은 안내 (예: AI 가 쓴 문장이라는 표시) */
+  note?: string
+}
+
+/** 성향 요약 문장 목록 */
+function TraitList({ lines, note }: TraitListProps) {
+  return (
+    <>
+      <ul className="flex flex-col gap-2 text-sm break-keep text-slate-800 sm:text-base">
+        {lines.map((line) => (
+          <li key={line} className="flex gap-2">
+            <span aria-hidden className="text-brand">
+              •
+            </span>
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+      {note && <p className="mt-2 text-xs break-keep text-slate-400">{note}</p>}
+    </>
+  )
+}
+
+interface AiTraitListProps {
+  /** 지금 검사 결과의 서명 (검사를 다시 하면 새로 받습니다) */
+  signature: string
+  /** AI 문장을 못 받았을 때 보여 줄 기본 문장 */
+  fallbackLines: string[]
+}
+
+/**
+ * 서버 AI(BE /ai/profile-lines)가 심리검사 점수를 보고 쓴 성향 요약입니다. (2026-10-17 결정: 점수는 코드, 문장은 AI)
+ * 못 받으면(AI 꺼짐 · 서버 준비 전 · 실패) 에러 대신 기본 문장을 보여 줍니다. (lib/psychTestApi.ts 의 fetchProfileLines)
+ */
+function AiTraitList({ signature, fallbackLines }: AiTraitListProps) {
+  const { data } = useSuspenseQuery(profileLinesQuery(signature))
+  if (data.lines === null) return <TraitList lines={fallbackLines} />
+  return <TraitList lines={data.lines} note="AI 가 내 답을 읽고 쓴 문장이에요." />
+}
+
 export function OnboardingResultPage() {
   const navigate = useNavigate()
+  // 진짜 로그인일 때만 서버(AI)를 부릅니다. 테스트 로그인은 기본 문장만 보여 줍니다.
+  const isServerData = useIsServerData()
   const [psychTest] = useState(loadPsychTest)
   const [hypotheses] = useState(loadMyHypotheses)
   const [settingLines] = useState(getTestSettingLines)
@@ -107,16 +154,16 @@ export function OnboardingResultPage() {
         </div>
 
         <Card title="성향 요약">
-          <ul className="flex flex-col gap-2 text-sm break-keep text-slate-800 sm:text-base">
-            {traitLines.map((line) => (
-              <li key={line} className="flex gap-2">
-                <span aria-hidden className="text-brand">
-                  •
-                </span>
-                <span>{line}</span>
-              </li>
-            ))}
-          </ul>
+          {/* 진짜 로그인이면 서버 AI 가 쓴 문장을, 받는 동안 · 못 받으면 코드가 고른 기본 문장을 보여 줍니다 */}
+          {isServerData ? (
+            <Suspense
+              fallback={<TraitList lines={traitLines} note="AI 가 답을 더 자세히 읽는 중이에요…" />}
+            >
+              <AiTraitList signature={signatureOf(psychTest)} fallbackLines={traitLines} />
+            </Suspense>
+          ) : (
+            <TraitList lines={traitLines} />
+          )}
           <p className="mt-3 text-xs break-keep text-slate-500">
             처음 검사로 본 첫 짐작이에요. 성격이 아니라 지금의 공부 습관이에요.
           </p>
