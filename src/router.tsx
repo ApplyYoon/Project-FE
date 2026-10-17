@@ -34,6 +34,7 @@ const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
 )
 const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m.CallPage })))
+const ChatPage = lazy(() => import('@/pages/ChatPage').then((m) => ({ default: m.ChatPage })))
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
@@ -147,6 +148,8 @@ export const router = createBrowserRouter([
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
       { path: 'timer', element: <TimerRoute /> },
       { path: 'counsel', element: <CounselPage /> },
+      // 상담 채팅: 통화 대본의 글 버전 (#416, BE #238)
+      { path: 'counsel/chat', element: <ChatPage /> },
       // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
       { path: 'analysis', element: <AnalysisPage /> },
       { path: 'check', element: <CheckPage /> },

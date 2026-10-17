@@ -98,13 +98,17 @@ export function CounselPage() {
           </Button>
         </Card>
 
-        {/* 채팅과 목표 만들기 대화는 #416 에서 만듭니다. 어디서 하게 될지 미리 알 수 있게 자리만 보여 줍니다. */}
+        {/* 채팅: 통화와 같은 대본을 글로 (#416). 목표 만들기 대화는 아직 자리만 보여 줍니다. */}
         <Card title="채팅으로 상담하기">
           <p className="text-sm break-keep text-slate-600">
             통화를 못 받은 날은 같은 이야기를 글로 나눌 수 있어요.
           </p>
-          <Button variant="secondary" className="mt-4 w-full sm:w-auto" disabled>
-            곧 열려요
+          <Button
+            variant="secondary"
+            className="mt-4 w-full sm:w-auto"
+            onClick={() => navigate('/counsel/chat')}
+          >
+            채팅 시작하기
           </Button>
         </Card>
 
