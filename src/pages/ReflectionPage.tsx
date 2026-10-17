@@ -140,7 +140,9 @@ function ReflectionContent({ isDemo }: ReflectionContentProps) {
           </div>
 
           <p className="text-sm text-slate-500">
-            🔒 원문은 나만 봐요. AI 는 원인과 반복되는 말만 뽑아서 써요.
+            {/* 답은 이 기기에만 저장하고 서버·AI 로 보내지 않습니다. (lib/reflectionPrescription.ts)
+                이 기기 안에서 위기 표현 확인(lib/diarySafety.ts)에만 씁니다. 서버로 보내게 되면 이 문장도 고칩니다. */}
+            🔒 답은 이 기기에만 저장되고 나만 봐요. AI 에게 보내지 않아요.
           </p>
 
           <Button className="w-full" onClick={handleSave}>
