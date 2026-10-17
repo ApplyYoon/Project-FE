@@ -37,6 +37,7 @@ import {
   showFocusLeaveNotification,
 } from '@/lib/focusMode'
 import { getNotificationPermission } from '@/lib/notifications'
+import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import { missReasonOptions } from '@/lib/missReasons'
 import { loadSubjects } from '@/lib/subjects'
 import { getPlanProgress } from '@/lib/planProgress'
@@ -933,6 +934,15 @@ export function TimerPage() {
           <p>{helpMessage}</p>
           <p>{awayHelp}</p>
         </div>
+
+        {/* 웹은 다른 앱으로 못 나가게 막을 수 없어서, 휴대폰의 "앱 하나에 고정" 기능을 켜는 법으로 안내합니다. (#250) */}
+        <Link
+          to={PHONE_FOCUS_PATH}
+          className="text-brand inline-flex h-10 items-center gap-1.5 text-sm font-medium underline underline-offset-4"
+        >
+          <span aria-hidden>🔒</span>
+          다른 앱으로 못 나가게 하고 싶다면
+        </Link>
       </Card>
 
       <Card title="오늘 총 공부 시간">
