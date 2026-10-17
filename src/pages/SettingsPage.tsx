@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCalendarConnect } from '@/hooks/useCalendarConnect'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { logoutOnServer } from '@/lib/accountApi'
 import { getApiErrorMessage } from '@/lib/api'
 import { isInApp } from '@/lib/appBridge'
@@ -24,6 +25,7 @@ import {
 } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
+import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
@@ -730,6 +732,9 @@ export function SettingsPage() {
             </div>
           </Card>
 
+          {/* 발표 시연용 가상 데이터 (#418). 주소 끝에 ?demo=on 을 붙였거나 이미 넣었을 때만 보입니다 */}
+          <DemoDataSection />
+
           {/* 언제든 들어갈 수 있는 도움 연결. 누르면 바로 전화가 걸립니다. (#96) */}
           <Card title="힘들 때 도움받기" className="bg-slate-50">
             <p className="text-sm text-slate-500">혼자 버티기 힘들 때는 바로 이야기해 주세요.</p>
@@ -1155,5 +1160,47 @@ function GoogleCalendarSection() {
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * 발표 시연용 가상 데이터를 넣고 빼는 카드입니다. (#418, lib/demoData.ts)
+ * 학생이 실수로 누르지 않도록, 설정 주소 끝에 ?demo=on 을 붙였을 때(/settings?demo=on)만 보입니다.
+ * 이미 넣은 상태거나 개발 중(pnpm dev)이면 언제나 보여서 지울 수 있습니다.
+ */
+function DemoDataSection() {
+  const [demoParam] = useQueryParam('demo', 'off')
+  const [isSeeded] = useState(isDemoSeeded)
+  if (demoParam !== 'on' && !isSeeded && !import.meta.env.DEV) return null
+
+  function handleAdd() {
+    addDemoData()
+    // 화면들은 저장소를 처음 열 때만 읽어서, 새로고침해야 새 데이터가 보입니다.
+    window.location.reload()
+  }
+
+  function handleRemove() {
+    removeDemoData()
+    window.location.reload()
+  }
+
+  return (
+    <Card title="시연용 가상 데이터" className="border-dashed bg-slate-50">
+      <p className="text-sm break-keep text-slate-500">
+        발표용 가상 학생의 28일(카드 · 공부 기록 · 목표 2개 · 학원 일정 · 체크인 · 관리 단계 ·
+        실험)을 넣어요. 온보딩이 비어 있으면 끝낸 상태로 채워요. 지우기를 누르면 넣은 것만 빠지고 내
+        기록은 남아요.
+      </p>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <Button className="h-11 w-full sm:flex-1" onClick={handleAdd}>
+          {isSeeded ? '가상 데이터 다시 넣기' : '가상 데이터 넣기'}
+        </Button>
+        {isSeeded && (
+          <Button variant="secondary" className="h-11 w-full sm:flex-1" onClick={handleRemove}>
+            가상 데이터 지우기
+          </Button>
+        )}
+      </div>
+    </Card>
   )
 }

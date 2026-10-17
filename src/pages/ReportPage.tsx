@@ -7,7 +7,6 @@ import { usePlans } from '@/hooks/usePlans'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { loadStudySessions } from '@/lib/dailyRecords'
 import { moveDateKey, toDateKey, toDayDate } from '@/lib/date'
-import { addDemoData, removeDemoData } from '@/lib/demoData'
 import { getInsightsToShow } from '@/lib/insights'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
@@ -86,41 +85,7 @@ export function ReportPage() {
       </div>
 
       <WeeklyReport allPlans={allPlans} sessions={sessions} />
-
-      {/* 개발할 때만 보이는 가상 데이터 버튼. 배포한 화면에서는 import.meta.env.DEV 가 false 라서 안 보입니다. */}
-      {import.meta.env.DEV && <DemoDataCard />}
     </div>
-  )
-}
-
-/** 9주치 가상 계획·공부 기록을 넣거나 빼는 카드. 리포트를 미리 확인하는 용도입니다. */
-function DemoDataCard() {
-  function handleAdd() {
-    addDemoData()
-    // 계획과 기록은 화면이 처음 열릴 때만 저장소에서 읽어서, 새로고침해야 새 데이터가 보입니다.
-    window.location.reload()
-  }
-
-  function handleRemove() {
-    removeDemoData()
-    window.location.reload()
-  }
-
-  return (
-    <Card title="개발용: 가상 데이터" className="border-dashed bg-slate-50">
-      <p className="text-sm text-slate-500">
-        최근 9주치 계획과 공부 기록을 넣어서 인사이트 예시와 실험 칸을 미리 볼 수 있어요. 숫자 3개는
-        카드로 잰 기록만 세서, 이 데이터로는 채워지지 않아요. 내가 직접 만든 기록은 지워지지 않아요.
-      </p>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <Button className="h-11 w-full sm:flex-1" onClick={handleAdd}>
-          가상 데이터 넣기
-        </Button>
-        <Button variant="secondary" className="h-11 w-full sm:flex-1" onClick={handleRemove}>
-          가상 데이터 지우기
-        </Button>
-      </div>
-    </Card>
   )
 }
 
