@@ -348,19 +348,6 @@ export interface GoalProgressEntry {
   doneAmount: number
 }
 
-/**
- * 온보딩에서 처음 세운 계획입니다.
- * 한 번 저장하면 나중에 루틴을 바꿔도 이 값은 바뀌지 않습니다. "처음의 나" 와 지금을 비교하는 기준입니다.
- */
-export interface InitialPlan {
-  /** 처음 계획을 세운 날짜 (예: '2026-10-10') */
-  createdDate: string
-  /** 하루에 공부하기로 한 시간 (분) */
-  dailyMinutes: number
-  /** 일주일에 며칠 하기로 했는지 */
-  daysPerWeek: number
-}
-
 /** 공부 중에 다른 탭·앱으로 나갔다 돌아온 기록 (딴짓 한 번) */
 export interface AwayRecord {
   /** 기록을 구분하는 고유 값 */

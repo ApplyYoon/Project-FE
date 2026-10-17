@@ -942,7 +942,6 @@ export function buildDemoOnboarding(startKey: string, todayKey: string): Record<
     },
     'onboarding-care-consent': doneAt,
     'onboarding-result-seen': true,
-    'initial-plan': { createdDate: moveDateKey(startKey, -1), dailyMinutes: 180, daysPerWeek: 6 },
     // 관리 단계 3 까지 보이도록 한도 3 (온보딩이 제안하는 값과 같음)
     'care-limits': {
       maxCareLevel: 3,
