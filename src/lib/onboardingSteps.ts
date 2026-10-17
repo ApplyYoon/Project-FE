@@ -78,7 +78,17 @@ interface TimeStep extends BaseStep {
   type: 'time'
 }
 
-export type OnboardingStep = ChoiceStep | MultiChoiceStep | TextStep | DateStep | TimeStep
+/**
+ * 과목마다 최근 성적(등급 또는 점수)과 자신감(1~5)을 받는 질문. (#88)
+ * 과목은 과목 관리의 과목 목록(loadSubjects)을 그대로 보여줍니다.
+ * 답은 과목별 수준 목록을 JSON 글자로 바꾼 것이고, 건너뛰면 빈 글자입니다. (lib/subjectLevel.ts)
+ */
+interface SubjectLevelsStep extends BaseStep {
+  type: 'subjectLevels'
+}
+
+export type OnboardingStep =
+  ChoiceStep | MultiChoiceStep | TextStep | DateStep | TimeStep | SubjectLevelsStep
 
 /** 쉼표로 이은 여러 개 고르기 답을 값 목록으로 자릅니다. 빈 글자면 빈 목록입니다.  'weekend,phone' -> ['weekend', 'phone'] */
 export function parseMultiAnswer(answer: string): string[] {
@@ -152,6 +162,18 @@ export const onboardingSteps: OnboardingStep[] = [
     description: '아직 없으면 건너뛰어도 돼요.',
     placeholder: '예) 평균 2등급',
     maxLength: 30,
+  },
+
+  /* ---------- 현재 수준 (#88) ---------- */
+  // first 가 없어서 처음에는 묻지 않고, 설정의 "내 정보 더 알려주기" 에서 묻습니다. (#239)
+  // 과목 배분과 성적 연결 분석(기획서 v2 3장 ⑦)에 쓰는 재료입니다.
+  {
+    key: 'subjectLevels',
+    group: '현재 수준',
+    type: 'subjectLevels',
+    optional: true,
+    title: '과목별 최근 성적과 자신감을 알려줘',
+    description: '모르는 과목은 비워 두고, 전부 모르겠으면 건너뛰어도 돼요.',
   },
 
   /* ---------- 생활 리듬 ---------- */
