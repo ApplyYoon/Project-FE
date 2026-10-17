@@ -308,6 +308,8 @@ export interface GoalTargetSnapshot {
 export interface Goal {
   /** 목표를 구분하는 고유 값 */
   id: string
+  /** 서버에 올라간 목표의 번호 (BE /api/v1/goals 의 id). 아직 안 올라갔거나 테스트 로그인이면 없음 (#516) */
+  serverId?: string
   kind: GoalKind
   /** W 소망 — 목표 한 줄 (예: '11월 학평 수학 3등급') */
   title: string
