@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { MyHypothesesCard } from '@/components/ui/MyHypothesesCard'
 import { useCards } from '@/hooks/useCards'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { useManualItems } from '@/hooks/useManualItems'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { buildJudgedCardDays } from '@/lib/cardDays'
@@ -20,6 +22,14 @@ import {
   saveExperiments,
   type Experiment,
 } from '@/lib/experiments'
+import { checkHypotheses, getHypothesisDay } from '@/lib/hypothesisCheck'
+import {
+  findDisputeByExperiment,
+  loadInsightDisputes,
+  resolveOutcome,
+  saveInsightDispute,
+} from '@/lib/insightDisputes'
+import { loadMyHypotheses } from '@/lib/myHypotheses'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { STRATEGY_LEVEL_LABELS, findStrategy, getStrategiesFor } from '@/lib/strategyCatalog'
 import type { Card as CardModel } from '@/types'
@@ -72,6 +82,12 @@ export function ExperimentPage() {
     (cardId, dateKey) => getCardDayMarkInfo(cardId, dateKey, restDays, marks),
   )
   const running = experiments.find((item) => item.status === 'running')
+  // 내 가설 (#411) — 온보딩에 적은 4개를 기록과 비교합니다.
+  const [hypotheses] = useState(loadMyHypotheses)
+  // [틀렸어] 를 누른 인사이트에서 왔으면(?from=인사이트id) 그 문장을 가설로 실험합니다.
+  const [fromInsight, setFromInsight] = useQueryParam('from', '', { replace: true })
+  const [disputes] = useState(loadInsightDisputes)
+  const disputedSentence = fromInsight === '' ? undefined : disputes[fromInsight]?.sentence
 
   useEffect(() => {
     saveExperiments(experiments)
@@ -87,6 +103,11 @@ export function ExperimentPage() {
       ...(verdict.experimentRate === null ? {} : { experimentRate: verdict.experimentRate }),
     }
     setExperiments((prev) => prev.map((item) => (item.id === target.id ? judged : item)))
+    // [틀렸어] 로 시작한 실험이면 결과로 인사이트를 정리합니다 (효과 없음 = 사용자가 맞음 → 'AI가 틀렸어요')
+    const disputedInsightId = findDisputeByExperiment(target.id)
+    const outcome = resolveOutcome(verdict.status)
+    if (disputedInsightId && outcome)
+      saveInsightDispute(disputedInsightId, { sentence: target.hypothesis, outcome })
     if (verdict.status === 'effective') {
       const strategy = findStrategy(target.strategyId)
       addItem({
@@ -101,12 +122,28 @@ export function ExperimentPage() {
 
   function handleStart(experiment: Experiment) {
     setExperiments((prev) => [...prev, experiment])
+    if (disputedSentence) {
+      saveInsightDispute(fromInsight, { sentence: disputedSentence, experimentId: experiment.id })
+      setFromInsight('')
+    }
   }
 
   const past = experiments.filter((item) => item.status !== 'running')
 
   return (
     <div className="flex flex-col gap-6">
+      {hypotheses && (
+        <MyHypothesesCard
+          checks={checkHypotheses(hypotheses, {
+            cards,
+            sessions: allSessions,
+            judgedDays,
+            todayKey,
+          })}
+          day={getHypothesisDay(hypotheses, todayKey)}
+        />
+      )}
+
       <div>
         <h2 className="text-xl font-bold tracking-tight sm:text-2xl">자기 실험</h2>
         <p className="mt-1 text-sm text-slate-600">
@@ -127,6 +164,7 @@ export function ExperimentPage() {
           cards={cards}
           judgedDays={judgedDays}
           todayKey={todayKey}
+          disputedSentence={disputedSentence}
           onStart={handleStart}
         />
       )}
@@ -191,6 +229,8 @@ interface NewExperimentProps {
   cards: CardModel[]
   judgedDays: ReturnType<typeof buildJudgedCardDays>
   todayKey: string
+  /** [틀렸어] 를 누른 인사이트 문장 — 있으면 이것이 가설입니다 */
+  disputedSentence?: string
   onStart: (experiment: Experiment) => void
 }
 
@@ -209,12 +249,20 @@ function findMainCause(
 }
 
 /** 새 실험 시작 — 가설 → 전략 1개 → 카드 고르기 → 그만둘 기준에 동의 */
-function NewExperiment({ cards, judgedDays, todayKey, onStart }: NewExperimentProps) {
+function NewExperiment({
+  cards,
+  judgedDays,
+  todayKey,
+  disputedSentence,
+  onStart,
+}: NewExperimentProps) {
   const cause = findMainCause(judgedDays, todayKey)
   const causeLabel = CARD_FAIL_CAUSES.find((item) => item.key === cause)?.label
-  const hypothesis = causeLabel
-    ? `최근 2주 동안 '${causeLabel}' 때문에 놓친 카드가 가장 많아요.`
-    : '시작이 어려워서 늦거나 놓치는 날이 있어요.'
+  const hypothesis =
+    disputedSentence ??
+    (causeLabel
+      ? `최근 2주 동안 '${causeLabel}' 때문에 놓친 카드가 가장 많아요.`
+      : '시작이 어려워서 늦거나 놓치는 날이 있어요.')
   const strategies = getStrategiesFor(cause)
   const routineCards = cards.filter((card) => !isOneOffCard(card))
   const [strategyId, setStrategyId] = useState(strategies[0]?.id ?? '')

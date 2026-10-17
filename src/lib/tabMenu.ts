@@ -19,8 +19,8 @@ export const analysisTabs: { tab: AnalysisTab; label: string }[] = [
   { tab: 'records', label: '기록' },
   { tab: 'report', label: '리포트' },
   { tab: 'manual', label: '사용설명서' },
-  // 자기 실험 (#412)
-  { tab: 'experiment', label: '자기 실험' },
+  // 내 가설 확인(#411) · 자기 실험(#412)
+  { tab: 'experiment', label: '가설·실험' },
 ]
 
 /**
