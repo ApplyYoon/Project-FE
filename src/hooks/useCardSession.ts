@@ -183,6 +183,7 @@ export function useCardSession() {
     resume,
     markLongPauseAlerted,
     updateSession,
+    addSession,
     play,
     startPlay,
     markPlayAlert,

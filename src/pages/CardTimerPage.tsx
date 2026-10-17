@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { FailCardModal } from '@/components/ui/FailCardModal'
+import { LateEntryModal } from '@/components/ui/LateEntryModal'
 import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
 import { useCardSession } from '@/hooks/useCardSession'
 import { useCards } from '@/hooks/useCards'
@@ -37,6 +38,9 @@ import {
 import { getCardResult } from '@/lib/cardResult'
 import { loadLatestCareStage } from '@/lib/careStage'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
+import { buildLateEntrySession, checkLateEntry, makeLateEntryReport } from '@/lib/lateEntry'
+import { loadData } from '@/lib/storage'
 import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
@@ -120,8 +124,46 @@ export function CardTimerPage() {
   const [marks, setMarks] = useState(loadCardMarks)
   const [missTarget, setMissTarget] = useState<{
     card: CardModel
-    action: 'postpone' | 'fail'
+    action: 'postpone' | 'fail' | 'late'
   } | null>(null)
+  // 통화 시각 — 사후 입력은 다음 통화 전까지만 받습니다. (#402)
+  const [callTimeMinutes] = useState(() =>
+    parseCallTime(loadData<unknown>(CALL_TIME_STORAGE_KEY, null)),
+  )
+
+  /** 이 카드를 지금 나중에 적을 수 있는지 (미리 만든 카드 · 다음 통화 전 · 기록 없음) */
+  function lateEntryOf(card: CardModel) {
+    return checkLateEntry({
+      card,
+      dateKey: todayKey,
+      now: listNow,
+      callTimeMinutes,
+      hasSession: doneTodayIds.has(card.id),
+      isHandled: isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
+    })
+  }
+
+  function handleLateEntry(
+    card: CardModel,
+    minutes: number,
+    checkedIds: string[],
+    proofText: string,
+  ) {
+    const record = buildLateEntrySession(
+      card,
+      todayKey,
+      minutes,
+      makeLateEntryReport(checkedIds, proofText),
+      `late-${card.id}-${todayKey}`,
+    )
+    if (record) session.addSession(record)
+    setMissTarget(null)
+    setNotice(
+      record?.endReport?.proof
+        ? '적었어요. 증빙이 있어서 그냥 한 것과 똑같이 셀게요.'
+        : "적었어요. 증빙이 없어서 '나중에 적었어요' 로 남아요.",
+    )
+  }
   const [notice, setNotice] = useState<string | null>(null)
   const [isCrisisOpen, setIsCrisisOpen] = useState(false)
   // 대기 화면의 '지금'. 30초마다 바꿔서 시간이 끝난 카드가 '시간이 끝난 카드' 로 옮겨 가게 합니다.
@@ -328,6 +370,15 @@ export function CardTimerPage() {
                     >
                       실패로 기록
                     </Button>
+                    {lateEntryOf(card).ok && (
+                      <Button
+                        variant="ghost"
+                        className="col-span-2 border border-slate-300"
+                        onClick={() => setMissTarget({ card, action: 'late' })}
+                      >
+                        폰을 내서 못 켰어요 · 나중에 적기
+                      </Button>
+                    )}
                   </div>
                 </li>
               )
@@ -353,6 +404,7 @@ export function CardTimerPage() {
                   onStart={() => beginCard(card)}
                   onPostpone={() => setMissTarget({ card, action: 'postpone' })}
                   onFail={() => setMissTarget({ card, action: 'fail' })}
+                  onStartOffline={() => session.start(card, todayKey, 'offline')}
                 />
               ))}
             </ul>
@@ -376,6 +428,22 @@ export function CardTimerPage() {
           }
         />
       )}
+      {missTarget?.action === 'late' &&
+        (() => {
+          const check = lateEntryOf(missTarget.card)
+          return check.ok ? (
+            <LateEntryModal
+              isOpen
+              cardTitle={missTarget.card.title}
+              checklist={missTarget.card.checklist}
+              maxMinutes={check.maxMinutes}
+              onClose={() => setMissTarget(null)}
+              onSave={(minutes, checkedIds, proofText) =>
+                handleLateEntry(missTarget.card, minutes, checkedIds, proofText)
+              }
+            />
+          ) : null
+        })()}
       {missTarget?.action === 'fail' && (
         <FailCardModal
           isOpen
@@ -414,6 +482,8 @@ interface WaitingCardRowProps {
   onStart: () => void
   onPostpone: () => void
   onFail: () => void
+  /** 야자처럼 폰을 내야 할 때 — 폰을 내고, 돌려받은 뒤 끝냅니다 (#402) */
+  onStartOffline: () => void
 }
 
 /**
@@ -427,6 +497,7 @@ function WaitingCardRow({
   onStart,
   onPostpone,
   onFail,
+  onStartOffline,
 }: WaitingCardRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   return (
@@ -481,6 +552,16 @@ function WaitingCardRow({
               className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50"
             >
               못 했다고 기록
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsMenuOpen(false)
+                onStartOffline()
+              }}
+              className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50"
+            >
+              폰 내고 시작 (오프라인)
             </button>
           </div>
         )}
@@ -571,7 +652,9 @@ function SessionView({ session, card, now, onFinished }: SessionViewProps) {
   const isPaused = active.pausedNow !== undefined
   const checklist = card?.checklist ?? []
   const checkedCount = checklist.filter((item) => active.checked[item.id]).length
-  const showChecklist = settings.timerMode.value === 'checklist'
+  const isOffline = active.mode === 'offline'
+  // 오프라인 세션은 폰을 내고 하는 것이라 체크리스트 · 주차장을 보이지 않습니다. (끝날 때 종료 팝업에서 체크)
+  const showChecklist = settings.timerMode.value === 'checklist' && !isOffline
 
   function handleSaveMemo() {
     session.addMemo(memo)
@@ -590,7 +673,7 @@ function SessionView({ session, card, now, onFinished }: SessionViewProps) {
             isPaused ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700',
           )}
         >
-          {isPaused ? '잠깐 멈춤' : '● 공부 중'}
+          {isPaused ? '잠깐 멈춤' : isOffline ? '● 오프라인 · 폰 내고 공부 중' : '● 공부 중'}
         </span>
         {active.pausedNow?.alerted && (
           <p className="text-sm font-medium text-amber-700">
@@ -663,7 +746,7 @@ function SessionView({ session, card, now, onFinished }: SessionViewProps) {
         </Card>
       )}
 
-      {settings.parkingLot.value && (
+      {settings.parkingLot.value && !isOffline && (
         <Card title="딴생각 주차장">
           <p className="text-sm text-slate-600">
             떠오른 걱정이나 할 일을 한 줄 적고 바로 돌아와요.
