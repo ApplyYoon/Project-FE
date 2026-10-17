@@ -21,6 +21,7 @@ import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
 import { loadInitialPlan } from '@/lib/initialPlan'
 import { getUnansweredSteps, loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { parseSubjectLevels } from '@/lib/subjectLevel'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
@@ -207,6 +208,11 @@ export function SettingsPage() {
   // 온보딩에서 미뤄 둔 질문이 몇 개 남았는지 셉니다. 설문을 한 번도 안 했으면 답이 null 입니다. (#239)
   const remainingCount =
     onboardingAnswers === null ? 0 : getUnansweredSteps(onboardingAnswers).length
+  // 과목별 성적·자신감을 알려 준 과목 수 (#88). 아직 이 질문에 답하지 않았으면 null, 건너뛰었으면 0 입니다.
+  const subjectLevelCount =
+    onboardingAnswers !== null && 'subjectLevels' in onboardingAnswers
+      ? parseSubjectLevels(onboardingAnswers.subjectLevels).length
+      : null
   // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스. h-10 으로 누르는 높이를 40px 로 둡니다.
   const moreLinkClass =
     'bg-brand hover:bg-brand-dark mt-3 inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium text-white transition-colors'
@@ -297,6 +303,26 @@ export function SettingsPage() {
               <p className="mt-1 text-sm break-keep text-slate-500">
                 질문에 다 답했어요. 알려준 만큼 더 잘 맞춰 줄게요.
               </p>
+            )}
+
+            {/*
+              과목별 성적·자신감 (#88). "남은 질문" 에서는 한 번 답하거나 건너뛰면 빠져서 다시 답할 길이 없었습니다.
+              여기서 언제든 다시 알려 주거나 고칠 수 있게 합니다. (온보딩 화면이 ?only=subjectLevels 로 이 질문 하나만 보여 줍니다)
+            */}
+            {onboardingAnswers !== null && (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <h4 className="text-sm font-semibold text-slate-900">과목별 성적·자신감</h4>
+                <p className="mt-1 text-sm break-keep text-slate-500">
+                  {subjectLevelCount === null
+                    ? '아직 알려 주지 않았어요. 과목마다 최근 성적과 자신감을 알려 주면 공부 시간을 더 잘 맞춰 줘요.'
+                    : subjectLevelCount === 0
+                      ? '건너뛰었어요. 알려 주고 싶을 때 언제든 알려 줄 수 있어요.'
+                      : `과목 ${subjectLevelCount}개를 알려 줬어요.`}
+                </p>
+                <Link to="/onboarding/more?only=subjectLevels" className={secondaryLinkClass}>
+                  {subjectLevelCount !== null && subjectLevelCount > 0 ? '고치기' : '알려 주기'}
+                </Link>
+              </div>
             )}
 
             {/* 처음 계획: 온보딩 마지막에 한 약속. 여기서 누를 때만 다시 세울 수 있습니다. (#240) */}
