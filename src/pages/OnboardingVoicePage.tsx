@@ -6,6 +6,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useVoiceRecorder, type RecordedAudio } from '@/hooks/useVoiceRecorder'
 import { getFirstMe } from '@/lib/firstMe'
+import { markResumeAsked } from '@/lib/onboardingProgress'
 import { loadData } from '@/lib/storage'
 import {
   MAX_RECORD_SECONDS,
@@ -22,8 +23,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
  * "처음의 나에게 한마디" 를 남기는 화면입니다. (주소: /onboarding/voice · #241)
  * 내 목소리로 30초까지 녹음하고, 글로도 한 줄 남길 수 있습니다. 둘 다 건너뛰어도 됩니다.
  *
- * - 가입 직후 맨 처음에 나옵니다. 끝나거나 건너뛰면 온보딩 질문(/onboarding)으로 갑니다.
- * - 아직 한 번도 안 본 사람(테스트 로그인 등)은 RequireAuth 가 한 번 보냅니다(?from=start). 끝나면 홈으로 갑니다.
+ * - 온보딩의 맨 처음 단계입니다. 가입 직후, 또는 아직 안 본 사람(테스트 로그인 등)에게 RequireAuth 가 보냅니다.
+ * - 끝나거나 건너뛰면 홈(/)으로 갑니다. 그러면 RequireAuth 가 온보딩의 다음 단계(질문)로 이어 줍니다.
  * - 설정의 "다시 남기기" 로 들어오면(주소 끝에 ?from=settings) 끝나고 설정으로 돌아갑니다.
  * - 이 화면을 열면 "봤다" 고 적어 둡니다. 그래서 건너뛰어도 다시 띄우지 않습니다. (lib/voicePledge.ts 의 markPledgeSeen)
  *
@@ -32,18 +33,17 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 export function OnboardingVoicePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  // 주소의 from 은 정해 둔 값('settings', 'start')만 봅니다. 다른 값이면 가입 직후로 봅니다.
-  const from = searchParams.get('from')
-  const isFromSettings = from === 'settings'
-  // 끝나고 갈 곳: 설정에서 왔으면 설정, 한 번 보여주기로 왔으면 홈, 가입 직후면 온보딩 질문
-  let exitPath = '/onboarding'
-  if (isFromSettings) exitPath = '/settings'
-  else if (from === 'start') exitPath = '/'
+  const isFromSettings = searchParams.get('from') === 'settings'
+  // 끝나고 갈 곳: 설정에서 왔으면 설정, 온보딩 중이면 홈 (홈에서 RequireAuth 가 다음 단계로 보냅니다)
+  const exitPath = isFromSettings ? '/settings' : '/'
 
   // 이 화면을 한 번 보여줬다고 적어 둡니다. 건너뛰어도 다시 띄우지 않기 위해서입니다.
+  // 이번 접속에서 온보딩을 시작했다는 것도 적어 둡니다. 그래야 다음 단계로 갈 때 "이어하기" 를 묻지 않습니다.
+  // (설정에서 "다시 남기기" 로 온 경우는 온보딩이 아니라서 적지 않습니다)
   useEffect(() => {
     markPledgeSeen()
-  }, [])
+    if (!isFromSettings) markResumeAsked()
+  }, [isFromSettings])
 
   // 전에 남긴 다짐이 있으면 그것으로 시작합니다. (설정에서 다시 들어온 경우)
   const [savedPledge] = useState(loadVoicePledge)

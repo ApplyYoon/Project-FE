@@ -1,6 +1,7 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { cn } from '@/lib/cn'
@@ -551,13 +552,18 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   return (
     <PlainLayout
       headerAction={
-        // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
-        <Link
-          to={isMore ? '/settings' : '/'}
-          className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
-        >
-          {isMore ? '그만하고 설정으로' : '나중에 하기'}
-        </Link>
+        // 처음 설문은 온보딩을 끝내기 전에 나갈 수 없어서 "나중에 하기" 대신 "로그인 화면으로" 를 둡니다. 답은 남아서 다음에 이어 할 수 있습니다. (RequireAuth)
+        isMore ? (
+          // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
+          <Link
+            to="/settings"
+            className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
+          >
+            그만하고 설정으로
+          </Link>
+        ) : (
+          <OnboardingExitButton />
+        )
       }
     >
       <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
