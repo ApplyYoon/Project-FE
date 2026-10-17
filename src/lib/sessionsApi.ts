@@ -494,3 +494,13 @@ export function planProgressQuery(date: string) {
 export function invalidateSessions(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: ['study-sessions'] })
 }
+/**
+ * 서버에 저장된 내 공부 기록을 모두 지웁니다. 설정의 "모든 기록 지우기" 가 부릅니다. (#516)
+ * ⚠️ BE 의 `DELETE /study-sessions` 가 배포돼야 지워집니다. 그 전에는 실패해서 "아직 다 못 지웠어요" 안내가 나옵니다.
+ */
+export async function deleteServerSessions(): Promise<void> {
+  await api<void>('/study-sessions', {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+}

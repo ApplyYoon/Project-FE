@@ -80,6 +80,7 @@ import {
   type AutoSettingValues,
   type StoredSetting,
 } from '@/lib/settingsMapping'
+import { deleteServerSessions } from '@/lib/sessionsApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
 import { loadVoicePledge, removeVoicePledge } from '@/lib/voicePledge'
@@ -89,7 +90,7 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인 · 카드도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
+      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인 · 카드 · 공부 기록도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
@@ -107,11 +108,12 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const { user, token, logout } = useAuth()
   const queryClient = useQueryClient()
-  // "모든 기록 지우기" 때 서버에 저장된 체크인 · 카드도 지웁니다. (#321, #516) 테스트 로그인은 서버에 기록이 없어서 부르지 않습니다.
+  // "모든 기록 지우기" 때 서버에 저장된 체크인 · 카드 · 공부 기록도 지웁니다. (#321, #516) 테스트 로그인은 서버에 기록이 없어서 부르지 않습니다.
   const deleteServer = useMutation({
     mutationFn: async () => {
       await deleteServerCheckIns()
       await deleteAllServerCards()
+      await deleteServerSessions()
     },
     // 보관해 둔 "오늘 체크인" · 서버 카드 값도 낡았다고 표시합니다. (지운 것이 남아 보이지 않게)
     onSuccess: () => {
@@ -221,14 +223,14 @@ export function SettingsPage() {
     handleChangeMessageSettings(next.messageSettings)
   }
 
-  /** 서버에 저장된 체크인 · 카드를 지웁니다. 실패하면 안내와 "다시 지우기" 버튼이 보입니다. */
+  /** 서버에 저장된 체크인 · 카드 · 공부 기록을 지웁니다. 실패하면 안내와 "다시 지우기" 버튼이 보입니다. */
   function deleteServerCheckInsWithMessage(doneText: string) {
     deleteServer.mutate(undefined, {
       onSuccess: () => setMessage({ isSuccess: true, text: doneText }),
       onError: (error) =>
         setMessage({
           isSuccess: false,
-          text: `이 기기의 기록은 지웠지만, 서버에 저장된 체크인 · 카드는 아직 다 못 지웠어요. ${getApiErrorMessage(error)}`,
+          text: `이 기기의 기록은 지웠지만, 서버에 저장된 체크인 · 카드 · 공부 기록은 아직 다 못 지웠어요. ${getApiErrorMessage(error)}`,
         }),
     })
   }
@@ -243,9 +245,9 @@ export function SettingsPage() {
       ? deleteTexts[pendingKind].done
       : '일부를 지우지 못했어요. 다시 시도해 주세요.'
     setMessage({ isSuccess, text: doneText })
-    // 모든 기록을 지울 때는 서버에 저장된 체크인 · 카드도 지웁니다. (#321, #516)
+    // 모든 기록을 지울 때는 서버에 저장된 체크인 · 카드 · 공부 기록도 지웁니다. (#321, #516)
     if (pendingKind === 'all' && canSyncCheckIns(token)) {
-      setMessage({ isSuccess, text: '서버에 저장된 체크인 · 카드도 지우는 중이에요…' })
+      setMessage({ isSuccess, text: '서버에 저장된 체크인 · 카드 · 공부 기록도 지우는 중이에요…' })
       deleteServerCheckInsWithMessage(doneText)
     }
     setPendingKind(null)
