@@ -203,6 +203,47 @@ async function openMicrophone(): Promise<MediaStream> {
   }
 }
 
+/**
+ * 실제 음성 연결이 끝날 때까지 기다립니다. (#458)
+ * 연결 정보(SDP)를 주고받은 뒤에도, 브라우저는 소리가 오갈 길(ICE)을 따로 찾습니다.
+ * 학교·회사 방화벽처럼 그 길이 막힌 곳에서는 연결 정보는 오가도 소리는 안 납니다.
+ *  - 연결 상태(connectionState)가 'connected' 가 되면 끝납니다.
+ *  - 'failed' · 'closed' 가 되거나, 그만두라는 신호(signal: 화면을 떠남 · 15초 제한)가 오면 실패합니다.
+ */
+function waitUntilConnected(peerConnection: RTCPeerConnection, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // 끝나면 듣던 것을 모두 떼어 냅니다. (안 떼면 통화가 끝난 뒤에도 계속 불립니다)
+    function cleanUp() {
+      peerConnection.removeEventListener('connectionstatechange', handleStateChange)
+      signal.removeEventListener('abort', handleAbort)
+    }
+    function handleStateChange() {
+      const state = peerConnection.connectionState
+      if (state === 'connected') {
+        cleanUp()
+        resolve()
+      } else if (state === 'failed' || state === 'closed') {
+        cleanUp()
+        reject(new Error(`connection ${state}`))
+      }
+    }
+    function handleAbort() {
+      cleanUp()
+      reject(new Error('aborted'))
+    }
+
+    if (signal.aborted) {
+      reject(new Error('aborted'))
+      return
+    }
+    // onconnectionstatechange 는 끊김을 지켜보는 쪽(createConnectionWatcher)이 이미 쓰고 있어서, 덮어쓰지 않게 addEventListener 로 하나 더 붙입니다.
+    peerConnection.addEventListener('connectionstatechange', handleStateChange)
+    signal.addEventListener('abort', handleAbort)
+    // 기다리기 시작하기 전에 이미 연결됐을 수도 있어서 한 번 확인합니다.
+    handleStateChange()
+  })
+}
+
 /** 통화를 시작할 때 넘길 수 있는 설정입니다. */
 export interface StartCallOptions {
   /** 대화 글자(자막) 이벤트가 올 때마다 불립니다. (AI 말 · 내 말) */
@@ -235,6 +276,7 @@ export interface StartCallOptions {
 
 /**
  * AI 와 음성 통화를 시작합니다. 연결되면 AI 가 먼저 인사합니다.
+ * 실제로 소리가 오갈 수 있게 연결된 뒤에야 끝납니다. 그래서 이 함수가 끝나면 화면을 "통화 중" 으로 바꿔도 됩니다. (#458)
  * 중간에 실패하면 이미 켠 마이크·연결을 모두 정리하고 RealtimeCallError 를 던집니다.
  */
 export async function startRealtimeCall(options: StartCallOptions = {}): Promise<RealtimeCall> {
@@ -335,6 +377,10 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     if (!answerResponse.ok) throw new Error(`status ${answerResponse.status}`)
 
     await peerConnection.setRemoteDescription({ type: 'answer', sdp: await answerResponse.text() })
+
+    // 연결 정보를 주고받은 것만으로는 아직 소리가 오가지 않습니다. 실제 음성 길이 열릴 때까지 기다립니다. (#458)
+    // 여기서 기다리지 않으면, 방화벽에 막혀 소리가 안 나는데도 화면은 "통화 중" 이 됩니다.
+    await waitUntilConnected(peerConnection, signal)
   } catch {
     close()
     throw new RealtimeCallError('connect', 'AI 와 연결하지 못했어요')
