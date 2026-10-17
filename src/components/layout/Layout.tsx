@@ -2,6 +2,7 @@ import { BackToRecordsLink } from '@/components/layout/BackToRecordsLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
 import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
+import { PageBoundary } from '@/components/layout/PageBoundary'
 import { RecordsSubNav } from '@/components/layout/RecordsSubNav'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
@@ -74,7 +75,10 @@ export function Layout() {
         {isBlockedByFocusMode ? (
           <FocusUnlockScreen onStay={() => navigate('/timer')} onUnlock={focusMode.unlock} />
         ) : (
-          <Outlet />
+          // 화면 파일을 받는 동안에는 이 본문 칸에만 스켈레톤을 보여줍니다. 헤더 · 하단 탭은 그대로입니다. (PageBoundary)
+          <PageBoundary>
+            <Outlet />
+          </PageBoundary>
         )}
       </main>
 
