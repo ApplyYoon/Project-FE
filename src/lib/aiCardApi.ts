@@ -153,3 +153,49 @@ export function failCauseOptionsQuery(title: string) {
     retry: false,
   })
 }
+
+/** 한 줄을 정리한 즉석 카드 초안 (BE `POST /ai/quick-card`) */
+export interface QuickCardDraft {
+  /** 카드 제목 (30자까지). 지난 카드와 같은 일이면 그 제목을 그대로 씁니다 */
+  title: string
+  /** 체크리스트 2 ~ 4개 */
+  items: string[]
+}
+
+/**
+ * [지금 시작] 즉석 카드의 한 줄을 제목 + 체크리스트로 정리해 달라고 합니다. (#419 표 7번) 못 받으면 null.
+ * 서버가 내 과목 이름과 최근 2주 카드 제목을 같이 봐서, 같은 일이면 지난 제목을 그대로 씁니다.
+ *
+ *   await requestQuickCard('수학 하자') -> { title: '수학 문제집', items: ['42쪽 펴기', '5문제 풀기'] }
+ */
+export async function requestQuickCard(text: string): Promise<QuickCardDraft | null> {
+  if (!isServerDataMode()) return null
+  const trimmed = text.trim().slice(0, 100)
+  if (trimmed === '') return null
+  try {
+    const result = await api<unknown>('/ai/quick-card', {
+      method: 'POST',
+      body: JSON.stringify({ text: trimmed }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    const record = (typeof result === 'object' && result !== null ? result : {}) as Record<
+      string,
+      unknown
+    >
+    if (record.showHelp === true || typeof record.card !== 'object' || record.card === null) {
+      return null
+    }
+    const card = record.card as Record<string, unknown>
+    if (typeof card.title !== 'string' || card.title.trim() === '' || !Array.isArray(card.items)) {
+      return null
+    }
+    const items = card.items.filter(
+      (value): value is string => typeof value === 'string' && value.trim() !== '',
+    )
+    if (items.length === 0) return null
+    return { title: card.title.trim(), items: items.map((item) => item.trim()) }
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) throw error
+    return null
+  }
+}
