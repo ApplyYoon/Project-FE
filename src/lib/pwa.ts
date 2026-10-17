@@ -4,6 +4,7 @@ import { removeData } from '@/lib/storage'
  * 웹 앱을 휴대폰 홈 화면에 설치(PWA)하는 데 필요한 함수입니다. (#105)
  * React 없이 돌아가는 함수라서 lib/ 에 둡니다.
  */
+import { isInApp } from '@/lib/appBridge'
 
 /**
  * 서비스 워커(public/sw.js)를 등록합니다. 앱을 처음 열 때 main.tsx 에서 한 번 부릅니다.
@@ -14,6 +15,8 @@ import { removeData } from '@/lib/storage'
  */
 export function registerServiceWorker(): void {
   if (!import.meta.env.PROD) return
+  // 휴대폰 앱 안에서는 알림·오프라인 화면을 앱이 맡아서 서비스 워커가 필요 없습니다. (lib/appBridge.ts)
+  if (isInApp()) return
   // 아주 오래된 브라우저는 서비스 워커가 없습니다. 없으면 그냥 넘어갑니다.
   if (!('serviceWorker' in navigator)) return
 
@@ -36,6 +39,8 @@ export function isIos(): boolean {
 
 /** 홈 화면에 설치한 앱으로 열었는지(주소창 없이 열렸는지) 확인합니다. */
 export function isStandalone(): boolean {
+  // 휴대폰 앱 안이면 이미 설치한 것과 같아서, 설치 안내를 띄우지 않습니다.
+  if (isInApp()) return true
   if (window.matchMedia('(display-mode: standalone)').matches) return true
   // 아이폰 Safari 는 위 방법 대신 navigator.standalone 으로 알려줍니다. (TypeScript 기본 타입에 없어서 직접 적습니다)
   const iosNavigator = navigator as Navigator & { standalone?: boolean }
