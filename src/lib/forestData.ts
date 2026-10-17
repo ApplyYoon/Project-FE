@@ -4,13 +4,14 @@
  *   카드 · 공부 기록 · 목표           → 나무가 자란 시간
  *   카드 하루치 판정(cardDays.ts)     → 재발 신호(relapseSignal.ts) → 시듦 (전체 · 목표별)
  *   오늘 관리 단계(todayCare.ts)      → 0단계(회복 모드)면 시들지 않음
- *   주간 회고 · 인사이트 반응          → 잎
+ *   시험 회고 · 인사이트 반응          → 잎
  *   나 사용설명서 · 효과 본 실험       → 열매 (전체 · 목표별)
  */
 import { buildJudgedCardDays } from '@/lib/cardDays'
 import { loadSavedCards } from '@/lib/cards'
 import { loadAllSessions } from '@/lib/dailyRecords'
 import { moveDateKey } from '@/lib/date'
+import { loadExams } from '@/lib/exams'
 import { loadExperiments } from '@/lib/experiments'
 import { getForestState, type ForestState } from '@/lib/forest'
 import { loadGoals } from '@/lib/goals'
@@ -19,7 +20,6 @@ import { BASELINE_DAYS, RECENT_DAYS, getRelapseSignal } from '@/lib/relapseSigna
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { getTodayCareLevel } from '@/lib/todayCare'
-import { loadWeeklyReviews } from '@/lib/weeklyReview'
 
 /**
  * 오늘의 숲을 계산합니다. manualItemCount 는 나 사용설명서 항목 수입니다.
@@ -76,9 +76,10 @@ export function loadForestState(
     hasRelapse,
     goalRelapse,
     isRecoveryMode: getTodayCareLevel() === 0,
-    // 잎 = 건너뛰지 않고 쓴 주간 회고 수 + 인사이트에 반응한 수
+    // 잎 = 회고를 쓴 시험 수 + 인사이트에 반응한 수 (「4.7」 "잎: 회고와 인사이트 반응")
+    // (예전에 같이 세던 주간 회고는 최종 기획서에서 빠져서 #417 에서 지웠습니다)
     leafCount:
-      loadWeeklyReviews().filter((review) => !review.skipped).length +
+      loadExams().filter((exam) => exam.reflection !== undefined).length +
       Object.keys(getInsightResponses()).length,
     // 열매 = 나 사용설명서에 올라간 효과가 확인된 방법 수
     fruitCount: manualItemCount,

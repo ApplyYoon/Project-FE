@@ -38,11 +38,18 @@ import { getDayProgress } from '@/lib/planProgress'
 import { isWithinQuietHours } from '@/lib/safetyBrake'
 import { loadRecord } from '@/lib/storage'
 import { isTimerLocked } from '@/lib/timerLock'
-import { hasStudiedToday } from '@/lib/streak'
 import { getSubjectsSnapshot } from '@/lib/subjects'
 import { getMondayKey } from '@/lib/weeklyFacts'
 import { getWeeklyGoalProgress, loadPastWeeklyGoals } from '@/lib/weeklyGoal'
-import type { StudyPlan } from '@/types'
+import type { StudyPlan, StudySession } from '@/types'
+
+/** 오늘 공부 기록이 하나라도 있는지 (노는 기록은 세지 않습니다). "계획 시각 지남" 알림을 보낼지 정하는 데 씁니다. */
+function hasStudiedToday(sessions: StudySession[], today: Date): boolean {
+  const todayKey = toDayKey(today)
+  return sessions.some(
+    (session) => session.kind !== 'play' && toDayKey(session.startedAt) === todayKey,
+  )
+}
 
 // getEventMessage(#83)가 판단해 주는 알림 종류들
 const EVENT_TYPES: EventMessageType[] = ['planLate', 'goalDone', 'missed3Days']

@@ -645,22 +645,3 @@ export interface AiMessage {
   /** 읽었으면 true, 아직 안 읽었으면 false */
   read: boolean
 }
-
-/**
- * 주간 회고 하나 (#82). 한 주(월~일)에 하나만 저장됩니다.
- * 건너뛴 주도 skipped: true 로 저장해서, 같은 주에 다시 묻지 않습니다.
- */
-export interface WeeklyReview {
-  /** 그 주의 월요일 날짜 (예: '2026-10-05'). 어느 주의 회고인지 구분합니다. */
-  weekStart: string
-  /** ① 이번 주 가장 잘한 것 (최대 100자) */
-  best: string
-  /** ② 가장 아쉬운 것 (최대 100자) */
-  regret: string
-  /** ③ 다음 주에 바꿀 한 가지 (최대 100자) */
-  change: string
-  /** 건너뛰었으면 true. 이때 세 답은 빈 글자입니다. */
-  skipped: boolean
-  /** 저장한 시각 (Date.now() 값) */
-  savedAt: number
-}

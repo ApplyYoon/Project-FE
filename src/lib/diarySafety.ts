@@ -1,6 +1,6 @@
 /**
  * 글을 저장할 때, 도움 연결 안내(위기 표현·기분 저하)를 보여줘야 하는지 판단합니다. (#95)
- * 일기·성찰 일기·체크인·주간 회고·시험 회고·집중 모드 해제 이유를 저장할 때 씁니다.
+ * 일기·성찰 일기·체크인·시험 회고·집중 모드 해제 이유를 저장할 때 씁니다.
  *
  * 안전 브레이크(getSafetyBrakeResult)에 "방금 쓴 글" 과 "최근 기분 기록" 을 넘겨서 showHelp 를 확인합니다.
  * 최근 기분 기록은 매일 체크인(#24)에 저장된 기분과, 호출하는 쪽이 넘겨 주는 일기 기분을 합쳐서 씁니다.
@@ -8,7 +8,6 @@
 import { loadExams } from '@/lib/exams'
 import { getSafetyBrakeResult, type ExamDateInput, type MoodRecordInput } from '@/lib/safetyBrake'
 import { loadData } from '@/lib/storage'
-import { loadWeeklyReviews } from '@/lib/weeklyReview'
 import type { CheckIn, DiaryEntry, ReflectionEntry } from '@/types'
 
 /**
@@ -47,7 +46,7 @@ function loadUnlockReasons(): string[] {
  * - 체크인(#24): 기분 + 못 채운 이유 '기타' 에 적은 한 줄
  * - 일기(#63): 기분 + 일기 원문 (저장 이름 'diary', useDiaryEntries 와 같습니다)
  * - 성찰 일기(#70): 답변 글 (저장 이름 'reflection-entries', useReflectionEntries 와 같습니다)
- * - 주간 회고(#82) · 시험 회고(#80) · 집중 모드 해제 이유(#69): 적은 글
+ * - 시험 회고(#80) · 집중 모드 해제 이유(#69): 적은 글
  */
 export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[] } {
   const checkIns = loadEntries<CheckIn>('checkins')
@@ -59,7 +58,6 @@ export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[]
       ...checkIns.map((checkIn) => textOf(checkIn.missReasonNote)),
       ...diaries.map((diary) => diary.content ?? ''),
       ...reflections.flatMap((reflection) => reflection.answers ?? []),
-      ...loadWeeklyReviews().flatMap((review) => [review.best, review.regret, review.change]),
       ...loadExams().flatMap((exam) => [
         textOf(exam.reflection?.regret),
         textOf(exam.reflection?.nextChange),
