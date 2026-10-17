@@ -1,3 +1,4 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
@@ -5,12 +6,14 @@ import { useDiaryEntries } from '@/hooks/useDiaryEntries'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
+import { hasDemoData } from '@/lib/demoData'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { loadStudySessions } from '@/lib/dailyRecords'
-import { getReflectionPrescription } from '@/lib/reflectionPrescription'
+import { reflectionPrescriptionQuery } from '@/lib/reflectionPrescription'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import type { DiaryEntry } from '@/types'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -41,6 +44,38 @@ function countDays(fromKey: string, toKey: string): number {
     new Date(toYear, toMonth - 1, toDay).getTime() -
     new Date(fromYear, fromMonth - 1, fromDay).getTime()
   return Math.round(diffMs / msPerDay) + 1
+}
+
+interface PrescriptionCardProps {
+  todayKey: string
+  /** 개발용 가상 데이터를 넣었는지. 넣었으면 서버 대신 예시 처방을 씁니다. */
+  isDemo: boolean
+}
+
+/** 성찰 일기 처방(#70) 카드. 서버가 처방을 내린 기간에만 보이고, 아니면 아무것도 그리지 않습니다. */
+function PrescriptionCard({ todayKey, isDemo }: PrescriptionCardProps) {
+  // 지금 내려진 처방. 서버가 처방하지 않았으면 null 입니다. (lib/reflectionPrescription.ts)
+  const { data: prescription } = useSuspenseQuery(reflectionPrescriptionQuery(isDemo))
+  const dayIndex = prescription === null ? 0 : countDays(prescription.startDate, todayKey)
+  if (prescription === null || dayIndex < 1 || dayIndex > prescription.days) return null
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-brand text-sm font-semibold">
+          성찰 일기 처방 중 · {dayIndex}일째 / {prescription.days}일
+        </p>
+        <Link
+          to="/diary/reflection"
+          className="text-brand inline-flex h-10 items-center text-sm font-semibold hover:underline"
+        >
+          오늘 성찰 쓰기
+        </Link>
+      </div>
+      <ProgressBar value={(dayIndex / prescription.days) * 100} className="mt-2" />
+      <p className="mt-2 text-sm text-slate-500">{prescription.reason}</p>
+    </Card>
+  )
 }
 
 /** "지난 일기" 목록 한 줄. 일반 일기와 성찰 일기(#70)를 날짜 기준으로 합친 모양입니다. */
@@ -98,13 +133,8 @@ export function DiaryPage() {
     else saveData<DiaryDraft>(DRAFT_KEY, { date: todayKey, mood, content })
   }, [existingEntry, mood, content, todayKey])
 
-  // 성찰 일기 처방(#70). 지금 내려진 처방이 없으면 null 이고, 처방 카드는 보이지 않습니다.
-  // (서버가 생기기 전까지 진짜 사용자에게는 처방이 없습니다. lib/reflectionPrescription.ts)
-  const [prescription] = useState(() => getReflectionPrescription(loadStudySessions()))
-  const prescriptionDayIndex =
-    prescription === null ? 0 : countDays(prescription.startDate, todayKey)
-  const isPrescriptionActive =
-    prescription !== null && prescriptionDayIndex >= 1 && prescriptionDayIndex <= prescription.days
+  // 성찰 일기 처방 카드가 가상 데이터의 예시를 쓸지. 처음 열 때 한 번만 봅니다.
+  const [isDemo] = useState(() => hasDemoData(loadStudySessions()))
 
   // "지난 일기" 목록에는 오늘 것만 빼고, 일반 일기와 성찰 일기를 날짜 기준으로 합쳐서 보여줍니다.
   // (오늘 것은 위 "오늘 일기" 칸에 있으니까요)
@@ -158,24 +188,14 @@ export function DiaryPage() {
         </p>
       </div>
 
-      {/* 성찰 일기 처방(#70). AI 가 처방을 내린 기간에만 보입니다. */}
-      {isPrescriptionActive && (
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-brand text-sm font-semibold">
-              성찰 일기 처방 중 · {prescriptionDayIndex}일째 / {prescription.days}일
-            </p>
-            <Link
-              to="/diary/reflection"
-              className="text-brand inline-flex h-10 items-center text-sm font-semibold hover:underline"
-            >
-              오늘 성찰 쓰기
-            </Link>
-          </div>
-          <ProgressBar value={(prescriptionDayIndex / prescription.days) * 100} className="mt-2" />
-          <p className="mt-2 text-sm text-slate-500">{prescription.reason}</p>
-        </Card>
-      )}
+      {/* 성찰 일기 처방(#70). 서버가 처방을 내린 기간에만 보입니다.
+          받아오는 동안은 아무것도 그리지 않습니다. (처방이 없는 사람이 대부분이라 자리를 비워 두면 화면이 덜컹거립니다) */}
+      <AsyncBoundary
+        pendingFallback={null}
+        errorMessage="성찰 일기 처방을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+      >
+        <PrescriptionCard todayKey={todayKey} isDemo={isDemo} />
+      </AsyncBoundary>
 
       {/* 모바일은 세로로 쌓고, PC(lg)에서는 왼쪽 오늘 일기 · 오른쪽 지난 일기로 나눕니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
