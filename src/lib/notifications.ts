@@ -10,6 +10,14 @@
  * - 관리 강도 최대 한도(#59): canSendAiMessageNotification 의 maxCareLevel 로 거릅니다.
  * - 안전 브레이크(#95): brake 로 넘겨 받습니다.
  */
+import {
+  getAppInfo,
+  isInApp,
+  readPermissionReply,
+  requestFromApp,
+  saveAppNotificationPermission,
+  sendToApp,
+} from '@/lib/appBridge'
 import type { CareLevel } from '@/lib/careLevel'
 import type { MessageSettings } from '@/lib/messageSettings'
 import type { QuietHours, SafetyBrakeResult } from '@/lib/safetyBrake'
@@ -74,17 +82,30 @@ export function canSendAiMessageNotification({
 
 /** 이 브라우저가 알림 기능을 지원하는지 확인합니다. */
 export function isNotificationSupported(): boolean {
+  // 휴대폰 앱 안에서는 앱이 휴대폰 알림을 대신 띄워 줍니다. (lib/appBridge.ts)
+  if (isInApp()) return true
   return typeof window !== 'undefined' && 'Notification' in window
 }
 
 /** 지금의 알림 권한 상태. 지원하지 않는 브라우저면 'denied' 와 똑같이 취급합니다. */
 export function getNotificationPermission(): NotificationPermission {
+  // 앱 안에서는 앱이 알려 준 휴대폰의 알림 권한을 씁니다.
+  if (isInApp()) return getAppInfo()?.notificationPermission ?? 'default'
   if (!isNotificationSupported()) return 'denied'
   return Notification.permission
 }
 
 /** 알림 권한을 요청합니다. 이미 허용·거부한 적이 있으면 그 결과를 바로 돌려줍니다. */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (isInApp()) {
+    // 휴대폰이 "알림을 허용할까요?" 창을 띄웁니다. 사람이 고르는 데 시간이 걸려서 1분까지 기다립니다.
+    const permission = readPermissionReply(
+      await requestFromApp('notify.requestPermission', {}, 60_000),
+    )
+    if (permission === null) return getNotificationPermission()
+    saveAppNotificationPermission(permission)
+    return permission
+  }
   if (!isNotificationSupported()) return 'denied'
   return Notification.requestPermission()
 }
@@ -138,6 +159,12 @@ async function getServiceWorker(): Promise<ServiceWorkerRegistration | null> {
  */
 export async function showSystemNotification(content: SystemNotificationContent): Promise<boolean> {
   if (getNotificationPermission() !== 'granted') return false
+  // 앱 안에서는 앱에게 띄워 달라고 합니다. 누르면 앱이 url 로 보내 줍니다.
+  if (isInApp()) {
+    const { tag, title, body, url } = content
+    sendToApp('notify.show', { tag, title, body, url })
+    return true
+  }
 
   try {
     const serviceWorker = await getServiceWorker()
@@ -179,6 +206,10 @@ export async function showSystemNotification(content: SystemNotificationContent)
  *   await closeSystemNotification('focus-leave')
  */
 export async function closeSystemNotification(tag: string): Promise<void> {
+  if (isInApp()) {
+    sendToApp('notify.close', { tag })
+    return
+  }
   try {
     // 화면이 직접 띄운 알림
     directNotifications.get(tag)?.close()

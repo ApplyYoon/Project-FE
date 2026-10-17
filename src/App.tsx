@@ -1,4 +1,5 @@
 import { AuthProvider } from '@/components/layout/AuthProvider'
+import { useAppBridge } from '@/hooks/useAppBridge'
 import { GOOGLE_PROVIDER_CLIENT_ID } from '@/lib/googleClient'
 import { queryClient } from '@/lib/queryClient'
 import { router } from '@/router'
@@ -15,9 +16,16 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <GoogleOAuthProvider clientId={GOOGLE_PROVIDER_CLIENT_ID} locale="ko">
         <AuthProvider>
+          <AppBridge />
           <RouterProvider router={router} />
         </AuthProvider>
       </GoogleOAuthProvider>
     </QueryClientProvider>
   )
+}
+
+/** 휴대폰 앱 안에서 열렸을 때 앱과 연결합니다. 화면에는 아무것도 그리지 않습니다. (hooks/useAppBridge.ts) */
+function AppBridge() {
+  useAppBridge()
+  return null
 }
