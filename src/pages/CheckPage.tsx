@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import { MissReasonPicker, type MissReasonValue } from '@/components/ui/MissReasonPicker'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useCheckIns } from '@/hooks/useCheckIns'
@@ -12,6 +13,13 @@ import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getPhoneFocusEnabled } from '@/lib/phoneFocus'
 import { MOOD_OPTIONS } from '@/lib/quickCheckIn'
 import { getStudyMs } from '@/lib/studyTime'
+import {
+  PROMISE_EXAMPLES,
+  PROMISE_MAX_LENGTH,
+  getAskedPromise,
+  isHalfFilledPromise,
+  makePromiseText,
+} from '@/lib/todayPromise'
 import type { CheckIn, Suggestion } from '@/types'
 import { useState } from 'react'
 
@@ -122,6 +130,19 @@ export function CheckPage() {
     setKeptById((prev) => ({ ...prev, [suggestionId]: kept }))
   }
 
+  // 오늘의 약속 (#79). "만약 ~하면" / "~한다" 두 칸입니다. 선택 항목이라 비워도 체크인을 끝낼 수 있습니다.
+  // 이미 체크인한 날이면 적어 둔 약속으로 시작해서 고칠 수 있습니다.
+  const [promiseIf, setPromiseIf] = useState(existingCheckIn?.promiseIf ?? '')
+  const [promiseThen, setPromiseThen] = useState(existingCheckIn?.promiseThen ?? '')
+
+  // 어제 정한 약속 (#79). 있을 때만 "지켰어 / 못 지켰어" 를 묻습니다.
+  // 이미 답한 적이 있으면 그 답으로 시작하고, 아직 안 골랐으면 null 입니다.
+  const yesterdayCheckIn = getCheckIn(yesterdayKey)
+  const askedPromise = getAskedPromise(yesterdayCheckIn)
+  const [promiseKept, setPromiseKept] = useState<boolean | null>(
+    yesterdayCheckIn?.promiseKept ?? null,
+  )
+
   // 휴대폰 집중 모드 확인 (#106). 안내 화면에서 "체크인에서 확인받기" 를 켠 사람에게만 묻습니다.
   // 이미 답한 체크인이면 그 답으로 시작하고, 아직 안 골랐으면 null 입니다.
   const [isPhoneFocusAsked] = useState(getPhoneFocusEnabled)
@@ -172,7 +193,18 @@ export function CheckPage() {
     if (isPhoneFocusAsked && phoneFocusKept !== null) {
       checkIn.phoneFocusKept = phoneFocusKept
     }
+    // 두 칸을 모두 적었을 때만 약속으로 저장합니다. 한 칸만 적었거나 비웠으면 저장하지 않습니다. (#79)
+    const promise = makePromiseText(promiseIf, promiseThen)
+    if (promise !== null) {
+      checkIn.promiseIf = promise.promiseIf
+      checkIn.promiseThen = promise.promiseThen
+    }
     saveCheckIn(checkIn)
+
+    // 어제 약속에 답했으면, 약속을 정한 어제 체크인에 그 답을 적습니다. 안 골랐으면 "모름" 이라 남기지 않습니다. (#79)
+    if (yesterdayCheckIn !== undefined && askedPromise !== null && promiseKept !== null) {
+      saveCheckIn({ ...yesterdayCheckIn, promiseKept })
+    }
 
     // 답한 개선안만 저장합니다. 답하지 않은 개선안은 기록을 남기지 않습니다. ("못 지킴" 이 아니라 "모름")
     for (const suggestion of yesterdaySuggestions) {
@@ -332,6 +364,35 @@ export function CheckPage() {
         </Card>
       )}
 
+      {/* 어제 정한 약속이 있을 때만 보여줍니다. 지켰어 / 못 지켰어로 예·아니오 하나만 답합니다. (#79) */}
+      {askedPromise !== null && (
+        <Card title="어제의 약속, 지켰어?" className="rounded-2xl">
+          <p className="text-sm font-medium break-keep text-slate-800 sm:text-base">
+            <span className="text-brand">만약</span> {askedPromise.promiseIf} →{' '}
+            {askedPromise.promiseThen}
+          </p>
+          {/* 다시 누르면 다른 쪽으로 바꿀 수 있습니다. */}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-pressed={promiseKept === true}
+              onClick={() => setPromiseKept(true)}
+              className={cn(CHIP_BASE, promiseKept === true ? CHIP_SELECTED : CHIP_UNSELECTED)}
+            >
+              지켰어
+            </button>
+            <button
+              type="button"
+              aria-pressed={promiseKept === false}
+              onClick={() => setPromiseKept(false)}
+              className={cn(CHIP_BASE, promiseKept === false ? CHIP_SELECTED : CHIP_UNSELECTED)}
+            >
+              못 지켰어
+            </button>
+          </div>
+        </Card>
+      )}
+
       {/* 휴대폰 집중 모드 확인을 켠 사람에게만 보여줍니다. (#106) */}
       {isPhoneFocusAsked && (
         <Card title="어제 휴대폰 집중 모드 켰어?" className="rounded-2xl">
@@ -359,6 +420,74 @@ export function CheckPage() {
           </p>
         </Card>
       )}
+
+      {/* 오늘의 약속 (#79). 선택 항목이라 비워도 됩니다. 두 칸을 모두 적어야 약속으로 저장됩니다. */}
+      <Card title="오늘의 약속" className="rounded-2xl">
+        <p className="text-sm break-keep text-slate-600">
+          &quot;만약 ~하면 → ~한다&quot; 로 적으면, 내일 체크인에서 지켰는지 물어봐요. (선택)
+        </p>
+
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <Input
+              name="promiseIf"
+              label="만약 ~하면"
+              placeholder="예) 학원에서 돌아오면"
+              maxLength={PROMISE_MAX_LENGTH}
+              value={promiseIf}
+              onChange={(event) => setPromiseIf(event.target.value)}
+              className="h-11 text-base"
+            />
+            {/* 글자 수. 적을 수 있는 최대는 40자입니다. */}
+            <p className="text-right text-xs text-slate-500 tabular-nums">
+              {promiseIf.length}/{PROMISE_MAX_LENGTH}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Input
+              name="promiseThen"
+              label="→ 그러면 ~한다"
+              placeholder="예) 씻기 전에 영어 단어 20개를 본다"
+              maxLength={PROMISE_MAX_LENGTH}
+              value={promiseThen}
+              onChange={(event) => setPromiseThen(event.target.value)}
+              className="h-11 text-base"
+            />
+            <p className="text-right text-xs text-slate-500 tabular-nums">
+              {promiseThen.length}/{PROMISE_MAX_LENGTH}
+            </p>
+          </div>
+        </div>
+
+        {/* 한 칸만 적었으면 약속으로 저장되지 않는다는 것을 알려 줍니다. 체크인은 그대로 끝낼 수 있습니다. */}
+        {isHalfFilledPromise(promiseIf, promiseThen) && (
+          <p role="status" className="mt-2 text-xs break-keep text-amber-700">
+            두 칸을 모두 적어야 약속으로 저장돼요. 지금은 저장되지 않아요.
+          </p>
+        )}
+
+        {/* 눌러서 칸을 채우는 예시. 두 칸이 한꺼번에 채워집니다. */}
+        <div className="mt-4 flex flex-col gap-2">
+          <span className="text-sm font-medium text-slate-700">예시로 채우기</span>
+          <div className="flex flex-wrap gap-2">
+            {PROMISE_EXAMPLES.map((example) => (
+              <button
+                key={example.ifText}
+                type="button"
+                onClick={() => {
+                  setPromiseIf(example.ifText)
+                  setPromiseThen(example.thenText)
+                }}
+                // max-w-full + text-left: 긴 문장도 버튼이 카드 밖으로 나가지 않고 줄바꿈됩니다.
+                className="min-h-10 max-w-full cursor-pointer rounded-lg border border-dashed border-slate-400 bg-slate-50 px-3 py-2 text-left text-sm break-keep text-slate-700 transition-colors hover:bg-slate-100"
+              >
+                {example.ifText} → {example.thenText}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       {/* 저장한 직후에 버튼 바로 위에 알려 줍니다. (모바일은 맨 위의 "체크인 완료" 표시가 화면 밖이라 안 보입니다) */}
       {isSaved && (
