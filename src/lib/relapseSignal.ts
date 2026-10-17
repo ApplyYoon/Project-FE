@@ -30,6 +30,10 @@ export interface JudgedCardDay {
   runRate: number
   /** 미실행일 때 고른 원인 태그. 아직 안 골랐으면 없음 */
   missReason?: MissReason
+  /** cardResult.ts 의 isStartedOnTime 값. 시작하지 않았으면 없음 (의지력의 정시 시작 비율에 씀) */
+  startedOnTime?: boolean
+  /** 그 카드 · 그날 체크리스트 달성률 (0 ~ 1). 세션이 없으면 없음 (관리 단계의 '성공' 판정에 씀) */
+  checklistRate?: number
 }
 
 /** 어느 조건 때문인지 — routineTwice: ①, rateDrop: ②, absoluteMiss: ③ */

@@ -1,6 +1,8 @@
 import { getCareLimits } from '@/lib/careLimits'
 import { getCareLevelInfo } from '@/lib/careLevelInfo'
+import { loadLatestCareStage } from '@/lib/careStage'
 import type { CareLevel } from '@/lib/careTheme'
+import { getTodayKey } from '@/lib/date'
 import { isSafetyBrakeOnNow } from '@/lib/focusMode'
 
 /**
@@ -8,30 +10,29 @@ import { isSafetyBrakeOnNow } from '@/lib/focusMode'
  * 통화 화면들(수신·통화 중)이 이 함수만 부르게 해서, 나중에 진짜 값으로 바꿀 곳을 한 군데로 모았습니다.
  *
  * - 독설 허용 수위: 사용자가 설정 화면에서 정한 값을 씁니다. (#59)
- * - ⚠️ 관리 강도: 아직 진짜 계산이 없어서 기본 단계(1)에서 시작합니다. 다만 사용자가 정한 최대 한도는 넘지 않습니다.
- *   아래 입력이 준비되면 진짜 계산으로 바꿉니다.
+ * - 관리 강도: 매일 판정(lib/careStage.ts, 최종 기획서 「5.4」)이 저장한 가장 최근 단계를 씁니다. (#384)
+ *   아직 한 번도 판정하지 않았으면 기본 단계(1)입니다. 어느 쪽이든 사용자가 정한 최대 한도는 넘지 않습니다.
+ *   (판정을 부르는 곳은 홈 #405 · 통화 #414 에서 붙입니다)
  */
 
 // 진짜 계산이 붙기 전까지 쓰는 오늘의 기본 단계 (1 = 당근)
 const DEFAULT_TODAY_CARE_LEVEL: CareLevel = 1
 
+/** 색 테마는 0~3 까지만 있어서, 4단계(강제적 채찍)는 화면 색으로는 3 과 같게 보여 줍니다. (4단계의 강제 장치는 #408) */
+const MAX_THEME_LEVEL = 3
+
 /**
- * 오늘의 관리 강도 (0~3).
- * TODO(#28): getCareLevel({ yesterdayLevel, action, maxLevel, isSafetyBrakeOn }) 의 결과로 바꾸기
- *   - yesterdayLevel: 어제 단계를 저장해 둔 곳이 아직 없습니다
- *   - action: #91 decideCareAction 결과의 action(CareAction)을 그대로 넣으면 됩니다. 다만 decideCareAction 에
- *     넣을 기록(체크인 #24, 이행 체크 #65)이 아직 없습니다
- *   - maxLevel: getCareLimits().maxCareLevel (#59)
- *   - isSafetyBrakeOn: getSafetyBrakeResult(#95) 결과로 brake.stopWhip || brake.recoveryMode. 다만 넣을 기록(최근 글·기분·시험)이 아직 없습니다
- * (getCareLevel 은 0~4 를 돌려주는데 색 테마는 0~3 까지만 있어서, 4 는 집중 모드 화면(#69)으로 보내거나 맞춰야 합니다)
+ * 오늘의 관리 강도 (0~3). 가장 최근 판정(lib/careStage.ts)의 단계이고, 판정이 없으면 기본 단계(1)입니다.
  */
 export function getTodayCareLevel(): CareLevel {
   // 설정에서 정한 최대 한도를 넘지 않게 맞춥니다. 한도가 0(회복)이면 오늘도 0 입니다.
   // ("정한 한도는 절대 넘지 않아요" 라고 설정 화면에서 약속했기 때문입니다)
   // 통화·홈 화면이 열릴 때 부르는 함수라서, 저장된 값이 깨져 있어도 에러를 내지 않고 기본 단계를 돌려줍니다.
   try {
+    const saved = loadLatestCareStage(getTodayKey())
+    const stage = Math.min(saved?.stage ?? DEFAULT_TODAY_CARE_LEVEL, MAX_THEME_LEVEL)
     const maxLevel = getCareLimits().maxCareLevel
-    return maxLevel < DEFAULT_TODAY_CARE_LEVEL ? 0 : DEFAULT_TODAY_CARE_LEVEL
+    return Math.min(stage, maxLevel) as CareLevel
   } catch {
     return DEFAULT_TODAY_CARE_LEVEL
   }
@@ -40,11 +41,16 @@ export function getTodayCareLevel(): CareLevel {
 /**
  * 왜 지금 이 관리 모드인지 알려 주는 한 줄을 돌려줍니다. (#94, 홈의 "지금 관리 모드" 배너)
  *
- * ⚠️ 지금은 단계별 기본 문구입니다. 진짜 이유는 #91 decideCareAction 이 돌려주는 reason 이어야 하는데,
- * 거기에 넣을 기록(개선안 이행 #65, 효과 판정 #92, 기분)을 아직 모아 주는 곳이 없습니다. (#205 에서 연결)
- * 연결되면 이 함수가 decideCareAction(...).reason 을 먼저 쓰고, 없을 때만 기본 문구를 쓰도록 바꾸세요.
+ * 가장 최근 판정이 저장한 이유("최근 3일 중 2일을 폰 때문에 놓쳐서 넛지 모드야")를 먼저 쓰고,
+ * 판정이 없거나 한도 때문에 단계가 달라졌으면 단계별 기본 문구를 씁니다. (#384)
  */
 export function getTodayCareReason(level: CareLevel): string {
+  try {
+    const saved = loadLatestCareStage(getTodayKey())
+    if (saved && Math.min(saved.stage, MAX_THEME_LEVEL) === level) return saved.reason
+  } catch {
+    // 저장된 값이 깨져 있으면 기본 문구로 갑니다.
+  }
   return getCareLevelInfo(level).defaultReason
 }
 

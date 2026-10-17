@@ -51,8 +51,13 @@ export interface SafetyBrakeInput {
 export interface SafetyBrakeResult {
   /** 모든 채찍을 즉시 중지해야 하면 true (위기 표현을 감지했을 때만) */
   stopWhip: boolean
-  /** 채찍 대신 회복 모드로 가야 하면 true (위기 표현 · 시험 기간 · 기분 저하 중 하나라도) */
+  /** 채찍 대신 회복 모드로 가야 하면 true (위기 표현 · 기분 저하 중 하나라도) */
   recoveryMode: boolean
+  /**
+   * 시험 직전 3일 ~ 직후 2일이면 true. 이 기간은 회복 모드가 아니라 **관리 단계 상한 2** 입니다.
+   * (최종 기획서 「4.5 안전 브레이크」: "시험 직전 3일과 직후 2일은 채찍 상한이 2단계", #384)
+   */
+  examPeriod: boolean
   /** 도움 연결 안내(#96)를 보여줘야 하면 true */
   showHelp: boolean
   /** 지금은 메시지·전화를 하면 안 되면 true (연락 금지 시간) */
@@ -223,7 +228,8 @@ export function getSafetyBrakeResult(input: SafetyBrakeInput): SafetyBrakeResult
 
   return {
     stopWhip: crisisDetected,
-    recoveryMode: crisisDetected || examIsNear || moodIsLow,
+    recoveryMode: crisisDetected || moodIsLow,
+    examPeriod: examIsNear,
     showHelp: crisisDetected || moodIsLow,
     quiet: isWithinQuietHours(input.now, quietHours),
   }
