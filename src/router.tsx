@@ -2,42 +2,90 @@ import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
+import { PageBoundary } from '@/components/layout/PageBoundary'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
-import { AboutPage } from '@/pages/AboutPage'
-import { AccountPage } from '@/pages/AccountPage'
-import { CallActivePage } from '@/pages/CallActivePage'
-import { CallPage } from '@/pages/CallPage'
-import { CallResultPage } from '@/pages/CallResultPage'
-import { CheckPage } from '@/pages/CheckPage'
-import { DiaryPage } from '@/pages/DiaryPage'
 import { ErrorPage } from '@/pages/ErrorPage'
-import { ExamResultPage } from '@/pages/ExamResultPage'
-import { ExamsPage } from '@/pages/ExamsPage'
-import { HomePage } from '@/pages/HomePage'
-import { LoginPage } from '@/pages/LoginPage'
-import { ManualPage } from '@/pages/ManualPage'
-import { NotFoundPage } from '@/pages/NotFoundPage'
-import { NotificationsPage } from '@/pages/NotificationsPage'
-import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
-import { OnboardingPage } from '@/pages/OnboardingPage'
-import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
-import { OnboardingResumePage } from '@/pages/OnboardingResumePage'
-import { OnboardingThinkingPage } from '@/pages/OnboardingThinkingPage'
-import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
-import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
-import { PlannerPage } from '@/pages/PlannerPage'
-import { RecordsPage } from '@/pages/RecordsPage'
-import { ReflectionPage } from '@/pages/ReflectionPage'
-import { ReportPage } from '@/pages/ReportPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { SignupPage } from '@/pages/SignupPage'
-import { SuggestionsPage } from '@/pages/SuggestionsPage'
-import { SupportPage } from '@/pages/SupportPage'
-import { TimerPage } from '@/pages/TimerPage'
+import { lazy } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 
+/*
+ * 화면 파일은 그 주소에 처음 갈 때 받아옵니다. (Lazy Load)
+ * 처음에 앱 전체를 한꺼번에 받지 않아서 첫 화면이 빨리 뜹니다. 받아오는 동안의 스켈레톤과 실패 안내는 PageBoundary 가 맡습니다.
+ * 화면들은 export function XxxPage 로 내보내서(named export), lazy 가 바라는 default 모양으로 바꿔 넘깁니다.
+ * ErrorPage 는 에러가 났을 때 바로 떠야 해서 lazy 로 받지 않습니다.
+ */
+const AboutPage = lazy(() => import('@/pages/AboutPage').then((m) => ({ default: m.AboutPage })))
+const AccountPage = lazy(() =>
+  import('@/pages/AccountPage').then((m) => ({ default: m.AccountPage })),
+)
+const CallActivePage = lazy(() =>
+  import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
+)
+const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m.CallPage })))
+const CallResultPage = lazy(() =>
+  import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
+)
+const CheckPage = lazy(() => import('@/pages/CheckPage').then((m) => ({ default: m.CheckPage })))
+const DiaryPage = lazy(() => import('@/pages/DiaryPage').then((m) => ({ default: m.DiaryPage })))
+const ExamResultPage = lazy(() =>
+  import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
+)
+const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
+const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
+const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
+const ManualPage = lazy(() => import('@/pages/ManualPage').then((m) => ({ default: m.ManualPage })))
+const NotFoundPage = lazy(() =>
+  import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
+)
+const NotificationsPage = lazy(() =>
+  import('@/pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
+)
+const OnboardingDonePage = lazy(() =>
+  import('@/pages/OnboardingDonePage').then((m) => ({ default: m.OnboardingDonePage })),
+)
+const OnboardingPage = lazy(() =>
+  import('@/pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })),
+)
+const OnboardingPlanPage = lazy(() =>
+  import('@/pages/OnboardingPlanPage').then((m) => ({ default: m.OnboardingPlanPage })),
+)
+const OnboardingResumePage = lazy(() =>
+  import('@/pages/OnboardingResumePage').then((m) => ({ default: m.OnboardingResumePage })),
+)
+const OnboardingThinkingPage = lazy(() =>
+  import('@/pages/OnboardingThinkingPage').then((m) => ({ default: m.OnboardingThinkingPage })),
+)
+const OnboardingVoicePage = lazy(() =>
+  import('@/pages/OnboardingVoicePage').then((m) => ({ default: m.OnboardingVoicePage })),
+)
+const PhoneFocusGuidePage = lazy(() =>
+  import('@/pages/PhoneFocusGuidePage').then((m) => ({ default: m.PhoneFocusGuidePage })),
+)
+const PlannerPage = lazy(() =>
+  import('@/pages/PlannerPage').then((m) => ({ default: m.PlannerPage })),
+)
+const RecordsPage = lazy(() =>
+  import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
+)
+const ReflectionPage = lazy(() =>
+  import('@/pages/ReflectionPage').then((m) => ({ default: m.ReflectionPage })),
+)
+const ReportPage = lazy(() => import('@/pages/ReportPage').then((m) => ({ default: m.ReportPage })))
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
+const SignupPage = lazy(() => import('@/pages/SignupPage').then((m) => ({ default: m.SignupPage })))
+const SuggestionsPage = lazy(() =>
+  import('@/pages/SuggestionsPage').then((m) => ({ default: m.SuggestionsPage })),
+)
+const SupportPage = lazy(() =>
+  import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
+)
+const TimerPage = lazy(() => import('@/pages/TimerPage').then((m) => ({ default: m.TimerPage })))
+
 /**
- * 페이지(주소)를 추가하려면 children 배열에 한 줄 추가하면 됩니다.
+ * 페이지(주소)를 추가하려면 위의 lazy 목록에 한 줄, children 배열에 한 줄 추가하면 됩니다.
+ *   const TodoPage = lazy(() => import('@/pages/TodoPage').then((m) => ({ default: m.TodoPage })))
  *   { path: 'todo', element: <TodoPage /> }  ->  http://localhost:5173/todo
  *
  * 로그인 안 한 사람은 RequireAuth 가 /login 으로 보냅니다. 새 페이지는 따로 할 일 없이 자동으로 막힙니다.
@@ -85,13 +133,16 @@ export const router = createBrowserRouter([
     ],
   },
   // Layout 밖의 화면은 하나씩 RequireAuth 로 감쌉니다.
+  // 화면 파일을 받는 동안의 스켈레톤·실패 안내도 Layout 이 없으니 하나씩 PageBoundary(fullScreen) 로 감쌉니다.
   // 전화 화면은 헤더·하단 탭 없이 화면 전체를 쓰므로 Layout 밖에 둡니다.
   {
     path: '/call',
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <CallPage />
+        <PageBoundary fullScreen>
+          <CallPage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -100,7 +151,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <CallActivePage />
+        <PageBoundary fullScreen>
+          <CallActivePage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -110,7 +163,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingPage />
+        <PageBoundary fullScreen>
+          <OnboardingPage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -120,7 +175,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingResumePage />
+        <PageBoundary fullScreen>
+          <OnboardingResumePage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -130,7 +187,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingPage mode="more" />
+        <PageBoundary fullScreen>
+          <OnboardingPage mode="more" />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -140,7 +199,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingThinkingPage />
+        <PageBoundary fullScreen>
+          <OnboardingThinkingPage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -150,7 +211,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingPlanPage />
+        <PageBoundary fullScreen>
+          <OnboardingPlanPage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -160,7 +223,9 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingVoicePage />
+        <PageBoundary fullScreen>
+          <OnboardingVoicePage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
@@ -169,13 +234,31 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     element: (
       <RequireAuth>
-        <OnboardingDonePage />
+        <PageBoundary fullScreen>
+          <OnboardingDonePage />
+        </PageBoundary>
       </RequireAuth>
     ),
   },
   // 가입 화면은 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
-  { path: '/signup', element: <SignupPage />, errorElement: <ErrorPage /> },
+  {
+    path: '/signup',
+    errorElement: <ErrorPage />,
+    element: (
+      <PageBoundary fullScreen>
+        <SignupPage />
+      </PageBoundary>
+    ),
+  },
   // 도움 연결 안내는 헤더·하단 탭 없이 화면 전체를 쓰고, 힘든 순간에 로그인 때문에 막히면 안 돼서
   // RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
-  { path: '/support', element: <SupportPage />, errorElement: <ErrorPage /> },
+  {
+    path: '/support',
+    errorElement: <ErrorPage />,
+    element: (
+      <PageBoundary fullScreen>
+        <SupportPage />
+      </PageBoundary>
+    ),
+  },
 ])
