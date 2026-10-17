@@ -26,12 +26,12 @@ const MINUTE_MS = 60 * 1000
 
 /**
  * 카드 알림을 누르면 갈 주소
- * - 시작: 타이머 화면은 ?plan=id 를 받으면 그 계획으로 바로 시작합니다. (옛 계획에서 옮긴 카드는 카드 id = 계획 id)
- * - 미루기 · 실패로 기록: 아직 전용 화면이 없어서(#400) 그날의 계획 화면으로 보냅니다.
+ * - 시작: 카드 타이머는 ?card=id 를 받으면 그 카드로 바로 시작합니다. (CardTimerPage)
+ * - 미루기 · 실패로 기록: 타이머 대기 화면에 [미루기] · [실패로 기록] 이 있어서 그 화면으로 보냅니다. (#400)
+ *   (옛 주소 /timer?plan= · /planner 는 #417 에서 지웠습니다)
  */
-export function getCardAlarmUrls(cardId: string, dateKey: string) {
-  const dayUrl = `/planner?date=${dateKey}`
-  return { start: `/timer?plan=${encodeURIComponent(cardId)}`, postpone: dayUrl, fail: dayUrl }
+export function getCardAlarmUrls(cardId: string) {
+  return { start: `/timer?card=${encodeURIComponent(cardId)}`, postpone: '/timer', fail: '/timer' }
 }
 
 /** 카드 하루치의 이름. 예) toCardDayKey('c1', '2026-10-17') -> 'c1 2026-10-17' */
@@ -96,7 +96,7 @@ export function buildCardAlarms({
 
 /** 카드 하루치의 알림 3개 (buildCardAlarms 의 설명) */
 function makeCardDayAlarms(card: Card, dateKey: string, startAt: number): Alarm[] {
-  const urls = getCardAlarmUrls(card.id, dateKey)
+  const urls = getCardAlarmUrls(card.id)
   const idPrefix = `card-${card.id}-${dateKey}`
   const minutesBefore = card.alert?.minutesBefore ?? 0
   const lateAt = startAt + LATE_NOTICE_MINUTES * MINUTE_MS

@@ -52,7 +52,7 @@ function isAwayRecord(value: unknown): value is AwayRecord {
 
 /**
  * 저장해 둔 딴짓 기록(공부 중에 나갔다 온 기록)을 불러옵니다. 없으면 빈 목록입니다. 모양이 틀린 기록은 걸러냅니다.
- * 기록을 쌓는 것은 타이머(hooks/useAwayDetection.ts)이고, 리포트는 이 함수로 읽기만 합니다.
+ * 기록을 쌓던 옛 타이머(useAwayDetection)는 #417 에서 지웠습니다. 지금은 남아 있는 옛 기록만 읽습니다.
  */
 export function loadAwayRecords(): AwayRecord[] {
   const saved = loadData<unknown>(AWAY_RECORDS_KEY, [])
