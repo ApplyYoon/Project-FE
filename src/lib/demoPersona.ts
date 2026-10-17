@@ -676,7 +676,6 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
       emotions: emotionsFor(condition, random),
       mood: isHardDay ? 2 : Math.max(3, condition - (random() < 0.3 ? 1 : 0)),
       ...(yesterdayCauses.length > 0 ? { missReason: toMissReason(yesterdayCauses[0]) } : {}),
-      expectedMinutes: 150 + 10 * Math.floor(random() * 6),
     }
   }
 

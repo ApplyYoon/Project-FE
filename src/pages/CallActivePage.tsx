@@ -44,7 +44,7 @@ const failedTexts = {
   error: {
     title: '연결에 실패했어요',
     retry: '다시 시도',
-    leave: '말 대신 체크인 화면으로',
+    leave: '말 대신 채팅으로 하기',
   },
   dropped: {
     title: '통화가 끊겼어요',
@@ -57,7 +57,7 @@ interface CallFailedViewProps {
   kind: 'error' | 'dropped'
   message: string
   /**
-   * 마이크 때문에 실패했는지. true 면 "말 대신 체크인" 을 첫 번째(진한) 버튼으로 올립니다. (#460)
+   * 마이크 때문에 실패했는지. true 면 "말 대신 채팅" 을 첫 번째(진한) 버튼으로 올립니다. (#460)
    * 마이크 권한을 바꾸기 전에는 다시 시도해도 똑같이 실패하기 때문입니다.
    */
   isMicProblem: boolean
@@ -439,14 +439,14 @@ export function CallActivePage() {
         // 끊긴 경우(dropped)는 이미 마이크를 쓰고 있었으니 마이크 문제가 아닙니다.
         isMicProblem={connection === 'error' && isMicFailure}
         onRetry={handleRetry}
-        // 끊긴 경우는 평가 화면으로, 처음부터 안 된 경우는 말 대신 체크인 화면으로 보냅니다.
+        // 끊긴 경우는 평가 화면으로, 처음부터 안 된 경우는 말 대신 같은 대본의 채팅으로 보냅니다. (「4.5」)
         // replace: 떠난 뒤 뒤로가기를 눌러도 이 화면으로 돌아와 전화가 다시 걸리지 않게 합니다.
         onLeave={() => {
           if (connection === 'dropped') {
             goToResult()
             return
           }
-          navigate('/check', { replace: true })
+          navigate('/counsel/chat', { replace: true })
         }}
         onPreview={import.meta.env.DEV ? () => setIsPreview(true) : undefined}
       />

@@ -438,9 +438,6 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
                 <span className="text-sm font-semibold break-words text-slate-900">
                   {summary.headline}
                 </span>
-                {summary.promise && (
-                  <span className="text-brand text-sm break-words">약속: {summary.promise}</span>
-                )}
               </button>
             </li>
           ))}
@@ -468,11 +465,6 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
             <CareBadge level={selected.careLevel} />
             <SummaryRow label="어제 요약" value={selected.headline} />
             <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
-            <SummaryRow
-              label="오늘 예상 순공시간"
-              value={formatMinutes(selected.expectedMinutes)}
-            />
-            <SummaryRow label="오늘의 약속" value={selected.promise} emptyText="정하지 않았어요" />
             <SummaryRow label="AI 한마디" value={selected.aiComment} emptyText="아직 없어요" />
           </dl>
         )}
