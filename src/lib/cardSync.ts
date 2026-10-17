@@ -7,8 +7,10 @@ import {
   updateServerCard,
   type ServerCard,
 } from '@/lib/cardsApi'
+import { loadGoals } from '@/lib/goals'
+import { hasUnsentPostpone } from '@/lib/markSync'
 import { loadData, saveData } from '@/lib/storage'
-import type { Card } from '@/types'
+import type { Card, Goal } from '@/types'
 
 /**
  * 이 기기의 카드와 서버의 카드를 맞추는 규칙입니다. (#516)
@@ -94,11 +96,13 @@ export function addToPending(pending: PendingCardSync, more: PendingCardSync): P
  *   3. 이 기기에 없는 서버 카드는 다른 기기에서 만든 것이라 더합니다. (이 기기에서 지우는 중인 것은 빼고)
  *
  *   이 기기 [A(7), B], 서버 [7(제목 바뀜), 9]  -> cards [A(서버 제목), B, card-s9], toUpload ['B']
+ * goals 는 이 기기의 목표들입니다. 서버 카드의 목표 번호를 이 기기의 목표 id 로 바꿀 때 씁니다. (lib/cardsApi.ts)
  */
 export function mergeServerCards(
   local: Card[],
   server: ServerCard[],
   pending: PendingCardSync,
+  goals: Goal[] = [],
 ): { cards: Card[]; toUpload: string[] } {
   const cards: Card[] = []
   const toUpload: string[] = []
@@ -110,13 +114,13 @@ export function mergeServerCards(
     }
     const serverCard = server.find((item) => item.id === card.serverId)
     if (pending.upserts.includes(card.id)) cards.push(card)
-    else if (serverCard) cards.push(fromServerCard(serverCard, card))
+    else if (serverCard) cards.push(fromServerCard(serverCard, card, goals))
     // 서버에 없고 보낼 것도 없으면: 다른 기기에서 지운 카드 → 넣지 않습니다.
   }
   for (const serverCard of server) {
     const isLinked = local.some((card) => card.serverId === serverCard.id)
     if (!isLinked && !pending.deletes.includes(serverCard.id))
-      cards.push(fromServerCard(serverCard))
+      cards.push(fromServerCard(serverCard, undefined, goals))
   }
   return { cards, toUpload }
 }
@@ -130,9 +134,28 @@ export function markCardChanges(prev: Card[], next: Card[]): void {
 export function applyServerCards(server: ServerCard[]): void {
   const local = loadSavedCards() ?? []
   const pending = loadPendingCardSync()
-  const { cards, toUpload } = mergeServerCards(local, server, pending)
+  const { cards, toUpload } = mergeServerCards(local, server, pending, loadGoals())
   if (JSON.stringify(cards) !== JSON.stringify(local)) saveCards(cards, 'server')
   savePendingCardSync(addToPending(pending, { upserts: toUpload, deletes: [] }))
+}
+
+/**
+ * 이 목표에 연결한 카드를 보낼 목록에 다시 적고 보냅니다.
+ * 목표가 서버에 처음 올라갔을 때 lib/goalSync.ts 가 부릅니다. (그 전에 보낸 카드는 서버에 "목표 없음" 으로 있어서)
+ */
+export function markCardsOfGoal(goalId: string): void {
+  const cardIds = (loadSavedCards() ?? [])
+    .filter((card) => card.goalId === goalId)
+    .map((card) => card.id)
+  if (cardIds.length === 0) return
+  savePendingCardSync(addToPending(loadPendingCardSync(), { upserts: cardIds, deletes: [] }))
+  requestCardPush()
+}
+
+/** 카드에 연결한 목표의 서버 번호. 목표가 없거나 아직 서버에 없으면 '' ("목표 없음") 입니다. */
+function getGoalServerId(card: Card): string {
+  if (!card.goalId) return ''
+  return loadGoals().find((goal) => goal.id === card.goalId)?.serverId ?? ''
 }
 
 /** 보낸 카드에 서버 번호를 붙여 저장합니다. 보내는 사이에 또 고쳤으면 보낼 목록에 남겨 둡니다. */
@@ -171,6 +194,7 @@ let pushAgain = false
  * 보낼 목록에 적힌 카드를 하나씩 서버로 보냅니다. 서버에 닿지 못하면 거기서 멈추고 남은 것은 다음에 보냅니다.
  * - 서버 번호가 없으면 만들고(POST), 있으면 이 기기의 카드와 똑같이 바꿉니다(PATCH). 서버에서 사라졌으면(404) 다시 만듭니다.
  * - 지운 카드는 서버에서도 지웁니다(DELETE).
+ * - 아직 안 보낸 미루기가 있는 카드는 기다립니다. 서버가 미루기로 카드를 옮겨야 해서, 날짜를 먼저 바꾸면 미루기가 거절됩니다. (lib/markSync.ts)
  */
 export async function pushPendingCards(): Promise<void> {
   if (isPushing) {
@@ -185,17 +209,19 @@ export async function pushPendingCards(): Promise<void> {
         dropPending('upserts', cardId)
         continue
       }
+      if (card.serverId && hasUnsentPostpone(card.id)) continue
       try {
         let saved: ServerCard
+        const goalServerId = getGoalServerId(card)
         if (card.serverId) {
           try {
-            saved = await updateServerCard(card.serverId, card)
+            saved = await updateServerCard(card.serverId, card, goalServerId)
           } catch (error) {
             if (!(error instanceof ApiError && error.status === 404)) throw error
-            saved = await createServerCard(card)
+            saved = await createServerCard(card, goalServerId)
           }
         } else {
-          saved = await createServerCard(card)
+          saved = await createServerCard(card, goalServerId)
         }
         linkServerId(card, saved.id)
       } catch (error) {
