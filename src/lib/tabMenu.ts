@@ -4,7 +4,7 @@
  * 탭에는 화면이 다 들어갈 자리가 없어서, 시험·일기 같은 화면은 가까운 탭 아래에 묶었습니다.
  * 이 주소들에 있을 때는 그 탭이 선택된 모양이어야 하고, 화면 위에 "‹ 분석" 같은 돌아가기 링크가 나옵니다.
  *
- *   분석 탭: /analysis (하위 탭: 기록 · 리포트 · 사용설명서) + 시험 · 개선안 고르기
+ *   분석 탭: /analysis (하위 탭: 기록 · 리포트 · 사용설명서 · 가설·실험) + 시험
  *   상담 탭: /counsel + 일기
  */
 
@@ -46,7 +46,7 @@ export function getAnalysisTabPath(tab: AnalysisTab): string {
 }
 
 /** 분석 탭 아래에 묶인 화면. 위에 "‹ 분석" 돌아가기 링크가 나옵니다. */
-const analysisCardPaths = ['/exams', '/suggestions']
+const analysisCardPaths = ['/exams']
 
 /** 상담 탭 아래에 묶인 화면. 위에 "‹ 상담" 돌아가기 링크가 나옵니다. */
 const counselCardPaths = ['/diary']
@@ -92,7 +92,7 @@ export function isCounselPath(pathname: string): boolean {
 }
 
 /**
- * 화면 위에 보여 줄 돌아가기 링크. 탭 아래에 묶인 화면(시험·개선안 고르기·일기)에서만 있고, 나머지는 null 입니다.
+ * 화면 위에 보여 줄 돌아가기 링크. 탭 아래에 묶인 화면(시험·일기)에서만 있고, 나머지는 null 입니다.
  * 시험 결과 화면은 "‹ 시험" 으로 돌아가는 링크를 화면 안에 따로 두어서 뺍니다.
  *
  *   getBackToTabLink('/exams')   -> { to: '/analysis', label: '분석' }

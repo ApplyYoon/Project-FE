@@ -107,9 +107,6 @@ const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
 const SignupPage = lazy(() => import('@/pages/SignupPage').then((m) => ({ default: m.SignupPage })))
-const SuggestionsPage = lazy(() =>
-  import('@/pages/SuggestionsPage').then((m) => ({ default: m.SuggestionsPage })),
-)
 const SupportPage = lazy(() =>
   import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
 )
@@ -166,7 +163,8 @@ export const router = createBrowserRouter([
       { path: 'phone-focus', element: <PhoneFocusGuidePage /> },
       { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
-      { path: 'suggestions', element: <SuggestionsPage /> },
+      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 자기 실험(가설·실험 탭)으로 보냅니다.
+      { path: 'suggestions', element: <Navigate to="/analysis?tab=experiment" replace /> },
       { path: 'settings', element: <SettingsPage /> },
       // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
       { path: 'settings/account', element: <AccountPage /> },

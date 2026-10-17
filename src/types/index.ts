@@ -375,50 +375,6 @@ export interface AwayRecord {
   awayMs: number
 }
 
-/** 뽀모도로의 구간 — study: 공부, break: 휴식 */
-export type PomodoroPhase = 'study' | 'break'
-
-/** 개선안의 강도 — easy: 쉬움, normal: 보통, hard: 강함 */
-export type SuggestionLevel = 'easy' | 'normal' | 'hard'
-
-/** 개선안의 진행 상태 */
-export type SuggestionStatus = 'suggested' | 'active' | 'done' | 'dropped'
-
-/** AI 가 실패 원인에 맞춰 고른 개선안 한 장. "만약 ~하면 → ~한다" 문장입니다. */
-export interface Suggestion {
-  /** 개선안을 구분하는 고유 값 */
-  id: string
-  /** 어떤 실패 원인에 맞춘 것인지 */
-  cause: MissReason
-  /** 강도 — 쉬움·보통·강함 */
-  level: SuggestionLevel
-  /** "만약 ~하면" 에 들어갈 문장 */
-  ifText: string
-  /** "~한다" 에 들어갈 문장 */
-  thenText: string
-  /** 왜 추천하는지 한 줄 */
-  reason: string
-  /** 지금 상태 */
-  status: SuggestionStatus
-  /** 도전을 시작한 날짜 ('YYYY-MM-DD'). 아직 안 골랐으면 없음 */
-  startDate?: string
-  /** 실험 기간 (7~14일). 아직 안 골랐으면 없음 */
-  days?: number
-}
-
-/**
- * 도전 중인 개선안을 그날 지켰는지 적은 기록 (#65)
- * 개선안 하나 · 날짜 하나마다 하나씩 남습니다. (개선안은 동시에 2개까지 도전할 수 있어서 개선안마다 따로 적습니다)
- */
-export interface SuggestionCheck {
-  /** 어떤 개선안인지 (Suggestion 의 id) */
-  suggestionId: string
-  /** 지켰는지 확인한 날짜 (예: '2026-09-28'). 체크인한 날이 아니라 "지켰는지 묻는 날(어제)" 입니다. */
-  date: string
-  /** 지켰으면 true, 못 지켰으면 false */
-  kept: boolean
-}
-
 /** 하루가 끝난 뒤 AI 가 내린 평가 (날짜마다 하나) */
 export interface Evaluation {
   /** 평가한 날짜 (예: '2026-09-28') */
