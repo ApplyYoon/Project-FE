@@ -154,7 +154,8 @@ function CardForm({
   function handleChangeChecklistItem(itemId: string, text: string) {
     setValues((prev) => ({
       ...prev,
-      checklist: prev.checklist.map((item) => (item.id === itemId ? { ...item, text } : item)),
+      // 사람이 고친 항목은 AI 추천 표시(aiSuggested)를 뺍니다. id 는 그대로 둡니다 (지난 기록의 체크가 이 id 를 가리킵니다)
+      checklist: prev.checklist.map((item) => (item.id === itemId ? { id: item.id, text } : item)),
     }))
   }
 

@@ -120,12 +120,9 @@ export function getFilledChecklist(checklist: ChecklistItem[]): ChecklistItem[] 
     .filter((item) => item.text !== '')
 }
 
-/** AI 가 추천한 체크리스트 항목의 id 앞머리 (#413). 폼에서 'AI' 표시를 붙이는 데 씁니다. */
-export const AI_ITEM_ID_PREFIX = 'ai-'
-
-/** AI 가 추천해서 들어간 항목인지 */
+/** AI 가 추천해서 들어갔고 아직 사람이 안 고친 항목인지 (#413). 고치면 aiSuggested 가 빠집니다. */
 export function isAiChecklistItem(item: ChecklistItem): boolean {
-  return item.id.startsWith(AI_ITEM_ID_PREFIX)
+  return item.aiSuggested === true
 }
 
 /**
@@ -134,9 +131,9 @@ export function isAiChecklistItem(item: ChecklistItem): boolean {
  * stamp 는 id 를 겹치지 않게 하는 숫자입니다 (보통 Date.now()).
  *
  *   mergeAiChecklist([{ id: 'a', text: '' }], ['문제 풀기', '채점'], 7)
- *     -> [{ id: 'ai-7-0', text: '문제 풀기' }, { id: 'ai-7-1', text: '채점' }]
+ *     -> [{ id: 'ai-7-0', text: '문제 풀기', aiSuggested: true }, { id: 'ai-7-1', text: '채점', aiSuggested: true }]
  *   mergeAiChecklist([{ id: 'a', text: '채점' }], ['문제 풀기', '채점'], 7)
- *     -> [{ id: 'a', text: '채점' }, { id: 'ai-7-0', text: '문제 풀기' }]
+ *     -> [{ id: 'a', text: '채점' }, { id: 'ai-7-0', text: '문제 풀기', aiSuggested: true }]
  */
 export function mergeAiChecklist(
   current: ChecklistItem[],
@@ -150,7 +147,7 @@ export function mergeAiChecklist(
     const trimmed = text.trim().slice(0, CHECKLIST_ITEM_MAX_LENGTH)
     if (trimmed === '' || seen.has(trimmed)) return
     seen.add(trimmed)
-    added.push({ id: `${AI_ITEM_ID_PREFIX}${stamp}-${index}`, text: trimmed })
+    added.push({ id: `ai-${stamp}-${index}`, text: trimmed, aiSuggested: true })
   })
   const merged = [...kept, ...added]
   // 넣을 것이 하나도 없으면 원래 칸을 그대로 둡니다. (빈 칸 하나는 남아 있어야 적을 수 있습니다)

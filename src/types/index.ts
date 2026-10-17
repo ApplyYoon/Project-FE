@@ -206,6 +206,8 @@ export interface ChecklistItem {
   id: string
   /** 할 일 (예: '수학 문제집 42~45쪽') */
   text: string
+  /** AI 가 추천해서 넣었고 아직 사람이 안 고쳤으면 true. 폼에서 'AI 추천' 표시를 붙입니다 (#413) */
+  aiSuggested?: boolean
 }
 
 /** 카드를 시작하라고 알려 주는 방법 */
