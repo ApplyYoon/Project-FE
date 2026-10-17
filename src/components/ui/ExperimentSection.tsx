@@ -134,7 +134,7 @@ export function ExperimentSection({ plans, sessions, className }: ExperimentSect
         >
           {notice.text}{' '}
           {notice.hasManualLink && (
-            <Link to="/manual" className="underline">
+            <Link to="/analysis?tab=manual" className="underline">
               사용설명서 보기
             </Link>
           )}

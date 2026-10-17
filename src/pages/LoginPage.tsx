@@ -1,3 +1,4 @@
+import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoogleButton } from '@/components/ui/GoogleButton'
@@ -8,7 +9,8 @@ import { isGoogleConfigured } from '@/lib/googleClient'
 import { savePendingGoogleSignup } from '@/lib/googleSignup'
 import { hasSignupInfo, markSignupDone } from '@/lib/signup'
 import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
-import { useState, type ReactNode } from 'react'
+import { cn } from '@/lib/cn'
+import { useRef, useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 // 테스트 로그인을 보여줄지. `.env` 값은 앱이 켜진 뒤에 바뀌지 않아서, 화면 밖에서 한 번만 정합니다.
@@ -97,6 +99,8 @@ export function LoginPage() {
   // 구글로 시작하는 중인지(서버 확인을 기다림), 실패했을 때 보여줄 안내
   const [isGoogleWorking, setIsGoogleWorking] = useState(false)
   const [googleError, setGoogleError] = useState<string | null>(null)
+  // 서버 확인을 기다리는 중인지를 ref 로도 들고 있습니다. 구글 창에서 계정을 연달아 고르면 state 는 아직 바뀌기 전일 수 있어서, 두 번째 신분증은 이 값으로 걸러냅니다.
+  const isGoogleWorkingRef = useRef(false)
 
   function handleTestLogin() {
     // 테스트 로그인은 앱을 바로 둘러보려는 것이라 가입 화면을 건너뜁니다. "가입 마침" 표시를 해 두면 홈으로 갑니다.
@@ -108,6 +112,9 @@ export function LoginPage() {
 
   /** 구글이 신분증을 줬을 때. 서버가 확인해서 "로그인" 또는 "가입 필요" 를 알려 줍니다. (lib/authApi.ts) */
   async function handleGoogleCredential(credential: string) {
+    // 이미 확인하는 중이면 무시합니다. (두 번 보내면 서버 요청이 두 번 나가고 화면이 두 번 이동합니다)
+    if (isGoogleWorkingRef.current) return
+    isGoogleWorkingRef.current = true
     setIsGoogleWorking(true)
     setGoogleError(null)
     try {
@@ -126,6 +133,7 @@ export function LoginPage() {
     } catch (error) {
       setGoogleError(getGoogleAuthErrorMessage(error))
     } finally {
+      isGoogleWorkingRef.current = false
       setIsGoogleWorking(false)
     }
   }
@@ -138,77 +146,86 @@ export function LoginPage() {
     return <Navigate to={getAfterLoginPath(hasSignupInfo(), returnPath)} replace />
   }
 
+  // 로그인 화면은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)로 감쌉니다. (시안: 탭 없이 뜨는 화면)
   return (
-    <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
-      {/* ---------- 왼쪽: 앱 소개 ---------- */}
-      <section className="flex flex-col gap-5 lg:pt-4">
-        <p className="text-brand text-sm font-semibold">학생·입시생 AI 자기관리</p>
-        <h1 className="text-3xl leading-tight font-bold tracking-tight break-keep sm:text-4xl">
-          주머니 속
-          <br />
-          관리형 독서실 선생님
-        </h1>
-        <p className="break-keep text-slate-600">
-          정해진 시간에 전화로 챙기고, 기록으로 나를 알려주고, 필요하면 엄하게 관리해요.
-        </p>
-        <ul className="flex flex-col gap-3">
-          {features.map((feature) => (
-            <li key={feature.text} className="flex items-center gap-3">
-              <span className="bg-brand-light text-brand flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  className="h-5 w-5 fill-none stroke-current stroke-2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  {feature.icon}
-                </svg>
-              </span>
-              <span className="text-sm break-keep text-slate-700">{feature.text}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* ---------- 오른쪽: 시작하기 ---------- */}
-      {/* max-w-md(448px): 구글 버튼은 400px 보다 넓어지지 않아서, 칸을 이만큼으로 두어야 버튼이 카드 폭을 꽉 채웁니다. */}
-      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-        <Card title="시작하기" className="flex flex-col gap-4">
-          <p className="-mt-1 text-sm break-keep text-slate-500">
-            구글 계정으로 바로 시작해요. 처음이면 가입으로 이어져요.
+    <PlainLayout>
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
+        {/* ---------- 왼쪽: 앱 소개 ---------- */}
+        <section className="flex flex-col gap-5 lg:pt-4">
+          <p className="text-brand text-sm font-semibold">학생·입시생 AI 자기관리</p>
+          <h1 className="text-3xl leading-tight font-bold tracking-tight break-keep sm:text-4xl">
+            주머니 속
+            <br />
+            관리형 독서실 선생님
+          </h1>
+          <p className="break-keep text-slate-600">
+            정해진 시간에 전화로 챙기고, 기록으로 나를 알려주고, 필요하면 엄하게 관리해요.
           </p>
+          <ul className="flex flex-col gap-3">
+            {features.map((feature) => (
+              <li key={feature.text} className="flex items-center gap-3">
+                <span className="bg-brand-light text-brand flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    className="h-5 w-5 fill-none stroke-current stroke-2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    {feature.icon}
+                  </svg>
+                </span>
+                <span className="text-sm break-keep text-slate-700">{feature.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-          {/* 구글로 시작하기. 클라이언트 ID 가 없으면(lib/googleClient.ts) 버튼 대신 안내를 보여줍니다. */}
-          {isGoogleConfigured ? (
-            <GoogleButton
-              onCredential={(credential) => void handleGoogleCredential(credential)}
-              onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
-            />
-          ) : (
-            <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              구글로 시작하기는 아직 준비 중이에요.
+        {/* ---------- 오른쪽: 시작하기 ---------- */}
+        {/* max-w-md(448px): 구글 버튼은 400px 보다 넓어지지 않아서, 칸을 이만큼으로 두어야 버튼이 카드 폭을 꽉 채웁니다. */}
+        <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+          <Card title="시작하기" className="flex flex-col gap-4">
+            <p className="-mt-1 text-sm break-keep text-slate-500">
+              구글 계정으로 바로 시작해요. 처음이면 가입으로 이어져요.
             </p>
-          )}
-          {isGoogleWorking && (
-            <p role="status" className="text-sm text-slate-500">
-              구글 계정을 확인하는 중…
-            </p>
-          )}
-          {googleError !== null && (
-            <p role="alert" className="text-sm break-keep text-red-600">
-              {googleError}
-            </p>
-          )}
 
-          <div className="border-t border-slate-100 pt-3 text-xs break-keep text-slate-500">
-            <p>약관 동의는 다음 화면에서 따로 받아요.</p>
-            <p>만 14세 이상만 가입할 수 있어요.</p>
-          </div>
-        </Card>
+            {/* 구글로 시작하기. 클라이언트 ID 가 없으면(lib/googleClient.ts) 버튼 대신 안내를 보여줍니다. */}
+            {isGoogleConfigured ? (
+              // 확인하는 중에는 버튼을 눌러도 아무 일이 없도록 막고 흐리게 보입니다. (구글이 그리는 버튼이라 disabled 를 줄 수 없어서 pointer-events 로 막습니다)
+              <div
+                aria-busy={isGoogleWorking}
+                className={cn(isGoogleWorking && 'pointer-events-none opacity-60')}
+              >
+                <GoogleButton
+                  onCredential={(credential) => void handleGoogleCredential(credential)}
+                  onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
+                />
+              </div>
+            ) : (
+              <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                구글로 시작하기는 아직 준비 중이에요.
+              </p>
+            )}
+            {isGoogleWorking && (
+              <p role="status" className="text-sm text-slate-500">
+                구글 계정을 확인하는 중…
+              </p>
+            )}
+            {googleError !== null && (
+              <p role="alert" className="text-sm break-keep text-red-600">
+                {googleError}
+              </p>
+            )}
 
-        {isTestLoginOn && <TestLoginPanel onStart={handleTestLogin} />}
+            <div className="border-t border-slate-100 pt-3 text-xs break-keep text-slate-500">
+              <p>약관 동의는 다음 화면에서 따로 받아요.</p>
+              <p>만 14세 이상만 가입할 수 있어요.</p>
+            </div>
+          </Card>
+
+          {isTestLoginOn && <TestLoginPanel onStart={handleTestLogin} />}
+        </div>
       </div>
-    </div>
+    </PlainLayout>
   )
 }

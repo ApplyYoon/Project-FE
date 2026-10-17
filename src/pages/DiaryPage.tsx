@@ -151,13 +151,7 @@ export function DiaryPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
-        <Link
-          to="/records"
-          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
-        >
-          ‹ 기록
-        </Link>
+        {/* 위의 "‹ 상담" 돌아가기 링크는 Layout 이 보여 줍니다. (lib/tabMenu.ts) */}
         <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">일기</h1>
         <p className="mt-2 text-slate-600">
           원할 때만 쓰는 기록이에요. AI 가 기분과 반복되는 말을 분석에 써요.
