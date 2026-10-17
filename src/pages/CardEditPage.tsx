@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { useCards } from '@/hooks/useCards'
+import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
@@ -25,10 +26,17 @@ import {
 import { cn } from '@/lib/cn'
 import { getTodayKey, isDateKey } from '@/lib/date'
 import { getLatestActiveGoal } from '@/lib/goals'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { PLAN_MAX_MINUTES } from '@/lib/plansApi'
 import { WEEKDAY_ORDER, getWeekdayName } from '@/lib/routines'
+import {
+  getBufferWarning,
+  getSleepWindow,
+  isOverlappingSleep,
+  type SleepWindow,
+} from '@/lib/scheduleCheck'
 import { loadAutoSettings } from '@/lib/settingsMapping'
-import type { Card as CardData, Goal } from '@/types'
+import type { Card as CardData, FixedBlock, Goal } from '@/types'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -44,6 +52,11 @@ interface CardFormProps {
   accuracy: { rate: number; samples: number } | null
   /** "목표 연결" 에서 고를 수 있는 목표 (진행 중인 목표 + 이 카드에 이미 걸린 목표) */
   goalOptions: Goal[]
+  /** 수면 보호 시간. 겹치면 저장할 수 없습니다 (#393) */
+  sleepWindow: SleepWindow
+  /** 10분 버퍼를 볼 때 비교하는 전체 카드 · 고정 일정 (#393) */
+  allCards: CardData[]
+  fixedBlocks: FixedBlock[]
   onSave: (card: CardData) => void
 }
 
@@ -55,6 +68,9 @@ function CardForm({
   optionalOpenByDefault,
   accuracy,
   goalOptions,
+  sleepWindow,
+  allCards,
+  fixedBlocks,
   onSave,
 }: CardFormProps) {
   const [values, setValues] = useState<CardFormValues>(initialValues)
@@ -79,6 +95,19 @@ function CardForm({
   const expectedDone =
     values.expectedDone === null ? checklistTotal : Math.min(values.expectedDone, checklistTotal)
   const isLowered = expectedDone < checklistTotal
+
+  // 수면 보호 시간과 겹치면 저장 버튼을 막습니다. (「4.3」 규칙, 겹침 계산은 lib/scheduleCheck.ts)
+  const isSleepBlocked = isOverlappingSleep(values.startTime, values.durationMinutes, sleepWindow)
+  // 앞뒤 카드 · 고정 일정과 10분 여유가 없으면 경고만 합니다. (저장은 됩니다)
+  const bufferWarning = getBufferWarning({
+    date: values.date,
+    repeatDays: values.repeat ? values.repeatDays : [],
+    startTime: values.startTime,
+    durationMinutes: values.durationMinutes,
+    cards: allCards,
+    blocks: fixedBlocks,
+    ignoreCardId: editingCard?.id,
+  })
 
   /** 한 칸만 바꿉니다. */
   function change<K extends keyof CardFormValues>(key: K, value: CardFormValues[K]) {
@@ -127,6 +156,8 @@ function CardForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    // 버튼이 막혀 있어도 엔터로 제출될 수 있어서 한 번 더 막습니다.
+    if (isSleepBlocked) return
     setTriedSave(true)
     if (Object.keys(errors).length > 0) {
       // 접힌 칸에 틀린 곳이 있으면 펼쳐서 보여 줍니다.
@@ -450,8 +481,20 @@ function CardForm({
         )}
       </Card>
 
+      {isSleepBlocked && (
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm break-keep text-red-700">
+          수면 보호 시간({sleepWindow.label})과 겹쳐서 저장할 수 없어요. 시작 시각이나 길이를 바꿔
+          주세요.
+        </p>
+      )}
+      {!isSleepBlocked && bufferWarning && (
+        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm break-keep text-amber-800">
+          {bufferWarning} (저장은 돼요)
+        </p>
+      )}
+
       <div className="flex flex-col gap-2 sm:flex-row-reverse">
-        <Button type="submit" size="lg" className="w-full sm:w-auto">
+        <Button type="submit" size="lg" disabled={isSleepBlocked} className="w-full sm:w-auto">
           {editingCard ? '고친 내용 저장' : '카드 저장'}
         </Button>
         <Link
@@ -483,6 +526,12 @@ export function CardEditPage() {
   // 성향 설정(#385)은 화면을 열 때 한 번만 읽습니다.
   const [settings] = useState(loadAutoSettings)
   const [now] = useState(() => Date.now())
+  const { blocks: fixedBlocks } = useFixedBlocks()
+  // 수면 보호 시간은 온보딩에서 답한 취침 · 기상 시각으로 만듭니다. (화면을 열 때 한 번만 읽습니다)
+  const [sleepWindow] = useState(() => {
+    const answers = loadOnboardingAnswers()
+    return getSleepWindow(answers?.sleepTime, answers?.wakeUpTime)
+  })
 
   const editingCard = cardId ? cards.find((card) => card.id === cardId) : undefined
   const accuracy = getRecentPlanAccuracy(cards, sessions, todayKey)
@@ -544,6 +593,9 @@ export function CardEditPage() {
         optionalOpenByDefault={settings.optionalFieldsOpen.value}
         accuracy={accuracy}
         goalOptions={goalOptions}
+        sleepWindow={sleepWindow}
+        allCards={cards}
+        fixedBlocks={fixedBlocks}
         onSave={handleSave}
       />
     </div>
