@@ -43,7 +43,7 @@ function loadDraft(): Record<string, number> {
  * (문항·채점: lib/psychTest.ts)
  *
  * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 14 · result) 뒤로 가기를 누르면 앞 단계로 갑니다.
- * 온보딩 순서에 넣는 것은 #388, 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
+ * 온보딩에서는 학년 다음, 자기 인식 4문항 앞에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
  */
 export function OnboardingPsychTestPage() {
   const navigate = useNavigate()
@@ -83,8 +83,12 @@ export function OnboardingPsychTestPage() {
     if (saved === undefined) return <Navigate to={PSYCH_TEST_PATH} replace />
     return (
       <PlainLayout headerAction={exitAction}>
-        {/* 지금은 홈으로 갑니다. 온보딩 다음 단계로 잇는 것은 #388 에서 합니다. */}
-        <PsychTestResultView result={saved} onNext={() => navigate('/')} onRetry={handleStart} />
+        {/* 온보딩 중이면 다음 단계(자기 인식 4문항)로, 아니면 홈으로 갑니다. (순서: lib/onboardingProgress.ts) */}
+        <PsychTestResultView
+          result={saved}
+          onNext={() => navigate(getOnboardingResumePath() ?? '/')}
+          onRetry={handleStart}
+        />
       </PlainLayout>
     )
   }
