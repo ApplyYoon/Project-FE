@@ -3,6 +3,7 @@ import { RequireAuth } from '@/components/layout/RequireAuth'
 import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { PageBoundary } from '@/components/layout/PageBoundary'
+import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { ErrorPage } from '@/pages/ErrorPage'
 import { lazy } from 'react'
@@ -163,7 +164,9 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <PageBoundary fullScreen>
-          <OnboardingPage />
+          <SubjectsGate>
+            <OnboardingPage />
+          </SubjectsGate>
         </PageBoundary>
       </RequireAuth>
     ),
@@ -211,7 +214,9 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <PageBoundary fullScreen>
-          <OnboardingPlanPage />
+          <SubjectsGate>
+            <OnboardingPlanPage />
+          </SubjectsGate>
         </PageBoundary>
       </RequireAuth>
     ),
