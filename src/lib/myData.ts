@@ -38,6 +38,8 @@ const RECORD_KEYS = [
   // 서버에 아직 못 보낸 카드 목록 (#516). 카드를 지웠으니 보낼 것도 없습니다.
   'card-sync-pending',
   'sessions',
+  // 서버에 보낸 공부 기록 표시 (#516). 기록을 지웠으니 표시도 지웁니다.
+  'session-sync',
   'timer',
   'timer-subject',
   // 딴짓(탭 이탈) 기록과, 나갔다가 아직 돌아오지 않은 임시 기록 (#22)
