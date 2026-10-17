@@ -1,5 +1,5 @@
 import { AuthProvider } from '@/components/layout/AuthProvider'
-import { GOOGLE_CLIENT_ID } from '@/lib/googleClient'
+import { GOOGLE_PROVIDER_CLIENT_ID } from '@/lib/googleClient'
 import { queryClient } from '@/lib/queryClient'
 import { router } from '@/router'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -13,7 +13,7 @@ export default function App() {
   // locale="ko": 구글 버튼의 글자를 한국어로 보여줍니다.
   return (
     <QueryClientProvider client={queryClient}>
-      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID} locale="ko">
+      <GoogleOAuthProvider clientId={GOOGLE_PROVIDER_CLIENT_ID} locale="ko">
         <AuthProvider>
           <RouterProvider router={router} />
         </AuthProvider>
