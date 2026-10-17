@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_TEST_LOGIN?: string
   /** 구글 캘린더 연결에 쓰는 OAuth 클라이언트 ID. 비워 두면 설정의 구글 캘린더가 "준비 중" 입니다. (lib/googleCalendar.ts) */
   readonly VITE_GOOGLE_CLIENT_ID?: string
+  /** 통화 임시 키를 받을 Vercel 함수 주소 (예: /api/voice-key). 비워 두면 BE 에서 받습니다. (lib/realtimeCall.ts) */
+  readonly VITE_VOICE_KEY_URL?: string
 }
 
 interface ImportMeta {
