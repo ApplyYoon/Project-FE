@@ -8,7 +8,6 @@ import {
   markResumeAsked,
   resetOnboarding,
 } from '@/lib/onboardingProgress'
-import { PLEDGE_PATH } from '@/lib/voicePledge'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
@@ -42,7 +41,8 @@ export function OnboardingResumePage() {
     if (!window.confirm('지금까지 고른 답을 지우고 처음부터 다시 할까요?')) return
     resetOnboarding()
     markResumeAsked()
-    navigate(PLEDGE_PATH)
+    // 지운 뒤의 첫 단계(앱 소개)로 갑니다. 순서는 lib/onboardingProgress.ts 의 STAGES 가 정합니다.
+    navigate(getOnboardingResumePath() ?? '/')
   }
 
   return (
