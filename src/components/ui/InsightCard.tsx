@@ -8,7 +8,10 @@ import {
   saveInsightResponse,
 } from '@/lib/insightResponses'
 import type { Insight, InsightResponse, StudySession } from '@/types'
+import { loadInsightDisputes, saveInsightDispute } from '@/lib/insightDisputes'
+import { getAnalysisTabPath } from '@/lib/tabMenu'
 import { useId, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 interface InsightCardProps {
   insight: Insight
@@ -25,6 +28,8 @@ interface InsightCardProps {
  * - 근거 보기 (#84): 누르면 이 결론이 나온 날짜마다 그날의 순공시간과 컨디션이 펼쳐집니다.
  * - 반응 버튼 3개 (#84): [몰랐는데 맞아] [이미 알던 거야] [틀렸어] 중 하나만 고를 수 있고,
  *   다시 눌러 바꿀 수 있습니다. 고른 반응은 저장됩니다.
+ * - [틀렸어] 를 눌러도 **숨기지 않습니다** (#411). "그럼 2주 확인해볼래?" 로 자기 실험을 제안하고,
+ *   실험 결과 사용자가 맞으면 "AI가 틀렸어요" 를 붙여 철회합니다. (lib/insightDisputes.ts)
  *
  * <InsightCard insight={insight} sessions={sessions} />
  * <InsightCard insight={insight} sessions={sessions} isExample />   // 예시일 때
@@ -38,12 +43,16 @@ export function InsightCard({ insight, sessions, isExample = false, className }:
   )
   // 컨디션은 체크인에 저장돼 있어서 카드가 처음 그려질 때 한 번만 읽어 옵니다.
   const [checkIns] = useState(loadCheckInsByDate)
+  // [틀렸어] 를 누른 뒤 실험으로 확인한 결과 (#411)
+  const [dispute] = useState(() => loadInsightDisputes()[insight.id])
 
   const evidenceRows = buildEvidenceRows(insight.evidenceDates, sessions, checkIns)
 
   function handleSelectResponse(selected: InsightResponse) {
     setResponse(selected)
     saveInsightResponse(insight.id, selected)
+    // [틀렸어] 면 이 문장을 실험의 가설로 쓸 수 있게 적어 둡니다. (실험을 시작해야 실제로 확인합니다)
+    if (selected === 'wrong') saveInsightDispute(insight.id, { sentence: insight.sentence })
   }
 
   return (
@@ -63,7 +72,24 @@ export function InsightCard({ insight, sessions, isExample = false, className }:
         <span className="text-sm font-medium text-slate-500">이번 주 발견</span>
       </div>
 
-      <p className="mt-2 text-base font-semibold text-slate-900">{insight.sentence}</p>
+      <p
+        className={cn(
+          'mt-2 text-base font-semibold text-slate-900',
+          dispute?.outcome === 'aiWrong' && 'text-slate-400 line-through',
+        )}
+      >
+        {insight.sentence}
+      </p>
+      {dispute?.outcome === 'aiWrong' && (
+        <p className="mt-1 text-sm font-medium text-violet-700">
+          실험해 보니 AI가 틀렸어요. 이 발견은 철회했어요.
+        </p>
+      )}
+      {dispute?.outcome === 'aiRight' && (
+        <p className="mt-1 text-sm font-medium text-emerald-700">
+          실험으로 확인했어요. 이 발견이 맞았어요.
+        </p>
+      )}
 
       {/* h-11 = 44px: 손가락으로 누르기 쉬운 높이 */}
       <button
@@ -121,6 +147,19 @@ export function InsightCard({ insight, sessions, isExample = false, className }:
           )
         })}
       </div>
+
+      {/* [틀렸어] → 숨기지 않고 2주 실험을 제안합니다. 이미 확인했으면 띄우지 않습니다. */}
+      {response === 'wrong' && !dispute?.outcome && !isExample && (
+        <div className="mt-3 rounded-lg bg-violet-50 p-3 text-sm text-violet-900">
+          <p className="break-keep">그럼 2주 확인해 볼래요? 기록으로 누가 맞는지 볼게요.</p>
+          <Link
+            to={`${getAnalysisTabPath('experiment')}&from=${encodeURIComponent(insight.id)}`}
+            className="mt-2 inline-flex h-10 items-center rounded-lg bg-violet-600 px-3 font-medium text-white"
+          >
+            실험으로 확인하기
+          </Link>
+        </div>
+      )}
     </Card>
   )
 }

@@ -11,15 +11,10 @@ import {
   type ActivePlay,
 } from '@/lib/playSession'
 import { loadData, removeData, saveData } from '@/lib/storage'
+// 진행 중인 세션 · 놀기를 넣어 두는 이름 (새로고침하거나 앱을 닫았다 열어도 세션 화면으로 돌아오기 위해 저장)
+import { CARD_SESSION_KEY, PLAY_SESSION_KEY, notifyTimerLockChange } from '@/lib/timerLock'
 import type { Card, PauseTag, PlayTag, StudySession } from '@/types'
 import { useEffect, useRef, useState } from 'react'
-
-// 진행 중인 카드 세션을 넣어 두는 이름입니다. (실제 키는 'study-card-session')
-// 새로고침하거나 앱을 닫았다 열어도 세션 화면으로 돌아오기 위해 저장합니다.
-export const CARD_SESSION_KEY = 'card-session'
-
-// 진행 중인 놀기 (실제 키는 'study-play-session', #401)
-export const PLAY_SESSION_KEY = 'play-session'
 
 /** 저장된 진행 중 놀기. 없거나 모양이 틀리면 null */
 function loadActivePlay(): ActivePlay | null {
@@ -66,11 +61,14 @@ export function useCardSession() {
   useEffect(() => {
     if (active) saveData(CARD_SESSION_KEY, active)
     else removeData(CARD_SESSION_KEY)
+    // 탭 잠금(Layout)이 바로 알 수 있게 알립니다. (#396)
+    notifyTimerLockChange()
   }, [active])
 
   useEffect(() => {
     if (play) saveData(PLAY_SESSION_KEY, play)
     else removeData(PLAY_SESSION_KEY)
+    notifyTimerLockChange()
   }, [play])
 
   // 세션이나 놀기가 있는 동안만 1초마다 시계를 움직입니다.
@@ -185,6 +183,7 @@ export function useCardSession() {
     resume,
     markLongPauseAlerted,
     updateSession,
+    addSession,
     play,
     startPlay,
     markPlayAlert,
