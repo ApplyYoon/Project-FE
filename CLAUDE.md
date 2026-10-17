@@ -286,18 +286,19 @@ MCP 도구가 연결돼 있으면 `gh` CLI 대신 써도 됩니다. **규칙은 
 
 ## 8. 참고 문서
 
-| 문서                                                   | 내용                                  |
-| ------------------------------------------------------ | ------------------------------------- |
-| [README.md](./README.md)                               | 설치·실행 방법, 명령어                |
-| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약                        |
-| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표                  |
-| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트             |
-| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문                       |
-| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법                |
-| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                        |
-| [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)       | 서버 데이터 받아오기 (TanStack Query) |
-| [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림)      |
-| [docs/AI-FEATURES.md](./docs/AI-FEATURES.md)           | 앱 안의 AI(GPT) 기능 — 원칙·지금·다음 |
+| 문서                                                   | 내용                                     |
+| ------------------------------------------------------ | ---------------------------------------- |
+| [README.md](./README.md)                               | 설치·실행 방법, 명령어                   |
+| [CONTRIBUTING.md](./CONTRIBUTING.md)                   | 협업 규칙 요약                           |
+| [docs/FOLDER-STRUCTURE.md](./docs/FOLDER-STRUCTURE.md) | `src/` 구조와 판단표                     |
+| [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)           | 브랜치·커밋·코드 치트시트                |
+| [docs/GIT-GUIDE.md](./docs/GIT-GUIDE.md)               | git/GitHub 입문                          |
+| [docs/AI-GUIDE.md](./docs/AI-GUIDE.md)                 | Claude Code·MCP 사용법                   |
+| [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)   | 자주 나는 에러                           |
+| [docs/DATA-FETCHING.md](./docs/DATA-FETCHING.md)       | 서버 데이터 받아오기 (TanStack Query)    |
+| [docs/design/README.md](./docs/design/README.md)       | 화면 시안 (데스크톱·모바일 그림)         |
+| [docs/AI-FEATURES.md](./docs/AI-FEATURES.md)           | 앱 안의 AI(GPT) 기능 — 원칙·지금·다음    |
+| [docs/PLAN.md](./docs/PLAN.md)                         | 최종 기획서 (2026-10-17) — 이슈의 「장」 |
 
 스킬(`.claude/skills/`): `github-flow` · `new-page` · `new-component` · `responsive-ui`
 명령어(`.claude/commands/`): `/setup` `/start` `/save` `/pr` `/check` `/sync` `/run` `/fix`

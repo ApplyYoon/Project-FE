@@ -1,128 +1,143 @@
-/**
- * 카드(#379)를 저장소에서 불러오고, 옛 계획·루틴을 카드로 옮기는 함수들입니다.
- * React 없이 돌아가는 함수라서 lib/ 에 둡니다. 카드를 들고 고치는 훅은 hooks/useCards.ts 입니다.
- *
- * ■ 옮기기 규칙 (처음 한 번만. 'cards' 가 저장돼 있으면 다시 옮기지 않습니다)
- *  - 옛 계획(study-plans) 하나 → 1회성 카드 하나. 제목 = content, 체크리스트 = [content] 1개
- *  - 옛 루틴(study-routines) 하나 → 반복 카드 하나. 요일은 repeatDays 로
- *  - 루틴이 날마다 만들어 둔 계획은 옮기지 않습니다. 반복 카드 하나가 그 일을 대신하기 때문입니다. (날마다 복사하지 않음)
- *    단, 루틴을 이미 지웠으면 그 계획은 1회성 카드로 옮깁니다.
- *  - 노는 계획·노는 루틴(kind 'play')은 옮기지 않습니다. 카드는 자습·인강만 있고, 놀기는 따로 다룹니다. (기획서 4.4 놀기 타이머)
- *  - 옛 키는 지우지 않습니다. 옛 화면(계획 탭)이 아직 그 키를 쓰기 때문입니다.
- */
-import { loadRoutines } from '@/lib/routines'
-import { loadData, loadRecord, saveData } from '@/lib/storage'
+import { getWeekday } from '@/lib/routines'
+import { loadData, saveData } from '@/lib/storage'
 import type { Card, Routine, StudyPlan } from '@/types'
+
+/**
+ * 카드(최종 기획서 「4.3 카드」)를 읽고 옮기는 순수 함수들입니다. (#379)
+ * 카드를 들고 있는 훅은 hooks/useCards.ts 입니다.
+ */
 
 // 저장소에 넣는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-cards' 가 됩니다)
 export const CARDS_KEY = 'cards'
-// 옛 계획의 저장 이름 (hooks/usePlans.ts 와 같은 값)
-const PLANS_KEY = 'plans'
 
-/** 알림의 기본 문구 (기획서 4.3: 알림 기본값은 "시작 정각 · 메시지 · 기본 문구") */
-export const DEFAULT_ALERT_TEXT = '카드를 시작할 시간이에요'
-
-/** 옛 계획·루틴에 공통으로 있는 칸 */
-type OldPlanLike = Pick<StudyPlan, 'id' | 'content' | 'targetMinutes' | 'startTime'>
-
-/**
- * 옛 계획·루틴 하나에서 카드의 "기본값 칸" 들을 채웁니다. 날짜·요일은 부르는 쪽이 채웁니다.
- * 체크리스트 항목의 id 는 '<카드 id>-1' 입니다. (옮길 때마다 같은 id 가 나오게)
- */
-function toCardBase(old: OldPlanLike): Omit<Card, 'date' | 'repeatDays'> {
-  return {
-    id: old.id,
-    title: old.content,
-    startTime: old.startTime ?? null,
-    durationMinutes: old.targetMinutes,
-    checklist: [{ id: `${old.id}-1`, text: old.content }],
-    goalId: null,
-    priority: 'flexible',
-    type: 'self',
-    // 체크리스트가 1개라서 예상 달성 개수도 1개입니다.
-    expectedDone: 1,
-    expectedDoneReason: null,
-    expectedFailCauses: [],
-    alertMethod: 'message',
-    alertMinutesBefore: 0,
-    alertText: DEFAULT_ALERT_TEXT,
-    planningMs: 0,
-    postponeCount: 0,
-  }
+/** 1회성 카드인지 (반복 요일이 없으면 1회성) */
+export function isOneOffCard(card: Card): boolean {
+  return card.repeatDays === undefined || card.repeatDays.length === 0
 }
 
 /**
- * 옛 계획 하나를 1회성 카드로 바꿉니다.
- * 옛 계획의 "다 했어요"(done)는 언제 했는지 몰라서 doneAt 으로 옮기지 않습니다. (공부 기록은 따로 남아 있습니다)
+ * 그 날짜에 하는 카드인지 알려 줍니다.
  *
- *   planToCard({ id: 'p1', date: '2026-10-17', subjectId: 's1', content: '수학 3단원', targetMinutes: 50, done: false, startTime: '19:00' })
- *   -> { id: 'p1', title: '수학 3단원', date: '2026-10-17', repeatDays: null, startTime: '19:00', durationMinutes: 50,
- *        checklist: [{ id: 'p1-1', text: '수학 3단원' }], goalId: null, priority: 'flexible', type: 'self',
- *        expectedDone: 1, expectedDoneReason: null, expectedFailCauses: [],
- *        alertMethod: 'message', alertMinutesBefore: 0, alertText: '카드를 시작할 시간이에요', planningMs: 0, postponeCount: 0 }
+ * - 1회성 카드: 카드 날짜와 같은 날만
+ * - 반복 카드: 반복을 시작한 날짜부터, 그 요일이면
+ *
+ *   (2026-10-12 는 월요일)
+ *   isCardOnDate({ date: '2026-10-12' }, '2026-10-12')                       -> true
+ *   isCardOnDate({ date: '2026-10-12' }, '2026-10-13')                       -> false
+ *   isCardOnDate({ date: '2026-10-01', repeatDays: [1, 3] }, '2026-10-12')   -> true  (월요일)
+ *   isCardOnDate({ date: '2026-10-01', repeatDays: [1, 3] }, '2026-10-13')   -> false (화요일)
+ *   isCardOnDate({ date: '2026-10-20', repeatDays: [1, 3] }, '2026-10-12')   -> false (시작 전)
  */
-export function planToCard(plan: StudyPlan): Card {
-  return { ...toCardBase(plan), date: plan.date, repeatDays: null }
+export function isCardOnDate(card: Pick<Card, 'date' | 'repeatDays'>, dateKey: string): boolean {
+  const repeatDays = card.repeatDays ?? []
+  if (repeatDays.length === 0) return card.date === dateKey
+  // 'YYYY-MM-DD' 는 글자로 비교해도 날짜 순서와 같습니다.
+  return dateKey >= card.date && repeatDays.includes(getWeekday(dateKey))
+}
+
+/** 그 날짜에 하는 카드를 시작 시각 순서로 돌려줍니다. 시작 시각이 없는 카드는 맨 뒤에 둡니다. */
+export function getCardsOnDate(cards: Card[], dateKey: string): Card[] {
+  return cards
+    .filter((card) => isCardOnDate(card, dateKey))
+    .sort((a, b) => (a.startTime ?? '99:99').localeCompare(b.startTime ?? '99:99'))
 }
 
 /**
- * 옛 루틴 하나를 반복 카드로 바꿉니다.
+ * 옛 계획(StudyPlan) · 루틴(Routine)을 카드로 옮깁니다. React 도 저장소도 쓰지 않는 순수 함수입니다.
  *
- *   routineToCard({ id: 'r1', weekdays: [1, 3, 5], kind: 'study', subjectId: 's1', content: '영어 단어', targetMinutes: 30, startTime: '07:00' })
- *   -> { id: 'r1', title: '영어 단어', date: null, repeatDays: [1, 3, 5], startTime: '07:00', durationMinutes: 30,
- *        checklist: [{ id: 'r1-1', text: '영어 단어' }], ...나머지는 planToCard 와 같은 기본값 }
- */
-export function routineToCard(routine: Routine): Card {
-  return { ...toCardBase(routine), date: null, repeatDays: [...routine.weekdays] }
-}
-
-/**
- * 옛 계획(날짜별)과 루틴을 모두 카드로 바꿉니다. 루틴 카드가 먼저, 그다음 계획 카드가 날짜 순서로 옵니다.
- * 위 "옮기기 규칙" 을 따릅니다.
+ * ■ 규칙
+ * 1. 루틴 한 개 → 반복 카드 한 장. 카드 id 는 루틴 id 를 그대로 씁니다.
+ * 2. 루틴이 만든 계획(routineId 가 있는 것)은 그 루틴 카드가 대신하므로 옮기지 않습니다.
+ *    단, 루틴이 지워져 없으면 그 계획은 1회성 카드로 옮깁니다.
+ * 3. 그 밖의 공부 계획 → 1회성 카드. 카드 id 는 계획 id 를 그대로 씁니다.
+ *    (옛 타이머 기록의 planId 로 카드를 찾을 수 있게 하려는 것입니다)
+ * 4. 노는 계획·노는 루틴은 옮기지 않습니다. 놀기는 카드가 아니라 놀기 타이머가 맡습니다 (「4.4 타이머」).
+ * 5. 체크리스트는 할 일 내용 한 줄로 만듭니다. 우선순위는 유연, 유형은 자습입니다.
  *
- *   migrateToCards(
- *     { '2026-10-16': [수학 계획(p1)], '2026-10-17': [루틴 r1 이 만든 계획(p2), 놀기 계획(p3)] },
- *     [루틴 r1(월·수·금 영어 단어)],
- *   )
- *   -> [r1 반복 카드, p1 1회성 카드]   (p2 는 r1 카드가 대신하고, p3 는 노는 계획이라 뺍니다)
+ * ■ 예시 (now = 1000)
+ *   루틴 R(월·수 수학 60분 19:00), 계획 P1(10-12, routineId R), 계획 P2(10-13, 영어 30분)
+ *   migratePlansToCards({ '2026-10-12': [P1], '2026-10-13': [P2] }, [R], 1000)
+ *     -> [ { id: R.id, title: '수학', date: '2026-10-12', repeatDays: [1, 3], startTime: '19:00', durationMinutes: 60, … },
+ *          { id: P2.id, title: '영어', date: '2026-10-13', durationMinutes: 30, … } ]
  */
-export function migrateToCards(
+export function migratePlansToCards(
   plansByDate: Record<string, StudyPlan[]>,
   routines: Routine[],
+  now: number,
 ): Card[] {
-  const studyRoutines = routines.filter((routine) => routine.kind !== 'play')
-  const routineIds = new Set(studyRoutines.map((routine) => routine.id))
+  const allPlans = Object.values(plansByDate).flat()
+  const routineIds = new Set(routines.map((routine) => routine.id))
 
-  const cards: Card[] = studyRoutines.map(routineToCard)
+  const routineCards: Card[] = routines
+    .filter((routine) => routine.kind !== 'play')
+    .map((routine) => ({
+      ...baseCard(routine.id, routine.content, routine.targetMinutes, now),
+      // 반복을 시작한 날짜는 그 루틴으로 처음 만든 계획의 날짜로 봅니다. 없으면 가장 이른 계획 날짜.
+      date: firstPlanDate(allPlans, routine.id) ?? firstDate(plansByDate),
+      repeatDays: [...routine.weekdays],
+      ...(routine.startTime ? { startTime: routine.startTime } : {}),
+    }))
 
-  // 'YYYY-MM-DD' 는 글자 순서가 날짜 순서와 같아서 그대로 정렬합니다.
-  const dates = Object.keys(plansByDate).sort()
-  for (const date of dates) {
-    const plans = plansByDate[date]
-    // 저장된 값이 깨져서 배열이 아니면 그 날은 건너뜁니다.
-    if (!Array.isArray(plans)) continue
+  const planCards: Card[] = allPlans
+    .filter((plan) => plan.kind !== 'play')
+    .filter((plan) => plan.routineId === undefined || !routineIds.has(plan.routineId))
+    .map((plan) => ({
+      ...baseCard(plan.id, plan.content, plan.targetMinutes, now),
+      date: plan.date,
+      ...(plan.startTime ? { startTime: plan.startTime } : {}),
+    }))
 
-    for (const plan of plans) {
-      if (plan.kind === 'play') continue
-      // 남아 있는 루틴이 만든 계획은 반복 카드가 대신합니다.
-      if (plan.routineId !== undefined && routineIds.has(plan.routineId)) continue
-      cards.push(planToCard(plan))
-    }
+  return [...routineCards, ...planCards]
+}
+
+/** 옮긴 카드의 공통 칸 (체크리스트 = 할 일 한 줄, 유연 · 자습) */
+function baseCard(id: string, content: string, minutes: number, now: number) {
+  const title = content.trim() === '' ? '공부' : content.trim()
+  return {
+    id,
+    title,
+    durationMinutes: minutes,
+    checklist: [{ id: `${id}-item-0`, text: title }],
+    priority: 'flexible' as const,
+    type: 'self' as const,
+    createdAt: now,
   }
-  return cards
+}
+
+/** 그 루틴으로 만든 계획 중 가장 이른 날짜 */
+function firstPlanDate(plans: StudyPlan[], routineId: string): string | undefined {
+  const dates = plans.filter((plan) => plan.routineId === routineId).map((plan) => plan.date)
+  return dates.sort()[0]
+}
+
+/** 계획이 있는 날짜 중 가장 이른 날짜. 계획이 하나도 없으면 아주 이른 날짜(모든 날에 반복) */
+function firstDate(plansByDate: Record<string, StudyPlan[]>): string {
+  return Object.keys(plansByDate).sort()[0] ?? '2000-01-01'
+}
+
+/** 저장소에서 꺼낸 값이 카드 모양이 맞는지 확인합니다. (체크리스트가 없는 깨진 값이 섞이면 화면이 멈춥니다) */
+function isCard(value: unknown): value is Card {
+  if (typeof value !== 'object' || value === null) return false
+  const card = value as Record<string, unknown>
+  return (
+    typeof card.id === 'string' &&
+    typeof card.title === 'string' &&
+    typeof card.date === 'string' &&
+    Array.isArray(card.checklist)
+  )
 }
 
 /**
- * 저장된 카드를 불러옵니다.
- * 아직 카드를 한 번도 저장한 적이 없으면, 옛 계획·루틴을 카드로 옮겨서 저장한 뒤 돌려줍니다. (처음 한 번만)
- * 저장된 값이 배열이 아니면(깨졌으면) 빈 목록입니다.
+ * 저장된 카드 목록을 불러옵니다. 모양이 틀린 것은 빼고 돌려줍니다.
+ * 카드를 한 번도 저장한 적이 없으면(옛 버전에서 올라온 사람) undefined 를 돌려줍니다 → 옛 계획을 옮길 차례라는 뜻입니다.
  */
-export function loadCards(): Card[] {
-  // null: "아직 저장한 적 없음" 을 알아보려고 쓰는 기본값입니다. (빈 배열 [] 은 "카드를 다 지웠음" 이라 다릅니다)
-  const saved = loadData<unknown>(CARDS_KEY, null)
-  if (saved !== null) return Array.isArray(saved) ? (saved as Card[]) : []
+export function loadSavedCards(): Card[] | undefined {
+  const saved = loadData<unknown>(CARDS_KEY, undefined)
+  if (saved === undefined) return undefined
+  return Array.isArray(saved) ? saved.filter(isCard) : []
+}
 
-  const cards = migrateToCards(loadRecord<StudyPlan[]>(PLANS_KEY), loadRoutines())
+/** 카드 목록을 저장합니다. */
+export function saveCards(cards: Card[]): void {
   saveData(CARDS_KEY, cards)
-  return cards
 }
