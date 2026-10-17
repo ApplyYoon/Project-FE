@@ -37,7 +37,6 @@ import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
-import { loadInitialPlan } from '@/lib/initialPlan'
 import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
@@ -165,7 +164,6 @@ export function SettingsPage() {
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
-  const [initialPlan] = useState(loadInitialPlan)
   // 처음의 다짐(목소리·글). 없으면 null 입니다. 여기서 지울 수 있어서 바꿀 수 있는 상태로 둡니다. (#241)
   const [voicePledge, setVoicePledge] = useState(loadVoicePledge)
 
@@ -332,35 +330,10 @@ export function SettingsPage() {
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 왼쪽은 관리 강도 한도, 오른쪽은 내 데이터 등 그 밖의 설정입니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
-          {/* 처음 계획 · 처음의 다짐 (#240, #241). "내 정보 더 알려주기" · 과목별 성적은 최종 기획서에 없어서 #417 에서 지웠습니다. */}
+          {/* 처음의 다짐 (#241). "내 정보 더 알려주기" · 과목별 성적 · 처음 계획은 최종 기획서에 없어서 #417 에서 지웠습니다. */}
           <Card title="처음의 나">
-            {/* 처음 계획: 온보딩 마지막에 한 약속. 여기서 누를 때만 다시 세울 수 있습니다. (#240) */}
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">처음 계획</h4>
-              {initialPlan === null ? (
-                <>
-                  <p className="mt-1 text-sm break-keep text-slate-500">
-                    아직 처음 계획을 세우지 않았어요.
-                  </p>
-                  <Link to="/onboarding/plan" className={secondaryLinkClass}>
-                    처음 계획 세우기
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p className="mt-1 text-sm break-keep text-slate-500">
-                    하루 {initialPlan.dailyMinutes / 60}시간 · 주 {initialPlan.daysPerWeek}일 ·{' '}
-                    {initialPlan.createdDate} 에 세움
-                  </p>
-                  <Link to="/onboarding/plan?redo=1" className={secondaryLinkClass}>
-                    다시 세우기
-                  </Link>
-                </>
-              )}
-            </div>
-
             {/* 처음의 다짐: 내 목소리와 글 한마디. 이 기기에만 저장됩니다. (#241) */}
-            <div className="mt-4 border-t border-slate-100 pt-4">
+            <div>
               <h4 className="text-sm font-semibold text-slate-900">처음의 다짐</h4>
               {voicePledge === null ? (
                 <>

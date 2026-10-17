@@ -20,6 +20,7 @@ const DIARY_KEYS = ['diary', 'reflection-entries', 'diary-draft']
  *   routines    루틴(요일마다 반복되는 계획의 틀). 과목처럼 내가 정한 설정이라 남깁니다. (#236)
  *   planner-view  계획 화면을 목록으로 볼지 플래너로 볼지 고른 값. 이것도 설정이라 남깁니다. (#237)
  *   timer-mode, timer-target  고른 타이머 방식(목표 정하기·뽀모도로·목표 없이)과 목표 시간. 이것도 설정입니다.
+ *   (initial-plan · routines · planner-view · timer-mode · timer-target 을 쓰던 화면은 #417 에서 지웠습니다. 옛 값이 남아도 읽지 않습니다)
  *   onboarding-draft  온보딩 설문을 끝내기 전에 고르던 답(임시). 설문을 끝내면 스스로 지워집니다. 아래 onboarding-answers 와 같은 이유로 남깁니다.
  *   onboarding-answers  온보딩 설문 답. 기록이 아니라 내 정보이고, 지우면 설문을 처음부터 다시 하게 되어서 남깁니다.
  *   signup-info  가입 때 정한 닉네임과 동의 내역. 기록이 아니라 계정 정보이고, 동의한 기록은 남겨 두어야 해서 남깁니다.

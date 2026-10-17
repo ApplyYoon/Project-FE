@@ -22,7 +22,6 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
  * 화면들은 export function XxxPage 로 내보내서(named export), lazy 가 바라는 default 모양으로 바꿔 넘깁니다.
  * ErrorPage 는 에러가 났을 때 바로 떠야 해서 lazy 로 받지 않습니다.
  */
-const AboutPage = lazy(() => import('@/pages/AboutPage').then((m) => ({ default: m.AboutPage })))
 const AccountPage = lazy(() =>
   import('@/pages/AccountPage').then((m) => ({ default: m.AccountPage })),
 )
@@ -66,9 +65,6 @@ const NotFoundPage = lazy(() =>
 const NotificationsPage = lazy(() =>
   import('@/pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
 )
-const OnboardingDonePage = lazy(() =>
-  import('@/pages/OnboardingDonePage').then((m) => ({ default: m.OnboardingDonePage })),
-)
 const OnboardingCarePage = lazy(() =>
   import('@/pages/OnboardingCarePage').then((m) => ({ default: m.OnboardingCarePage })),
 )
@@ -80,9 +76,6 @@ const OnboardingIntroPage = lazy(() =>
 )
 const OnboardingPage = lazy(() =>
   import('@/pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })),
-)
-const OnboardingPlanPage = lazy(() =>
-  import('@/pages/OnboardingPlanPage').then((m) => ({ default: m.OnboardingPlanPage })),
 )
 const OnboardingPsychTestPage = lazy(() =>
   import('@/pages/OnboardingPsychTestPage').then((m) => ({ default: m.OnboardingPsychTestPage })),
@@ -132,7 +125,8 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <HomePage /> },
-      { path: 'about', element: <AboutPage /> },
+      // 앱 소개 페이지(/about)는 #417 에서 지웠습니다. (앱 소개는 온보딩 첫 화면이 합니다)
+      { path: 'about', element: <Navigate to="/" replace /> },
       // 아래 탭 5개: 홈 · 카드 · 타이머 · 상담 · 분석 (기획서 3장, #386)
       { path: 'cards', element: <CardsPage /> },
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
@@ -290,20 +284,9 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 처음 계획 세우기. 온보딩에서는 빠졌고(#388), 설정에서 다시 세울 때 씁니다. (#240)
-  {
-    path: '/onboarding/plan',
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <SubjectsGate>
-            <OnboardingPlanPage />
-          </SubjectsGate>
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
+  // 처음 계획(/onboarding/plan) · 옛 온보딩 끝 화면(/onboarding/done)은 #417 에서 지웠습니다. 옛 링크는 설정 · 홈으로 보냅니다.
+  { path: '/onboarding/plan', element: <Navigate to="/settings" replace /> },
+  { path: '/onboarding/done', element: <Navigate to="/" replace /> },
   // 처음의 나에게 한마디(목소리·글) 남기기. 온보딩에서는 빠졌고 첫 목표를 만들 때로 옮깁니다(#388 → #391). (#241)
   {
     path: '/onboarding/voice',
@@ -312,17 +295,6 @@ export const router = createBrowserRouter([
       <RequireAuth>
         <PageBoundary fullScreen>
           <OnboardingVoicePage />
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
-  {
-    path: '/onboarding/done',
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <OnboardingDonePage />
         </PageBoundary>
       </RequireAuth>
     ),
