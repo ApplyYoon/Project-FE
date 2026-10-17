@@ -12,7 +12,7 @@
  *   그래서 서버에 못 보내도 방금 고른 기분은 사라지지 않습니다. 못 보낸 날은 적어 두었다가 다음에 다시 보냅니다.
  *
  * ■ 서버에서 읽어 오는 것은 두 가지뿐입니다.
- *   1. 앱을 열 때 "오늘 체크인을 했는지" (다른 기기에서 했으면 다시 묻지 않으려고. components/layout/RequireDailyCheckIn.tsx)
+ *   1. 앱을 열 때 "오늘 체크인을 했는지" (다른 기기에서 했으면 다시 묻지 않으려고. components/layout/DailyTagBar.tsx)
  *   2. 보내기 직전에 서버에 있는 그날의 체크인.
  *      - 1탭 체크인은 AI 통화가 채운 칸(어제 못 채운 이유 등)이 덮어쓰기로 지워지지 않게, 비어 있는 칸만 서버 값으로 채워 보냅니다.
  *      - 자세히 체크인(/check)은 학생이 화면에서 보고 고친 그대로 보냅니다. 약속을 일부러 지웠는데 서버의 옛 약속이
@@ -25,10 +25,10 @@
  * ⚠️ 체크인의 글(기타 이유 · 약속)은 console.log 로 찍지 않습니다.
  */
 import { api } from '@/lib/api'
-import { getPlannedMinutesOf, hasCheckIn, saveLocalCheckIn } from '@/lib/quickCheckIn'
+import { getPlannedMinutesOf, hasCheckIn, isEmotionTag, saveLocalCheckIn } from '@/lib/quickCheckIn'
 import { loadData, saveData } from '@/lib/storage'
 import { TEST_TOKEN } from '@/lib/testLogin'
-import type { CheckIn, MissReason } from '@/types'
+import type { CheckIn, EmotionTag, MissReason } from '@/types'
 import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 늦어도 체크인 화면에 오래 갇히지 않게 합니다. */
@@ -40,7 +40,7 @@ const MAX_EXPECTED_MINUTES = 1440
 /** 서버에 못 보낸 체크인의 날짜들을 적어 두는 저장 키. "모든 기록 지우기" 로 같이 지워집니다. (lib/myData.ts) */
 export const UNSENT_CHECKINS_KEY = 'checkins-unsent'
 
-/** 어디서 한 체크인인지. manual: 자세히 체크인(/check) · quick: 기분 1탭 · call: AI 통화가 만든 것 */
+/** 어디서 한 체크인인지. manual: 자세히 체크인(/check) · quick: 하루 첫 한 줄(컨디션·감정 태그) · call: AI 통화가 만든 것 */
 type CheckInSource = 'manual' | 'quick' | 'call'
 
 const MISS_REASONS: MissReason[] = [
@@ -65,6 +65,8 @@ export interface ServerCheckIn {
   promiseIf: string | null
   promiseThen: string | null
   suggestionKept: boolean | null
+  /** 감정 태그 (BE#220). 아직 이 칸을 주지 않는 서버도 있어서 없을 수 있습니다. */
+  emotions?: unknown
 }
 
 /** 서버로 보내는 모양 (PUT 본문). 날짜는 주소에 넣습니다. */
@@ -78,6 +80,8 @@ interface CheckInBody {
   promiseIf: string | null
   promiseThen: string | null
   suggestionKept: boolean | null
+  /** 감정 태그 (BE#220). 모르면 null. 이 칸을 아직 모르는 서버는 무시합니다. (Spring Boot 기본 설정) */
+  emotions: EmotionTag[] | null
 }
 
 /** 이 토큰으로 서버에 체크인을 저장할 수 있는지. 로그아웃 상태와 테스트 로그인은 false 입니다. */
@@ -111,6 +115,11 @@ function isServerCheckIn(value: unknown): value is ServerCheckIn {
   )
 }
 
+/** 서버가 준 감정 태그를 이 기기의 모양으로 바꿉니다. 목록이 아니거나 모르는 이름은 뺍니다. */
+function toEmotionTags(value: unknown): EmotionTag[] {
+  return Array.isArray(value) ? value.filter(isEmotionTag) : []
+}
+
 /**
  * 이 기기의 체크인에서 비어 있는 칸만 서버 값으로 채웁니다. 이 기기에 적힌 값은 바꾸지 않습니다.
  * AI 통화가 서버에 채운 "어제 못 채운 이유" · "약속" 을, 이 기기의 체크인을 보낼 때 지우지 않으려는 것입니다.
@@ -125,6 +134,14 @@ export function fillBlanksFromServer(local: CheckIn, server: ServerCheckIn): Che
     if (server.missReason === 'etc' && server.missReasonNote !== null) {
       filled.missReasonNote = server.missReasonNote
     }
+  }
+  // 감정 태그는 이 기기에서 하나도 안 골랐을 때만 서버 것을 가져옵니다. (모르는 이름은 뺍니다)
+  const serverEmotions = toEmotionTags(server.emotions)
+  if (
+    (filled.emotions === undefined || filled.emotions.length === 0) &&
+    serverEmotions.length > 0
+  ) {
+    filled.emotions = serverEmotions
   }
   // 약속은 두 칸이 한 쌍이라, 이 기기에 약속이 없을 때만 두 칸을 같이 가져옵니다.
   if (
@@ -180,6 +197,8 @@ export function toServerBody(checkIn: CheckIn, server: ServerCheckIn | null): Ch
     promiseIf: checkIn.promiseIf ?? null,
     promiseThen: checkIn.promiseThen ?? null,
     suggestionKept: server?.suggestionKept ?? null,
+    // 하루 첫 한 줄에서 고른 감정 태그. 자세히 체크인처럼 태그를 묻지 않은 체크인은 null("모름")로 보냅니다.
+    emotions: checkIn.emotions ?? null,
   }
 }
 
@@ -229,10 +248,10 @@ async function copyTodayFromServer(todayKey: string): Promise<ServerCheckIn | nu
 }
 
 /**
- * 서버에 있는 오늘의 체크인 쿼리 설정입니다. 하루 1회 체크인 확인(RequireDailyCheckIn)이 씁니다.
+ * 서버에 있는 오늘의 체크인 쿼리 설정입니다. 하루 첫 한 줄(DailyTagBar)이 씁니다.
  * 받아오면서 이 기기에 오늘 체크인이 없으면 서버 것을 적어 둡니다. (copyTodayFromServer)
  * 그래서 화면은 받아온 뒤에 이 기기의 저장소(hasCheckIn)만 보면 됩니다.
- * 서버에 닿지 못하거나 서버가 거절하면 에러 대신 null 입니다. 그러면 이 기기의 값으로만 확인해서, 체크인 화면에 갇히지 않습니다.
+ * 서버에 닿지 못하거나 서버가 거절하면 에러 대신 null 입니다. 그러면 이 기기의 값으로만 확인합니다.
  */
 export function todayServerCheckInQuery(todayKey: string) {
   return queryOptions({

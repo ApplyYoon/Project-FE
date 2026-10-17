@@ -3,7 +3,6 @@ import { RequireAuth } from '@/components/layout/RequireAuth'
 import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { PageBoundary } from '@/components/layout/PageBoundary'
-import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { ErrorPage } from '@/pages/ErrorPage'
 import { lazy } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
@@ -97,12 +96,10 @@ export const router = createBrowserRouter([
     path: '/',
     errorElement: <ErrorPage />,
     // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다. (login 은 PUBLIC_PATHS 에 있어서 열려 있습니다)
-    // 로그인한 사람은 RequireDailyCheckIn 이 한 번 더 확인합니다. 그날 처음이면 기분 1탭 체크인부터 합니다. (#242)
+    // 그날 첫 체크인은 화면을 막지 않고 Layout 맨 위의 한 줄(DailyTagBar)로 묻습니다. (#387)
     element: (
       <RequireAuth>
-        <RequireDailyCheckIn>
-          <Layout />
-        </RequireDailyCheckIn>
+        <Layout />
       </RequireAuth>
     ),
     children: [

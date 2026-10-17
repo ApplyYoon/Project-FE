@@ -36,7 +36,7 @@ export function useSendCheckIn() {
 
 /**
  * 예전에 서버로 못 보낸 체크인을 앱을 열 때 한 번 다시 보냅니다. (#321 "저장에 실패해도 다시 시도할 수 있다")
- * 하루 1회 체크인 확인(RequireDailyCheckIn)에서 한 번만 부릅니다.
+ * 하루 첫 한 줄(DailyTagBar, Layout 에 늘 있음)에서 한 번만 부릅니다.
  * 보내다 실패한 날짜는 목록에 그대로 남아서, 다음에 앱을 열 때 또 보냅니다.
  */
 export function useUnsentCheckInRetry(): void {

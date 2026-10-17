@@ -104,7 +104,7 @@ export function CheckPage() {
   )
 
   const existingCheckIn = getCheckIn(todayKey)
-  // 1탭 체크인(기분 하나)만 한 날은 자세한 체크인을 아직 안 한 것이라, 완료 표시와 "다시 저장" 을 붙이지 않습니다.
+  // 하루 첫 한 줄(컨디션·감정 태그)만 한 날은 자세한 체크인을 아직 안 한 것이라, 완료 표시와 "다시 저장" 을 붙이지 않습니다.
   const isCheckedInToday = existingCheckIn !== undefined && existingCheckIn.isQuick !== true
 
   // 이미 체크인한 날이면 그 값을 보여 줘서 고칠 수 있게 하고, 처음이면 가운데 기본값으로 시작합니다.
@@ -193,6 +193,10 @@ export function CheckPage() {
         checkIn.missReasonNote = note
       }
     }
+    // 하루 첫 한 줄에서 고른 감정 태그는 이 화면에서 묻지 않으니 그대로 이어 둡니다. (덮어쓰기로 지워지지 않게, #387)
+    if (existingCheckIn?.emotions !== undefined) {
+      checkIn.emotions = existingCheckIn.emotions
+    }
     // 물어봤고 답을 골랐을 때만 저장합니다. 안 골랐으면 "안 켰다" 가 아니라 "모름" 이라 남기지 않습니다.
     if (isPhoneFocusAsked && phoneFocusKept !== null) {
       checkIn.phoneFocusKept = phoneFocusKept
@@ -241,10 +245,10 @@ export function CheckPage() {
             </span>
           )}
         </div>
-        {/* 기분은 앱을 열 때 1탭으로 이미 받았습니다. (#242) 이 화면은 더 적고 싶은 날에만 씁니다. */}
+        {/* 컨디션·감정은 그날 첫 화면 맨 위의 한 줄로 받습니다. (#387) 이 화면은 더 적고 싶은 날에만 씁니다. */}
         <p className="mt-2 break-keep text-slate-600">
-          오늘 기분은 앱을 열 때 이미 골랐어요. 컨디션·예상 시간·약속까지 적고 싶은 날에만 하면
-          돼요.
+          컨디션과 감정은 그날 첫 화면 맨 위에서 골라요. 기분·예상 시간·약속까지 적고 싶은 날에만
+          하면 돼요.
         </p>
       </div>
 
