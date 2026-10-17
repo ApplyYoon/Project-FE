@@ -8,6 +8,7 @@ import {
   type ServerCard,
 } from '@/lib/cardsApi'
 import { loadGoals } from '@/lib/goals'
+import { hasUnsentPostpone } from '@/lib/markSync'
 import { loadData, saveData } from '@/lib/storage'
 import type { Card, Goal } from '@/types'
 
@@ -193,6 +194,7 @@ let pushAgain = false
  * 보낼 목록에 적힌 카드를 하나씩 서버로 보냅니다. 서버에 닿지 못하면 거기서 멈추고 남은 것은 다음에 보냅니다.
  * - 서버 번호가 없으면 만들고(POST), 있으면 이 기기의 카드와 똑같이 바꿉니다(PATCH). 서버에서 사라졌으면(404) 다시 만듭니다.
  * - 지운 카드는 서버에서도 지웁니다(DELETE).
+ * - 아직 안 보낸 미루기가 있는 카드는 기다립니다. 서버가 미루기로 카드를 옮겨야 해서, 날짜를 먼저 바꾸면 미루기가 거절됩니다. (lib/markSync.ts)
  */
 export async function pushPendingCards(): Promise<void> {
   if (isPushing) {
@@ -207,6 +209,7 @@ export async function pushPendingCards(): Promise<void> {
         dropPending('upserts', cardId)
         continue
       }
+      if (card.serverId && hasUnsentPostpone(card.id)) continue
       try {
         let saved: ServerCard
         const goalServerId = getGoalServerId(card)

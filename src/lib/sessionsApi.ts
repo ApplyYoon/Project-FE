@@ -257,8 +257,8 @@ function toPausesBody(input: SessionCreateInput): Record<string, unknown>[] {
   })
 }
 
-/** 종료 팝업에서 받은 것. 이 기기에만 쓰는 칸(proofRequired)은 보내지 않습니다. */
-function toEndReportBody(report: SessionEndReport): Record<string, unknown> {
+/** 종료 팝업에서 받은 것. 이 기기에만 쓰는 칸(proofRequired)은 보내지 않습니다. (사후 입력 lib/markSync.ts 도 씁니다) */
+export function toEndReportBody(report: SessionEndReport): Record<string, unknown> {
   const checked = Object.fromEntries(
     Object.entries(report.checked)
       .filter(
