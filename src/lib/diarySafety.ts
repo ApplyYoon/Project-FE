@@ -52,7 +52,7 @@ export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[]
 
 /**
  * 저장해 둔 시험(#80)에서 날짜만 꺼냅니다. 안전 브레이크가 "시험 직전 3일·직후 2일" 을 판단하는 데 씁니다.
- * (시험 기간이면 recoveryMode 가 켜져서 채찍 메시지가 멈춥니다)
+ * (시험 기간이면 examPeriod 가 켜져서 3단계 이상 채찍 메시지가 멈춥니다 — 상한 2단계, #384)
  */
 export function loadExamDates(): ExamDateInput[] {
   return loadExams().map((exam) => ({ date: exam.date }))

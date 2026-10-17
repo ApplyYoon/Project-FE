@@ -118,6 +118,21 @@ export function getCardResult(day: CardDay, now: number): CardResult | null {
 }
 
 /**
+ * 정시에 시작했는지 (예정 시각 + 10분 안에 처음 시작). 의지력의 '정시 시작 비율' 에 씁니다 (「5.3」).
+ * 시작하지 않았거나(세션 없음) 사후 입력뿐이거나 시작 시각이 없는 카드면 null 입니다 (비율 계산에서 뺌).
+ *
+ *   19:00 카드, 19:05 시작 -> true    19:00 카드, 19:20 시작 -> false    세션 없음 -> null
+ */
+export function isStartedOnTime(day: CardDay): boolean | null {
+  const measured = day.sessions.filter((session) => session.mode !== 'selfReport')
+  if (measured.length === 0) return null
+  const scheduledStartAt = getPlannedStartAt({ date: day.dateKey, startTime: day.card.startTime })
+  if (scheduledStartAt === null) return null
+  const firstStartAt = Math.min(...measured.map((session) => session.startedAt))
+  return firstStartAt - scheduledStartAt <= ON_TIME_GRACE_MINUTES * MS_PER_MINUTE
+}
+
+/**
  * 실행률 = 실제 실행 시간(일시정지 제외) ÷ 계획 시간, 최대 1
  * - 증빙 없는 사후 입력은 0.5 로 넣습니다 (증빙이 있으면 다른 세션과 똑같이 계산)
  * - 계획 시간이 0분이면 0
