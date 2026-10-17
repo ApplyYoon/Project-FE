@@ -89,21 +89,28 @@ window.dispatchEvent(
 )
 ```
 
+## 5-1. 앱 안 구글 로그인
+
+구글은 앱 안 브라우저(웹뷰)의 구글 로그인을 막습니다. 그래서 `components/ui/GoogleButton.tsx` 는 앱 안이면 우리 버튼을 그리고,
+누르면 `auth.googleSignIn` 으로 휴대폰 구글 로그인을 부탁합니다. 받은 ID 토큰은 브라우저 구글 버튼과 똑같이 `onCredential` 로 넘어가서
+로그인 화면·탈퇴 확인 화면은 바꿀 것이 없습니다. BE 도 그대로입니다. (앱이 `webClientId` 로 로그인하면 토큰의 aud 가 같음)
+
 ## 6. 약속 요약 (Project-App `docs/BRIDGE.md` v1)
 
 **웹 → 앱** `window.ReactNativeWebView.postMessage(JSON.stringify({ id?, type, payload }))`
 
-| type                       | payload                                       | 답               |
-| -------------------------- | --------------------------------------------- | ---------------- |
-| `ready`                    | `{}`                                          | -                |
-| `notify.getPermission`     | `{}`                                          | `{ permission }` |
-| `notify.requestPermission` | `{}` (사람이 누를 때까지라 2초 제한 없음)     | `{ permission }` |
-| `notify.show`              | `{ tag, title, body, url? }`                  | -                |
-| `notify.close`             | `{ tag }`                                     | -                |
-| `alarms.set`               | `{ alarms: Alarm[] }` (통째로 바꿈, 48개까지) | -                |
-| `call.schedule`            | `{ time: 'HH:MM' \| null, url }`              | -                |
-| `screen.keepOn`            | `{ on }`                                      | -                |
-| `haptics`                  | `{ kind }`                                    | -                |
+| type                       | payload                                                 | 답                             |
+| -------------------------- | ------------------------------------------------------- | ------------------------------ |
+| `ready`                    | `{}`                                                    | -                              |
+| `notify.getPermission`     | `{}`                                                    | `{ permission }`               |
+| `notify.requestPermission` | `{}` (사람이 누를 때까지라 2초 제한 없음)               | `{ permission }`               |
+| `notify.show`              | `{ tag, title, body, url? }`                            | -                              |
+| `notify.close`             | `{ tag }`                                               | -                              |
+| `alarms.set`               | `{ alarms: Alarm[] }` (통째로 바꿈, 48개까지)           | -                              |
+| `call.schedule`            | `{ time: 'HH:MM' \| null, url }`                        | -                              |
+| `screen.keepOn`            | `{ on }`                                                | -                              |
+| `haptics`                  | `{ kind }`                                              | -                              |
+| `auth.googleSignIn`        | `{ webClientId }` (사람이 고를 때까지라 2분까지 기다림) | `{ idToken }` 또는 `{ error }` |
 
 **앱 → 웹** `window.dispatchEvent(new CustomEvent('starflow-app', { detail }))`
 
