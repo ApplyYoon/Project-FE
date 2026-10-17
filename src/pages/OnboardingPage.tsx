@@ -583,8 +583,8 @@ export function OnboardingPage({ mode = 'basic' }: OnboardingPageProps) {
         // 자기 인식 4문항은 '내 가설' 로도 저장합니다. 2주 동안 기록으로 확인합니다. (#411)
         saveMyHypotheses(toMyHypotheses(trimmedAnswers, Date.now()))
       }
-      // 온보딩의 다음 단계로 갑니다. 다 끝났으면 "준비 끝" 화면입니다. (순서: lib/onboardingProgress.ts)
-      navigate(getOnboardingResumePath() ?? '/onboarding/done')
+      // 온보딩의 다음 단계로 갑니다. 다 끝났으면 홈입니다. (순서: lib/onboardingProgress.ts)
+      navigate(getOnboardingResumePath() ?? '/')
       return
     }
     setStepIndex((index) => index + 1)
