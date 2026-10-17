@@ -67,17 +67,38 @@ export function makeQuickCheckIn(dateKey: string, mood: number, expectedMinutes:
 }
 
 /**
- * 고른 기분으로 오늘의 체크인을 만들어 저장합니다. (1탭 체크인 화면에서 부릅니다)
+ * 그 날짜의 예상 순공시간(분). 그날 공부 계획의 목표 합, 계획이 없으면 온보딩에서 정한 하루 목표입니다. (getPlannedMinutes)
+ * 서버에서 받은 체크인에 예상 시간이 비어 있을 때도 씁니다. (lib/checkInsApi.ts)
+ */
+export function getPlannedMinutesOf(dateKey: string): number {
+  const dayPlans = loadByDate(PLANS_KEY)[dateKey]
+  const plans = Array.isArray(dayPlans) ? (dayPlans as StudyPlan[]) : []
+  return getPlannedMinutes(plans, loadInitialPlan()?.dailyMinutes ?? 0)
+}
+
+/**
+ * 체크인 하나를 이 기기의 저장소에 바로 씁니다. 같은 날이 있으면 덮어씁니다.
+ * useCheckIns 훅이 없는 곳(1탭 체크인 화면 · 서버로 다시 보내기)에서 씁니다.
+ */
+export function saveLocalCheckIn(checkIn: CheckIn): void {
+  saveData(CHECKINS_KEY, { ...loadByDate(CHECKINS_KEY), [checkIn.date]: checkIn })
+}
+
+/** 그 날짜의 이 기기 체크인. 없거나 모양이 틀리면 undefined 입니다. */
+export function loadLocalCheckIn(dateKey: string): CheckIn | undefined {
+  const checkIn = loadByDate(CHECKINS_KEY)[dateKey]
+  return typeof checkIn === 'object' && checkIn !== null ? (checkIn as CheckIn) : undefined
+}
+
+/**
+ * 고른 기분으로 오늘의 체크인을 만들어 저장하고, 만든 체크인을 돌려줍니다. (1탭 체크인 화면에서 부릅니다)
  * 저장소를 바로 읽고 써서, 체크인 화면(/check)을 열면 방금 저장한 값이 그대로 보입니다.
+ * 돌려받은 체크인은 서버로도 보냅니다. (components/layout/RequireDailyCheckIn.tsx)
  * 날짜는 새벽 4시 기준입니다. (새벽 1시에 누르면 전날의 체크인으로 저장됩니다)
  */
-export function saveQuickCheckIn(mood: number, today: Date = new Date()): void {
+export function saveQuickCheckIn(mood: number, today: Date = new Date()): CheckIn {
   const dateKey = toDayKey(today)
-
-  const todayPlans = loadByDate(PLANS_KEY)[dateKey]
-  const plans = Array.isArray(todayPlans) ? (todayPlans as StudyPlan[]) : []
-  const fallbackMinutes = loadInitialPlan()?.dailyMinutes ?? 0
-
-  const checkIn = makeQuickCheckIn(dateKey, mood, getPlannedMinutes(plans, fallbackMinutes))
-  saveData(CHECKINS_KEY, { ...loadByDate(CHECKINS_KEY), [dateKey]: checkIn })
+  const checkIn = makeQuickCheckIn(dateKey, mood, getPlannedMinutesOf(dateKey))
+  saveLocalCheckIn(checkIn)
+  return checkIn
 }
