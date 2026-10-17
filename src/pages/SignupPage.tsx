@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolField } from '@/components/ui/SchoolField'
 import { TermsView } from '@/components/ui/TermsView'
-import { UnderFourteenView } from '@/components/ui/UnderFourteenView'
 import { useAuth } from '@/hooks/useAuth'
 import { getGoogleAuthErrorMessage, signupWithGoogle } from '@/lib/authApi'
 import { cn } from '@/lib/cn'
@@ -93,9 +92,9 @@ const collectedItems = [
 const signupSteps = [
   { label: '계정 정보', title: '반가워요! 계정 정보를 알려주세요', description: '' },
   {
-    label: '학교·나이',
-    title: '학교와 나이를 알려주세요',
-    description: '학교는 고르지 않아도 돼요. 만 14세 이상인지는 꼭 알려 주세요.',
+    label: '학교',
+    title: '다니는 고등학교를 알려주세요',
+    description: '학교는 고르지 않아도 돼요. 고등학생인지는 꼭 확인해 주세요.',
   },
   {
     label: '약관 동의',
@@ -144,36 +143,6 @@ function SignupSteps({ current }: SignupStepsProps) {
   )
 }
 
-interface ChoiceCardProps {
-  label: string
-  isSelected: boolean
-  onSelect: () => void
-}
-
-/** "네 / 아니요" 처럼 하나만 고르는 카드입니다. (카드 전체가 눌립니다) */
-function ChoiceCard({ label, isSelected, onSelect }: ChoiceCardProps) {
-  return (
-    <label
-      className={cn(
-        // min-h-14 = 56px. 글자가 두 줄이 되어도 카드가 같이 커집니다.
-        'flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-2 font-medium',
-        isSelected
-          ? 'border-brand bg-brand-light text-brand'
-          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-      )}
-    >
-      <input
-        type="radio"
-        name="isOver14"
-        checked={isSelected}
-        onChange={onSelect}
-        className="accent-brand h-5 w-5 shrink-0"
-      />
-      <span className="break-keep">{label}</span>
-    </label>
-  )
-}
-
 /**
  * 가입 정보를 받는 화면입니다. 두 가지 경우에 옵니다. (이메일 가입은 2026-10-15 에 뺐습니다. 새 가입은 구글로만 받습니다)
  *   - 구글로 처음 온 사람(로그인 화면의 [Google로 시작하기], #319): 이름·이메일은 구글 값으로 채우고 비밀번호 없이 받습니다.
@@ -182,13 +151,13 @@ function ChoiceCard({ label, isSelected, onSelect }: ChoiceCardProps) {
  *     (테스트 로그인은 가입을 건너뛰고 홈으로 가기 때문에, 이 주소를 직접 열었을 때만 여기에 옵니다)
  *   둘 다 아니면(로그인도 안 했고 구글로 시작하지도 않음) 로그인 화면으로 돌려보냅니다.
  *
- * 세 단계로 나눠서 받고, 지금 단계는 주소에 보입니다. (/signup?step=1 계정 정보 → 2 학교·나이 → 3 약관 동의)
+ * 세 단계로 나눠서 받고, 지금 단계는 주소에 보입니다. (/signup?step=1 계정 정보 → 2 학교 → 3 약관 동의)
  * 주소에 두었기 때문에 뒤로 가기를 누르면 앞 단계로 돌아갑니다. 앞 단계를 안 채우고 뒤 단계의 주소를 열면 앞 단계로 돌려보냅니다.
  * 입력한 값은 이 화면이 들고 있어서, 새로고침하면 사라지고 1단계부터 다시 시작합니다.
- *  1) 이름·닉네임·이메일·고등학교(선택)  2) 만 14세 이상인지 확인  3) 개인정보 수집·이용 동의
+ *  1) 이름·닉네임·이메일  2) 고등학교(선택) · 고등학생(만 14세 이상)인지 확인  3) 개인정보 수집·이용 동의
  * 다 마치면 정보를 저장하고 온보딩(/onboarding)으로 갑니다.
  *
- * 만 14세 미만(아니요)을 고르면 가입 불가 안내 화면으로 바뀌고, 아무것도 저장하지 않습니다.
+ * 이 앱은 고등학생만 씁니다. 고등학생이면 만 14세 이상이라, 만 14세 확인은 "고등학생이에요" 체크 하나로 받습니다. (2026-10-17)
  * 학년·목표 시험 등은 온보딩에서 받습니다.
  */
 export function SignupPage() {
@@ -214,13 +183,10 @@ export function SignupPage() {
   // 서버에 가입을 보내고 답을 기다리는 중인지, 실패했을 때 보여줄 안내
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  // 만 14세 이상인지. 아직 안 골랐으면 null, 네 = true, 아니요 = false
-  const [isOver14, setIsOver14] = useState<boolean | null>(null)
-  // 2단계에서 만 14세를 안 고르고 "다음" 을 눌렀는지. 눌렀을 때만 빨간 안내를 보여줍니다.
+  // "고등학생이에요 (만 14세 이상)" 에 체크했는지. 서버에는 만 14세 확인(over14)으로 보냅니다.
+  const [isOver14, setIsOver14] = useState(false)
+  // 2단계에서 체크하지 않고 "다음" 을 눌렀는지. 눌렀을 때만 빨간 안내를 보여줍니다.
   const [isAgeMissing, setIsAgeMissing] = useState(false)
-  // "아니요" 를 고른 채로 "다음" 을 눌렀는지. 이때만 만 14세 미만 안내 화면으로 바뀝니다. (#448)
-  // 고르기만 해서는 바뀌지 않게 따로 둡니다. 라디오 버튼은 방향키 한 번에도 선택이 바뀌어서, 실수로 쓰던 내용을 잃을 수 있기 때문입니다.
-  const [isUnderFourteenConfirmed, setIsUnderFourteenConfirmed] = useState(false)
   const [consents, setConsents] = useState<SignupConsents>(makeAllConsents(false))
   // "보기" 로 열어 둔 동의 항목. 아무것도 안 열었으면 null
   const [openedKey, setOpenedKey] = useState<ConsentKey | null>(null)
@@ -233,9 +199,6 @@ export function SignupPage() {
   // 홈으로 보내면, 온보딩을 다 안 끝낸 사람은 문지기(RequireAuth)가 하던 단계로 다시 보내 줍니다.
   // 내 정보를 바꾸는 곳은 설정 → 내 계정(/settings/account) 입니다.
   if (isAlreadySignedUp) return <Navigate to="/" replace />
-
-  // 만 14세 미만이라고 고르고 "다음" 까지 눌렀으면 입력 화면 대신 안내 화면을 보여줍니다.
-  if (isUnderFourteenConfirmed) return <UnderFourteenView />
 
   // 테스트 로그인으로 들어온 사람인지. (lib/testLogin.ts)
   const isTestUser = user?.id === testUser.id
@@ -250,7 +213,7 @@ export function SignupPage() {
     getNameError(name) === null &&
     getNicknameError(nickname) === null &&
     getEmailError(email) === null
-  const isAgeReady = isOver14 === true
+  const isAgeReady = isOver14
 
   // 주소가 가리키는 단계와, 지금 입력으로 갈 수 있는 가장 먼 단계 (lib/signup.ts)
   const requestedStep = parseSignupStep(searchParams.get('step'))
@@ -278,10 +241,6 @@ export function SignupPage() {
         return
       }
       goToStep(2)
-      return
-    }
-    if (isOver14 === false) {
-      setIsUnderFourteenConfirmed(true)
       return
     }
     if (!isAgeReady) {
@@ -339,7 +298,7 @@ export function SignupPage() {
           nickname: info.nickname,
           school,
           consents,
-          isOver14: isOver14 === true,
+          isOver14,
         })
         // 다 썼으니 구글 신분증을 지우고, 가입 정보를 저장한 뒤 로그인합니다. (가입 정보가 있어야 가입 화면으로 다시 오지 않습니다)
         clearPendingGoogleSignup()
@@ -468,44 +427,35 @@ export function SignupPage() {
           </>
         )}
 
-        {/* ---------- 2단계: 학교·나이 ---------- */}
+        {/* ---------- 2단계: 학교 ---------- */}
         {step === 2 && (
           <>
             <SchoolField school={school} onChange={setSchool} />
 
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 text-sm font-semibold text-slate-900">
-                만 14세 이상인가요?
-              </legend>
-              <div className="grid grid-cols-2 gap-3">
-                <ChoiceCard
-                  label="네, 만 14세 이상이에요"
-                  isSelected={isOver14 === true}
-                  onSelect={() => {
-                    setIsOver14(true)
+            <div className="flex flex-col gap-2">
+              <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 py-2 font-medium">
+                <input
+                  type="checkbox"
+                  checked={isOver14}
+                  onChange={(event) => {
+                    setIsOver14(event.target.checked)
                     setIsAgeMissing(false)
                   }}
+                  className="accent-brand h-5 w-5 shrink-0"
                 />
-                {/* "아니요" 를 골라도 바로 넘어가지 않고, "다음" 을 눌러야 안내 화면으로 바뀝니다. (#448) */}
-                <ChoiceCard
-                  label="아니요"
-                  isSelected={isOver14 === false}
-                  onSelect={() => {
-                    setIsOver14(false)
-                    setIsAgeMissing(false)
-                  }}
-                />
-              </div>
-              <p className="text-sm break-keep text-slate-500">
-                만 14세 미만은 보호자 동의 기능이 생긴 뒤에 가입할 수 있어요.
-              </p>
-              {/* 안 고르고 "다음" 을 눌렀을 때만 보입니다. */}
+                <span className="break-keep">
+                  <span className="text-brand font-semibold">[필수]</span> 고등학생이에요 (만 14세
+                  이상)
+                </span>
+              </label>
+              <p className="text-sm break-keep text-slate-500">만 14세 미만은 가입할 수 없어요.</p>
+              {/* 체크하지 않고 "다음" 을 눌렀을 때만 보입니다. */}
               {isAgeMissing && (
                 <p role="alert" className="text-sm break-keep text-red-600">
-                  만 14세 이상인지 골라 주세요.
+                  고등학생만 가입할 수 있어요. 고등학생이면 체크해 주세요.
                 </p>
               )}
-            </fieldset>
+            </div>
           </>
         )}
 

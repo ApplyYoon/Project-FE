@@ -91,7 +91,7 @@ export function SchoolField({ school, onChange }: SchoolFieldProps) {
         </Button>
       </div>
       <p className="text-sm break-keep text-slate-500">
-        학교 이름의 일부만 적고 검색해도 돼요. 졸업했거나 목록에 없으면 비워 두세요.
+        학교 이름의 일부만 적고 검색해도 돼요. 목록에 없으면 비워 두세요.
       </p>
 
       {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}

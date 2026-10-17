@@ -219,7 +219,7 @@ export function LoginPage() {
 
             <div className="border-t border-slate-100 pt-3 text-xs break-keep text-slate-500">
               <p>약관 동의는 다음 화면에서 따로 받아요.</p>
-              <p>만 14세 이상만 가입할 수 있어요.</p>
+              <p>고등학생만 가입할 수 있어요.</p>
             </div>
           </Card>
 
