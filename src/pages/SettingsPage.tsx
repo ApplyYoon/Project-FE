@@ -22,6 +22,7 @@ import {
 } from '@/lib/aiSettingsApi'
 import { getApiErrorMessage } from '@/lib/api'
 import { isInApp } from '@/lib/appBridge'
+import { deleteAllServerCards } from '@/lib/cardsApi'
 import { canSyncCheckIns, deleteServerCheckIns } from '@/lib/checkInsApi'
 import {
   CALL_TIME_STORAGE_KEY,
@@ -88,7 +89,7 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
+      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인 · 카드도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
@@ -106,11 +107,17 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const { user, token, logout } = useAuth()
   const queryClient = useQueryClient()
-  // "모든 기록 지우기" 때 서버에 저장된 체크인도 지웁니다. (#321) 테스트 로그인은 서버에 체크인이 없어서 부르지 않습니다.
+  // "모든 기록 지우기" 때 서버에 저장된 체크인 · 카드도 지웁니다. (#321, #516) 테스트 로그인은 서버에 기록이 없어서 부르지 않습니다.
   const deleteServer = useMutation({
-    mutationFn: deleteServerCheckIns,
-    // 보관해 둔 "오늘 체크인" 값도 낡았다고 표시합니다. (지운 체크인이 남아 보이지 않게)
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['checkins'] }),
+    mutationFn: async () => {
+      await deleteServerCheckIns()
+      await deleteAllServerCards()
+    },
+    // 보관해 둔 "오늘 체크인" · 서버 카드 값도 낡았다고 표시합니다. (지운 것이 남아 보이지 않게)
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['checkins'] })
+      void queryClient.invalidateQueries({ queryKey: ['server-cards'] })
+    },
   })
   // 계정 카드에 보여줄 닉네임·이메일·학교. 가입 정보가 이 기기에 없으면 null 입니다.
   const [profile] = useState(loadSignupProfile)
@@ -214,14 +221,14 @@ export function SettingsPage() {
     handleChangeMessageSettings(next.messageSettings)
   }
 
-  /** 서버에 저장된 체크인을 지웁니다. 실패하면 안내와 "다시 지우기" 버튼이 보입니다. */
+  /** 서버에 저장된 체크인 · 카드를 지웁니다. 실패하면 안내와 "다시 지우기" 버튼이 보입니다. */
   function deleteServerCheckInsWithMessage(doneText: string) {
     deleteServer.mutate(undefined, {
       onSuccess: () => setMessage({ isSuccess: true, text: doneText }),
       onError: (error) =>
         setMessage({
           isSuccess: false,
-          text: `이 기기의 기록은 지웠지만, 서버에 저장된 체크인은 아직 못 지웠어요. ${getApiErrorMessage(error)}`,
+          text: `이 기기의 기록은 지웠지만, 서버에 저장된 체크인 · 카드는 아직 다 못 지웠어요. ${getApiErrorMessage(error)}`,
         }),
     })
   }
@@ -236,9 +243,9 @@ export function SettingsPage() {
       ? deleteTexts[pendingKind].done
       : '일부를 지우지 못했어요. 다시 시도해 주세요.'
     setMessage({ isSuccess, text: doneText })
-    // 모든 기록을 지울 때는 서버에 저장된 체크인도 지웁니다. (#321)
+    // 모든 기록을 지울 때는 서버에 저장된 체크인 · 카드도 지웁니다. (#321, #516)
     if (pendingKind === 'all' && canSyncCheckIns(token)) {
-      setMessage({ isSuccess, text: '서버에 저장된 체크인도 지우는 중이에요…' })
+      setMessage({ isSuccess, text: '서버에 저장된 체크인 · 카드도 지우는 중이에요…' })
       deleteServerCheckInsWithMessage(doneText)
     }
     setPendingKind(null)

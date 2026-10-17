@@ -225,8 +225,10 @@ export interface CardAlert {
  * 반복 카드도 한 장으로 두고, 날마다 했는지는 세션 기록에 남깁니다. (매일 복사하지 않음)
  */
 export interface Card {
-  /** 카드를 구분하는 고유 값 */
+  /** 카드를 구분하는 고유 값 (이 기기에서 정한 값) */
   id: string
+  /** 서버에 올라간 카드의 번호 (BE /api/v1/cards 의 id). 아직 안 올라갔거나 테스트 로그인이면 없습니다 (#516) */
+  serverId?: string
   /** 무엇을 하는지 (예: '수학 문제집') */
   title: string
   /** 1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜 ('YYYY-MM-DD') */
