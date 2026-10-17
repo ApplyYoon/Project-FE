@@ -9,14 +9,15 @@ import { useLocation, useNavigationType } from 'react-router-dom'
  * 그래서 가만히 두면 스크롤 위치가 그대로 남아, 아래로 내린 채 다른 탭을 누르면 새 화면도 중간부터 보입니다.
  *
  * ■ 규칙
- *  1. 주소의 경로(/records 같은 부분)가 바뀔 때만 올립니다.
+ *  1. 주소의 경로(/analysis 같은 부분)가 바뀔 때만 올립니다.
  *     ?view=monthly 처럼 물음표 뒤만 바뀌는 것(같은 화면 안의 탭 · 날짜)은 보던 자리를 그대로 둡니다.
  *  2. 뒤로 가기 · 앞으로 가기로 왔으면 올리지 않습니다. 보던 자리로 돌아가는 게 자연스럽기 때문입니다.
  *
  * ■ 예시
- *   홈에서 아래로 내린 뒤 "기록" 탭을 누름      -> 기록 화면이 맨 위부터 보임
- *   리포트에서 주간 → 월간 (/report?view=monthly) -> 그대로 (경로는 /report 그대로)
- *   기록 → 리포트 → 뒤로 가기                    -> 올리지 않음
+ *   홈에서 아래로 내린 뒤 "분석" 탭을 누름       -> 분석 화면이 맨 위부터 보임
+ *   리포트에서 주간 → 월간 (?view=monthly)        -> 그대로 (경로는 /analysis 그대로)
+ *   분석 안에서 기록 → 리포트 (?tab=report)       -> 그대로 (하위 탭 막대가 맨 위에 있어서 이미 위쪽입니다)
+ *   카드 → 분석 → 뒤로 가기                       -> 올리지 않음
  */
 export function useScrollToTopOnPageChange() {
   const { pathname } = useLocation()

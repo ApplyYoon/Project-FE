@@ -80,9 +80,9 @@ function toCompletionRate(count: CompletionCount): FactValue {
 
 /**
  * 계획의 날짜('2026-10-06')와 시작 시각('19:00')을 합쳐 시각(Date.now() 같은 숫자)으로 만듭니다.
- * 시작 시각이 없거나 모양이 틀리면 null 입니다.
+ * 시작 시각이 없거나 모양이 틀리면 null 입니다. (카드도 날짜·시작 시각이 같은 모양이라 같이 씁니다)
  */
-export function getPlannedStartAt(plan: StudyPlan): number | null {
+export function getPlannedStartAt(plan: Pick<StudyPlan, 'date' | 'startTime'>): number | null {
   if (plan.startTime === undefined) return null
   const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(plan.startTime)
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(plan.date)

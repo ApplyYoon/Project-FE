@@ -25,19 +25,7 @@ export interface AuthUser {
  * 과목 태그에 쓸 수 있는 색 (12가지).
  * 색을 더하려면 여기에 적은 뒤 타입 검사가 알려 주는 곳(색 이름표·색 표)을 모두 채우면 됩니다. (lib/subjects.ts 참고)
  */
-export type SubjectColor =
-  | 'red'
-  | 'orange'
-  | 'yellow'
-  | 'lime'
-  | 'green'
-  | 'teal'
-  | 'sky'
-  | 'blue'
-  | 'indigo'
-  | 'purple'
-  | 'pink'
-  | 'slate'
+export type SubjectColor = 'red' | 'orange' | 'green' | 'blue' | 'purple'
 
 /** 과목 (예: 수학, 영어) */
 export interface Subject {
@@ -104,6 +92,80 @@ export interface StudySession {
   stopReason?: MissReason
   /** 공부 기록인지 노는 기록인지. 없으면 공부(study)로 봅니다 */
   kind?: PlanKind
+
+  /*
+   * 아래는 카드 기준으로 넓힌 칸입니다. (최종 기획서 「4.4 타이머」, #380)
+   * 옛 기록에는 없습니다. 없을 때 어떻게 볼지는 lib/sessionRecords.ts 의 함수가 정합니다.
+   */
+  /** 어느 카드의 세션인지 (Card 의 id). 새 세션은 꼭 있습니다. 옛 기록은 planId 로 찾습니다 */
+  cardId?: string
+  /** 세션을 잰 방법. 없으면 normal */
+  mode?: SessionMode
+  /** 일시정지 한 번 한 번 (이유 태그 포함). 있으면 pauseCount · pausedMs 는 이 값에서 계산한 것입니다 */
+  pauses?: SessionPause[]
+  /** 예정 종료 전에 [끝내기] 를 눌렀으면 true (중도 종료) */
+  endedEarly?: boolean
+  /** 종료 팝업에서 받은 것. 팝업을 닫아 버렸으면 없음 */
+  endReport?: SessionEndReport
+  /** 딴생각 주차장에 쓴 한 줄 메모 */
+  memos?: SessionMemo[]
+  /** 노는 기록일 때 무엇을 했는지 */
+  playTag?: PlayTag
+  /** 노는 기록일 때, 놀기가 끝난 뒤 [카드 시작] · [놀기 끝] 을 누를 때까지 더 쉰 시간 (밀리초) */
+  overRestMs?: number
+}
+
+/** 세션을 잰 방법 — normal: 타이머, offline: 폰을 내고 앱이 잰 세션(야자 등), selfReport: 끝난 뒤 사후 입력 */
+export type SessionMode = 'normal' | 'offline' | 'selfReport'
+
+/** 일시정지 이유 (1탭). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+export type PauseTag = 'toilet' | 'snack' | 'phone' | 'mindWander' | 'stuck' | 'external' | 'other'
+
+/** 일시정지 한 번 */
+export interface SessionPause {
+  /** 일시정지를 누른 시각 */
+  startedAt: number
+  /** 다시 시작한 시각. 일시정지한 채로 끝냈으면 세션이 끝난 시각 */
+  endedAt: number
+  /** 이유 */
+  tag: PauseTag
+  /** '기타' 를 골랐을 때 쓴 글 (빈칸 허용) */
+  note?: string
+}
+
+/** 체크리스트를 다 못 했을 때 고르는 이유. 이름표는 lib/sessionTags.ts */
+export type ShortfallReason =
+  'tooMuch' | 'stuck' | 'phone' | 'mindWander' | 'tired' | 'external' | 'etc'
+
+/** 잘 된 이유 (체크리스트를 다 했을 때 가끔 묻습니다). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+export type GoodReason = 'focus' | 'goodPlan' | 'condition' | 'environment' | 'helped' | 'luck'
+
+/** 세션 중에 같이 한 것 — 즐거움 묶기를 대신합니다 */
+export type WithWhat = 'music' | 'video' | 'none'
+
+/** 노는 기록의 종류 */
+export type PlayTag = 'youtube' | 'game' | 'sns' | 'webtoon' | 'rest' | 'etc'
+
+/** 종료 팝업에서 받은 것 (산출물 말고는 모두 1탭) */
+export interface SessionEndReport {
+  /** 체크한 체크리스트 항목 (ChecklistItem 의 id → 체크한 시각) */
+  checked: Record<string, number>
+  /** 다 못 했을 때 고른 이유 */
+  shortfallReason?: ShortfallReason
+  /** 같이 한 것 */
+  withWhat?: WithWhat
+  /** 산출물 증빙 — 링크 또는 2~3줄 요약 (사진은 저장소가 정해진 뒤) */
+  proof?: { link?: string; summary?: string }
+  /** 잘 된 이유 (물었을 때만) */
+  goodReasons?: GoodReason[]
+}
+
+/** 딴생각 주차장 메모 한 줄 */
+export interface SessionMemo {
+  /** 쓴 시각 */
+  at: number
+  /** 한 줄 */
+  text: string
 }
 
 /** 요일마다 반복되는 계획의 틀. 그 요일의 계획에 자동으로 들어옵니다 */
@@ -122,6 +184,75 @@ export interface Routine {
   targetMinutes: number
   /** 시작할 시각 (예: '19:00'). 안 정했으면 없음 */
   startTime?: string
+}
+
+/*
+ * ── 카드 (최종 기획서 2026-10-17, docs/PLAN.md 「4.3 카드」) ──
+ * 분석의 기본 단위가 하루 → 카드로 바뀌었습니다. 위의 StudyPlan · Routine 을 대신합니다. (#379)
+ * 칸 이름은 BE(Project-BE#222)와 같습니다. 바꾸면 BE 와 RN 앱(Project-App)에도 알려 주세요.
+ */
+
+/** 카드의 우선순위 — absolute: 미룰 수 없는 카드(과제 제출 등), flexible: 줄이거나 미룰 수 있는 카드 */
+export type CardPriority = 'absolute' | 'flexible'
+
+/** 카드의 유형 — self: 자습, lecture: 인강 */
+export type CardType = 'self' | 'lecture'
+
+/** 카드 체크리스트의 한 항목. 체크했는지는 카드가 아니라 그날의 세션 기록에 남깁니다 (#380) */
+export interface ChecklistItem {
+  /** 항목을 구분하는 고유 값 */
+  id: string
+  /** 할 일 (예: '수학 문제집 42~45쪽') */
+  text: string
+}
+
+/** 카드를 시작하라고 알려 주는 방법 */
+export interface CardAlert {
+  /** message: 알림 메시지, call: AI 전화 */
+  method: 'message' | 'call'
+  /** 시작 몇 분 전에 알릴지. 0 이면 정각 */
+  minutesBefore: number
+  /** 알림에 보일 문장. 없으면 기본 문구 */
+  text?: string
+}
+
+/**
+ * 카드 한 장 = "언제 + 무엇을" 정한 계획 하나. 1회성 카드와 요일마다 반복하는 카드가 있습니다.
+ * 반복 카드도 한 장으로 두고, 날마다 했는지는 세션 기록에 남깁니다. (매일 복사하지 않음)
+ */
+export interface Card {
+  /** 카드를 구분하는 고유 값 */
+  id: string
+  /** 무엇을 하는지 (예: '수학 문제집') */
+  title: string
+  /** 1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜 ('YYYY-MM-DD') */
+  date: string
+  /** 반복 카드면 요일 목록 (0 = 일요일 … 6 = 토요일). 1회성 카드면 없음 */
+  repeatDays?: number[]
+  /** 시작 시각 (예: '19:00'). 새 카드는 꼭 있고, 옛 계획에서 옮긴 카드만 없을 수 있습니다 */
+  startTime?: string
+  /** 길이 (분) */
+  durationMinutes: number
+  /** 체크리스트 (필수, 1개 이상). 비어 있으면 AI 기본값 또는 제목 1개로 채웁니다 */
+  checklist: ChecklistItem[]
+  /** 연결한 목표의 id. 없으면 "목표 없음" */
+  goalId?: string
+  /** 우선순위. 기본은 flexible */
+  priority: CardPriority
+  /** 유형. 기본은 self(자습) */
+  type: CardType
+  /** 예상 달성 개수. 없으면 "체크리스트 전부" 로 봅니다 */
+  expectedDone?: number
+  /** 예상 달성 개수를 낮춘 이유 (태그 1개) */
+  expectedDoneReason?: string
+  /** 예상 실패 원인 (내 행동에서 나오는 원인을 1개 이상 포함) */
+  expectedFailCauses?: string[]
+  /** 알림. 없으면 기본(정각 · 메시지 · 기본 문구) */
+  alert?: CardAlert
+  /** 카드 편집 화면을 연 순간부터 저장할 때까지 걸린 시간 (밀리초). '계획 대 실행 비율' 에 씁니다 */
+  planningMs?: number
+  /** 카드를 만든 시각 */
+  createdAt: number
 }
 
 /**
@@ -254,11 +385,19 @@ export type MissReason =
   | 'etc' // 기타
 
 /** 매일 체크인 (하루에 하나) */
+/**
+ * 하루 첫 한 줄에서 고르는 감정 태그 (#387, BE#220 과 같은 이름)
+ * 막막함 · 불안함 · 피곤함 · 짜증남 · 평온함 · 의욕 있음. 글자는 lib/quickCheckIn.ts 의 EMOTION_OPTIONS
+ */
+export type EmotionTag = 'STUCK' | 'ANXIOUS' | 'TIRED' | 'ANNOYED' | 'CALM' | 'MOTIVATED'
+
 export interface CheckIn {
   /** 체크인한 날짜 (예: '2026-09-28') */
   date: string
   /** 오늘 컨디션 (1 ~ 5) */
   condition: number
+  /** 하루 첫 한 줄에서 고른 감정 태그 (여러 개, #387). 안 골랐거나 옛 기록이면 없습니다. */
+  emotions?: EmotionTag[]
   /** 오늘 기분 (1 ~ 5) */
   mood: number
   /** 어제 계획을 다 못 채운 날에만 고르는 미달 원인 (#26) */
@@ -281,6 +420,11 @@ export interface CheckIn {
    * "체크인에서 확인받기" 를 켠 사람만 묻고, 안 골랐으면 없습니다. 정말 켰는지는 확인할 수 없습니다.
    */
   phoneFocusKept?: boolean
+  /**
+   * 앱을 처음 열 때 기분 하나로 만든 1탭 체크인이면 true (#242). 자세한 체크인(/check)을 저장하면 없어집니다.
+   * /check 가 \"오늘 체크인 완료\" 를 붙일지 정하는 데 씁니다. (1탭만 한 사람은 자세한 체크인을 아직 안 한 것입니다)
+   */
+  isQuick?: boolean
 }
 
 /** 관리 강도 — 0 회복, 1 당근, 2 넛지, 3 심리적 채찍, 4 강제적 채찍 */

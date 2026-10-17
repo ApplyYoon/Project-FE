@@ -1,4 +1,4 @@
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
@@ -13,6 +13,8 @@ import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCalendarConnect } from '@/hooks/useCalendarConnect'
 import { logoutOnServer } from '@/lib/accountApi'
+import { getApiErrorMessage } from '@/lib/api'
+import { canSyncCheckIns, deleteServerCheckIns } from '@/lib/checkInsApi'
 import {
   CALL_TIME_STORAGE_KEY,
   isCallTimeInQuietHours,
@@ -74,7 +76,7 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 주간 회고, 개선안, 시험, 일기, AI 메시지가 전부 사라져요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
+      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 주간 회고, 개선안, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
@@ -90,7 +92,14 @@ const CONFIRM_CARE_LEVEL = 4
 
 export function SettingsPage() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, token, logout } = useAuth()
+  const queryClient = useQueryClient()
+  // "모든 기록 지우기" 때 서버에 저장된 체크인도 지웁니다. (#321) 테스트 로그인은 서버에 체크인이 없어서 부르지 않습니다.
+  const deleteServer = useMutation({
+    mutationFn: deleteServerCheckIns,
+    // 보관해 둔 "오늘 체크인" 값도 낡았다고 표시합니다. (지운 체크인이 남아 보이지 않게)
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['checkins'] }),
+  })
   // 계정 카드에 보여줄 닉네임·이메일·학교. 가입 정보가 이 기기에 없으면 null 입니다.
   const [profile] = useState(loadSignupProfile)
   // "로그아웃할까요?" 확인창이 열려 있는지
@@ -197,17 +206,33 @@ export function SettingsPage() {
     saveMessageSettings(next)
   }
 
+  /** 서버에 저장된 체크인을 지웁니다. 실패하면 안내와 "다시 지우기" 버튼이 보입니다. */
+  function deleteServerCheckInsWithMessage(doneText: string) {
+    deleteServer.mutate(undefined, {
+      onSuccess: () => setMessage({ isSuccess: true, text: doneText }),
+      onError: (error) =>
+        setMessage({
+          isSuccess: false,
+          text: `이 기기의 기록은 지웠지만, 서버에 저장된 체크인은 아직 못 지웠어요. ${getApiErrorMessage(error)}`,
+        }),
+    })
+  }
+
   function handleConfirm() {
     if (pendingKind === null) return
 
+    // 이 기기에서 먼저 지웁니다. 서버에 닿지 못해도 이 기기의 기록은 지워집니다.
     // 지우고 나면 정말 사라졌는지 한 번 더 확인한 결과가 돌아옵니다.
     const { isSuccess } = deleteMyData(pendingKind)
-    setMessage({
-      isSuccess,
-      text: isSuccess
-        ? deleteTexts[pendingKind].done
-        : '일부를 지우지 못했어요. 다시 시도해 주세요.',
-    })
+    const doneText = isSuccess
+      ? deleteTexts[pendingKind].done
+      : '일부를 지우지 못했어요. 다시 시도해 주세요.'
+    setMessage({ isSuccess, text: doneText })
+    // 모든 기록을 지울 때는 서버에 저장된 체크인도 지웁니다. (#321)
+    if (pendingKind === 'all' && canSyncCheckIns(token)) {
+      setMessage({ isSuccess, text: '서버에 저장된 체크인도 지우는 중이에요…' })
+      deleteServerCheckInsWithMessage(doneText)
+    }
     setPendingKind(null)
     // 저장소에서는 지워졌지만 화면이 들고 있는 값은 그대로라서, 새로 읽어 옵니다.
     // (안 읽으면 새로고침하기 전까지 지운 다짐 녹음이 보이고 재생됩니다)
@@ -648,6 +673,17 @@ export function SettingsPage() {
                 >
                   {message.text}
                 </p>
+              )}
+              {/* 서버에 저장된 체크인을 못 지웠을 때만 보입니다. */}
+              {deleteServer.isError && (
+                <Button
+                  variant="secondary"
+                  className="h-11 w-full sm:w-auto"
+                  disabled={deleteServer.isPending}
+                  onClick={() => deleteServerCheckInsWithMessage(deleteTexts.all.done)}
+                >
+                  서버의 체크인 다시 지우기
+                </Button>
               )}
             </div>
           </Card>

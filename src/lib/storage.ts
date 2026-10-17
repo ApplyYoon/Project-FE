@@ -10,8 +10,11 @@
 // 같은 주소를 쓰는 다른 사이트의 데이터와 키 이름이 섞이지 않도록 붙이는 접두사입니다.
 const KEY_PREFIX = 'study-'
 
-/** 'plan' -> 'study-plan' 처럼 접두사를 붙인 키를 만듭니다. */
-function makeKey(key: string): string {
+/**
+ * 'plan' -> 'study-plan' 처럼 접두사를 붙인 키를 만듭니다.
+ * 다른 탭에서 바뀐 값을 알려 주는 'storage' 이벤트는 실제 키(접두사 포함)로 오기 때문에, 그 이벤트를 듣는 곳에서도 씁니다.
+ */
+export function makeKey(key: string): string {
   return `${KEY_PREFIX}${key}`
 }
 
