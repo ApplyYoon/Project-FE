@@ -24,6 +24,8 @@
 import { ApiError, api } from '@/lib/api'
 import { MAX_TARGET_MINUTES } from '@/lib/countdown'
 import { isDateKey } from '@/lib/date'
+import { shouldRetryQuery } from '@/lib/queryRetry'
+import { PLAN_PROGRESS_QUERY_KEY } from '@/lib/sessionsApi'
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import type { PlanKind, StudyPlan } from '@/types'
 
@@ -163,8 +165,8 @@ export function plansByDateQuery(date: string) {
   return queryOptions({
     queryKey: ['study-plans', date],
     queryFn: () => fetchPlansByDate(date),
-    // 400·404 같은 거절은 다시 시도해도 같아서, 다시 시도하지 않습니다.
-    retry: false,
+    // 일시적인 문제(연결 끊김 · 시간 초과 · 서버 5xx)만 최대 2번 다시 시도하고, 400 · 404 같은 거절은 다시 시도하지 않습니다. (lib/queryRetry.ts)
+    retry: shouldRetryQuery,
   })
 }
 
@@ -243,7 +245,14 @@ export async function deletePlan(id: string): Promise<void> {
  * 보관해 둔 계획 목록(모든 날짜)을 "낡았다" 고 표시해서, 화면이 서버에서 새 목록을 다시 받아오게 합니다.
  * 추가 · 수정 · 삭제가 성공한 뒤에 부릅니다. (hooks/usePlanMutations.ts 가 대신 불러 줍니다)
  * 날짜를 바꿀 수는 없어서 한 날짜만 낡게 해도 되지만, 홈 · 기록 같은 화면이 다른 날짜를 같이 쓰므로 전부 낡게 합니다.
+ *
+ * "계획별 실제 시간 · 진행률"(lib/sessionsApi.ts 의 planProgressQuery)도 같이 낡게 합니다.
+ * 그 값은 계획의 목록 · 목표 시간으로 계산해서 서버가 돌려주기 때문에, 계획이 바뀌면 같이 바뀝니다.
+ * (예전에는 이 값을 안 낡게 해서, 계획을 추가 · 수정 · 삭제해도 진행률이 옛 값 그대로였습니다)
  */
-export function invalidatePlans(queryClient: QueryClient): Promise<void> {
-  return queryClient.invalidateQueries({ queryKey: ['study-plans'] })
+export async function invalidatePlans(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['study-plans'] }),
+    queryClient.invalidateQueries({ queryKey: PLAN_PROGRESS_QUERY_KEY }),
+  ])
 }

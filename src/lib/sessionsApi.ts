@@ -24,8 +24,9 @@
  *   (useMutation 의 variables · mutate 를 다시 부르면 됩니다. hooks/useSessionMutations.ts)
  */
 import { ApiError, api } from '@/lib/api'
-import { isDateKey } from '@/lib/date'
+import { isDateKey, toDayKey } from '@/lib/date'
 import { missReasonOptions } from '@/lib/missReasons'
+import { shouldRetryQuery } from '@/lib/queryRetry'
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
 import type { MissReason, PlanKind, StudySession } from '@/types'
 
@@ -38,6 +39,11 @@ export const SESSION_MIN_STUDY_SECONDS = 60
 export const SESSION_MIN_STARTED_AT = Date.UTC(2020, 0, 1)
 /** 기간별 목록은 한 번에 31일까지만 받을 수 있습니다. (시작일과 끝일을 모두 센 날 수) */
 export const SESSION_MAX_RANGE_DAYS = 31
+/**
+ * "계획별 실제 시간 · 진행률" 쿼리의 이름표 앞부분입니다. 기록(sessions) 뿐 아니라 계획(plans)이 바뀔 때도 이 값을 낡게 해야 해서,
+ * lib/plansApi.ts 의 invalidatePlans 도 이 이름표를 씁니다.
+ */
+export const PLAN_PROGRESS_QUERY_KEY = ['study-sessions', 'by-plan'] as const
 
 /** 저장할 때 서버에 보내는 값. 노는 기록은 과목을 안 보냅니다. */
 export interface SessionCreateInput {
@@ -199,17 +205,55 @@ export function toCreateBody(input: SessionCreateInput): Record<string, unknown>
  * 순공이 1분 미만이면 서버를 부르지 않고 400 에러를 던집니다. (서버도 400 인 같은 규칙. 헛된 요청을 줄입니다)
  * 이미 저장된 내 기록과 시간이 겹치면 서버가 409 를 줍니다. (끝과 시작이 딱 붙은 것은 괜찮습니다)
  * 실패해도 보낸 값은 호출한 쪽에 그대로 있으니, 같은 값으로 다시 보내면 됩니다.
+ *
+ * ■ 시간 초과로 실패한 뒤 다시 보내도 안전합니다. (같은 기록을 두 번 저장하지 않습니다)
+ *   "시간 초과" 는 서버가 못 받은 게 아니라 답이 늦은 것일 수 있어서, 첫 요청이 실제로는 저장됐을 수 있습니다.
+ *   그때 같은 값으로 다시 보내면 서버가 "이미 저장된 기록과 겹쳐요(409)" 라고 답합니다.
+ *   그래서 409 가 오면, 그날의 기록 중 시작 · 끝 시각이 똑같은 것이 있는지 찾아보고 있으면 "이미 저장됨" 으로 보고
+ *   그 기록을 성공으로 돌려줍니다. (겹치는 기록은 못 저장하니까, 시작 · 끝이 같은 기록은 방금 보낸 그 기록입니다)
+ *   찾지 못하면(진짜로 다른 기록과 겹침) 서버가 준 409 를 그대로 던집니다.
  */
 export async function createSession(input: SessionCreateInput): Promise<StudySession> {
   if (!isSavableSession(input)) {
     throw new ApiError('1분 미만의 기록은 저장하지 않아요', 400, 'VALIDATION_ERROR')
   }
-  const result = await api<unknown>('/study-sessions', {
-    method: 'POST',
-    body: JSON.stringify(toCreateBody(input)),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  })
-  return toStudySession(result)
+  try {
+    const result = await api<unknown>('/study-sessions', {
+      method: 'POST',
+      body: JSON.stringify(toCreateBody(input)),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    return toStudySession(result)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      const saved = await findAlreadySaved(input)
+      if (saved !== null) return saved
+    }
+    throw error
+  }
+}
+
+/**
+ * 같은 시작 · 끝 시각으로 이미 저장된 내 기록이 있으면 돌려줍니다. 없거나 찾지 못하면 null 입니다.
+ * (시간 초과로 실패했다고 안내받은 기록을 다시 보냈을 때, 사실은 저장돼 있었는지 확인하는 데 씁니다)
+ *
+ *   이미 저장된 기록 { startedAt: 100, endedAt: 200 }, 다시 보낸 { startedAt: 100, endedAt: 200 } -> 그 기록
+ *   겹치지만 시작이 다른 기록 { startedAt: 100, endedAt: 200 }, 보낸 { startedAt: 150, endedAt: 250 } -> null
+ */
+async function findAlreadySaved(input: SessionCreateInput): Promise<StudySession | null> {
+  try {
+    // 서버는 하루를 새벽 4시 기준으로 세므로, 시작 시각이 속한 "그 날" 하루만 조회합니다.
+    const day = toDayKey(input.startedAt)
+    const sessions = await fetchSessionsByRange(day, day)
+    return (
+      sessions.find(
+        (session) => session.startedAt === input.startedAt && session.endedAt === input.endedAt,
+      ) ?? null
+    )
+  } catch {
+    // 찾는 데 실패하면 원래의 409 를 그대로 보여 줍니다. (여기서 또 에러를 던지지 않습니다)
+    return null
+  }
 }
 
 /** 'YYYY-MM-DD' 두 날짜 사이의 날 수(시작일과 끝일을 모두 센 것)입니다. 같은 날이면 1 입니다. */
@@ -263,8 +307,8 @@ export function sessionsByRangeQuery(from: string, to: string) {
   return queryOptions({
     queryKey: ['study-sessions', 'range', from, to],
     queryFn: () => fetchSessionsByRange(from, to),
-    // 400 같은 거절은 다시 시도해도 같아서, 다시 시도하지 않습니다.
-    retry: false,
+    // 일시적인 문제(연결 끊김 · 시간 초과 · 서버 5xx)만 최대 2번 다시 시도하고, 400 · 404 같은 거절은 다시 시도하지 않습니다. (lib/queryRetry.ts)
+    retry: shouldRetryQuery,
   })
 }
 
@@ -309,7 +353,7 @@ export function todayTotalQuery() {
     queryKey: ['study-sessions', 'today-total'],
     queryFn: fetchTodayTotal,
     staleTime: 30 * 1000,
-    retry: false,
+    retry: shouldRetryQuery,
   })
 }
 
@@ -348,9 +392,9 @@ async function fetchPlanProgress(date: string): Promise<ServerPlanProgress[]> {
  */
 export function planProgressQuery(date: string) {
   return queryOptions({
-    queryKey: ['study-sessions', 'by-plan', date],
+    queryKey: [...PLAN_PROGRESS_QUERY_KEY, date],
     queryFn: () => fetchPlanProgress(date),
-    retry: false,
+    retry: shouldRetryQuery,
   })
 }
 
