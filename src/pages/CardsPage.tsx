@@ -1368,7 +1368,11 @@ function GoogleCalendarStrip({ connection, dayKey }: GoogleCalendarStripProps) {
   )
 }
 
-export function PlannerPage() {
+/**
+ * 카드 탭 화면(/cards)입니다. 옛 주소 /planner 로 들어와도 여기로 옵니다. (router.tsx)
+ * 지금은 옛 계획 화면 그대로이고, 카드 만들기·타임라인으로 바꾸는 것은 #392·#394 에서 합니다.
+ */
+export function CardsPage() {
   const todayKey = getTodayKey()
 
   // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
@@ -1391,13 +1395,13 @@ export function PlannerPage() {
   // sessions: 공부 기록만 / allSessions: 노는 기록까지.
   // 계획별 실제 시간은 노는 계획에도 보여야 해서 allSessions 로 구합니다. (#238)
   const { sessions, allSessions } = useStudySessions()
-  // 보고 있는 날짜는 주소에 둡니다. (/planner = 오늘, /planner?date=2026-10-11 = 그날)
+  // 보고 있는 날짜는 주소에 둡니다. (/cards = 오늘, /cards?date=2026-10-11 = 그날)
   // replace: ◀ ▶ 를 여러 번 눌러도 뒤로 가기 한 번이면 계획 화면을 떠납니다.
   const [dateParam, setSelectedDate] = useQueryParam('date', todayKey, { replace: true })
   // 주소는 누구나 고칠 수 있어서, 진짜 날짜가 아니면 오늘로 봅니다.
   const selectedDate = isDateKey(dateParam) ? dateParam : todayKey
 
-  // 목록으로 볼지 플래너로 볼지도 주소에 둡니다. (/planner?view=timeline) (#237)
+  // 목록으로 볼지 플래너로 볼지도 주소에 둡니다. (/cards?view=timeline) (#237)
   // 주소에 없을 때는 지난번에 고른 보기(저장해 둔 값)로 엽니다.
   const [savedView] = useState<PlannerView>(loadPlannerView)
   const [viewParam, setViewParam] = useQueryParam('view', savedView)
