@@ -87,7 +87,7 @@ const SuggestionsPage = lazy(() =>
 const SupportPage = lazy(() =>
   import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
 )
-const TimerPage = lazy(() => import('@/pages/TimerPage').then((m) => ({ default: m.TimerPage })))
+const TimerRoute = lazy(() => import('@/pages/TimerRoute').then((m) => ({ default: m.TimerRoute })))
 
 /**
  * 페이지(주소)를 추가하려면 위의 lazy 목록에 한 줄, children 배열에 한 줄 추가하면 됩니다.
@@ -116,7 +116,8 @@ export const router = createBrowserRouter([
       { path: 'about', element: <AboutPage /> },
       // 아래 탭 5개: 홈 · 카드 · 타이머 · 상담 · 분석 (기획서 3장, #386)
       { path: 'cards', element: <CardsPage /> },
-      { path: 'timer', element: <TimerPage /> },
+      // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
+      { path: 'timer', element: <TimerRoute /> },
       { path: 'counsel', element: <CounselPage /> },
       // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
       { path: 'analysis', element: <AnalysisPage /> },

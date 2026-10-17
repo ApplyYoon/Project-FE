@@ -92,6 +92,80 @@ export interface StudySession {
   stopReason?: MissReason
   /** 공부 기록인지 노는 기록인지. 없으면 공부(study)로 봅니다 */
   kind?: PlanKind
+
+  /*
+   * 아래는 카드 기준으로 넓힌 칸입니다. (최종 기획서 「4.4 타이머」, #380)
+   * 옛 기록에는 없습니다. 없을 때 어떻게 볼지는 lib/sessionRecords.ts 의 함수가 정합니다.
+   */
+  /** 어느 카드의 세션인지 (Card 의 id). 새 세션은 꼭 있습니다. 옛 기록은 planId 로 찾습니다 */
+  cardId?: string
+  /** 세션을 잰 방법. 없으면 normal */
+  mode?: SessionMode
+  /** 일시정지 한 번 한 번 (이유 태그 포함). 있으면 pauseCount · pausedMs 는 이 값에서 계산한 것입니다 */
+  pauses?: SessionPause[]
+  /** 예정 종료 전에 [끝내기] 를 눌렀으면 true (중도 종료) */
+  endedEarly?: boolean
+  /** 종료 팝업에서 받은 것. 팝업을 닫아 버렸으면 없음 */
+  endReport?: SessionEndReport
+  /** 딴생각 주차장에 쓴 한 줄 메모 */
+  memos?: SessionMemo[]
+  /** 노는 기록일 때 무엇을 했는지 */
+  playTag?: PlayTag
+  /** 노는 기록일 때, 놀기가 끝난 뒤 [카드 시작] · [놀기 끝] 을 누를 때까지 더 쉰 시간 (밀리초) */
+  overRestMs?: number
+}
+
+/** 세션을 잰 방법 — normal: 타이머, offline: 폰을 내고 앱이 잰 세션(야자 등), selfReport: 끝난 뒤 사후 입력 */
+export type SessionMode = 'normal' | 'offline' | 'selfReport'
+
+/** 일시정지 이유 (1탭). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+export type PauseTag = 'toilet' | 'snack' | 'phone' | 'mindWander' | 'stuck' | 'external' | 'other'
+
+/** 일시정지 한 번 */
+export interface SessionPause {
+  /** 일시정지를 누른 시각 */
+  startedAt: number
+  /** 다시 시작한 시각. 일시정지한 채로 끝냈으면 세션이 끝난 시각 */
+  endedAt: number
+  /** 이유 */
+  tag: PauseTag
+  /** '기타' 를 골랐을 때 쓴 글 (빈칸 허용) */
+  note?: string
+}
+
+/** 체크리스트를 다 못 했을 때 고르는 이유. 이름표는 lib/sessionTags.ts */
+export type ShortfallReason =
+  'tooMuch' | 'stuck' | 'phone' | 'mindWander' | 'tired' | 'external' | 'etc'
+
+/** 잘 된 이유 (체크리스트를 다 했을 때 가끔 묻습니다). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+export type GoodReason = 'focus' | 'goodPlan' | 'condition' | 'environment' | 'helped' | 'luck'
+
+/** 세션 중에 같이 한 것 — 즐거움 묶기를 대신합니다 */
+export type WithWhat = 'music' | 'video' | 'none'
+
+/** 노는 기록의 종류 */
+export type PlayTag = 'youtube' | 'game' | 'sns' | 'webtoon' | 'rest' | 'etc'
+
+/** 종료 팝업에서 받은 것 (산출물 말고는 모두 1탭) */
+export interface SessionEndReport {
+  /** 체크한 체크리스트 항목 (ChecklistItem 의 id → 체크한 시각) */
+  checked: Record<string, number>
+  /** 다 못 했을 때 고른 이유 */
+  shortfallReason?: ShortfallReason
+  /** 같이 한 것 */
+  withWhat?: WithWhat
+  /** 산출물 증빙 — 링크 또는 2~3줄 요약 (사진은 저장소가 정해진 뒤) */
+  proof?: { link?: string; summary?: string }
+  /** 잘 된 이유 (물었을 때만) */
+  goodReasons?: GoodReason[]
+}
+
+/** 딴생각 주차장 메모 한 줄 */
+export interface SessionMemo {
+  /** 쓴 시각 */
+  at: number
+  /** 한 줄 */
+  text: string
 }
 
 /** 요일마다 반복되는 계획의 틀. 그 요일의 계획에 자동으로 들어옵니다 */
@@ -113,76 +187,72 @@ export interface Routine {
 }
 
 /*
- * ■ 카드 (#379, 기획서 docs/PLAN.md 「4.3 카드」)
- * 분석의 기본 단위입니다. 앞으로 StudyPlan(하루 계획)과 Routine(반복 계획)을 대신합니다. (화면 교체는 #392 · #394)
- * 칸 이름은 BE 의 카드(Project-BE#222)와 똑같이 맞췄습니다. 이름을 바꾸면 BE 와 RN 앱(Project-App)에도 알려 주세요.
+ * ── 카드 (최종 기획서 2026-10-17, docs/PLAN.md 「4.3 카드」) ──
+ * 분석의 기본 단위가 하루 → 카드로 바뀌었습니다. 위의 StudyPlan · Routine 을 대신합니다. (#379)
+ * 칸 이름은 BE(Project-BE#222)와 같습니다. 바꾸면 BE 와 RN 앱(Project-App)에도 알려 주세요.
  */
 
-/** 체크리스트 한 줄. 항목끼리 중요도는 없습니다. */
+/** 카드의 우선순위 — absolute: 미룰 수 없는 카드(과제 제출 등), flexible: 줄이거나 미룰 수 있는 카드 */
+export type CardPriority = 'absolute' | 'flexible'
+
+/** 카드의 유형 — self: 자습, lecture: 인강 */
+export type CardType = 'self' | 'lecture'
+
+/** 카드 체크리스트의 한 항목. 체크했는지는 카드가 아니라 그날의 세션 기록에 남깁니다 (#380) */
 export interface ChecklistItem {
   /** 항목을 구분하는 고유 값 */
   id: string
-  /** 할 일 (예: '수학 문제집 3단원 풀기') */
+  /** 할 일 (예: '수학 문제집 42~45쪽') */
   text: string
-  /** 체크한 시각 (Date.now() 값). 아직 안 했으면 없음 */
-  doneAt?: number
 }
 
-/** 카드 우선순위 — absolute: 절대(미룰 수 없음, 과제 제출 등) / flexible: 유연(운동 등) */
-export type CardPriority = 'absolute' | 'flexible'
-
-/** 카드 유형 — self: 자습 / lecture: 인강 */
-export type CardType = 'self' | 'lecture'
-
-/** 알림 방식 — message: 메시지 / call: 전화 */
-export type CardAlertMethod = 'message' | 'call'
-
-/** 카드 알림. 기본값은 "시작 정각 · 메시지 · 기본 문구" 입니다. (lib/cards.ts 의 DEFAULT_ALERT_TEXT) */
+/** 카드를 시작하라고 알려 주는 방법 */
 export interface CardAlert {
-  /** 알림 방식 */
-  alertMethod: CardAlertMethod
+  /** message: 알림 메시지, call: AI 전화 */
+  method: 'message' | 'call'
   /** 시작 몇 분 전에 알릴지. 0 이면 정각 */
-  alertMinutesBefore: number
-  /** 알림에 보여 줄 문구 */
-  alertText: string
+  minutesBefore: number
+  /** 알림에 보일 문장. 없으면 기본 문구 */
+  text?: string
 }
 
 /**
- * 카드 하나 = 할 일 하나. 반복 카드도 카드 하나이고, 날마다 복사하지 않습니다.
- * 날짜별로 했는지는 공부 기록(StudySession 의 planId 에 카드 id)에 남깁니다.
- * date 와 repeatDays 중 하나만 있습니다. (1회성이면 date, 반복이면 repeatDays)
+ * 카드 한 장 = "언제 + 무엇을" 정한 계획 하나. 1회성 카드와 요일마다 반복하는 카드가 있습니다.
+ * 반복 카드도 한 장으로 두고, 날마다 했는지는 세션 기록에 남깁니다. (매일 복사하지 않음)
  */
-export interface Card extends CardAlert {
-  /** 카드를 구분하는 고유 값. 옛 계획·루틴에서 옮긴 카드는 그 id 를 그대로 씁니다. (옛 공부 기록과 이어지게) */
+export interface Card {
+  /** 카드를 구분하는 고유 값 */
   id: string
-  /** 제목 — 무엇을 하는지 */
+  /** 무엇을 하는지 (예: '수학 문제집') */
   title: string
-  /** 1회성 카드의 날짜 (예: '2026-10-17'). 반복 카드면 null */
-  date: string | null
-  /** 반복 카드의 요일 (0 = 일요일 … 6 = 토요일, Date 의 getDay() 와 같은 숫자). 1회성 카드면 null */
-  repeatDays: number[] | null
-  /** 시작 시각 (예: '19:00'). 시각 없이 만든 옛 계획에서 옮긴 카드만 null */
-  startTime: string | null
+  /** 1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜 ('YYYY-MM-DD') */
+  date: string
+  /** 반복 카드면 요일 목록 (0 = 일요일 … 6 = 토요일). 1회성 카드면 없음 */
+  repeatDays?: number[]
+  /** 시작 시각 (예: '19:00'). 새 카드는 꼭 있고, 옛 계획에서 옮긴 카드만 없을 수 있습니다 */
+  startTime?: string
   /** 길이 (분) */
   durationMinutes: number
-  /** 체크리스트. 개수는 자유입니다. (보통 AI 가 만들어 줍니다, #413) */
+  /** 체크리스트 (필수, 1개 이상). 비어 있으면 AI 기본값 또는 제목 1개로 채웁니다 */
   checklist: ChecklistItem[]
-  /** 연결한 목표의 id. 목표 없음이면 null. 과목 칸을 대신합니다 */
-  goalId: string | null
-  /** 우선순위. 기본 flexible */
+  /** 연결한 목표의 id. 없으면 "목표 없음" */
+  goalId?: string
+  /** 우선순위. 기본은 flexible */
   priority: CardPriority
-  /** 유형. 기본 self(자습) */
+  /** 유형. 기본은 self(자습) */
   type: CardType
-  /** 예상 달성 개수. 기본은 체크리스트 개수 */
-  expectedDone: number
-  /** 예상 달성 개수를 체크리스트보다 낮춘 이유 태그 1개. 낮추지 않았으면 null */
-  expectedDoneReason: string | null
-  /** 예상 실패 원인. 내 행동에서 나오는 원인을 1개 이상 적습니다. 안 적었으면 빈 배열 */
-  expectedFailCauses: string[]
-  /** 계획에 쓴 시간 (밀리초). 편집 화면을 연 순간부터 저장할 때까지 */
-  planningMs: number
-  /** 미루기 횟수. 처음엔 0 (#400) */
-  postponeCount: number
+  /** 예상 달성 개수. 없으면 "체크리스트 전부" 로 봅니다 */
+  expectedDone?: number
+  /** 예상 달성 개수를 낮춘 이유 (태그 1개) */
+  expectedDoneReason?: string
+  /** 예상 실패 원인 (내 행동에서 나오는 원인을 1개 이상 포함) */
+  expectedFailCauses?: string[]
+  /** 알림. 없으면 기본(정각 · 메시지 · 기본 문구) */
+  alert?: CardAlert
+  /** 카드 편집 화면을 연 순간부터 저장할 때까지 걸린 시간 (밀리초). '계획 대 실행 비율' 에 씁니다 */
+  planningMs?: number
+  /** 카드를 만든 시각 */
+  createdAt: number
 }
 
 /**
