@@ -18,6 +18,8 @@ export interface CallLogEntry {
   dateKey: string
   /** 그 통화에 넣은 조건부 모듈. 없었으면 null */
   module: CallModule | null
+  /** 서버가 정리한 통화 요약 2~3문장 (AI 가 쓴 글, #415 상담 탭의 요약 카드). 없으면 없음 */
+  summary?: string | null
 }
 
 /** 남겨 두는 통화 기록 수 (최근 것만) */
@@ -42,8 +44,20 @@ export function loadLastCallAt(): number | null {
   return log.length === 0 ? null : log[log.length - 1].endedAt
 }
 
-/** 통화가 끝났다고 적습니다. 넣은 모듈도 같이 남겨서, 주 1~2회 모듈의 횟수를 셉니다. */
-export function recordFinishedCall(module: CallModule | null, now: number): void {
-  const entry: CallLogEntry = { endedAt: now, dateKey: toDayKey(now), module }
+/** 통화가 끝났다고 적습니다. 넣은 모듈도 같이 남겨서, 주 1~2회 모듈의 횟수를 셉니다. 요약은 상담 탭에 보여 줍니다. */
+export function recordFinishedCall(
+  module: CallModule | null,
+  now: number,
+  summary: string | null = null,
+): void {
+  const entry: CallLogEntry = { endedAt: now, dateKey: toDayKey(now), module, summary }
   saveData(CALL_LOG_KEY, [...loadCallLog(), entry].slice(-MAX_LOG))
+}
+
+/** 요약이 있는 가장 최근 통화. 없으면 undefined (상담 탭의 "지난 통화 요약", #415) */
+export function loadLastCallSummary(): { dateKey: string; summary: string } | undefined {
+  const entry = [...loadCallLog()]
+    .reverse()
+    .find((item) => typeof item.summary === 'string' && item.summary !== '')
+  return entry ? { dateKey: entry.dateKey, summary: entry.summary as string } : undefined
 }
