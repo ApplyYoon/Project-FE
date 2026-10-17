@@ -13,9 +13,11 @@ import { loadData } from '@/lib/storage'
  *   3. 아래 모양(choice, text, date, time)으로 안 되는 질문이면
  *      (예: 여러 개 고르기) 위에 Step 모양을 하나 더 만들고, OnboardingPage 의 StepInput 에도 한 줄 더하세요.
  *
- * ■ 처음에 묻는 질문과 나중에 묻는 질문 (#239)
- *   질문이 19개면 시작도 하기 전에 지칩니다. 그래서 꼭 필요한 질문에만 first: true 를 붙여서 처음에 묻고,
- *   나머지는 설정의 "내 정보 더 알려주기" 에서 천천히 답하게 했습니다. (아래 firstSteps, getUnansweredSteps)
+ * ■ 처음에 묻는 질문과 나중에 묻는 질문 (#239 → #388)
+ *   질문이 19개면 시작도 하기 전에 지칩니다. 그래서 처음 온보딩에서 묻는 질문에만 firstStage 를 붙이고,
+ *   나머지는 설정의 "내 정보 더 알려주기" 에서 천천히 답하게 했습니다. (아래 getFirstSteps, getUnansweredSteps)
+ *   처음 온보딩(기획서 4.1, 약 3분)은 앱 소개 → 학년(basic) → 심리검사 → 자기 인식 4문항(hypotheses) 순서입니다.
+ *   두 묶음 사이에 심리검사가 있어서 묶음을 나눴습니다. 순서는 lib/onboardingProgress.ts 의 STAGES 가 정합니다.
  *   관리 강도 한도와 메시지 설정은 묻지 않고 기본값으로 시작합니다. 설정 화면에서 언제든 바꿉니다.
  */
 
@@ -31,9 +33,20 @@ interface BaseStep {
   description?: string
   /** true 면 비워 두고 넘어갈 수 있습니다. */
   optional?: boolean
-  /** true 면 처음 온보딩에서 묻습니다. 없으면 나중에 "내 정보 더 알려주기" 에서 묻습니다. (#239) */
-  first?: boolean
+  /**
+   * 처음 온보딩의 어느 묶음에서 묻는지. 없으면 나중에 "내 정보 더 알려주기" 에서 묻습니다. (#239, #388)
+   *   basic: 학년 (심리검사 앞)
+   *   hypotheses: 자기 인식 4문항 (심리검사 뒤). 답은 '내 가설' 로도 저장해서 나중에 기록으로 확인합니다. (lib/myHypotheses.ts)
+   */
+  firstStage?: FirstStage
 }
+
+/** 처음 온보딩의 질문 묶음 이름 */
+export type FirstStage = 'basic' | 'hypotheses'
+
+/** '잘 모르겠음' 보기의 값. 자기 인식 4문항은 모두 이 보기를 고를 수 있습니다. (기획서 4.1, BE#219 의 UNKNOWN) */
+export const UNKNOWN_ANSWER = 'unknown'
+const UNKNOWN_OPTION = { value: UNKNOWN_ANSWER, label: '잘 모르겠음' }
 
 /**
  * 보기 하나. 글자(string)로 적으면 보이는 글자와 저장되는 값이 같습니다. (예: '고2')
@@ -119,16 +132,16 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'grade',
     group: '기본 정보',
-    first: true,
+    firstStage: 'basic',
     type: 'choice',
     title: '지금 몇 학년이야?',
     description: '학년에 맞춰서 공부 시간을 추천해 줄게요.',
-    options: ['고1', '고2', '고3', 'N수', '대학생'],
+    options: ['고1', '고2', '고3', 'N수', '대학생', '기타'],
   },
   {
+    // 시험·시험일·공부 이유는 처음 온보딩에서 빠지고 목표 만들기(#391)로 옮깁니다. 그때까지는 "내 정보 더 알려주기" 에서 묻습니다. (#388)
     key: 'targetExam',
     group: '기본 정보',
-    first: true,
     type: 'text',
     title: '어떤 시험을 준비하고 있어?',
     description: '가장 가까운 큰 시험 하나만 적어 주세요.',
@@ -138,7 +151,6 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'targetExamDate',
     group: '기본 정보',
-    first: true,
     type: 'date',
     title: '그 시험은 언제야?',
     description: '날짜를 고르면 시험까지 남은 날(D-day)을 계산해 줄게요.',
@@ -233,23 +245,27 @@ export const onboardingSteps: OnboardingStep[] = [
     ],
   },
 
-  /* ---------- 자기 인식 (#89) ---------- */
-  // 나중에 기록으로 확인하거나 반박해서 "나보다 나를 더 잘 아네?" 를 만드는 재료입니다.
+  /* ---------- 자기 인식 (#89 → #388) ---------- */
+  // 처음 온보딩의 마지막 묶음입니다. 답은 '내 가설' 로 저장해서, 나중에 기록으로 확인하거나 반박합니다. (#411)
+  // "나보다 나를 더 잘 아네?" 를 만드는 재료라, 모르면 '잘 모르겠음' 을 골라도 됩니다.
   // 숫자 답(분)은 글자로 저장되고, 값은 OnboardingAnswers 의 단위(분)와 같습니다.
   {
     key: 'chronotype',
-    group: '자기 인식',
+    group: '내 가설',
+    firstStage: 'hypotheses',
     type: 'choice',
-    title: '나는 아침형이야, 밤형이야?',
-    description: '스스로 생각하는 대로 골라 주세요. 나중에 기록으로 확인해 볼게요.',
+    title: '나는 아침형일까, 밤형일까?',
+    description: '정답은 없어요. 2주 동안 기록으로 같이 확인해 볼게요.',
     options: [
-      { value: 'morning', label: '아침형' },
-      { value: 'night', label: '밤형' },
+      { value: 'morning', label: '아침형이야' },
+      { value: 'night', label: '밤형이야' },
+      UNKNOWN_OPTION,
     ],
   },
   {
     key: 'maxFocusMinutes',
-    group: '자기 인식',
+    group: '내 가설',
+    firstStage: 'hypotheses',
     type: 'choice',
     title: '한 번 앉으면 얼마나 집중할 수 있어?',
     options: [
@@ -257,21 +273,23 @@ export const onboardingSteps: OnboardingStep[] = [
       { value: '50', label: '50분 안팎' },
       { value: '90', label: '1시간 반 안팎' },
       { value: '120', label: '2시간 이상' },
+      UNKNOWN_OPTION,
     ],
   },
   {
     key: 'biggestDistraction',
-    group: '자기 인식',
+    group: '내 가설',
+    firstStage: 'hypotheses',
     type: 'choice',
     title: '공부할 때 가장 큰 방해 요소는?',
-    options: ['폰·SNS', '졸림', '잡생각', '친구·가족', '소음·주변 환경', '기타'],
+    options: ['폰·SNS', '졸림', '잡생각', '친구·가족', '소음·주변 환경', '기타', UNKNOWN_OPTION],
   },
   {
     key: 'dailyAvailableMinutes',
-    group: '자기 인식',
-    first: true,
+    group: '내 가설',
+    firstStage: 'hypotheses',
     type: 'choice',
-    title: '하루에 공부할 수 있는 시간은?',
+    title: '평일 하루에 공부할 수 있는 시간은?',
     description: '학교·학원 시간을 뺀, 내가 쓸 수 있는 시간이에요.',
     options: [
       { value: '60', label: '1시간' },
@@ -279,6 +297,7 @@ export const onboardingSteps: OnboardingStep[] = [
       { value: '180', label: '3시간' },
       { value: '240', label: '4시간' },
       { value: '300', label: '5시간 이상' },
+      UNKNOWN_OPTION,
     ],
   },
 
@@ -287,7 +306,6 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     key: 'motivationReason',
     group: '동기',
-    first: true,
     type: 'text',
     optional: true,
     title: '공부하는 이유가 뭐야?',
@@ -317,8 +335,25 @@ export function loadOnboardingAnswers(): Record<string, string> | null {
   return saved as Record<string, string>
 }
 
-/** 처음 온보딩에서 묻는 질문들 (first: true 인 것만). 이것만 답해도 앱을 쓸 수 있습니다. (#239) */
-export const firstSteps: OnboardingStep[] = onboardingSteps.filter((step) => step.first === true)
+/** 처음 온보딩의 한 묶음에서 묻는 질문들 (firstStage 가 그 묶음인 것만). (#239, #388) */
+export function getFirstSteps(stage: FirstStage): OnboardingStep[] {
+  return onboardingSteps.filter((step) => step.firstStage === stage)
+}
+
+/**
+ * 처음 온보딩의 한 묶음을 끝냈는지. 그 묶음의 질문이 모두 저장된 답에 있으면 끝낸 것입니다.
+ * 묶음을 끝낼 때 답을 한꺼번에 저장해서, 하나라도 없으면 아직 안 끝낸 것입니다.
+ *
+ *   isFirstStageDone({ grade: '고2' }, 'basic')        -> true
+ *   isFirstStageDone({ grade: '고2' }, 'hypotheses')   -> false
+ */
+export function isFirstStageDone(
+  answers: Record<string, string> | null,
+  stage: FirstStage,
+): boolean {
+  if (answers === null) return false
+  return getFirstSteps(stage).every((step) => (answers[step.key] ?? '') !== '')
+}
 
 /**
  * 아직 답하지 않은 질문들을 돌려줍니다. 설정의 "내 정보 더 알려주기" 가 이 질문들을 이어서 묻습니다. (#239)
@@ -327,10 +362,10 @@ export const firstSteps: OnboardingStep[] = onboardingSteps.filter((step) => ste
  * 건너뛴 선택 질문은 빈 글자('')로 저장해 두어서, 이름이 있으니 다시 묻지 않습니다.
  *
  * ■ 예시
- *   getUnansweredSteps({ grade: '고2', targetExam: '수능', targetExamDate: '2026-11-18', dailyAvailableMinutes: '180' })
- *     -> 처음 질문 중 안 답한 '공부하는 이유' + 나중 질문 12개 = 13개
+ *   getUnansweredSteps({ grade: '고2', chronotype: 'night', maxFocusMinutes: '50', biggestDistraction: '폰·SNS', dailyAvailableMinutes: '180' })
+ *     -> 처음 온보딩에서 안 묻는 질문 14개
  *   getUnansweredSteps({ ...위의 답, motivationReason: '', wakeUpTime: '07:00' })
- *     -> 11개  (이유는 건너뛴 것으로 저장됐고, 기상 시각은 답했음)
+ *     -> 12개  (이유는 건너뛴 것으로 저장됐고, 기상 시각은 답했음)
  */
 export function getUnansweredSteps(answers: Record<string, string>): OnboardingStep[] {
   return onboardingSteps.filter((step) => !(step.key in answers))

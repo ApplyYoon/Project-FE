@@ -104,7 +104,7 @@ export function LoginPage() {
 
   function handleTestLogin() {
     // 테스트 로그인은 앱을 바로 둘러보려는 것이라 가입 화면을 건너뜁니다. "가입 마침" 표시를 해 두면 홈으로 갑니다.
-    // (가입 화면은 로그인한 채로 /signup 을 직접 열면 볼 수 있습니다)
+    // ("가입 마침" 표시가 있으면 /signup 을 직접 열어도 홈으로 갑니다. 이미 가입한 사람의 가입 정보를 덮어쓰지 않게 하려는 것입니다)
     markSignupDone()
     login(testUser, TEST_TOKEN)
     setHasJustLoggedIn(true)

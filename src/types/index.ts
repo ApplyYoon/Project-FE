@@ -255,6 +255,63 @@ export interface Card {
   createdAt: number
 }
 
+/*
+ * ── 목표 (최종 기획서 「4.7 목표와 숲」, #391) ──
+ * 목표 = D-day 가 있는 장기 결과. 카드는 목표를 위한 일상 행동이고, 카드의 goalId 로 이어집니다.
+ * 칸은 BE(Project-BE#221)와 같은 뜻입니다. 바꾸면 BE 에도 알려 주세요.
+ */
+
+/** 목표 유형 — score: 점수형(11월 학평 수학 3등급), completion: 완주형(영단어장 1회독). BE 의 SCORE / COMPLETION */
+export type GoalKind = 'score' | 'completion'
+
+/** 목표 상태 — 진행 / 완료 / 포기 */
+export type GoalStatus = 'active' | 'done' | 'givenUp'
+
+/** 목표값을 고치기 전의 값 (3·7번 오류 대응: 원래 목표를 잊지 않게 지우지 않고 남깁니다) */
+export interface GoalTargetSnapshot {
+  title: string
+  dDay: string
+  currentScore?: string
+  totalAmount?: number
+  amountUnit?: string
+  /** 이 값에서 바꾼 시각 */
+  changedAt: number
+  /** 왜 바꿨는지 */
+  reason: string
+}
+
+/** 목표 하나 (WOOP 순서로 만듭니다) */
+export interface Goal {
+  /** 목표를 구분하는 고유 값 */
+  id: string
+  kind: GoalKind
+  /** W 소망 — 목표 한 줄 (예: '11월 학평 수학 3등급') */
+  title: string
+  /** D-day ('YYYY-MM-DD') */
+  dDay: string
+  /** 점수형: 지금 점수·등급 (예: '5등급', '62점') */
+  currentScore?: string
+  /** 완주형: 전체 분량 (예: 300) */
+  totalAmount?: number
+  /** 완주형: 분량 단위 (예: '쪽', '강') */
+  amountUnit?: string
+  /** O 결과 — 이루면 좋은 점 */
+  benefit: string
+  /** O 결과 — 안 하면 생길 일 */
+  cost: string
+  /** O 방해물 — 내 안의 방해물 1개 (내부 원인만) */
+  obstacle: string
+  /** P 계획 — 방해물이 생겼을 때의 대처 */
+  plan: string
+  status: GoalStatus
+  /** D-day 뒤에 적은 결과. 아직이면 없음 */
+  result?: string
+  /** 목표값을 고친 기록 (오래된 것부터) */
+  history: GoalTargetSnapshot[]
+  /** 목표를 만든 시각 */
+  createdAt: number
+}
+
 /**
  * 온보딩에서 처음 세운 계획입니다.
  * 한 번 저장하면 나중에 루틴을 바꿔도 이 값은 바뀌지 않습니다. "처음의 나" 와 지금을 비교하는 기준입니다.

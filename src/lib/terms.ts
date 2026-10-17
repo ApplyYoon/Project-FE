@@ -30,7 +30,7 @@ export interface TermsDocument {
 export const serviceTerms: TermsDocument = {
   intro:
     'STARFLOW 를 쓰기 전에 읽어 주세요. 지금은 시범 운영 중이며, 내용이 바뀌면 앱에서 미리 알려 드립니다.',
-  updatedAt: '2026-10-10',
+  updatedAt: '2026-10-17',
   sections: [
     {
       title: '1. 어떤 서비스인가요',
@@ -85,7 +85,7 @@ export const serviceTerms: TermsDocument = {
       title: '7. 약관이 바뀔 때와 그만둘 때',
       items: [
         '약관을 바꿀 때는 바뀌는 내용과 시작하는 날을 앱에서 미리 알립니다.',
-        '언제든 이용을 그만둘 수 있습니다. 탈퇴 기능은 준비 중이며, 그 전에는 설정 › 내 데이터 관리에서 기록을 지울 수 있습니다.',
+        '언제든 이용을 그만둘 수 있습니다. 설정 › 내 계정에서 탈퇴하면 서버의 계정과 기록, 이 기기에 저장된 기록이 바로 지워지고 되돌릴 수 없습니다.',
       ],
     },
   ],

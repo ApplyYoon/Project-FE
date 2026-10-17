@@ -56,6 +56,11 @@ const failedTexts = {
 interface CallFailedViewProps {
   kind: 'error' | 'dropped'
   message: string
+  /**
+   * 마이크 때문에 실패했는지. true 면 "말 대신 체크인" 을 첫 번째(진한) 버튼으로 올립니다. (#460)
+   * 마이크 권한을 바꾸기 전에는 다시 시도해도 똑같이 실패하기 때문입니다.
+   */
+  isMicProblem: boolean
   onRetry: () => void
   onLeave: () => void
   /** 개발 서버에서만 넘깁니다. 있으면 "연습 화면 보기" 버튼이 나옵니다. */
@@ -63,8 +68,36 @@ interface CallFailedViewProps {
 }
 
 /** 연결 실패·끊김 안내 화면입니다. 다시 시도하거나 다른 화면으로 갈 수 있습니다. */
-function CallFailedView({ kind, message, onRetry, onLeave, onPreview }: CallFailedViewProps) {
+function CallFailedView({
+  kind,
+  message,
+  isMicProblem,
+  onRetry,
+  onLeave,
+  onPreview,
+}: CallFailedViewProps) {
   const texts = failedTexts[kind]
+  // 위에 오는 버튼이 진한(primary) 버튼입니다.
+  const retryButton = (
+    <Button
+      size="lg"
+      variant={isMicProblem ? 'secondary' : 'primary'}
+      className="w-full"
+      onClick={onRetry}
+    >
+      {texts.retry}
+    </Button>
+  )
+  const leaveButton = (
+    <Button
+      size="lg"
+      variant={isMicProblem ? 'primary' : 'secondary'}
+      className="w-full"
+      onClick={onLeave}
+    >
+      {texts.leave}
+    </Button>
+  )
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-white px-4 py-10 text-slate-900 sm:px-6">
@@ -85,12 +118,18 @@ function CallFailedView({ kind, message, onRetry, onLeave, onPreview }: CallFail
 
         {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
         <div className="mt-auto flex w-full flex-col gap-3 pt-10">
-          <Button size="lg" className="w-full" onClick={onRetry}>
-            {texts.retry}
-          </Button>
-          <Button size="lg" variant="secondary" className="w-full" onClick={onLeave}>
-            {texts.leave}
-          </Button>
+          {/* 마이크 문제면 "말 대신 체크인" 이 위(진한 버튼), 아니면 "다시 시도" 가 위입니다. */}
+          {isMicProblem ? (
+            <>
+              {leaveButton}
+              {retryButton}
+            </>
+          ) : (
+            <>
+              {retryButton}
+              {leaveButton}
+            </>
+          )}
           {onPreview && (
             <Button size="sm" variant="ghost" className="w-full" onClick={onPreview}>
               (개발용) 연습 화면 보기
@@ -229,6 +268,8 @@ export function CallActivePage() {
     'connecting',
   )
   const [errorMessage, setErrorMessage] = useState('')
+  // 마이크(권한이 막힘 · 마이크가 없음) 때문에 실패했는지. 실패 화면의 버튼 순서를 정하는 데 씁니다. (#460)
+  const [isMicFailure, setIsMicFailure] = useState(false)
   // "다시 시도"를 누를 때마다 1 씩 올라갑니다. 이 숫자가 바뀌면 아래 useEffect 가 연결을 처음부터 다시 시작합니다.
   const [attempt, setAttempt] = useState(0)
   // 개발 서버에서 서버가 없어도 통화 화면(말풍선 등)을 볼 수 있게 하는 스위치입니다. 배포한 화면에서는 쓰이지 않습니다.
@@ -294,6 +335,10 @@ export function CallActivePage() {
         if (isCancelled) return
         setConnection('error')
         setErrorMessage(getFailMessage(error))
+        setIsMicFailure(
+          error instanceof RealtimeCallError &&
+            (error.reason === 'mic' || error.reason === 'no-mic'),
+        )
       })
 
     return () => {
@@ -391,6 +436,8 @@ export function CallActivePage() {
       <CallFailedView
         kind={connection}
         message={errorMessage}
+        // 끊긴 경우(dropped)는 이미 마이크를 쓰고 있었으니 마이크 문제가 아닙니다.
+        isMicProblem={connection === 'error' && isMicFailure}
         onRetry={handleRetry}
         // 끊긴 경우는 평가 화면으로, 처음부터 안 된 경우는 말 대신 체크인 화면으로 보냅니다.
         // replace: 떠난 뒤 뒤로가기를 눌러도 이 화면으로 돌아와 전화가 다시 걸리지 않게 합니다.
