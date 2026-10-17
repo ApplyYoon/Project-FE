@@ -85,7 +85,7 @@ const SuggestionsPage = lazy(() =>
 const SupportPage = lazy(() =>
   import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
 )
-const TimerPage = lazy(() => import('@/pages/TimerPage').then((m) => ({ default: m.TimerPage })))
+const TimerRoute = lazy(() => import('@/pages/TimerRoute').then((m) => ({ default: m.TimerRoute })))
 
 /**
  * 페이지(주소)를 추가하려면 위의 lazy 목록에 한 줄, children 배열에 한 줄 추가하면 됩니다.
@@ -113,7 +113,8 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'about', element: <AboutPage /> },
       { path: 'planner', element: <PlannerPage /> },
-      { path: 'timer', element: <TimerPage /> },
+      // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
+      { path: 'timer', element: <TimerRoute /> },
       { path: 'check', element: <CheckPage /> },
       { path: 'diary', element: <DiaryPage /> },
       { path: 'diary/reflection', element: <ReflectionPage /> },
