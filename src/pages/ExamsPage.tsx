@@ -1,9 +1,12 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ExamPredictionPrompt } from '@/components/ui/ExamPredictionPrompt'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useExams } from '@/hooks/useExams'
+import { useGoals } from '@/hooks/useGoals'
+import { needsGoalPrediction, setGoalPrediction } from '@/lib/examGoal'
 import { cn } from '@/lib/cn'
 import {
   examTypeOptions,
@@ -18,7 +21,7 @@ import {
   splitExams,
 } from '@/lib/exams'
 import { useSubjects } from '@/hooks/useSubjects'
-import type { Exam, ExamSubjectScore, ExamType, Subject } from '@/types'
+import type { Exam, ExamSubjectScore, ExamType, Goal, Subject } from '@/types'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -29,10 +32,12 @@ interface ExamFormState {
   date: string
   /** 과목 id → 예상 점수 글자 */
   scores: Record<string, string>
+  /** 붙일 점수형 목표의 id. 빈 글자면 목표 없음 (#403) */
+  goalId: string
 }
 
 function createEmptyForm(): ExamFormState {
-  return { type: 'mock', name: '', date: '', scores: {} }
+  return { type: 'mock', name: '', date: '', scores: {}, goalId: '' }
 }
 
 interface ScoreListProps {
@@ -69,6 +74,9 @@ function ScoreList({ exam, subjects }: ScoreListProps) {
 export function ExamsPage() {
   const navigate = useNavigate()
   const { exams, addExam, updateExam, deleteExam } = useExams()
+  // 시험을 붙일 수 있는 목표 = 진행 중인 점수형 목표 (#403)
+  const { goals, activeGoals } = useGoals()
+  const scoreGoals = activeGoals.filter((goal) => goal.kind === 'score')
   // 과목은 계획 화면에서 저장한 목록을 읽기만 합니다. (처음 한 번은 예시 과목)
   const subjects = useSubjects()
 
@@ -93,7 +101,13 @@ export function ExamsPage() {
     for (const score of exam.subjectScores) {
       scores[score.subjectId] = String(score.expectedScore)
     }
-    setForm({ type: exam.type, name: exam.name, date: exam.date, scores })
+    setForm({
+      type: exam.type,
+      name: exam.name,
+      date: exam.date,
+      scores,
+      goalId: exam.goalId ?? '',
+    })
     setEditingId(exam.id)
     setErrorMessage('')
     setSavedMessage('')
@@ -151,7 +165,14 @@ export function ExamsPage() {
     }
 
     if (editingId === null) {
-      addExam({ id: `exam-${Date.now()}`, type: form.type, name, date: form.date, subjectScores })
+      addExam({
+        id: `exam-${Date.now()}`,
+        type: form.type,
+        name,
+        date: form.date,
+        subjectScores,
+        ...(form.goalId !== '' && { goalId: form.goalId }),
+      })
     } else {
       const oldExam = exams.find((exam) => exam.id === editingId)
       if (oldExam) {
@@ -165,6 +186,9 @@ export function ExamsPage() {
           name,
           date: form.date,
           subjectScores: [...subjectScores, ...keptScores],
+          // 목표를 '없음' 으로 바꾸면 연결을 지웁니다. 다른 목표로 바꾸면 예전 목표 기준 예상도 지웁니다.
+          goalId: form.goalId === '' ? undefined : form.goalId,
+          goalPrediction: form.goalId === oldExam.goalId ? oldExam.goalPrediction : undefined,
         })
       }
     }
@@ -223,6 +247,15 @@ export function ExamsPage() {
                     </div>
 
                     <ScoreList exam={exam} subjects={subjects} />
+
+                    {/* 목표에 붙인 시험이면 목표 이름과, 3일 전부터는 목표 기준 예상을 1탭으로 묻습니다. (#403) */}
+                    {exam.goalId && (
+                      <ExamGoalLine
+                        exam={exam}
+                        goal={goals.find((goal) => goal.id === exam.goalId)}
+                        onPredict={(prediction) => updateExam(setGoalPrediction(exam, prediction))}
+                      />
+                    )}
 
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Button
@@ -362,6 +395,35 @@ export function ExamsPage() {
                 />
               </div>
 
+              {/* 점수형 목표에 붙이면 목표 화면에서 이 시험의 결과를 같이 봅니다. (#403) */}
+              {scoreGoals.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-sm font-medium text-slate-700">목표에 붙이기 (선택)</p>
+                  <div role="radiogroup" aria-label="붙일 목표" className="flex flex-wrap gap-2">
+                    {[{ id: '', title: '목표 없음' }, ...scoreGoals].map((goal) => {
+                      const isSelected = form.goalId === goal.id
+                      return (
+                        <button
+                          key={goal.id || 'none'}
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          onClick={() => setForm((prev) => ({ ...prev, goalId: goal.id }))}
+                          className={cn(
+                            'h-10 max-w-full cursor-pointer truncate rounded-full border px-4 text-sm font-medium transition-colors',
+                            isSelected
+                              ? 'border-brand bg-brand-light text-brand'
+                              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+                          )}
+                        >
+                          {goal.title}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className="text-sm font-medium text-slate-700">과목별 예상 점수</p>
                 <p className="mt-1 text-sm text-slate-500">
@@ -465,5 +527,32 @@ export function ExamsPage() {
         )}
       </Modal>
     </div>
+  )
+}
+
+interface ExamGoalLineProps {
+  exam: Exam
+  /** 붙인 목표. 그사이 목표를 지웠으면 없음 */
+  goal: Goal | undefined
+  onPredict: (prediction: string) => void
+}
+
+/** 다가오는 시험 아래의 "목표: … · 예상 …" 한 줄. 3일 전부터 예상을 안 골랐으면 고르는 카드를 보여 줍니다. (#403) */
+function ExamGoalLine({ exam, goal, onPredict }: ExamGoalLineProps) {
+  if (goal === undefined) return null
+  if (needsGoalPrediction(exam)) {
+    return <ExamPredictionPrompt exam={exam} goal={goal} onPredict={onPredict} />
+  }
+  return (
+    <p className="text-sm break-keep text-slate-600">
+      목표:{' '}
+      <Link
+        to={`/goals/${goal.id}`}
+        className="text-brand font-medium underline underline-offset-4"
+      >
+        {goal.title}
+      </Link>
+      {exam.goalPrediction && ` · 내 예상 ${exam.goalPrediction}`}
+    </p>
   )
 }

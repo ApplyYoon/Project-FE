@@ -1,8 +1,18 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { Input } from '@/components/ui/Input'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { useCards } from '@/hooks/useCards'
 import { ApiError } from '@/lib/api'
+import { loadSinceLastCall } from '@/lib/callCard'
+import {
+  getSplitMinuteOptions,
+  loadCallCardActions,
+  makeSplitCard,
+  type CallCardAction,
+} from '@/lib/callCardActions'
 import { saveCallToCheckIn } from '@/lib/callCheckIn'
+import { recordFinishedCall } from '@/lib/callLog'
 import {
   finishCall,
   readCallResultState,
@@ -13,11 +23,14 @@ import {
 import { loadTodayCallCard } from '@/lib/callSummary'
 import { careThemes } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
+import { CARD_FAIL_CAUSES, addCardMark, type CardFailCause } from '@/lib/cardMarks'
 import { formatMinutes } from '@/lib/dailyRecords'
-import { getTodayKey } from '@/lib/date'
+import { getTodayKey, moveDateKey } from '@/lib/date'
 import { isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { SUPPORT_PATH, helpLines } from '@/lib/helpLines'
+import { loadAutoSettings } from '@/lib/settingsMapping'
 import { getTodayCareLevel } from '@/lib/todayCare'
+import type { Card as CardModel, ChecklistItem } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -40,12 +53,21 @@ export function CallResultPage() {
   const navigate = useNavigate()
   // 처음 들어올 때 받은 값을 들고 있습니다. (정리가 끝나면 주소에 딸린 자막을 지우는데, 그 뒤에도 다시 시도할 수 있게)
   const [resultState] = useState(() => readCallResultState(location.state))
+  // 지난 통화 이후 처리할 카드 (#415). 통화 기록을 적기 전(서버 정리 전)에 한 번만 모읍니다. (lib/callCardActions.ts)
+  const [cardActions] = useState(() => loadCallCardActions(Date.now(), getTodayKey()))
+  // 실패한 카드를 나눠 넣을지 묻는 때 — '통화 때' 면 여기서 묻습니다. (설정, #385)
+  const [failedCardTiming] = useState(() => loadAutoSettings().failedCardTiming.value)
+  // 카드 목록은 이 화면에서 한 번만 들고 아래 칸들에 넘깁니다. (칸마다 따로 들면 서로의 저장을 덮어씁니다)
+  const { addCard, updateCard } = useCards()
 
   // useMutation: 서버에 "통화를 마무리해 줘" 라고 보내는 요청입니다. 보내는 중·실패를 대신 관리해 줍니다. (docs/DATA-FETCHING.md 5장)
   const mutation = useMutation({
     // 결론을 받으면 바로 오늘 체크인에 저장합니다. (#38) 저장했는지도 같이 돌려줘서 화면이 안내 문장을 고릅니다.
     mutationFn: async (state: CallResultState) => {
       const conclusion = await finishCall(state)
+      // 통화가 끝났다고 적습니다. 다음 통화의 학생 카드는 이 시각 이후로 결산합니다. (#414, lib/callLog.ts)
+      // 넣은 조건부 모듈은 통화를 시작할 때와 같은 기록으로 다시 계산합니다. (기록에 적기 전이라 같은 값이 나옵니다)
+      recordFinishedCall(loadSinceLastCall().callModule, Date.now(), conclusion.summary)
       return { conclusion, isSavedToCheckIn: saveCallToCheckIn(conclusion) }
     },
     onSuccess: () => {
@@ -93,6 +115,22 @@ export function CallResultPage() {
         />
       )}
 
+      {/* 카드 처리는 위기 표현이 감지된 통화에서는 하지 않습니다. 도움 안내가 먼저입니다. */}
+      {mutation.isSuccess && !mutation.data.conclusion.showHelp && (
+        <>
+          {cardActions.unhandled.length > 0 && (
+            <UnhandledCardsSection
+              items={cardActions.unhandled}
+              askSplit={failedCardTiming === 'call'}
+              onAddCard={addCard}
+            />
+          )}
+          {cardActions.module === 'review4' && cardActions.missedCards.length > 0 && (
+            <CardFixSection cards={cardActions.missedCards} onUpdateCard={updateCard} />
+          )}
+        </>
+      )}
+
       {/* 모바일에서는 버튼을 위아래로, PC 에서는 나란히 놓습니다. */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button
@@ -107,6 +145,319 @@ export function CallResultPage() {
         </Button>
       </div>
     </div>
+  )
+}
+
+/** 날짜를 짧게. 예: '2026-10-17' -> '10/17' */
+function shortDate(dateKey: string): string {
+  const [, month, day] = dateKey.split('-').map(Number)
+  return `${month}/${day}`
+}
+
+/** 카드 시각 · 날짜 한 줄. 예: '10/17 19:00 · 60분' */
+function cardWhenText(card: CardModel, dateKey: string): string {
+  return `${shortDate(dateKey)} ${card.startTime ?? '시간 미정'} · ${card.durationMinutes}분`
+}
+
+interface UnhandledCardsSectionProps {
+  /** 지난 통화 이후 아직 정리 안 한 카드 */
+  items: CallCardAction[]
+  /** 설정이 '통화 때' 면 실패로 기록한 뒤 나눠서 다른 날에 넣을지 묻습니다 */
+  askSplit: boolean
+  /** 나눈 카드를 카드 목록에 더합니다 (useCards 의 addCard) */
+  onAddCard: (card: CardModel) => void
+}
+
+/**
+ * 정리 안 한 카드 (#415). 원인을 1탭으로 고르면 실패로 기록합니다. (#400 과 같은 addCardMark)
+ * 설정이 '통화 때' 면 이어서 "나눠서 다른 날에 넣기" 를 묻습니다.
+ */
+function UnhandledCardsSection({ items, askSplit, onAddCard }: UnhandledCardsSectionProps) {
+  return (
+    <Card title="정리 안 한 카드">
+      <p className="text-sm break-keep text-slate-600">
+        통화에서 이야기한 원인을 골라 주세요. 실패로 기록하고, 원인은 다음 판정에 써요.
+      </p>
+      <ul className="mt-3 flex flex-col gap-4">
+        {items.map((item) => (
+          <UnhandledCardRow
+            key={`${item.card.id}-${item.dateKey}`}
+            item={item}
+            askSplit={askSplit}
+            onAddCard={onAddCard}
+          />
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+interface UnhandledCardRowProps {
+  item: CallCardAction
+  askSplit: boolean
+  onAddCard: (card: CardModel) => void
+}
+
+function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) {
+  // pending: 원인 고르는 중 · split: 나눠 넣을지 묻는 중 · done: 끝
+  const [step, setStep] = useState<'pending' | 'split' | 'done'>('pending')
+  const [cause, setCause] = useState<CardFailCause | null>(null)
+  const [splitDate, setSplitDate] = useState(() => moveDateKey(getTodayKey(), 1))
+  const minuteOptions = getSplitMinuteOptions(item.card.durationMinutes)
+  const [splitMinutes, setSplitMinutes] = useState(minuteOptions[0])
+  const [message, setMessage] = useState('')
+
+  function handleFail(nextCause: CardFailCause) {
+    addCardMark({ cardId: item.card.id, dateKey: item.dateKey, mark: 'failed', cause: nextCause })
+    setCause(nextCause)
+    setStep(askSplit ? 'split' : 'done')
+    setMessage('실패로 기록했어요.')
+  }
+
+  function handleSplit() {
+    onAddCard(makeSplitCard(item.card, splitDate, splitMinutes, Date.now()))
+    setStep('done')
+    setMessage(`실패로 기록하고, ${shortDate(splitDate)} 에 ${splitMinutes}분으로 다시 넣었어요.`)
+  }
+
+  const causeLabel = CARD_FAIL_CAUSES.find((option) => option.key === cause)?.label
+  return (
+    <li className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <p className="font-medium break-keep text-slate-900">{item.card.title}</p>
+        <p className="text-sm text-slate-500">{cardWhenText(item.card, item.dateKey)}</p>
+      </div>
+
+      {step === 'pending' && (
+        // 375px 에서도 버튼이 줄을 바꿔 들어가고, 누르는 곳은 40px(h-10) 입니다.
+        <div
+          role="group"
+          aria-label={`${item.card.title} 못 한 원인`}
+          className="flex flex-wrap gap-1.5"
+        >
+          {CARD_FAIL_CAUSES.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => handleFail(option.key)}
+              className="h-10 cursor-pointer rounded-full border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {step === 'split' && (
+        <div className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3">
+          <p className="text-sm font-medium break-keep text-slate-800">
+            실패로 기록했어요 ({causeLabel}). 나눠서 다른 날에 다시 넣을까요?
+          </p>
+          {/* 375px 에서는 날짜 칸이 잘리지 않게 위아래로, PC 에서는 나란히 놓습니다. */}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="min-w-0">
+              <Input
+                id={`split-date-${item.card.id}-${item.dateKey}`}
+                label="넣을 날"
+                type="date"
+                min={moveDateKey(getTodayKey(), 1)}
+                value={splitDate}
+                onChange={(event) => event.target.value !== '' && setSplitDate(event.target.value)}
+                className="h-10 text-base"
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <span className="text-sm font-medium text-slate-700">길이</span>
+              <div role="group" aria-label="나눈 카드 길이" className="flex gap-1.5">
+                {minuteOptions.map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    aria-pressed={splitMinutes === minutes}
+                    onClick={() => setSplitMinutes(minutes)}
+                    className={cn(
+                      'h-10 flex-1 cursor-pointer rounded-lg border text-sm font-medium',
+                      splitMinutes === minutes
+                        ? 'border-brand bg-brand-light text-brand'
+                        : 'border-slate-300 bg-white text-slate-700',
+                    )}
+                  >
+                    {minutes}분
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button className="w-full sm:w-auto" onClick={handleSplit}>
+              이 날에 다시 넣기
+            </Button>
+            <Button variant="ghost" className="w-full sm:w-auto" onClick={() => setStep('done')}>
+              안 나눌게요
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {message !== '' && step === 'done' && (
+        <p role="status" className="text-sm text-emerald-700">
+          {message}
+        </p>
+      )}
+    </li>
+  )
+}
+
+interface CardFixSectionProps {
+  /** 지난 통화 이후 미루거나 못 한 카드 */
+  cards: CardModel[]
+  /** 카드를 고칩니다 (useCards 의 updateCard) */
+  onUpdateCard: (cardId: string, changes: Partial<Omit<CardModel, 'id'>>) => void
+}
+
+/**
+ * 4칸 회고 ④ "카드를 어떻게 고칠까?" 의 답을 카드 수정안으로 확인받습니다. (#415, 기획서 「4.5」 4칸 회고)
+ * 시작 시각 · 길이 · 체크리스트를 고치고 [이대로 고치기] 를 눌러야 카드에 반영됩니다.
+ * (서버가 ④ 의 답을 정리해 돌려주면 그 값으로 미리 채웁니다. 지금은 카드의 지금 값으로 시작합니다)
+ */
+function CardFixSection({ cards, onUpdateCard }: CardFixSectionProps) {
+  const [cardId, setCardId] = useState(cards[0].id)
+  const card = cards.find((item) => item.id === cardId) ?? cards[0]
+  const [startTime, setStartTime] = useState(card.startTime ?? '')
+  const [minutesText, setMinutesText] = useState(String(card.durationMinutes))
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(card.checklist)
+  const [newItem, setNewItem] = useState('')
+  const [message, setMessage] = useState('')
+
+  function selectCard(next: CardModel) {
+    setCardId(next.id)
+    setStartTime(next.startTime ?? '')
+    setMinutesText(String(next.durationMinutes))
+    setChecklist(next.checklist)
+    setMessage('')
+  }
+
+  function handleAddItem() {
+    const text = newItem.trim()
+    if (text === '') return
+    setChecklist((prev) => [...prev, { id: `${card.id}-fix-${Date.now()}`, text }])
+    setNewItem('')
+  }
+
+  const minutes = Number(minutesText)
+  const isValid =
+    Number.isInteger(minutes) && minutes >= 5 && minutes <= 600 && checklist.length > 0
+
+  function handleApply() {
+    if (!isValid) return
+    onUpdateCard(card.id, {
+      ...(startTime !== '' ? { startTime } : {}),
+      durationMinutes: minutes,
+      checklist,
+    })
+    setMessage('카드를 고쳤어요. 다음부터 이 카드로 해요.')
+  }
+
+  return (
+    <Card title="카드 고치기 (4칸 회고)">
+      <p className="text-sm break-keep text-slate-600">
+        통화에서 정한 대로 카드를 고쳐요. 시간과 할 일을 확인하고 [이대로 고치기] 를 눌러 주세요.
+      </p>
+      {cards.length > 1 && (
+        <div role="radiogroup" aria-label="고칠 카드" className="mt-3 flex flex-wrap gap-1.5">
+          {cards.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="radio"
+              aria-checked={item.id === card.id}
+              onClick={() => selectCard(item)}
+              className={cn(
+                'h-10 max-w-full cursor-pointer truncate rounded-full border px-3 text-sm font-medium',
+                item.id === card.id
+                  ? 'border-brand bg-brand-light text-brand'
+                  : 'border-slate-300 bg-white text-slate-700',
+              )}
+            >
+              {item.title}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="min-w-0">
+          <Input
+            id="fix-start"
+            label="시작 시각"
+            type="time"
+            value={startTime}
+            onChange={(event) => setStartTime(event.target.value)}
+            className="h-10 text-base"
+          />
+        </div>
+        <div className="min-w-0">
+          <Input
+            id="fix-minutes"
+            label="길이 (분)"
+            type="number"
+            inputMode="numeric"
+            min={5}
+            max={600}
+            value={minutesText}
+            onChange={(event) => setMinutesText(event.target.value)}
+            className="h-10 text-base"
+          />
+        </div>
+      </div>
+      <p className="mt-3 text-sm font-medium text-slate-700">할 일</p>
+      <ul className="mt-1 flex flex-col gap-1.5">
+        {checklist.map((item) => (
+          <li key={item.id} className="flex items-center justify-between gap-2">
+            <span className="min-w-0 text-sm break-keep text-slate-800">· {item.text}</span>
+            <button
+              type="button"
+              aria-label={`${item.text} 빼기`}
+              onClick={() => setChecklist((prev) => prev.filter((other) => other.id !== item.id))}
+              className="h-10 shrink-0 cursor-pointer rounded-md px-3 text-sm text-slate-500 hover:bg-slate-100"
+            >
+              빼기
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Input
+            id="fix-new-item"
+            aria-label="할 일 더하기"
+            value={newItem}
+            maxLength={60}
+            placeholder="할 일 더하기"
+            onChange={(event) => setNewItem(event.target.value)}
+            className="h-10 text-base"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          className="shrink-0"
+          onClick={handleAddItem}
+          disabled={newItem.trim() === ''}
+        >
+          더하기
+        </Button>
+      </div>
+      {checklist.length === 0 && (
+        <p className="mt-2 text-sm text-red-700">할 일이 하나는 있어야 해요.</p>
+      )}
+      <Button className="mt-4 w-full sm:w-auto" onClick={handleApply} disabled={!isValid}>
+        이대로 고치기
+      </Button>
+      {message !== '' && (
+        <p role="status" className="mt-2 text-sm text-emerald-700">
+          {message}
+        </p>
+      )}
+    </Card>
   )
 }
 

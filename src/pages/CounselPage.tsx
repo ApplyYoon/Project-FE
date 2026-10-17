@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { usePlans } from '@/hooks/usePlans'
+import { loadLastCallSummary } from '@/lib/callLog'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildCallSummaries, loadCheckInsByDate } from '@/lib/callSummary'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -39,6 +40,8 @@ export function CounselPage() {
   const [checkIns] = useState(loadCheckInsByDate)
   const [sessions] = useState(loadStudySessions)
   const latestSummary = buildCallSummaries(checkIns, allPlans, sessions)[0] ?? null
+  // 통화가 끝날 때 서버가 정리한 요약 문장(AI 가 쓴 글)이 있으면 그것을 먼저 보여 줍니다. (#415, lib/callLog.ts)
+  const [aiSummary] = useState(loadLastCallSummary)
   const hasCalledToday = checkIns[getTodayKey()] !== undefined
 
   return (
@@ -76,7 +79,12 @@ export function CounselPage() {
         </Card>
 
         <Card title="지난 통화 요약">
-          {latestSummary === null ? (
+          {aiSummary !== undefined ? (
+            <div className="flex flex-col gap-1 text-sm">
+              <p className="text-slate-500">{aiSummary.dateKey} · AI 가 정리했어요</p>
+              <p className="break-keep text-slate-900">{aiSummary.summary}</p>
+            </div>
+          ) : latestSummary === null ? (
             <p className="text-sm break-keep text-slate-600">
               아직 통화한 기록이 없어요. 통화하면 여기에 요약이 남아요.
             </p>
@@ -98,13 +106,17 @@ export function CounselPage() {
           </Button>
         </Card>
 
-        {/* 채팅과 목표 만들기 대화는 #416 에서 만듭니다. 어디서 하게 될지 미리 알 수 있게 자리만 보여 줍니다. */}
+        {/* 채팅: 통화와 같은 대본을 글로 (#416). 목표 만들기 대화는 아직 자리만 보여 줍니다. */}
         <Card title="채팅으로 상담하기">
           <p className="text-sm break-keep text-slate-600">
             통화를 못 받은 날은 같은 이야기를 글로 나눌 수 있어요.
           </p>
-          <Button variant="secondary" className="mt-4 w-full sm:w-auto" disabled>
-            곧 열려요
+          <Button
+            variant="secondary"
+            className="mt-4 w-full sm:w-auto"
+            onClick={() => navigate('/counsel/chat')}
+          >
+            채팅 시작하기
           </Button>
         </Card>
 

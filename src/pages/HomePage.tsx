@@ -2,48 +2,39 @@ import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
-import { ExperimentSection } from '@/components/ui/ExperimentSection'
-import { InsightCard } from '@/components/ui/InsightCard'
-import { PlayBadge } from '@/components/ui/PlayBadge'
+import { MyHypothesesCard } from '@/components/ui/MyHypothesesCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { SubjectBadge } from '@/components/ui/SubjectBadge'
-import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
-import { WeeklyFactCard } from '@/components/ui/WeeklyFactCard'
+import { useCards } from '@/hooks/useCards'
+import { useGoals } from '@/hooks/useGoals'
 import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
-import { useStopwatch } from '@/hooks/useStopwatch'
-import { cn } from '@/lib/cn'
-import { DEFAULT_TARGET_MINUTES, normalizeTargetMinutes } from '@/lib/countdown'
-import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
-import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
-import { dailyCoachQuery, getYesterdayLine, type YesterdayLine } from '@/lib/dailyCoach'
-import { getDaySummary } from '@/lib/daySummary'
-import { formatDday } from '@/lib/exams'
-import { getFirstMe, type FirstMe } from '@/lib/firstMe'
-import { isSafetyBrakeOnNow } from '@/lib/focusMode'
-import { loadInitialPlan } from '@/lib/initialPlan'
-import { getInsightsToShow } from '@/lib/insights'
+import { buildJudgedCardDays } from '@/lib/cardDays'
+import { loadCardMarks } from '@/lib/cardMarks'
+import { saveCards } from '@/lib/cards'
+import { createInstantCardNow } from '@/lib/cardSession'
 import { getCareLimits } from '@/lib/careLimits'
-import { useSubjects } from '@/hooks/useSubjects'
-import { getDayProgress, getPlanProgress } from '@/lib/planProgress'
-import { loadData } from '@/lib/storage'
-import { sortPlansForNow } from '@/lib/timeline'
-import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
-import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
-import { getTreeState, type TreeState } from '@/lib/tree'
-import { loadVoicePledge } from '@/lib/voicePledge'
-import { getMondayKey, getWeeklyFacts } from '@/lib/weeklyFacts'
+import { cn } from '@/lib/cn'
+import { runDailyCareStage } from '@/lib/dailyCareRun'
+import { dailyCoachQuery, getYesterdayLine, type YesterdayLine } from '@/lib/dailyCoach'
+import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
+import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
+import { getDaySummary } from '@/lib/daySummary'
+import { formatDday, getDaysUntil } from '@/lib/exams'
+import type { ForestState, ForestTree } from '@/lib/forest'
+import { loadForestState } from '@/lib/forestData'
+import { FIRST_CHECK_DAYS, checkHypotheses, getHypothesisDay } from '@/lib/hypothesisCheck'
+import { loadMyHypotheses } from '@/lib/myHypotheses'
+import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import {
-  getWeeklyGoalCandidates,
-  getWeeklyGoalProgress,
-  getWeeklyGoalReason,
-  getWeeklyGoalTitle,
-  loadWeeklyGoalChoices,
-  saveWeeklyGoalChoice,
-  type WeeklyGoalChoice,
-} from '@/lib/weeklyGoal'
-import { loadWeeklyReviews } from '@/lib/weeklyReview'
-import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
+  clearSettingChanges,
+  describeSettingChange,
+  loadSettingChanges,
+  revertSettingChange,
+} from '@/lib/settingChanges'
+import type { SettingChange } from '@/lib/settingsMapping'
+import { getTodayCardsState, type TodayCardsState } from '@/lib/todayCards'
+import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
+import type { Card as CardModel, StudySession } from '@/types'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -84,25 +75,6 @@ function formatMinutes(totalMinutes: number): string {
   return `${hours}시간 ${minutes}분`
 }
 
-/** 공부 기록으로 지금 나무 상태를 계산합니다. */
-function calculateTree(): TreeState {
-  const days = groupSessionsByDate(loadStudySessions())
-  const totalStudyMinutes = days.reduce((sum, day) => sum + day.totalMinutes, 0)
-  const today = days.find((day) => day.date === getTodayKey())
-
-  return getTreeState({
-    totalStudyMinutes,
-    todayStudyMinutes: today?.totalMinutes ?? 0,
-    careLevel: getTodayCareLevel(),
-    // 잎 = 건너뛰지 않고 쓴 주간 회고의 수 (#82)
-    reflectionCount: loadWeeklyReviews().filter((review) => !review.skipped).length,
-    // TODO(#73): 진짜 인사이트가 아직 없어서 0 입니다. (지금 인사이트는 개발용 예시뿐입니다)
-    insightCount: 0,
-    // 열매 = "나 사용설명서" 에 올라간 효과가 확인된 방법의 수 (#87, #93)
-    manualItemCount: loadManualItems().length,
-  })
-}
-
 /** 오늘 날짜를 '10월 10일 토요일' 처럼 보여줍니다. (새벽 4시 전이면 어제 날짜를 넘겨받습니다) */
 function formatToday(date: Date): string {
   return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })
@@ -111,47 +83,64 @@ function formatToday(date: Date): string {
 // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스입니다.
 // Button 은 <button> 이라서, 다른 화면으로 가는 곳에는 Link 에 이 클래스를 붙여 씁니다.
 // h-12 / h-10: 손가락으로 누르기 쉽게 높이를 40px 이상으로 둡니다.
-const bigLinkClass =
-  'bg-brand hover:bg-brand-dark flex h-12 w-full items-center justify-center rounded-lg text-base font-semibold text-white transition-colors'
 const textLinkClass =
   'text-brand inline-flex h-10 items-center text-sm font-medium underline underline-offset-4'
 
+/** [지금 시작] 으로 만드는 즉석 카드의 길이 (분). 타이머 대기 화면의 기본값과 같습니다 */
+const INSTANT_CARD_MINUTES = 50
+
+/**
+ * 홈 화면입니다. (기획서 「4.2 홈」, #405)
+ *
+ *   맨 위: 하루 첫 컨디션·감정 태그(Layout 의 DailyTagBar) · 오른쪽 위 설정 아이콘
+ *   숲 → 지금/다음 카드와 [시작] · [지금 시작] → 오늘 한 줄 → 지금 관리 모드와 이유 → AI 가 바꾼 설정 알림
+ *   내 가설 3일째·7일째에는 기록과 비교한 첫 확인을 띄웁니다.
+ *
+ * 처음의 나 · 이번 주 목표 · 주간 팩트 · 인사이트 · 개선안(실험) 카드는 홈에서 빠지고 분석 탭에서 봅니다.
+ */
 export function HomePage() {
   const navigate = useNavigate()
-  const [tree] = useState(calculateTree)
-  // 오늘의 관리 강도와, 내가 정한 최대 한도입니다. 화면이 처음 그려질 때 한 번만 읽습니다. (#94)
-  const [careLevel] = useState(getTodayCareLevel)
-  const [maxCareLevel] = useState(() => getCareLimits().maxCareLevel)
-
-  const { allPlans, getPlans } = usePlans()
-  // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
-  const [sessions] = useState<StudySession[]>(loadStudySessions)
-  // 노는 기록까지 들어 있는 전체 기록입니다. 계획별 실제 시간(`12 / 50분`)은 노는 계획에도 보여야 해서 따로 읽습니다. (#238)
-  const [allSessions] = useState<StudySession[]>(loadAllSessions)
-  // 계획 화면에서 저장한 과목 목록입니다. 과목 태그의 이름과 색을 찾는 데 씁니다.
-  const subjects = useSubjects()
-  // 온보딩에서 내가 적은 시험 날짜와 공부하는 이유입니다. (lib/firstMe.ts)
-  const [firstMe] = useState(() =>
-    getFirstMe(loadData<unknown>('onboarding-answers', null), new Date()),
-  )
-  // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
-  const [initialPlan] = useState(loadInitialPlan)
-  // 인사이트는 가상 데이터를 넣었을 때만 예시로 보여줍니다. (lib/insights.ts)
-  const { insights, isExample: isExampleInsight } = getInsightsToShow(sessions)
-
   const todayKey = getTodayKey()
   const yesterdayKey = moveDateKey(todayKey, -1)
+  // 화면을 연 시각. 그리는 동안 Date.now() 를 여러 번 부르지 않게 한 번만 잡습니다.
+  const [now] = useState(() => Date.now())
 
-  // 오늘 계획과, 그중 아직 안 끝난 것입니다. 안 끝난 것의 맨 앞이 "지금 할 일" 입니다.
-  const todayPlans = getPlans(todayKey)
-  // 시작 시각이 된 계획 → 시각을 안 정한 계획 → 아직 시각이 안 된 계획 순서로 줄 세웁니다. (lib/timeline.ts)
-  const now = new Date()
-  const undonePlans = sortPlansForNow(
-    todayPlans.filter((plan) => !plan.done),
-    now.getHours() * 60 + now.getMinutes(),
-  )
+  // 하루 1번 관리 단계를 판정해 저장합니다. ("통화가 없으면 다음 날 첫 진입 때", 기획서 5.4 · lib/dailyCareRun.ts)
+  // 판정이 저장된 뒤에 오늘 단계를 읽어야 해서, 관리 모드 · 숲보다 먼저 부릅니다. 오늘 이미 판정했으면 그대로 씁니다.
+  const [careLevel] = useState(() => {
+    runDailyCareStage(todayKey, now)
+    return getTodayCareLevel()
+  })
+  const [maxCareLevel] = useState(() => getCareLimits().maxCareLevel)
+  // 숲 (#404). 재발 신호가 있을 때만 시들고, 회복 모드에서는 시들지 않습니다. (lib/forest.ts · lib/forestData.ts)
+  const [forest] = useState(() => loadForestState(todayKey, now, loadManualItems().length))
 
-  // 첫 기록 날짜 = 계획과 공부 기록을 통틀어 가장 이른 날짜. 기록이 하나도 없으면 null 입니다.
+  const { cards, addCard } = useCards()
+  const { activeGoals } = useGoals()
+  // 노는 기록까지 들어 있는 전체 기록 (오늘 한 카드 · 내 가설 확인) · 공부 기록만 (오늘 한 줄)
+  const [allSessions] = useState<StudySession[]>(loadAllSessions)
+  const [sessions] = useState<StudySession[]>(loadStudySessions)
+  const [marks] = useState(loadCardMarks)
+  const [restDays] = useState(loadRestDays)
+  const todayCards = getTodayCardsState({
+    cards,
+    sessions: allSessions,
+    marks,
+    isRestDay: restDays.some((day) => day.date === todayKey),
+    todayKey,
+    now,
+  })
+
+  // AI 가 바꾼 설정 기록 (#385). [되돌리기] · [확인] 을 누르면 줄어듭니다. (lib/settingChanges.ts)
+  const [settingChanges, setSettingChanges] = useState(loadSettingChanges)
+
+  // 내 가설을 적은 지 3일째 · 7일째에만 기록과 비교한 첫 확인을 보여 줍니다. (기획서 4.6, lib/hypothesisCheck.ts)
+  const [hypotheses] = useState(loadMyHypotheses)
+  const hypothesisDay = hypotheses ? getHypothesisDay(hypotheses, todayKey) : 0
+  const showHypotheses = hypotheses !== undefined && FIRST_CHECK_DAYS.includes(hypothesisDay)
+
+  // 오늘 한 줄의 재료 (어제 기록). 옛 계획도 함께 봅니다. (lib/dailyCoach.ts)
+  const { allPlans } = usePlans()
   const recordDates = [
     ...allPlans.map((plan) => plan.date),
     ...sessions.map((session) => toDayKey(session.startedAt)),
@@ -159,21 +148,39 @@ export function HomePage() {
   const firstRecordKey = recordDates.length === 0 ? null : [...recordDates].sort()[0]
   const daysSinceFirstRecord = firstRecordKey === null ? 0 : countDays(firstRecordKey, todayKey)
   const isFirstReportReady = firstRecordKey !== null && daysSinceFirstRecord >= FIRST_REPORT_DAYS
-
   const yesterdaySummary = getDaySummary(yesterdayKey, allPlans, sessions)
   // 어제 공부 계획이 있었는지. (노는 계획과 0분짜리 계획은 세지 않습니다)
   const hasYesterdayPlan = allPlans.some(
     (plan) => plan.date === yesterdayKey && plan.kind !== 'play' && plan.targetMinutes > 0,
   )
+  // 머리글에 보여 줄 가장 가까운 목표의 D-day
+  const nearestGoal = [...activeGoals].sort((a, b) => a.dDay.localeCompare(b.dDay))[0]
+
+  /** 카드 없이 지금 시작 — '언제 = 지금' 인 즉석 카드를 만들고 그 카드로 타이머를 엽니다. (「4.2」) */
+  function handleStartNow() {
+    const card = createInstantCardNow(todayKey, INSTANT_CARD_MINUTES)
+    // 화면을 바로 옮겨서 useCards 의 저장(useEffect)이 돌기 전에 홈이 사라질 수 있어, 여기서 먼저 저장해 둡니다.
+    saveCards([...cards, card])
+    addCard(card)
+    navigate(`/timer?card=${encodeURIComponent(card.id)}`)
+  }
+
+  function handleRevertSetting(change: SettingChange) {
+    setSettingChanges(revertSettingChange(change.key))
+  }
+
+  function handleDismissSettings() {
+    clearSettingChanges()
+    setSettingChanges([])
+  }
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6 sm:gap-8">
       <section className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm text-slate-500">
-            {formatToday(toDayDate(new Date()))}
-            {firstMe.daysUntilExam !== null &&
-              ` · ${firstMe.examName} ${formatDday(firstMe.daysUntilExam)}`}
+            {formatToday(toDayDate(new Date(now)))}
+            {nearestGoal && ` · ${nearestGoal.title} ${formatDday(getDaysUntil(nearestGoal.dDay))}`}
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
             오늘도 같이 시작해 볼까?
@@ -196,561 +203,267 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* 열자마자 공부를 시작할 수 있게 "지금 할 일" 을 맨 위에 둡니다. PC 에서는 "처음의 나" 와 나란히 놓입니다. (#243) */}
-      {/* sm:items-start: 두 카드의 높이를 억지로 맞추지 않고 내용만큼만 차지하게 합니다. */}
+      {/* 숲과 지금 할 카드. PC 에서는 나란히, 모바일에서는 기획서 순서대로 숲 → 카드 */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
-        <NowCard
-          undonePlans={undonePlans}
-          hasPlansToday={todayPlans.length > 0}
-          allPlans={allPlans}
-          subjects={subjects}
-          sessions={allSessions}
+        {/* 내 숲 (#404): 가운데 전체 나무 + 둘레의 목표 나무 */}
+        <ForestCard forest={forest} />
+        <NowCardsCard
+          state={todayCards}
+          todayKey={todayKey}
+          onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
+          onStartNow={handleStartNow}
         />
-        <FirstMeCard firstMe={firstMe} initialPlan={initialPlan} />
       </section>
 
-      {/* 지금 관리 모드와 그 이유 (#94) */}
+      <Card title="오늘 한 줄">
+        {/* 숫자는 코드가 계산하고, 그 숫자를 말로 푸는 일만 AI 에게 맡깁니다. 문장 아래에 근거가 된 숫자를 같이 보여 줍니다. (lib/dailyCoach.ts) */}
+        <YesterdayLineView
+          dateKey={yesterdayKey}
+          line={getYesterdayLine(yesterdaySummary, hasYesterdayPlan)}
+        />
+
+        {/* 첫 리포트(14일)까지 남은 날 (#85) */}
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          {firstRecordKey === null ? (
+            <p className="text-sm text-slate-500">
+              기록을 시작하면 첫 리포트까지 며칠 남았는지 세어줄게요.
+            </p>
+          ) : isFirstReportReady ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-slate-600">{FIRST_REPORT_DAYS}일치 기록이 다 쌓였어요!</p>
+              <Button onClick={() => navigate('/analysis?tab=report')}>첫 리포트 보기</Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-base font-semibold text-slate-900">
+                  첫 리포트까지 D-{FIRST_REPORT_DAYS - daysSinceFirstRecord}
+                </p>
+                <p className="shrink-0 text-sm text-slate-500">
+                  {daysSinceFirstRecord} / {FIRST_REPORT_DAYS}일
+                </p>
+              </div>
+              <ProgressBar value={(daysSinceFirstRecord / FIRST_REPORT_DAYS) * 100} />
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* 지금 관리 모드와 그 이유 — 하루 1번 판정한 결과입니다 (#384 규칙, lib/dailyCareRun.ts) */}
       <CareModeBanner
         level={careLevel}
         reason={getTodayCareReason(careLevel)}
         maxLevel={maxCareLevel}
       />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
-        <TodayCard plans={todayPlans} subjects={subjects} sessions={allSessions} />
-
-        {/* 이번 주 팩트 (#245). 묻지 않고 계획과 타이머 기록에서 계산한 숫자입니다. */}
-        <WeeklyFactCard
-          plans={allPlans}
-          sessions={sessions}
-          initialPlan={initialPlan}
-          action={
-            <Link
-              to="/analysis?tab=report"
-              className={cn(textLinkClass, 'shrink-0 whitespace-nowrap')}
-            >
-              리포트에서 자세히
-            </Link>
-          }
+      {/* AI 가 설정을 바꿨으면 알림 줄 + [되돌리기] (#385) */}
+      {settingChanges.length > 0 && (
+        <SettingChangeNotice
+          changes={settingChanges}
+          onRevert={handleRevertSetting}
+          onDismiss={handleDismissSettings}
         />
+      )}
 
-        {/* 이번 주 목표 (#247). 지난주 팩트로 하나 제안하고, 달성했는지는 타이머 기록으로 정해집니다. */}
-        <WeeklyGoalCard plans={allPlans} sessions={sessions} />
-
-        <Card title="어제 한 줄">
-          {/* 숫자는 코드가 계산하고, 그 숫자를 말로 푸는 일만 AI 에게 맡깁니다. 문장 규칙은 lib/dailyCoach.ts 에 있습니다. */}
-          <YesterdayLineView
-            dateKey={yesterdayKey}
-            line={getYesterdayLine(yesterdaySummary, hasYesterdayPlan)}
-          />
-
-          {/* 첫 리포트(14일)까지 남은 날. 시안처럼 어제 한 줄 아래에 선을 긋고 같은 카드에 둡니다. (#85) */}
-          <div className="mt-4 border-t border-slate-100 pt-4">
-            {firstRecordKey === null ? (
-              <p className="text-sm text-slate-500">
-                기록을 시작하면 첫 리포트까지 며칠 남았는지 세어줄게요.
-              </p>
-            ) : isFirstReportReady ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-sm text-slate-600">
-                  {FIRST_REPORT_DAYS}일치 기록이 다 쌓였어요!
-                </p>
-                <Button onClick={() => navigate('/analysis?tab=report')}>첫 리포트 보기</Button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-base font-semibold text-slate-900">
-                    첫 리포트까지 D-{FIRST_REPORT_DAYS - daysSinceFirstRecord}
-                  </p>
-                  <p className="shrink-0 text-sm text-slate-500">
-                    {daysSinceFirstRecord} / {FIRST_REPORT_DAYS}일
-                  </p>
-                </div>
-                <ProgressBar value={(daysSinceFirstRecord / FIRST_REPORT_DAYS) * 100} />
-                <p className="text-sm text-slate-500">
-                  {FIRST_REPORT_DAYS}일 동안 기록이 쌓이면 나만의 패턴을 알려줄게.
-                </p>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* 내 나무 (#68) */}
-        <TreeCard tree={tree} />
-      </section>
-
-      {/* 이번 주 발견 (#73) */}
-      <section>
-        <h2 className="text-lg font-bold text-slate-900">이번 주 발견</h2>
-        {insights.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">
-            아직 데이터가 모자라요. 기록이 쌓이면 발견이 생겨요.
-          </p>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {insights.map((insight) => (
-              <InsightCard
-                key={insight.id}
-                insight={insight}
-                sessions={sessions}
-                isExample={isExampleInsight}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 도전 중인 실험의 진행 상황과, 끝난 실험의 결과·다음 행동 버튼 (#93) */}
-      <section>
-        <h2 className="text-lg font-bold text-slate-900">실험</h2>
-        <ExperimentSection plans={allPlans} sessions={sessions} className="mt-3" />
-      </section>
+      {showHypotheses && hypotheses && (
+        <MyHypothesesCard
+          checks={checkHypotheses(hypotheses, {
+            cards,
+            sessions: allSessions,
+            judgedDays: buildJudgedCardDays(
+              cards,
+              allSessions,
+              toDayKey(hypotheses.savedAt),
+              todayKey,
+              now,
+              (cardId, dateKey) => getCardDayMarkInfo(cardId, dateKey, restDays, marks),
+            ),
+            todayKey,
+          })}
+          day={hypothesisDay}
+        />
+      )}
     </div>
   )
 }
 
-interface NowCardProps {
-  /** 오늘의 안 끝난 계획. 맨 앞이 "지금 할 일" 입니다 */
-  undonePlans: StudyPlan[]
-  /** 오늘 계획이 하나라도 있는지. (없으면 "계획 세우기", 다 끝냈으면 "다 끝냈어요" 를 보여줍니다) */
-  hasPlansToday: boolean
-  /** 모든 날짜의 계획. 타이머가 재고 있는 계획을 id 로 찾는 데 씁니다 */
-  allPlans: StudyPlan[]
-  subjects: Subject[]
-  /** 계획별 실제 시간을 구할 기록. 노는 기록까지 들어 있어야 합니다 */
-  sessions: StudySession[]
+interface NowCardsCardProps {
+  state: TodayCardsState
+  todayKey: string
+  /** 카드로 시작 — 타이머가 그 카드로 엽니다 (/timer?card=…) */
+  onStart: (card: CardModel) => void
+  /** 카드 없이 지금 시작 (즉석 카드) */
+  onStartNow: () => void
+}
+
+/** 카드 시작 시각과 길이 한 줄. 예: '19:00 · 60분' / 시각이 없으면 '시간 미정 · 60분' */
+function cardTimeText(card: CardModel): string {
+  return `${card.startTime ?? '시간 미정'} · ${card.durationMinutes}분`
 }
 
 /**
- * "지금 할 일" 카드. 홈을 열자마자 한 번 눌러서 공부를 시작하게 해 줍니다. (#243)
- * 타이머가 이미 돌고 있으면 같은 자리에 진행 중인 타이머를 보여줍니다.
- *
- * 스톱워치는 흐르는 동안 1초에 몇 번씩 화면을 다시 그립니다.
- * 홈 전체가 아니라 이 카드만 다시 그려지도록, useStopwatch 를 이 카드 안에서 부릅니다.
+ * 지금/다음 카드와 [시작] (「4.2」). 지금 할 카드가 있으면 크게, 없으면 다음 카드를 보여 줍니다.
+ * 아래에 [지금 시작] — 카드 없이 시작하면 즉석 카드가 생겨서 모든 세션이 카드에 붙습니다.
  */
-function NowCard({ undonePlans, hasPlansToday, allPlans, subjects, sessions }: NowCardProps) {
-  const { seconds, isStarted, isRunning } = useStopwatch()
-  // 타이머 화면이 저장해 둔 값들입니다. 홈에서는 바꾸지 않고 읽기만 합니다.
-  const [mode] = useState(loadTimerMode)
-  const [targetMinutes] = useState(() =>
-    normalizeTargetMinutes(loadData<unknown>('timer-target', DEFAULT_TARGET_MINUTES)),
-  )
-  const [timerPlanId] = useState(() => loadData<string | null>('timer-plan', null))
-  const [timerSubjectId] = useState(() => loadData<string | null>('timer-subject', null))
-
-  // ① 타이머가 이미 돌고 있을 때 (일시정지 중이어도 여기로 옵니다)
-  if (isStarted) {
-    const display = getTimerDisplay(mode, seconds, targetMinutes)
-    const timerPlan = allPlans.find((plan) => plan.id === timerPlanId)
-    const timerSubject = subjects.find((subject) => subject.id === timerSubjectId)
-
-    return (
-      <Card className="border-brand border-2">
-        <h3 className="text-sm font-medium text-slate-500">
-          {isRunning ? '타이머 진행 중' : '타이머 일시정지 중'}
-        </h3>
-        <div className="mt-2 flex items-center gap-2">
-          {timerSubject && (
-            <SubjectBadge
-              name={timerSubject.name}
-              color={timerSubject.color}
-              className="shrink-0"
-            />
-          )}
-          {timerPlan?.kind === 'play' && <PlayBadge className="shrink-0" />}
-          <p className="min-w-0 text-lg font-semibold break-words text-slate-900">
-            {timerPlan ? timerPlan.content : '계획 없이 공부'}
-          </p>
-        </div>
-        {/* tabular-nums: 숫자 폭을 똑같이 맞춰서, 초가 바뀔 때 글자가 좌우로 흔들리지 않게 합니다. */}
-        <p className="mt-3 text-4xl font-bold tracking-tight text-slate-900 tabular-nums">
-          {display.timeText}
-        </p>
-        <p className="mt-1 text-sm text-slate-500">{display.label}</p>
-        <Link to="/timer" className={cn(bigLinkClass, 'mt-4')}>
-          타이머로 가기
-        </Link>
-      </Card>
-    )
-  }
-
-  // ② 오늘 할 계획이 남아 있을 때
-  const nextPlan = undonePlans[0]
-  if (nextPlan) {
-    const subject = subjects.find((item) => item.id === nextPlan.subjectId)
-    const progress = getPlanProgress(nextPlan, sessions)
-    // 그다음에 할 계획은 2개까지만 미리 보여줍니다.
-    const laterPlans = undonePlans.slice(1, 3)
-
-    return (
-      <Card className="border-brand border-2">
-        <h3 className="text-sm font-medium text-slate-500">지금 할 일</h3>
-        <div className="mt-2 flex items-center gap-2">
-          {subject && (
-            <SubjectBadge name={subject.name} color={subject.color} className="shrink-0" />
-          )}
-          {/* 노는 계획은 과목 대신 회색 "놀기" 태그를 보여줍니다. (#238) */}
-          {nextPlan.kind === 'play' && <PlayBadge className="shrink-0" />}
-          <p className="min-w-0 text-lg font-semibold break-words text-slate-900">
-            {nextPlan.content}
-          </p>
-        </div>
-        <p className="mt-2 text-sm text-slate-600">
-          {nextPlan.startTime && `${nextPlan.startTime} · `}
-          목표 {nextPlan.targetMinutes}분
-          {progress.actualMinutes > 0 && ` · 지금까지 ${progress.actualMinutes}분 했어요`}
-        </p>
-        {/* 주소에 ?plan=계획id 를 붙여 보내면 타이머 화면이 그 계획으로 바로 시작합니다. (#232) */}
-        <Link to={`/timer?plan=${nextPlan.id}`} className={cn(bigLinkClass, 'mt-4')}>
-          ▶ {progress.actualMinutes > 0 ? '이어서 하기' : '시작'}
-        </Link>
-        {laterPlans.length > 0 && (
-          <p className="mt-3 text-sm break-words text-slate-500">
-            다음: {laterPlans.map((plan) => `${plan.content} ${plan.targetMinutes}분`).join(' · ')}
+function NowCardsCard({ state, todayKey, onStart, onStartNow }: NowCardsCardProps) {
+  const main = state.current ?? state.next
+  const label = state.current ? '지금 할 카드' : '다음 카드'
+  return (
+    <Card className={cn(state.current && 'border-brand border-2')}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-slate-500">{main ? label : '오늘 카드'}</p>
+        {state.total > 0 && (
+          <p className="text-sm text-slate-500">
+            오늘 {state.doneCount}/{state.total}
           </p>
         )}
-      </Card>
-    )
-  }
+      </div>
 
-  // ③ 오늘 계획이 없거나, 다 끝냈을 때
-  return (
-    <Card className="border-brand border-2">
-      <h3 className="text-sm font-medium text-slate-500">지금 할 일</h3>
-      <p className="mt-2 text-lg font-semibold text-slate-900">
-        {hasPlansToday ? '오늘 계획을 다 끝냈어요!' : '오늘 계획이 아직 없어요.'}
-      </p>
-      <p className="mt-1 text-sm text-slate-600">
-        {hasPlansToday
-          ? '더 하고 싶으면 계획을 하나 더 세워 보세요.'
-          : '할 일을 하나만 정해도 여기서 바로 시작할 수 있어요.'}
-      </p>
-      <Link to="/cards" className={cn(bigLinkClass, 'mt-4')}>
-        {hasPlansToday ? '계획 더 세우기' : '오늘 계획 세우기'}
-      </Link>
-      <Link to="/timer" className={cn(textLinkClass, 'mt-1')}>
-        계획 없이 바로 시작
-      </Link>
-    </Card>
-  )
-}
-
-interface FirstMeCardProps {
-  firstMe: FirstMe
-  /** 온보딩 마지막에 세운 처음 계획. 안 세웠으면 null */
-  initialPlan: InitialPlan | null
-}
-
-/**
- * "처음의 나" 카드. 온보딩에서 내가 직접 적은 시험 날짜와 공부하는 이유를 다시 보여줍니다. (#243)
- * 처음의 마음은 시간이 지나면 흐려지기 때문에, 가장 잘 보이는 홈 위쪽에 둡니다.
- */
-function FirstMeCard({ firstMe, initialPlan }: FirstMeCardProps) {
-  // 처음에 남긴 다짐(목소리·글). 없으면 null 입니다. (#241)
-  const [voicePledge] = useState(loadVoicePledge)
-  const hasReason = firstMe.reason !== ''
-  const isEmpty = firstMe.daysUntilExam === null && !hasReason
-
-  return (
-    <Card>
-      <h3 className="text-sm font-medium text-slate-500">처음의 나</h3>
-
-      {firstMe.daysUntilExam !== null && (
-        <p className="mt-2 text-2xl font-bold break-words text-slate-900">
-          {firstMe.examName} {formatDday(firstMe.daysUntilExam)}
-        </p>
-      )}
-
-      {hasReason && (
-        <div className="mt-3 rounded-lg bg-slate-50 p-3">
-          <p className="text-base font-semibold break-words text-slate-900">“{firstMe.reason}”</p>
-          <p className="mt-1 text-sm text-slate-500">처음에 내가 적은 공부하는 이유</p>
-        </div>
-      )}
-
-      {/* 처음에 한 약속. 지금과 비교하는 숫자는 "이번 주 팩트"(#245)에서 보여줍니다. (#240) */}
-      {initialPlan && (
-        <p className="mt-3 text-sm text-slate-600">
-          처음 계획: 하루 {formatMinutes(initialPlan.dailyMinutes)} · 주 {initialPlan.daysPerWeek}일
-        </p>
-      )}
-
-      {/* 처음의 내가 녹음해 둔 한마디. 녹음이 있을 때만 보입니다. (#241) */}
-      {voicePledge?.audioDataUrl && (
-        <VoicePledgePlayButton
-          audioDataUrl={voicePledge.audioDataUrl}
-          seconds={voicePledge.seconds}
-          className="mt-3 border border-slate-200"
-        />
-      )}
-
-      {isEmpty && (
+      {main ? (
         <>
-          <p className="mt-2 text-sm text-slate-600">
-            시험 날짜와 공부하는 이유를 알려주면, 힘들 때 여기서 다시 보여줄게요.
+          <p className="mt-1 truncate text-lg font-bold text-slate-900">{main.title}</p>
+          <p className="text-sm text-slate-600">
+            {cardTimeText(main)} · 할 일 {main.checklist.length}개
           </p>
-          {/* 처음 설문을 안 한 사람은 처음 설문으로, 한 사람은 남은 질문을 이어서 답하는 화면으로 보냅니다. (#239) */}
-          <Link
-            to={firstMe.hasAnswers ? '/onboarding/more' : '/onboarding'}
-            className={cn(textLinkClass, 'mt-1')}
+          <button
+            type="button"
+            onClick={() => onStart(main)}
+            className={cn(
+              'mt-4 flex h-12 w-full cursor-pointer items-center justify-center rounded-lg text-base font-semibold transition-colors',
+              state.current
+                ? 'bg-brand hover:bg-brand-dark text-white'
+                : 'bg-slate-100 text-slate-900 hover:bg-slate-200',
+            )}
           >
-            내 정보 더 알려주기
+            ▷ {state.current ? '시작' : '지금 미리 시작'}
+          </button>
+          {state.current && state.next && (
+            <p className="mt-2 truncate text-sm text-slate-500">
+              다음: {state.next.title} ({cardTimeText(state.next)})
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-base font-semibold text-slate-900">
+            {state.total === 0 ? '오늘은 카드가 없어요.' : '오늘 남은 카드가 없어요.'}
+          </p>
+          <Link to={`/cards/new?date=${todayKey}`} className={cn(textLinkClass, 'mt-1')}>
+            카드 만들기
           </Link>
         </>
       )}
-    </Card>
-  )
-}
 
-interface WeeklyGoalCardProps {
-  plans: StudyPlan[]
-  sessions: StudySession[]
-}
-
-/**
- * 이번 주 목표 카드입니다. (#247 · 규칙은 lib/weeklyGoal.ts)
- *
- *   아직 안 골랐다 → 지난주 팩트로 만든 목표 하나를 제안합니다. [이걸로 할게] [다른 걸로] [이번 주는 쉴게]
- *   목표를 골랐다 → 지금 숫자와 진행 막대를 보여줍니다. 달성했는지는 팩트 숫자로 자동으로 정해집니다.
- *   쉬기로 했다   → 쉬어 간다는 한 줄만 보여줍니다.
- *
- * 회복 모드이거나 안전 브레이크가 켜져 있으면 새 목표를 권하지 않습니다. (카드가 보이지 않습니다)
- */
-function WeeklyGoalCard({ plans, sessions }: WeeklyGoalCardProps) {
-  const today = new Date()
-  const mondayKey = getMondayKey(today)
-  const { thisWeek, lastWeek } = getWeeklyFacts(plans, sessions, mondayKey, getTodayKey())
-
-  // 이번 주에 이미 고른 것(목표 또는 쉬기). 아직 안 골랐으면 null 입니다.
-  const [choice, setChoice] = useState<WeeklyGoalChoice | null>(
-    () => loadWeeklyGoalChoices().find((item) => item.mondayKey === mondayKey) ?? null,
-  )
-  // "다른 걸로" 를 누른 횟수. 후보 중 몇 번째를 보여줄지 정합니다.
-  const [skipCount, setSkipCount] = useState(0)
-  // 회복 모드(관리 강도 0)이거나 안전 브레이크가 켜져 있으면 새 목표를 권하지 않습니다. 처음 그릴 때 한 번만 확인합니다.
-  const [canSuggest] = useState(() => getTodayCareLevel() !== 0 && !isSafetyBrakeOnNow())
-
-  function handleChoose(nextChoice: WeeklyGoalChoice) {
-    saveWeeklyGoalChoice(nextChoice)
-    setChoice(nextChoice)
-  }
-
-  /* ---------- 쉬기로 한 주 ---------- */
-  if (choice?.type === 'rest') {
-    return (
-      <Card title="이번 주 목표">
-        <p className="text-sm break-keep text-slate-600">
-          이번 주는 목표 없이 쉬어 가요. 다음 주에 다시 제안할게요.
-        </p>
-      </Card>
-    )
-  }
-
-  /* ---------- 목표를 고른 주 ---------- */
-  if (choice?.type === 'goal') {
-    const progress = getWeeklyGoalProgress(choice, thisWeek)
-    const unit = choice.kind === 'startDelay' ? '분' : '%'
-
-    // 지금 숫자 옆에 붙이는 설명. 몇 개의 기록으로 계산했는지 같이 보여줍니다.
-    let detail = ''
-    if (choice.kind === 'startDelay') {
-      detail = `계획 ${thisWeek.startDelayMinutes.sampleCount}개 기준`
-    } else if (choice.kind !== 'planRate') {
-      detail = `${thisWeek.completionRate.sampleCount}번 중 ${thisWeek.completedCount}번 완주`
-    }
-
-    return (
-      <Card title="이번 주 목표">
-        <p className="text-lg font-bold break-keep text-slate-900">{getWeeklyGoalTitle(choice)}</p>
-        <div className="mt-3 flex items-center justify-between gap-2 text-sm">
-          {progress.current === null ? (
-            <p className="text-slate-600">아직 이번 주 기록이 없어요</p>
-          ) : (
-            <p className="min-w-0 break-keep text-slate-600">
-              지금{' '}
-              <strong className="font-semibold text-slate-900">
-                {choice.kind === 'startDelay' && '평균 '}
-                {progress.current}
-                {unit}
-              </strong>
-              {detail !== '' && ` · ${detail}`}
-            </p>
-          )}
-          <p className="shrink-0 text-slate-500">
-            목표 {choice.target}
-            {unit}
-          </p>
-        </div>
-        <ProgressBar value={progress.percent} className="mt-2" />
-        <p className="mt-2 text-sm break-keep text-slate-500">
-          {progress.status === 'achieved' && (
-            <span className="font-semibold text-emerald-600">지금은 달성 중 · </span>
-          )}
-          달성했는지는 타이머 기록으로 자동으로 정해져요.
-        </p>
-      </Card>
-    )
-  }
-
-  /* ---------- 아직 안 고른 주 ---------- */
-  if (!canSuggest) return null
-
-  const candidates = getWeeklyGoalCandidates(lastWeek)
-  if (candidates.length === 0) {
-    return (
-      <Card title="이번 주 목표">
-        <p className="text-sm break-keep text-slate-600">
-          목표를 정한 타이머 기록이 한 주에 5번 이상 쌓이면, 다음 주에 해볼 만한 목표를 하나
-          제안할게요.
-        </p>
-      </Card>
-    )
-  }
-
-  // 후보를 돌아가며 보여줍니다. 마지막 후보 다음에는 처음으로 돌아옵니다. (% 는 나눈 나머지)
-  const candidate = candidates[skipCount % candidates.length]
-
-  return (
-    <Card title="이번 주 목표 제안">
-      <p className="text-lg font-bold break-keep text-slate-900">{getWeeklyGoalTitle(candidate)}</p>
-      <p className="mt-1 text-sm break-keep text-slate-600">{getWeeklyGoalReason(candidate)}</p>
-      <p className="mt-1 text-sm break-keep text-slate-500">
-        달성했는지는 타이머 기록으로 자동으로 정해져요.
-      </p>
-      {/* flex-wrap: 좁은 화면에서는 버튼이 다음 줄로 넘어갑니다. */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button onClick={() => handleChoose({ ...candidate, type: 'goal', mondayKey })}>
-          이걸로 할게
-        </Button>
-        {/* 후보가 하나뿐이면 바꿀 것이 없어서 보여주지 않습니다. */}
-        {candidates.length > 1 && (
-          <Button variant="secondary" onClick={() => setSkipCount((prev) => prev + 1)}>
-            다른 걸로
-          </Button>
-        )}
-        <Button variant="ghost" onClick={() => handleChoose({ type: 'rest', mondayKey })}>
-          이번 주는 쉴게
-        </Button>
-      </div>
-    </Card>
-  )
-}
-
-interface TodayCardProps {
-  /** 오늘 계획 전부 (끝낸 것 포함) */
-  plans: StudyPlan[]
-  subjects: Subject[]
-  sessions: StudySession[]
-}
-
-/**
- * "오늘 계획" 카드. 끝낸 개수와 `실제 / 목표` 시간을 보여줍니다. (#243)
- * 여기서는 보기만 하고, 체크와 수정은 계획 화면에서 합니다.
- */
-function TodayCard({ plans, subjects, sessions }: TodayCardProps) {
-  // 끝낸 개수 · 실제 시간 · 목표 시간은 lib/planProgress.ts 가 계산합니다.
-  const dayProgress = getDayProgress(plans, sessions)
-
-  return (
-    <Card>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <h3 className="text-base font-semibold text-slate-900">오늘 계획</h3>
-        {plans.length > 0 && (
-          <p className="text-sm text-slate-500">
-            {dayProgress.doneCount} / {dayProgress.totalCount} 완료 ·{' '}
-            {formatMinutes(dayProgress.actualMinutes)} / {formatMinutes(dayProgress.targetMinutes)}
-          </p>
-        )}
-      </div>
-
-      {plans.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">
-          계획을 세우면 오늘 얼마나 했는지 여기에 보여요.
-        </p>
-      ) : (
-        <>
-          <ProgressBar value={dayProgress.percent} className="mt-3" />
-          <ul className="mt-2 divide-y divide-slate-100">
-            {plans.map((plan) => {
-              const subject = subjects.find((item) => item.id === plan.subjectId)
-              const progress = getPlanProgress(plan, sessions)
-
-              return (
-                <li key={plan.id} className="flex items-center gap-2 py-2.5">
-                  {/* 끝낸 계획은 ✓, 아직인 계획은 빈 동그라미입니다. 여기서는 누를 수 없어서 체크박스(네모)로 그리지 않습니다. */}
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'flex size-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold',
-                      plan.done ? 'border-brand bg-brand text-white' : 'border-slate-300',
-                    )}
-                  >
-                    {plan.done && '✓'}
-                  </span>
-                  {subject && (
-                    <SubjectBadge name={subject.name} color={subject.color} className="shrink-0" />
-                  )}
-                  {plan.kind === 'play' && <PlayBadge className="shrink-0" />}
-                  <p
-                    className={cn(
-                      'min-w-0 flex-1 text-sm break-words text-slate-900',
-                      plan.done && 'text-slate-400 line-through',
-                    )}
-                  >
-                    {plan.content}
-                    {/* sr-only: 화면에는 안 보이고, 화면을 읽어 주는 프로그램만 읽습니다. */}
-                    <span className="sr-only">{plan.done ? ' (끝냄)' : ' (아직)'}</span>
-                  </p>
-                  <p className="shrink-0 text-sm text-slate-500 tabular-nums">
-                    {progress.actualMinutes} / {plan.targetMinutes}분
-                  </p>
-                </li>
-              )
-            })}
-          </ul>
-        </>
+      {state.unhandled.length > 0 && (
+        <Link
+          to="/timer"
+          className="mt-3 flex min-h-10 items-center rounded-lg bg-amber-50 px-3 text-sm break-keep text-amber-900"
+        >
+          시간이 끝난 카드 {state.unhandled.length}개 — 타이머에서 미루거나 실패로 남겨요 ›
+        </Link>
       )}
 
-      <Link to="/cards" className={cn(textLinkClass, 'mt-2')}>
-        계획 화면에서 체크·수정하기
-      </Link>
+      <div className="mt-4 border-t border-slate-100 pt-4">
+        <Button variant="secondary" className="w-full" onClick={onStartNow}>
+          카드 없이 지금 시작 ({INSTANT_CARD_MINUTES}분)
+        </Button>
+        <p className="mt-1.5 text-xs break-keep text-slate-500">
+          제목과 할 일은 끝날 때 한 줄로 적어요.
+        </p>
+      </div>
     </Card>
   )
 }
 
-interface TreeCardProps {
-  tree: TreeState
+interface SettingChangeNoticeProps {
+  changes: SettingChange[]
+  onRevert: (change: SettingChange) => void
+  onDismiss: () => void
 }
 
-/** "내 나무" 카드. 나무 그림 + 잎·열매 개수 + 다음 단계까지 남은 시간 */
-function TreeCard({ tree }: TreeCardProps) {
+/** AI 가 바꾼 설정 알림 줄 + [되돌리기] (「4.2」 · 「4.8」, #385). 되돌린 설정은 잠겨서 AI 가 다시 바꾸지 않습니다. */
+function SettingChangeNotice({ changes, onRevert, onDismiss }: SettingChangeNoticeProps) {
+  return (
+    <Card className="border-sky-200 bg-sky-50">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-sky-900">AI 가 설정을 맞췄어요</p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="h-10 shrink-0 cursor-pointer rounded-md px-3 text-sm font-medium text-sky-900 hover:bg-sky-100"
+        >
+          확인
+        </button>
+      </div>
+      <ul className="mt-2 flex flex-col gap-3">
+        {changes.map((change) => {
+          const { title, to } = describeSettingChange(change)
+          return (
+            <li key={change.key} className="flex items-start justify-between gap-3">
+              <div className="min-w-0 text-sm break-keep">
+                <p className="font-medium text-slate-900">
+                  {title}: {to}
+                </p>
+                <p className="text-slate-600">{change.reason}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRevert(change)}
+                className="h-10 shrink-0 cursor-pointer rounded-md border border-sky-300 bg-white px-3 text-sm font-medium text-sky-900 hover:bg-sky-100"
+              >
+                되돌리기
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
+  )
+}
+
+interface ForestCardProps {
+  forest: ForestState
+}
+
+/** 목표 나무 아래에 보여 줄 상태 글자 */
+function goalTreeStatus(tree: ForestTree): string {
+  if (tree.isFinished) return '끝난 목표'
+  if (tree.isWilted) return `${tree.stageName} · 시듦`
+  return tree.stageName
+}
+
+/**
+ * "내 숲" 카드 (#404). 가운데 전체 나무 그림 + 잎·열매 개수 + 다음 단계까지 남은 시간,
+ * 그 아래 목표 나무들(진행 중인 목표 먼저, 끝난 목표는 흐리게). 목표가 없으면 전체 나무만 보입니다.
+ */
+function ForestCard({ forest }: ForestCardProps) {
+  const { main } = forest
   return (
     <Card>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-slate-900">내 나무</h3>
+        <h3 className="text-base font-semibold text-slate-900">내 숲</h3>
         <p className="text-sm text-slate-500">
-          {tree.stageName} · {tree.stage + 1}단계
-          {tree.isWilted && <span className="font-semibold text-amber-700"> · 시듦</span>}
+          {main.stageName} · {main.stage + 1}단계
+          {main.isWilted && <span className="font-semibold text-amber-700"> · 시듦</span>}
         </p>
       </div>
 
       <div className="mt-3 flex justify-center rounded-lg bg-slate-50 px-4 py-3">
-        <TreeDrawing tree={tree} />
+        <TreeDrawing tree={main} />
       </div>
 
-      {tree.isWilted && (
-        <p className="mt-3 text-sm text-amber-700">
-          나무가 조금 시들었어. 오늘 공부를 시작하면 바로 다시 살아나.
+      {main.isWilted && (
+        <p className="mt-3 text-sm break-keep text-amber-700">
+          미루거나 못 한 카드가 이어져서 조금 시들었어. 다시 카드를 하면 살아나.
         </p>
       )}
 
       <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
         <span>
-          <span className="font-semibold text-green-700">잎 {tree.leafCount}</span> · 회고·인사이트
+          <span className="font-semibold text-green-700">잎 {main.leafCount}</span> · 회고·인사이트
         </span>
         <span>
-          <span className="font-semibold text-orange-600">열매 {tree.fruitCount}</span> · 효과가
+          <span className="font-semibold text-orange-600">열매 {main.fruitCount}</span> · 효과가
           확인된 방법
         </span>
       </p>
@@ -759,11 +472,42 @@ function TreeCard({ tree }: TreeCardProps) {
         <div className="flex items-center justify-between gap-2 text-sm text-slate-600">
           <span>다음 단계까지</span>
           <span>
-            {tree.isFullGrown ? '다 자랐어!' : `${formatMinutes(tree.minutesToNextStage)} 남음`}
+            {main.isFullGrown ? '다 자랐어!' : `${formatMinutes(main.minutesToNextStage)} 남음`}
           </span>
         </div>
-        <ProgressBar value={tree.progressPercent} />
+        <ProgressBar value={main.progressPercent} />
       </div>
+
+      {forest.goals.length > 0 && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-sm font-semibold text-slate-900">목표 나무</p>
+          {/* 375px 에서도 3그루가 한 줄에 들어가고, 지난 목표가 늘면 다음 줄로 내려갑니다. (가로 스크롤 없음) */}
+          <ul className="mt-2 grid grid-cols-3 gap-2">
+            {forest.goals.map((tree) => (
+              <li
+                key={tree.goalId}
+                className={cn(
+                  'flex min-w-0 flex-col items-center rounded-lg bg-slate-50 px-1 py-2',
+                  tree.isFinished && 'opacity-60',
+                )}
+              >
+                <TreeDrawing tree={tree} className="h-16" />
+                <p className="mt-1 w-full truncate text-center text-xs font-medium text-slate-800">
+                  {tree.title}
+                </p>
+                <p
+                  className={cn(
+                    'text-center text-xs',
+                    tree.isWilted ? 'text-amber-700' : 'text-slate-500',
+                  )}
+                >
+                  {goalTreeStatus(tree)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Card>
   )
 }
@@ -788,11 +532,14 @@ const FRUIT_SPOTS = [
 ]
 
 interface TreeDrawingProps {
-  tree: TreeState
+  /** 그릴 나무 (전체 나무 · 목표 나무 모두 같은 모양으로 그립니다) */
+  tree: Pick<ForestTree, 'stage' | 'stageName' | 'isWilted' | 'leafCount' | 'fruitCount'>
+  /** 그림 높이. 기본은 h-36(전체 나무), 목표 나무는 더 작게 넘깁니다 */
+  className?: string
 }
 
 /** 나무 그림 (라이브러리 없이 SVG 를 직접 그립니다) */
-function TreeDrawing({ tree }: TreeDrawingProps) {
+function TreeDrawing({ tree, className }: TreeDrawingProps) {
   // 시들면 초록 잎이 누런 갈색으로 바뀝니다. transition-colors 로 색이 천천히 바뀝니다.
   const leafColor = tree.isWilted ? 'fill-amber-600' : 'fill-green-500'
   const darkLeafColor = tree.isWilted ? 'fill-amber-700' : 'fill-green-700'
@@ -803,7 +550,12 @@ function TreeDrawing({ tree }: TreeDrawingProps) {
   const fruitSpots = tree.stage === 3 ? FRUIT_SPOTS.slice(0, tree.fruitCount) : []
 
   return (
-    <svg role="img" aria-label={label} viewBox="0 0 200 140" className="h-36 w-full max-w-full">
+    <svg
+      role="img"
+      aria-label={label}
+      viewBox="0 0 200 140"
+      className={cn('h-36 w-full max-w-full', className)}
+    >
       {/* 땅 그림자 */}
       <ellipse cx="100" cy="128" rx="60" ry="6" className="fill-slate-200" />
 

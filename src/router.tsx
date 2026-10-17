@@ -34,6 +34,7 @@ const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
 )
 const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m.CallPage })))
+const ChatPage = lazy(() => import('@/pages/ChatPage').then((m) => ({ default: m.ChatPage })))
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
@@ -53,6 +54,9 @@ const ExamResultPage = lazy(() =>
   import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
 )
 const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
+const GoalDetailPage = lazy(() =>
+  import('@/pages/GoalDetailPage').then((m) => ({ default: m.GoalDetailPage })),
+)
 const GoalNewPage = lazy(() =>
   import('@/pages/GoalNewPage').then((m) => ({ default: m.GoalNewPage })),
 )
@@ -144,9 +148,13 @@ export const router = createBrowserRouter([
       { path: 'cards/fixed', element: <FixedBlocksPage /> },
       // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
       { path: 'goals/new', element: <GoalNewPage /> },
+      // 목표 상세 (진척 · 2주 목표 점검, #403). 카드 탭의 목표 목록에서 들어옵니다.
+      { path: 'goals/:goalId', element: <GoalDetailPage /> },
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
       { path: 'timer', element: <TimerRoute /> },
       { path: 'counsel', element: <CounselPage /> },
+      // 상담 채팅: 통화 대본의 글 버전 (#416, BE #238)
+      { path: 'counsel/chat', element: <ChatPage /> },
       // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
       { path: 'analysis', element: <AnalysisPage /> },
       { path: 'check', element: <CheckPage /> },
@@ -198,7 +206,7 @@ export const router = createBrowserRouter([
     ),
   },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
-  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
+  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 생각 습관 테스트 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
   {
     path: ONBOARDING_INTRO_PATH,
     errorElement: <ErrorPage />,
@@ -283,7 +291,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 생각 습관 테스트. 온보딩에서는 빠졌고(#388), 기록 화면에서 다시 할 때 씁니다. (lib/thinkingTest.ts)
+  // 생각 습관 테스트. 온보딩에서 심리검사 다음에 하고, 기록 화면에서 다시 할 때도 씁니다. (lib/thinkingTest.ts)
   {
     path: THINKING_TEST_PATH,
     errorElement: <ErrorPage />,
@@ -295,7 +303,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 온보딩 심리검사 14문항. 학년 다음, 자기 인식 4문항 앞에 나옵니다. (lib/psychTest.ts)
+  // 온보딩 심리검사 14문항. 학년 다음, 생각 습관 테스트 앞에 나옵니다. (lib/psychTest.ts)
   {
     path: PSYCH_TEST_PATH,
     errorElement: <ErrorPage />,

@@ -7,9 +7,11 @@ import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { PlayBadge } from '@/components/ui/PlayBadge'
 import { VoicePlanCard } from '@/components/ui/VoicePlanCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
 import { useCards } from '@/hooks/useCards'
+import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
 import { formatDday, getDaysUntil } from '@/lib/exams'
 import { MAX_ACTIVE_GOALS } from '@/lib/goals'
@@ -46,9 +48,25 @@ import { loadData, saveData } from '@/lib/storage'
 import { busyTimesQuery, type BusyTime } from '@/lib/googleCalendar'
 import { checkPlanSlot, NO_SLOT_PROBLEM, type PlanSlotCheck } from '@/lib/planSlotCheck'
 import { formatMinutes, getNowLine, getTimeline, mergeBusyTimes } from '@/lib/timeline'
+import { CARD_RESULT_LABELS } from '@/lib/cardResult'
+import { getCardsOnDate } from '@/lib/cards'
+import { loadCardMarks } from '@/lib/cardMarks'
+import {
+  formatDayClock,
+  formatWeekLabel,
+  getCardDayStatus,
+  getDayTimeline,
+  getFlexibleCardsToShrink,
+  getTimelineBlockHeight,
+  getWeekDateKeys,
+} from '@/lib/cardTimeline'
+import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
+import { PATTERN_LOOSE_OVER, PATTERN_MIN_SAMPLES, PATTERN_OVER_UNDER } from '@/lib/cardResult'
+import { PLAN_PATTERN_TEXT, getGoalPlanPatterns } from '@/lib/planPatternGuide'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import type {
   Card as CardData,
+  FixedBlock,
   Goal,
   PlanKind,
   Routine,
@@ -1493,16 +1511,22 @@ function GoalList({ goals }: GoalListProps) {
       ) : (
         <ul className="flex flex-col divide-y divide-slate-100">
           {goals.map((goal) => (
-            <li key={goal.id} className="flex min-h-10 items-center gap-3 py-2">
-              <span className="text-brand w-14 shrink-0 text-sm font-semibold">
-                {formatDday(getDaysUntil(goal.dDay))}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
-                {goal.title}
-              </span>
-              <span className="shrink-0 text-xs text-slate-500">
-                {goal.kind === 'score' ? '점수형' : '완주형'}
-              </span>
+            <li key={goal.id}>
+              {/* 누르면 목표 상세(진척 · 2주 점검, #403)로 갑니다. */}
+              <Link
+                to={`/goals/${goal.id}`}
+                className="flex min-h-10 items-center gap-3 py-2 hover:bg-slate-50"
+              >
+                <span className="text-brand w-14 shrink-0 text-sm font-semibold">
+                  {formatDday(getDaysUntil(goal.dDay))}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
+                  {goal.title}
+                </span>
+                <span className="shrink-0 text-xs text-slate-500">
+                  {goal.kind === 'score' ? '점수형' : '완주형'}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
@@ -1523,54 +1547,333 @@ function GoalList({ goals }: GoalListProps) {
   )
 }
 
-interface DayCardListProps {
-  /** 그 날짜에 하는 카드 (시작 시각 순) */
+/** 일 · 주 타임라인 보기 (#394). 주소의 ?period= 에 둡니다 */
+type CardPeriod = 'day' | 'week'
+
+const periodOptions: { value: CardPeriod; label: string }[] = [
+  { value: 'day', label: '일' },
+  { value: 'week', label: '주' },
+]
+
+/**
+ * 목표별 블록 색. 진행 중인 목표의 순서(최대 3개)대로 씁니다.
+ * 색만으로 구분하지 않게 블록 안에 목표 이름도 글자로 씁니다.
+ */
+const GOAL_BLOCK_STYLES = [
+  'border-blue-300 bg-blue-50 text-blue-900',
+  'border-violet-300 bg-violet-50 text-violet-900',
+  'border-amber-300 bg-amber-50 text-amber-900',
+]
+const GOAL_DOT_STYLES = ['bg-blue-400', 'bg-violet-400', 'bg-amber-400']
+/** 목표가 없거나 끝난 목표의 카드 */
+const NO_GOAL_BLOCK_STYLE = 'border-slate-200 bg-white text-slate-900'
+
+interface CardTimelineProps {
   cards: CardData[]
+  fixedBlocks: FixedBlock[]
+  /** 진행 중인 목표 (색 순서) */
+  goals: Goal[]
+  /** 공부 기록. 블록에 그날 한 시간과 결과를 붙입니다 */
+  sessions: StudySession[]
   dateKey: string
+  todayKey: string
+  period: CardPeriod
+  onChangePeriod: (period: CardPeriod) => void
+  onSelectDate: (dateKey: string) => void
 }
 
 /**
- * 그 날짜의 카드 목록과 [카드 만들기] 버튼 (#392).
- * 일·주 타임라인(#394)이 생기면 그쪽으로 옮기고 이 목록은 지웁니다.
+ * 카드 탭의 일 · 주 타임라인 (최종 기획서 「4.3 카드」, #394).
+ * 목표별 색 + 목표 이름, 절대 카드는 "절대" 글자, 학교·학원 고정 일정은 회색 블록입니다.
+ * 계산(순서 · 빈 시간 · 겹침 · 높이)은 lib/cardTimeline.ts 가 합니다.
  */
-function DayCardList({ cards, dateKey }: DayCardListProps) {
-  return (
-    <Card title="카드">
-      {cards.length === 0 ? (
-        <p className="text-sm text-slate-500">이 날은 카드가 없어요.</p>
-      ) : (
-        <ul className="flex flex-col divide-y divide-slate-100">
-          {cards.map((card) => (
-            <li key={card.id}>
-              <Link
-                to={`/cards/${card.id}/edit`}
-                className="flex min-h-10 items-center gap-3 py-2 hover:bg-slate-50"
+function CardTimeline({
+  cards,
+  fixedBlocks,
+  goals,
+  sessions,
+  dateKey,
+  todayKey,
+  period,
+  onChangePeriod,
+  onSelectDate,
+}: CardTimelineProps) {
+  // 결과(제때 했어요 · 미뤘어요 …)를 정할 지금 시각과 휴식·미루기 표시는 화면을 열 때 한 번만 읽습니다.
+  const [now] = useState(() => Date.now())
+  const [restDays] = useState(loadRestDays)
+  const [cardMarks] = useState(loadCardMarks)
+  const weekKeys = getWeekDateKeys(dateKey)
+
+  function getGoalIndex(card: CardData): number {
+    return goals.findIndex((goal) => goal.id === card.goalId)
+  }
+
+  /** 하루치 블록 목록. 일 보기와 모바일 주 보기(고른 날)가 같이 씁니다. */
+  function renderDay(dayKey: string) {
+    const { items, unscheduled } = getDayTimeline(cards, fixedBlocks, dayKey)
+    const cardsToShrink = getFlexibleCardsToShrink(items)
+    if (items.length === 0 && unscheduled.length === 0) {
+      return <p className="text-sm text-slate-500">이 날은 카드가 없어요.</p>
+    }
+    return (
+      <div className="flex flex-col gap-3">
+        {/* 일정이 넘치면(시간이 겹치면) 유연 카드부터 줄여 보자고 합니다. 절대 카드는 그대로 둡니다. (「4.3」) */}
+        {cardsToShrink.length > 0 && (
+          <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm break-keep text-amber-900">
+            <p className="font-medium">시간이 겹쳐요. 유연 카드부터 줄여 볼까요?</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {cardsToShrink.map((card) => (
+                <Link
+                  key={card.id}
+                  to={`/cards/${card.id}/edit`}
+                  className="inline-flex h-10 max-w-full items-center rounded-lg bg-white px-3 font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  <span className="truncate">{card.title} 고치기</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <ol className="flex flex-col gap-2">
+          {items.map((item) => {
+            const height = getTimelineBlockHeight(item)
+            const timeRange = `${formatDayClock(item.start)}~${formatDayClock(item.end)}`
+            return (
+              <li
+                key={item.kind === 'card' ? item.card.id : item.block.id}
+                className="flex flex-col gap-2"
               >
-                <span className="w-12 shrink-0 text-sm text-slate-500">
-                  {card.startTime ?? '시간 미정'}
-                </span>
-                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
-                  {card.title}
-                </span>
-                {card.priority === 'absolute' && (
-                  <span className="shrink-0 rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                    절대
-                  </span>
+                {/* pl-14: 시각 칸(48px) + 간격(8px)만큼 들여써서 블록과 줄을 맞춥니다. */}
+                {item.gapBeforeMinutes > 0 && (
+                  <p className="pl-14 text-xs text-slate-500">
+                    빈 시간 {formatGap(item.gapBeforeMinutes)}
+                  </p>
                 )}
-                <span className="shrink-0 text-xs text-slate-500">
-                  {card.repeatDays && card.repeatDays.length > 0
-                    ? `${formatWeekdays(card.repeatDays)} · `
-                    : ''}
-                  {card.durationMinutes}분
-                </span>
-              </Link>
+                <div className="flex gap-2">
+                  <span className="w-12 shrink-0 pt-2 text-sm text-slate-500 tabular-nums">
+                    {formatDayClock(item.start)}
+                  </span>
+                  {item.kind === 'fixed' ? (
+                    // 고정 일정: 타이머가 없어서 누를 수 없는 회색 블록입니다. 최소 높이는 계산한 숫자라 style 을 씁니다.
+                    <div
+                      className="flex min-w-0 flex-1 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
+                      style={{ minHeight: height }}
+                    >
+                      <span className="min-w-0 truncate font-medium">
+                        고정 · {item.block.title}
+                      </span>
+                      <span className="shrink-0 tabular-nums">{timeRange}</span>
+                    </div>
+                  ) : (
+                    renderCardBlock(item.card, dayKey, timeRange, item.isOverlapping, height)
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+
+        {unscheduled.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium text-slate-700">시간 미정</p>
+            {unscheduled.map((card) => (
+              <div key={card.id} className="flex">
+                {renderCardBlock(card, dayKey, `${card.durationMinutes}분`, false, undefined)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  /** 카드 블록 하나. 누르면 고치는 화면으로 갑니다. */
+  function renderCardBlock(
+    card: CardData,
+    dayKey: string,
+    timeRange: string,
+    isOverlapping: boolean,
+    height: number | undefined,
+  ) {
+    const goalIndex = getGoalIndex(card)
+    const status = getCardDayStatus(
+      card,
+      dayKey,
+      sessions,
+      now,
+      getCardDayMarkInfo(card.id, dayKey, restDays, cardMarks)?.mark,
+    )
+    // 한 것이 있으면 "45 / 60분", 아직이면 시간만
+    const doneText =
+      status.doneMinutes > 0 ? ` · ${status.doneMinutes} / ${card.durationMinutes}분` : ''
+    return (
+      <Link
+        to={`/cards/${card.id}/edit`}
+        className={cn(
+          'flex min-h-12 min-w-0 flex-1 flex-col gap-1 rounded-lg border px-3 py-2 text-sm hover:brightness-95',
+          goalIndex >= 0 ? GOAL_BLOCK_STYLES[goalIndex] : NO_GOAL_BLOCK_STYLE,
+          isOverlapping && 'border-2 border-amber-500',
+        )}
+        // 블록 높이는 카드 길이와 비례하는 숫자라 style 을 씁니다.
+        // height 대신 minHeight: 짧은 카드라도 글자 두 줄이 잘리지 않고 블록이 늘어납니다.
+        style={height === undefined ? undefined : { minHeight: height }}
+      >
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate font-semibold">{card.title}</span>
+          {card.priority === 'absolute' && (
+            <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+              절대
+            </span>
+          )}
+        </span>
+        {/* 결과까지 다 보이게 줄을 바꿔 씁니다. (블록은 minHeight 라서 같이 늘어납니다) */}
+        <span className="text-xs break-keep opacity-80">
+          {goalIndex >= 0 ? `${goals[goalIndex].title} · ` : ''}
+          {timeRange}
+          {doneText}
+          {status.result ? ` · ${CARD_RESULT_LABELS[status.result]}` : ''}
+          {isOverlapping ? ' · 시간 겹침' : ''}
+        </span>
+      </Link>
+    )
+  }
+
+  /** PC 주 보기의 한 칸 (요일 한 칸에 그날 블록을 짧게) */
+  function renderWeekColumn(dayKey: string) {
+    const { items, unscheduled } = getDayTimeline(cards, fixedBlocks, dayKey)
+    return (
+      <ul className="flex flex-col gap-1">
+        {items.map((item) =>
+          item.kind === 'fixed' ? (
+            <li
+              key={item.block.id}
+              className="truncate rounded border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500"
+            >
+              {formatDayClock(item.start)} 고정 · {item.block.title}
+            </li>
+          ) : (
+            <li key={item.card.id}>{renderWeekCard(item.card, formatDayClock(item.start))}</li>
+          ),
+        )}
+        {unscheduled.map((card) => (
+          <li key={card.id}>{renderWeekCard(card, '시간 미정')}</li>
+        ))}
+      </ul>
+    )
+  }
+
+  function renderWeekCard(card: CardData, timeText: string) {
+    const goalIndex = getGoalIndex(card)
+    return (
+      <Link
+        to={`/cards/${card.id}/edit`}
+        className={cn(
+          'flex flex-col rounded border px-2 py-1 text-xs hover:brightness-95',
+          goalIndex >= 0 ? GOAL_BLOCK_STYLES[goalIndex] : NO_GOAL_BLOCK_STYLE,
+        )}
+      >
+        <span className="tabular-nums opacity-80">
+          {timeText}
+          {card.priority === 'absolute' && <strong className="ml-1 text-red-700">절대</strong>}
+        </span>
+        <span className="truncate font-medium">{card.title}</span>
+      </Link>
+    )
+  }
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-900">카드</h2>
+        <SegmentedToggle
+          label="타임라인 보기"
+          options={periodOptions}
+          value={period}
+          onChange={onChangePeriod}
+          className="w-32"
+        />
+      </div>
+
+      {/* 목표 색 안내. 블록 안에도 목표 이름을 씁니다. */}
+      {goals.length > 0 && (
+        <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+          {goals.map((goal, index) => (
+            <li key={goal.id} className="flex min-w-0 items-center gap-1">
+              <span
+                aria-hidden="true"
+                className={cn('h-2.5 w-2.5 shrink-0 rounded-full', GOAL_DOT_STYLES[index])}
+              />
+              <span className="truncate">{goal.title}</span>
             </li>
           ))}
         </ul>
       )}
+
+      <div className="mt-4">
+        {period === 'day' ? (
+          renderDay(dateKey)
+        ) : (
+          <>
+            {/* 모바일 · 태블릿: 요일 한 줄 + 고른 날 목록. 가로 스크롤 없이 375px 에 들어갑니다. */}
+            <div className="flex flex-col gap-4 lg:hidden">
+              <div role="group" aria-label="요일 고르기" className="grid grid-cols-7 gap-1">
+                {weekKeys.map((key) => {
+                  const count = getCardsOnDate(cards, key).length
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={key === dateKey}
+                      onClick={() => onSelectDate(key)}
+                      className={cn(
+                        'flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-lg border text-xs',
+                        key === dateKey
+                          ? 'border-brand bg-brand/10 text-brand font-semibold'
+                          : 'border-slate-200 text-slate-600',
+                      )}
+                    >
+                      <span>
+                        {getWeekdayName(getWeekday(key))}
+                        {key === todayKey ? '·오늘' : ''}
+                      </span>
+                      <span className="tabular-nums">{count > 0 ? `${count}개` : '-'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {renderDay(dateKey)}
+            </div>
+
+            {/* PC: 요일 7칸 */}
+            <div className="hidden lg:grid lg:grid-cols-7 lg:gap-2">
+              {weekKeys.map((key) => (
+                <div key={key} className="flex min-w-0 flex-col gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={key === dateKey}
+                    onClick={() => onSelectDate(key)}
+                    className={cn(
+                      'h-10 cursor-pointer rounded-lg text-sm',
+                      key === dateKey
+                        ? 'bg-brand/10 text-brand font-semibold'
+                        : 'text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    {getWeekdayName(getWeekday(key))} {Number(key.slice(8))}
+                    {key === todayKey ? ' · 오늘' : ''}
+                  </button>
+                  {renderWeekColumn(key)}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       <Link
         to={`/cards/new?date=${dateKey}`}
-        className="bg-brand hover:bg-brand-dark mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg px-4 text-sm font-medium text-white"
+        className="bg-brand hover:bg-brand-dark mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg px-4 text-sm font-medium text-white"
       >
         + 카드 만들기
       </Link>
@@ -1585,9 +1888,116 @@ function DayCardList({ cards, dateKey }: DayCardListProps) {
   )
 }
 
+interface PlanPatternGuideProps {
+  cards: CardData[]
+  sessions: StudySession[]
+  /** 진행 중인 목표 (타임라인과 같은 색 순서) */
+  goals: Goal[]
+  todayKey: string
+}
+
+/**
+ * 계획 패턴 안내 (최종 기획서 「4.3 카드」, #394).
+ * 같은 목표 카드의 최근 4주 체크리스트 달성률과 판정(과대 / 적정 / 느슨)을 보여 주고,
+ * [상세 보기] 를 누르면 지난 카드마다 예상한 개수와 실제로 한 개수를 보여 줍니다.
+ */
+function PlanPatternGuide({ cards, sessions, goals, todayKey }: PlanPatternGuideProps) {
+  // 어느 목표의 상세를 펼쳤는지는 주소에 둡니다. (/cards?pattern=목표id) 새로고침해도 그대로입니다.
+  const [openId, setOpenId] = useQueryParam('pattern', '', { replace: true })
+  const patterns = getGoalPlanPatterns(
+    cards,
+    sessions,
+    goals.map((goal) => goal.id),
+    todayKey,
+  )
+  if (patterns.length === 0) return null
+
+  return (
+    <Card title="계획 패턴">
+      <p className="text-sm break-keep text-slate-500">
+        최근 4주 동안 체크리스트를 계획한 만큼 해낸 비율이에요.{' '}
+        {Math.round(PATTERN_OVER_UNDER * 100)}% 밑이면 계획이 큰 편,{' '}
+        {Math.round(PATTERN_LOOSE_OVER * 100)}% 를 넘으면 느슨한 편이에요.
+      </p>
+      <ul className="mt-3 flex flex-col divide-y divide-slate-100">
+        {patterns.map((group) => {
+          const goalIndex = goals.findIndex((goal) => goal.id === group.goalId)
+          const title = goalIndex >= 0 ? goals[goalIndex].title : '목표 없는 카드'
+          const isOpen = openId === group.goalId
+          return (
+            <li key={group.goalId} className="flex flex-col gap-2 py-3">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'h-2.5 w-2.5 shrink-0 rounded-full',
+                    goalIndex >= 0 ? GOAL_DOT_STYLES[goalIndex] : 'bg-slate-300',
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{title}</span>
+                {group.averageRate !== null && (
+                  <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
+                    {Math.round(group.averageRate * 100)}%
+                  </span>
+                )}
+                {group.pattern && (
+                  <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                    {PLAN_PATTERN_TEXT[group.pattern].label}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm break-keep text-slate-600">
+                {group.pattern
+                  ? PLAN_PATTERN_TEXT[group.pattern].message
+                  : `카드를 ${PATTERN_MIN_SAMPLES}번 끝내면 판정해요. (지금 ${group.days.length}번)`}
+              </p>
+              {group.days.length > 0 && (
+                <Button
+                  variant="ghost"
+                  aria-expanded={isOpen}
+                  onClick={() => setOpenId(isOpen ? '' : group.goalId)}
+                  className="text-brand self-start px-0"
+                >
+                  {isOpen ? '상세 닫기' : '상세 보기'}
+                </Button>
+              )}
+              {isOpen && group.days.length > 0 && (
+                <ul className="flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                  {group.days.map((day) => (
+                    <li
+                      key={`${day.cardId}-${day.dateKey}`}
+                      className="flex min-h-10 items-center gap-2"
+                    >
+                      <span className="w-12 shrink-0 text-slate-500 tabular-nums">
+                        {Number(day.dateKey.slice(5, 7))}/{Number(day.dateKey.slice(8))}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-slate-900">
+                        {day.cardTitle}
+                      </span>
+                      {/* 예상 → 실제. 예상보다 덜 했으면 주황 글자로 씁니다 (빨강은 쓰지 않습니다) */}
+                      <span
+                        className={cn(
+                          'shrink-0 tabular-nums',
+                          day.checked < day.expected ? 'text-amber-700' : 'text-slate-600',
+                        )}
+                      >
+                        예상 {day.expected} → 실제 {day.checked} / {day.total}개
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
+  )
+}
+
 /**
  * 카드 탭 화면(/cards)입니다. 옛 주소 /planner 로 들어와도 여기로 옵니다. (router.tsx)
- * 위쪽 "카드" 목록과 카드 만들기(#392)는 새 방식이고, 그 아래는 아직 옛 계획 화면입니다. 타임라인으로 바꾸는 것은 #394 에서 합니다.
+ * 위쪽 목표 목록(#391) · 카드 일·주 타임라인(#394)은 새 방식이고, 그 아래 "옛 공부 계획" 은 아직 옛 계획 화면입니다.
  */
 export function CardsPage() {
   const todayKey = getTodayKey()
@@ -1608,7 +2018,9 @@ export function CardsPage() {
   // 루틴 = 요일마다 반복되는 계획의 틀 (#236)
   const { routines, addRoutine, deleteRoutine } = useRoutines()
   // 새 방식의 카드 (최종 기획서 「4.3」, #392)
-  const { getCards } = useCards()
+  const { cards } = useCards()
+  // 학교·학원 고정 일정 (#393). 타임라인에 회색 블록으로 그립니다.
+  const { blocks: fixedBlocks } = useFixedBlocks()
   // 목표 (최종 기획서 「4.7」, #391)
   const { activeGoals } = useGoals()
   // 루틴을 방금 저장했을 때 보여줄 안내
@@ -1621,6 +2033,11 @@ export function CardsPage() {
   const [dateParam, setSelectedDate] = useQueryParam('date', todayKey, { replace: true })
   // 주소는 누구나 고칠 수 있어서, 진짜 날짜가 아니면 오늘로 봅니다.
   const selectedDate = isDateKey(dateParam) ? dateParam : todayKey
+  // 카드 타임라인을 하루로 볼지 한 주로 볼지도 주소에 둡니다. (/cards?period=week) (#394)
+  const [periodParam, setPeriodParam] = useQueryParam('period', 'day', { replace: true })
+  const period: CardPeriod = periodParam === 'week' ? 'week' : 'day'
+  // ◀ ▶ 는 일 보기에서 하루, 주 보기에서 한 주씩 옮깁니다.
+  const dateStep = period === 'week' ? 7 : 1
 
   // 목록으로 볼지 플래너로 볼지도 주소에 둡니다. (/cards?view=timeline) (#237)
   // 주소에 없을 때는 지난번에 고른 보기(저장해 둔 값)로 엽니다.
@@ -1724,6 +2141,8 @@ export function CardsPage() {
     day: 'numeric',
     weekday: 'long',
   })
+  // 주 보기에서는 "10월 12일 ~ 18일" 처럼 그 주의 월요일 ~ 일요일을 보여 줍니다.
+  const weekLabel = formatWeekLabel(getWeekDateKeys(selectedDate))
 
   // window.confirm 은 브라우저 기본 확인창입니다. "확인" 을 누르면 true, "취소" 면 false 를 돌려줍니다.
   function handleDelete(target: StudyPlan) {
@@ -1908,46 +2327,25 @@ export function CardsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        {/* 제목 옆에 "목록 | 플래너" 전환 버튼을 둡니다. 화면이 좁으면 flex-wrap 으로 다음 줄로 내려갑니다. */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">공부 계획</h1>
-          <div role="group" aria-label="보기 방식" className="flex rounded-lg bg-slate-100 p-1">
-            {viewOptions.map((option) => (
-              <button
-                key={option.view}
-                type="button"
-                aria-pressed={view === option.view}
-                onClick={() => handleChangeView(option.view)}
-                className={cn(
-                  'h-10 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
-                  view === option.view
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">카드</h1>
 
-        {/* 날짜 이동: ◀ 어제 / 날짜 / 내일 ▶ / 오늘로 돌아가기 */}
+        {/* 날짜 이동: ◀ / 날짜(주 보기면 그 주) / ▶ / 오늘로 돌아가기 */}
         <div className="mt-3 flex items-center gap-1">
           <Button
             variant="secondary"
-            onClick={() => setSelectedDate(moveDateKey(selectedDate, -1))}
-            aria-label="어제로 이동"
+            onClick={() => setSelectedDate(moveDateKey(selectedDate, -dateStep))}
+            aria-label={period === 'week' ? '지난주로 이동' : '어제로 이동'}
             className="w-10 shrink-0 px-0"
           >
             ◀
           </Button>
           <p className="min-w-0 flex-1 text-center text-sm font-semibold whitespace-nowrap text-slate-900 sm:text-base">
-            {dateLabel}
+            {period === 'week' ? weekLabel : dateLabel}
           </p>
           <Button
             variant="secondary"
-            onClick={() => setSelectedDate(moveDateKey(selectedDate, 1))}
-            aria-label="내일로 이동"
+            onClick={() => setSelectedDate(moveDateKey(selectedDate, dateStep))}
+            aria-label={period === 'week' ? '다음 주로 이동' : '내일로 이동'}
             className="w-10 shrink-0 px-0"
           >
             ▶
@@ -1962,14 +2360,6 @@ export function CardsPage() {
           </Button>
         </div>
 
-        {/* 노는 계획이 있는 날에만: 계획한 노는 시간과 실제로 논 시간 (#238) */}
-        {playProgress.count > 0 && (
-          <p className="mt-2 text-sm break-keep text-slate-500">
-            노는 계획 {playProgress.targetMinutes}분 · 실제 {playProgress.actualMinutes}분. 노는
-            시간은 순공에 넣지 않아요.
-          </p>
-        )}
-
         {/* 구글 캘린더: 연결하기 · 그날 구글 일정 (#323) */}
         <GoogleCalendarStrip connection={calendarConnection} dayKey={selectedDate} />
       </div>
@@ -1977,8 +2367,53 @@ export function CardsPage() {
       {/* 진행 중인 목표 (#391) */}
       <GoalList goals={activeGoals} />
 
-      {/* 새 방식의 카드 (#392). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
-      <DayCardList cards={getCards(selectedDate)} dateKey={selectedDate} />
+      {/* 카드 일·주 타임라인 (#394). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
+      <CardTimeline
+        cards={cards}
+        fixedBlocks={fixedBlocks}
+        goals={activeGoals}
+        sessions={sessions}
+        dateKey={selectedDate}
+        todayKey={todayKey}
+        period={period}
+        onChangePeriod={setPeriodParam}
+        onSelectDate={setSelectedDate}
+      />
+
+      {/* 계획 패턴 안내 (#394): 같은 목표 카드의 최근 4주 체크리스트 달성률 */}
+      <PlanPatternGuide cards={cards} sessions={sessions} goals={activeGoals} todayKey={todayKey} />
+
+      {/* 옛 공부 계획: 카드로 옮겨 가는 동안 그대로 둡니다. */}
+      {/* 제목 옆에 "목록 | 플래너" 전환 버튼을 둡니다. 화면이 좁으면 flex-wrap 으로 다음 줄로 내려갑니다. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6">
+        <h2 className="text-xl font-bold tracking-tight">옛 공부 계획</h2>
+        <div role="group" aria-label="보기 방식" className="flex rounded-lg bg-slate-100 p-1">
+          {viewOptions.map((option) => (
+            <button
+              key={option.view}
+              type="button"
+              aria-pressed={view === option.view}
+              onClick={() => handleChangeView(option.view)}
+              className={cn(
+                'h-10 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors',
+                view === option.view
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 노는 계획이 있는 날에만: 계획한 노는 시간과 실제로 논 시간 (#238) */}
+      {playProgress.count > 0 && (
+        <p className="text-sm break-keep text-slate-500">
+          노는 계획 {playProgress.targetMinutes}분 · 실제 {playProgress.actualMinutes}분. 노는
+          시간은 순공에 넣지 않아요.
+        </p>
+      )}
 
       {view === 'timeline' ? (
         <>
