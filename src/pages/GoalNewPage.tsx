@@ -1,11 +1,13 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
+import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
@@ -29,9 +31,12 @@ import {
   MAX_ACTIVE_GOALS,
   canAddGoal,
   suggestRoutineCards,
+  toRoutineCards,
 } from '@/lib/goals'
+import { fetchRoutineCards, type RoutineCardSuggestion } from '@/lib/routineCardsApi'
 import { formatWeekdays } from '@/lib/routines'
 import { removeData, saveData } from '@/lib/storage'
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
@@ -62,6 +67,33 @@ export function GoalNewPage() {
   const [picked, setPicked] = useState<number[]>([0, 1])
   const [now] = useState(() => Date.now())
   const [stepParam, setStepParam] = useQueryParam('step', 'wish')
+  // 진짜 로그인일 때만 서버(AI)를 쓸 수 있습니다. 테스트 로그인의 가짜 토큰은 서버가 모릅니다.
+  const isServerData = useIsServerData()
+  // AI 가 제안한 루틴 카드 (BE#239). 아직 안 받았거나 못 받았으면 null 이고, 그때는 기본 제안을 씁니다.
+  const [aiSuggestions, setAiSuggestions] = useState<RoutineCardSuggestion[] | null>(null)
+  // AI 제안을 못 받았을 때의 안내
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
+  // 글에 위기 표현이 있어서 서버가 도움 안내를 먼저 보여 주라고 했을 때
+  const [showHelp, setShowHelp] = useState(false)
+
+  const routineAi = useMutation({
+    mutationFn: () => fetchRoutineCards(buildGoal(draft, 'preview', now)),
+    onSuccess: (result) => {
+      if (result.showHelp) {
+        setShowHelp(true)
+        return
+      }
+      if (result.cards === null) {
+        setAiNotice('AI 가 지금은 카드를 만들지 못해서 기본 제안을 보여 줘요.')
+        return
+      }
+      setAiNotice(null)
+      setAiSuggestions(result.cards)
+      // 받은 카드는 처음엔 모두 골라 둡니다.
+      setPicked(result.cards.map((_, index) => index))
+    },
+    onError: () => setAiNotice('AI 제안을 받지 못해서 기본 제안을 보여 줘요.'),
+  })
 
   // 적을 때마다 임시 저장합니다. (새로고침해도 이어서 쓰게)
   useEffect(() => {
@@ -80,8 +112,11 @@ export function GoalNewPage() {
   const stepInfo = GOAL_STEPS[stepIndex]
   const errors = triedNext ? getStepErrors(draft, step, todayKey) : {}
 
-  // P 계획 단계에서 보여 줄 루틴 카드 제안 (저장할 때 진짜 목표 id 로 다시 만듭니다)
-  const previewCards = suggestRoutineCards(buildGoal(draft, 'preview', now), todayKey, now)
+  // P 계획 단계에서 보여 줄 루틴 카드 제안. AI 제안이 있으면 그것, 없으면 기본 제안입니다. (저장할 때 진짜 목표 id 로 다시 만듭니다)
+  const previewGoal = buildGoal(draft, 'preview', now)
+  const previewCards = aiSuggestions
+    ? toRoutineCards(aiSuggestions, previewGoal, todayKey, now)
+    : suggestRoutineCards(previewGoal, todayKey, now)
 
   /** 한 칸만 바꿉니다. */
   function change<K extends keyof GoalDraft>(key: K, value: GoalDraft[K]) {
@@ -102,6 +137,14 @@ export function GoalNewPage() {
     setStepParam(GOAL_STEPS[stepIndex - 1].step)
   }
 
+  /** 대처를 고치면 앞서 받은 AI 제안은 맞지 않으니 기본 제안으로 돌아갑니다. */
+  function handleChangePlan(text: string) {
+    change('plan', text)
+    setAiSuggestions(null)
+    setAiNotice(null)
+    setPicked([0, 1])
+  }
+
   function handleTogglePick(index: number) {
     setPicked((prev) =>
       prev.includes(index) ? prev.filter((item) => item !== index) : [...prev, index],
@@ -113,7 +156,7 @@ export function GoalNewPage() {
       setTriedNext(true)
       return
     }
-    const { goal, cards } = createGoalWithCards(draft, picked, todayKey)
+    const { goal, cards } = createGoalWithCards(draft, picked, todayKey, aiSuggestions)
     // 이 목표가 첫 목표인지는 저장하기 전에 봐 둡니다.
     const isFirstGoal = goals.length === 0
     if (!addGoal(goal)) return
@@ -306,7 +349,7 @@ export function GoalNewPage() {
               id="goal-plan"
               label="그럴 때 나는"
               value={draft.plan}
-              onChange={(event) => change('plan', event.target.value)}
+              onChange={(event) => handleChangePlan(event.target.value)}
               maxLength={GOAL_TEXT_MAX_LENGTH}
               placeholder="예: 폰을 다른 방에 두고 시작해요"
               error={errors.plan}
@@ -314,7 +357,29 @@ export function GoalNewPage() {
 
             {/* 대처를 루틴 카드로 바꾼 제안. 고른 카드만 카드 탭에 들어갑니다 */}
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-slate-700">이렇게 카드로 만들어 둘까요?</p>
+              <p className="text-sm font-medium text-slate-700">
+                {aiSuggestions ? 'AI 가 이렇게 제안했어요' : '이렇게 카드로 만들어 둘까요?'}
+              </p>
+              {/* AI 제안 (BE#239). 진짜 로그인일 때만. 못 받으면 기본 제안을 그대로 씁니다 */}
+              {isServerData && (
+                <Button
+                  variant="secondary"
+                  onClick={() => routineAi.mutate()}
+                  disabled={draft.plan.trim() === '' || routineAi.isPending}
+                  className="self-start"
+                >
+                  {routineAi.isPending
+                    ? 'AI 가 카드를 만드는 중…'
+                    : aiSuggestions
+                      ? 'AI 에게 다시 제안 받기'
+                      : 'AI 에게 카드 제안 받기'}
+                </Button>
+              )}
+              {aiNotice && (
+                <p role="status" className="text-xs break-keep text-slate-500">
+                  {aiNotice}
+                </p>
+              )}
               <ul className="flex flex-col gap-2">
                 {previewCards.map((card, index) => (
                   <li key={card.id}>
@@ -374,6 +439,7 @@ export function GoalNewPage() {
           {step === 'plan' ? '목표 저장' : '다음'}
         </Button>
       </div>
+      <CrisisHelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </form>
   )
 }

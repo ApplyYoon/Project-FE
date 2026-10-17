@@ -1,5 +1,6 @@
 import { moveDateKey } from '@/lib/date'
 import { getDaysUntil } from '@/lib/exams'
+import type { RoutineCardSuggestion } from '@/lib/routineCardsApi'
 import { loadData, saveData } from '@/lib/storage'
 import type { Card, Goal, GoalKind, GoalTargetSnapshot } from '@/types'
 
@@ -150,6 +151,39 @@ export function suggestRoutineCards(goal: Goal, todayKey: string, now: number): 
       })),
     },
   ]
+}
+
+/**
+ * AI 가 제안한 루틴 카드(lib/routineCardsApi.ts)를 그 목표의 카드로 바꿉니다. 기본 제안과 같이 내일부터 시작합니다.
+ * 요일 · 시각 · 길이는 서버 코드가 정한 값 그대로이고, 우선순위는 유연 · 유형은 자습입니다.
+ *
+ *   toRoutineCards([{ title: '영단어 30쪽', repeatDays: [1,2,3,4,5], startTime: '19:00', durationMinutes: 50,
+ *                     checklist: ['폰을 다른 방에 두고 오기'] }], { id: 'g1', … }, '2026-10-17', 1000)
+ *     -> [ { id: 'card-1000-ai-0', title: '영단어 30쪽', date: '2026-10-18', goalId: 'g1',
+ *            checklist: [{ id: 'card-1000-ai-0-item-0', text: '폰을 다른 방에 두고 오기' }], … } ]
+ */
+export function toRoutineCards(
+  suggestions: RoutineCardSuggestion[],
+  goal: Goal,
+  todayKey: string,
+  now: number,
+): Card[] {
+  return suggestions.map((suggestion, cardIndex) => {
+    const id = `card-${now}-ai-${cardIndex}`
+    return {
+      id,
+      title: suggestion.title,
+      date: moveDateKey(todayKey, 1),
+      repeatDays: [...suggestion.repeatDays],
+      startTime: suggestion.startTime,
+      durationMinutes: suggestion.durationMinutes,
+      checklist: suggestion.checklist.map((text, index) => ({ id: `${id}-item-${index}`, text })),
+      goalId: goal.id,
+      priority: 'flexible',
+      type: 'self',
+      createdAt: now,
+    }
+  })
 }
 
 /** 저장소에서 꺼낸 값이 목표 모양이 맞는지 확인합니다. (깨진 값이 섞이면 화면이 멈춥니다) */
