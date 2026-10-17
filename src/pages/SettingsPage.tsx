@@ -13,6 +13,7 @@ import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCalendarConnect } from '@/hooks/useCalendarConnect'
 import { logoutOnServer } from '@/lib/accountApi'
+import { isInApp } from '@/lib/appBridge'
 import {
   CALL_TIME_STORAGE_KEY,
   isCallTimeInQuietHours,
@@ -605,7 +606,14 @@ export function SettingsPage() {
                   그대로 쌓여요.
                 </p>
               )}
-              <WebPushSection />
+              {/* 휴대폰 앱 안에서는 앱의 알림을 쓰므로 웹 푸시 켜기를 숨깁니다. (lib/appBridge.ts) */}
+              {isInApp() ? (
+                <p className="border-t border-slate-100 pt-4 text-sm break-keep text-slate-500">
+                  앱에서는 휴대폰 앱의 알림을 써요. 앱을 닫아 둬도 카드 시작 · 전화 알림이 와요.
+                </p>
+              ) : (
+                <WebPushSection />
+              )}
             </div>
           </Card>
 
