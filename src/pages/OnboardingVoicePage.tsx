@@ -21,7 +21,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
  * "처음의 나에게 한마디" 를 남기는 화면입니다. (주소: /onboarding/voice · #241)
  * 내 목소리로 30초까지 녹음하고, 글로도 한 줄 남길 수 있습니다. 둘 다 건너뛰어도 됩니다.
  *
- * - 처음 계획을 세운 뒤 "준비 끝" 앞에 나옵니다. 끝나면 /onboarding/done 으로 갑니다.
+ * - 가입 직후 맨 처음에 나옵니다. 끝나거나 건너뛰면 온보딩 질문(/onboarding)으로 갑니다.
  * - 설정의 "다시 남기기" 로 들어오면(주소 끝에 ?from=settings) 끝나고 설정으로 돌아갑니다.
  *
  * ⚠️ 녹음은 이 기기에만 저장합니다. 서버로 보내지 않습니다. (lib/voicePledge.ts)
@@ -30,7 +30,7 @@ export function OnboardingVoicePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const isFromSettings = searchParams.get('from') === 'settings'
-  const exitPath = isFromSettings ? '/settings' : '/onboarding/done'
+  const exitPath = isFromSettings ? '/settings' : '/onboarding'
 
   // 전에 남긴 다짐이 있으면 그것으로 시작합니다. (설정에서 다시 들어온 경우)
   const [savedPledge] = useState(loadVoicePledge)
@@ -40,7 +40,8 @@ export function OnboardingVoicePage() {
       ? { dataUrl: savedPledge.audioDataUrl, seconds: savedPledge.seconds }
       : null,
   )
-  // 글로 남기는 한마디. 처음이면 온보딩에서 적은 "공부하는 이유" 를 미리 넣어 둡니다. (고쳐 써도 됩니다)
+  // 글로 남기는 한마디. 온보딩에서 적은 "공부하는 이유" 가 있으면 미리 넣어 둡니다. (고쳐 써도 됩니다)
+  // 가입 직후 처음 올 때는 아직 온보딩 전이라 빈 칸으로 시작합니다.
   const [text, setText] = useState(
     () =>
       savedPledge?.text ??
