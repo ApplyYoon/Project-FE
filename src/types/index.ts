@@ -124,6 +124,79 @@ export interface Routine {
   startTime?: string
 }
 
+/*
+ * ■ 카드 (#379, 기획서 docs/PLAN.md 「4.3 카드」)
+ * 분석의 기본 단위입니다. 앞으로 StudyPlan(하루 계획)과 Routine(반복 계획)을 대신합니다. (화면 교체는 #392 · #394)
+ * 칸 이름은 BE 의 카드(Project-BE#222)와 똑같이 맞췄습니다. 이름을 바꾸면 BE 와 RN 앱(Project-App)에도 알려 주세요.
+ */
+
+/** 체크리스트 한 줄. 항목끼리 중요도는 없습니다. */
+export interface ChecklistItem {
+  /** 항목을 구분하는 고유 값 */
+  id: string
+  /** 할 일 (예: '수학 문제집 3단원 풀기') */
+  text: string
+  /** 체크한 시각 (Date.now() 값). 아직 안 했으면 없음 */
+  doneAt?: number
+}
+
+/** 카드 우선순위 — absolute: 절대(미룰 수 없음, 과제 제출 등) / flexible: 유연(운동 등) */
+export type CardPriority = 'absolute' | 'flexible'
+
+/** 카드 유형 — self: 자습 / lecture: 인강 */
+export type CardType = 'self' | 'lecture'
+
+/** 알림 방식 — message: 메시지 / call: 전화 */
+export type CardAlertMethod = 'message' | 'call'
+
+/** 카드 알림. 기본값은 "시작 정각 · 메시지 · 기본 문구" 입니다. (lib/cards.ts 의 DEFAULT_ALERT_TEXT) */
+export interface CardAlert {
+  /** 알림 방식 */
+  alertMethod: CardAlertMethod
+  /** 시작 몇 분 전에 알릴지. 0 이면 정각 */
+  alertMinutesBefore: number
+  /** 알림에 보여 줄 문구 */
+  alertText: string
+}
+
+/**
+ * 카드 하나 = 할 일 하나. 반복 카드도 카드 하나이고, 날마다 복사하지 않습니다.
+ * 날짜별로 했는지는 공부 기록(StudySession 의 planId 에 카드 id)에 남깁니다.
+ * date 와 repeatDays 중 하나만 있습니다. (1회성이면 date, 반복이면 repeatDays)
+ */
+export interface Card extends CardAlert {
+  /** 카드를 구분하는 고유 값. 옛 계획·루틴에서 옮긴 카드는 그 id 를 그대로 씁니다. (옛 공부 기록과 이어지게) */
+  id: string
+  /** 제목 — 무엇을 하는지 */
+  title: string
+  /** 1회성 카드의 날짜 (예: '2026-10-17'). 반복 카드면 null */
+  date: string | null
+  /** 반복 카드의 요일 (0 = 일요일 … 6 = 토요일, Date 의 getDay() 와 같은 숫자). 1회성 카드면 null */
+  repeatDays: number[] | null
+  /** 시작 시각 (예: '19:00'). 시각 없이 만든 옛 계획에서 옮긴 카드만 null */
+  startTime: string | null
+  /** 길이 (분) */
+  durationMinutes: number
+  /** 체크리스트. 개수는 자유입니다. (보통 AI 가 만들어 줍니다, #413) */
+  checklist: ChecklistItem[]
+  /** 연결한 목표의 id. 목표 없음이면 null. 과목 칸을 대신합니다 */
+  goalId: string | null
+  /** 우선순위. 기본 flexible */
+  priority: CardPriority
+  /** 유형. 기본 self(자습) */
+  type: CardType
+  /** 예상 달성 개수. 기본은 체크리스트 개수 */
+  expectedDone: number
+  /** 예상 달성 개수를 체크리스트보다 낮춘 이유 태그 1개. 낮추지 않았으면 null */
+  expectedDoneReason: string | null
+  /** 예상 실패 원인. 내 행동에서 나오는 원인을 1개 이상 적습니다. 안 적었으면 빈 배열 */
+  expectedFailCauses: string[]
+  /** 계획에 쓴 시간 (밀리초). 편집 화면을 연 순간부터 저장할 때까지 */
+  planningMs: number
+  /** 미루기 횟수. 처음엔 0 (#400) */
+  postponeCount: number
+}
+
 /**
  * 온보딩에서 처음 세운 계획입니다.
  * 한 번 저장하면 나중에 루틴을 바꿔도 이 값은 바뀌지 않습니다. "처음의 나" 와 지금을 비교하는 기준입니다.
