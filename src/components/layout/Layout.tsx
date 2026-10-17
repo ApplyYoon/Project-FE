@@ -13,6 +13,7 @@ import { useAppAlerts } from '@/hooks/useAppAlerts'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
 import { useCardAlerts } from '@/hooks/useCardAlerts'
+import { useCardSync } from '@/hooks/useCardSync'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { useTimerLock } from '@/hooks/useTimerLock'
@@ -36,6 +37,8 @@ export function Layout() {
   useCallReminder()
   // 카드 시작 알림 (카드에 쓴 문장 · 3분 뒤 '지금 시작해요' · 10분 전). 누르면 그 카드로 바로 시작합니다. (#399)
   useCardAlerts()
+  // 진짜 로그인이면 이 기기의 카드를 서버와 맞춥니다. (못 보낸 것은 다시 보내고, 다른 기기에서 바뀐 것은 받아 옵니다, #516)
+  useCardSync()
   // 다른 화면으로 옮기면 맨 위부터 보이게 합니다. (같은 화면 안의 탭 · 날짜 바꾸기와 뒤로 가기는 그대로 둡니다)
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()

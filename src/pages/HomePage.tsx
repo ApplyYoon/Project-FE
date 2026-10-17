@@ -10,7 +10,6 @@ import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import { buildJudgedCardDays } from '@/lib/cardDays'
 import { loadCardMarks } from '@/lib/cardMarks'
-import { saveCards } from '@/lib/cards'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { getCareLimits } from '@/lib/careLimits'
 import { cn } from '@/lib/cn'
@@ -159,8 +158,7 @@ export function HomePage() {
   /** 카드 없이 지금 시작 — '언제 = 지금' 인 즉석 카드를 만들고 그 카드로 타이머를 엽니다. (「4.2」) */
   function handleStartNow() {
     const card = createInstantCardNow(todayKey, INSTANT_CARD_MINUTES)
-    // 화면을 바로 옮겨서 useCards 의 저장(useEffect)이 돌기 전에 홈이 사라질 수 있어, 여기서 먼저 저장해 둡니다.
-    saveCards([...cards, card])
+    // addCard 는 바로 저장해서, 곧바로 타이머로 옮겨 가도 카드가 남습니다.
     addCard(card)
     navigate(`/timer?card=${encodeURIComponent(card.id)}`)
   }

@@ -35,6 +35,8 @@ const RECORD_KEYS = [
   'plans',
   // 카드(#379). 지운 뒤 다시 열면 남아 있는 루틴만 반복 카드로 다시 옮겨집니다. (hooks/useCards.ts)
   'cards',
+  // 서버에 아직 못 보낸 카드 목록 (#516). 카드를 지웠으니 보낼 것도 없습니다.
+  'card-sync-pending',
   'sessions',
   'timer',
   'timer-subject',
