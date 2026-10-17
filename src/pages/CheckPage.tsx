@@ -4,10 +4,12 @@ import { Input } from '@/components/ui/Input'
 import { MissReasonPicker, type MissReasonValue } from '@/components/ui/MissReasonPicker'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useCheckIns } from '@/hooks/useCheckIns'
+import { useSendCheckIn } from '@/hooks/useCheckInSync'
 import { usePlans } from '@/hooks/usePlans'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSuggestionChecks } from '@/hooks/useSuggestionChecks'
 import { useSuggestions } from '@/hooks/useSuggestions'
+import { getApiErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { getDaySummary } from '@/lib/daySummary'
@@ -88,6 +90,8 @@ export function CheckPage() {
   const yesterdayKey = moveDateKey(todayKey, -1)
 
   const { getCheckIn, saveCheckIn, checkIns } = useCheckIns()
+  // 오늘 체크인을 서버로도 보냅니다. (#321) 테스트 로그인이면 send.canSync 가 false 라 보내지 않습니다.
+  const send = useSendCheckIn()
   const { getPlans } = usePlans()
   // 타이머가 저장해 둔 진짜 공부 기록입니다. 기록이 없으면 빈 목록이라 어제 순공은 0분으로 보입니다.
   const { sessions } = useStudySessions()
@@ -100,7 +104,7 @@ export function CheckPage() {
   )
 
   const existingCheckIn = getCheckIn(todayKey)
-  // 1탭 체크인(기분 하나)만 한 날은 자세한 체크인을 아직 안 한 것이라, 완료 표시와 "다시 저장" 을 붙이지 않습니다.
+  // 하루 첫 한 줄(컨디션·감정 태그)만 한 날은 자세한 체크인을 아직 안 한 것이라, 완료 표시와 "다시 저장" 을 붙이지 않습니다.
   const isCheckedInToday = existingCheckIn !== undefined && existingCheckIn.isQuick !== true
 
   // 이미 체크인한 날이면 그 값을 보여 줘서 고칠 수 있게 하고, 처음이면 가운데 기본값으로 시작합니다.
@@ -189,6 +193,10 @@ export function CheckPage() {
         checkIn.missReasonNote = note
       }
     }
+    // 하루 첫 한 줄에서 고른 감정 태그는 이 화면에서 묻지 않으니 그대로 이어 둡니다. (덮어쓰기로 지워지지 않게, #387)
+    if (existingCheckIn?.emotions !== undefined) {
+      checkIn.emotions = existingCheckIn.emotions
+    }
     // 물어봤고 답을 골랐을 때만 저장합니다. 안 골랐으면 "안 켰다" 가 아니라 "모름" 이라 남기지 않습니다.
     if (isPhoneFocusAsked && phoneFocusKept !== null) {
       checkIn.phoneFocusKept = phoneFocusKept
@@ -199,7 +207,9 @@ export function CheckPage() {
       checkIn.promiseIf = promise.promiseIf
       checkIn.promiseThen = promise.promiseThen
     }
+    // 이 기기에 먼저 저장하고, 서버로도 보냅니다. 서버에 못 보내도 이 기기의 체크인은 그대로입니다.
     saveCheckIn(checkIn)
+    sendToServer(checkIn)
 
     // 어제 약속에 답했으면, 약속을 정한 어제 체크인에 그 답을 적습니다. 안 골랐으면 "모름" 이라 남기지 않습니다. (#79)
     if (yesterdayCheckIn !== undefined && askedPromise !== null && promiseKept !== null) {
@@ -216,6 +226,14 @@ export function CheckPage() {
     setIsSaved(true)
   }
 
+  /**
+   * 체크인을 서버로 보냅니다. 이 화면에서 고친 그대로 보냅니다. (lib/checkInsApi.ts 의 sendCheckIn)
+   * 어제 약속을 지켰는지 · 휴대폰 집중 모드는 서버에 칸이 없어서 이 기기에만 남습니다.
+   */
+  function sendToServer(checkIn: CheckIn) {
+    if (send.canSync) send.mutate(checkIn)
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -227,10 +245,10 @@ export function CheckPage() {
             </span>
           )}
         </div>
-        {/* 기분은 앱을 열 때 1탭으로 이미 받았습니다. (#242) 이 화면은 더 적고 싶은 날에만 씁니다. */}
+        {/* 컨디션·감정은 그날 첫 화면 맨 위의 한 줄로 받습니다. (#387) 이 화면은 더 적고 싶은 날에만 씁니다. */}
         <p className="mt-2 break-keep text-slate-600">
-          오늘 기분은 앱을 열 때 이미 골랐어요. 컨디션·예상 시간·약속까지 적고 싶은 날에만 하면
-          돼요.
+          컨디션과 감정은 그날 첫 화면 맨 위에서 골라요. 기분·예상 시간·약속까지 적고 싶은 날에만
+          하면 돼요.
         </p>
       </div>
 
@@ -499,6 +517,20 @@ export function CheckPage() {
         <p role="status" className="text-center text-sm font-medium text-emerald-700">
           저장했어요. 내용을 고치고 다시 저장할 수도 있어요.
         </p>
+      )}
+      {/* 서버에 못 보냈을 때. 이 기기에는 저장됐고, 다시 보낼 수 있습니다. (안 눌러도 다음에 앱을 열 때 다시 보냅니다) */}
+      {isSaved && send.isError && send.variables !== undefined && (
+        <div role="alert" className="flex flex-col items-center gap-2 text-center">
+          <p className="text-sm break-keep text-amber-700">
+            이 기기에는 저장했지만 서버에는 아직 못 보냈어요. {getApiErrorMessage(send.error)}
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => send.variables !== undefined && sendToServer(send.variables)}
+          >
+            서버에 다시 보내기
+          </Button>
+        </div>
       )}
 
       <Button

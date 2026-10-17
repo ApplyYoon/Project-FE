@@ -57,6 +57,9 @@ const RECORD_KEYS = [
   'timer-plan',
   // 매일 체크인(기분 · 컨디션 · 약속 · 못 채운 이유)과 주간 회고
   'checkins',
+  // 서버로 아직 못 보낸 체크인의 날짜들 (#321). 체크인을 지우면 보낼 것도 없습니다.
+  // ⚠️ 서버에 이미 보낸 체크인은 이 버튼으로 지워지지 않습니다. (서버 기록은 탈퇴할 때 지워집니다)
+  'checkins-unsent',
   'weekly-reviews',
   // 개선안과 도전 상태. 이행 기록(suggestion-checks)만 지우고 이것을 남기면 "도전 중" 인데 기록이 0 인 상태가 됩니다.
   'suggestions',

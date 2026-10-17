@@ -27,6 +27,8 @@ TanStack Query 는 이것을 대신 해 줍니다. 받아온 데이터를 잠깐
 
 계획·기록·과목은 아직 브라우저 저장소(localStorage)에 있습니다. 서버 API 가 생기면(#201 ~ #203) 그때 이 방식으로 옮깁니다.
 
+체크인(#321)은 브라우저 저장소를 그대로 쓰면서 **서버에도 같이 저장**합니다. 저장은 `useSendCheckIn`(useMutation), 앱을 열 때 "오늘 체크인을 했는지" 만 서버에 묻습니다(`todayServerCheckInQuery`). 자세한 이유는 `src/lib/checkInsApi.ts` 맨 위에 있습니다.
+
 ## 3. 세 조각
 
 ### ① 쿼리 설정 — `lib/` 에 `queryOptions` 로
