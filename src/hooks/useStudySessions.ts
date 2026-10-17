@@ -10,7 +10,7 @@ const STORAGE_KEY = 'sessions'
  * 타이머로 끝낸 기록을 들고 있고, 바뀔 때마다 localStorage 에 저장합니다.
  * 새로고침해도 기록이 남아 있고, 처음 들어온 사람은 빈 목록으로 시작합니다.
  *
- *   const { sessions, allSessions, addSession } = useStudySessions()
+ *   const { sessions, allSessions, addSession, updateSession } = useStudySessions()
  *
  * - sessions: 공부 기록만. 순공 · 달성률 같은 계산에는 이것을 씁니다.
  * - allSessions: 공부 기록 + 노는 기록. 계획별 실제 시간(`32 / 50분`)처럼 노는 기록도 필요한 곳에서만 씁니다. (#238)
@@ -34,5 +34,15 @@ export function useStudySessions() {
     setAllSessions(() => [...loadAllSessions(), session])
   }
 
-  return { sessions, allSessions, addSession }
+  /** 이미 저장한 기록의 일부 칸을 바꿉니다. (종료 팝업에서 받은 것을 붙일 때, #398) */
+  function updateSession(sessionId: string, changes: Partial<Omit<StudySession, 'id'>>) {
+    // 붙일 때와 같은 이유로 저장소를 다시 읽은 뒤 고칩니다.
+    setAllSessions(() =>
+      loadAllSessions().map((session) =>
+        session.id === sessionId ? { ...session, ...changes } : session,
+      ),
+    )
+  }
+
+  return { sessions, allSessions, addSession, updateSession }
 }

@@ -5,6 +5,7 @@ import { GoalAdjustModal } from '@/components/ui/GoalAdjustModal'
 import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { PlayBadge } from '@/components/ui/PlayBadge'
+import { VoicePlanCard } from '@/components/ui/VoicePlanCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
@@ -22,6 +23,7 @@ import { scalePlanMinutes } from '@/lib/goalAdjust'
 import { getTodayCareDecision } from '@/lib/careInputs'
 import { getRecentAverageMinutes } from '@/lib/goalAdjustInput'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { useSubjectManager } from '@/hooks/useSubjects'
 import { SUBJECT_COLORS, SUBJECT_COLOR_LABELS } from '@/lib/subjects'
 import { SUBJECT_NAME_MAX_LENGTH } from '@/lib/subjectsApi'
@@ -690,17 +692,24 @@ function SubjectManager({ subjects, onAdd, onRename, onDelete }: SubjectManagerP
                   subjectColorStyles[subject.color],
                 )}
               >
-                <span title={subject.name} className="min-w-0 truncate">
-                  {subject.name}
-                </span>
-                {/* ✎: 이름 바꾸기. 누르는 영역은 × 와 같이 40px 로 둡니다. */}
+                {/* 이름과 ✎ 를 버튼 하나로 묶어서, 이름을 눌러도 ✎ 를 눌러도 이름 바꾸는 칸이 열립니다. */}
+                {/* min-w-0: 이름이 길면 버튼이 줄어들고 이름 끝이 … 로 잘립니다. (375px 가로 스크롤 방지) */}
+                {/* 누르는 영역은 × 와 같이 높이 40px 로 둡니다. */}
                 <button
                   type="button"
                   onClick={() => handleStartEdit(subject)}
                   aria-label={`${subject.name} 이름 바꾸기`}
-                  className="-my-2.5 -mr-1 inline-flex h-10 w-8 cursor-pointer items-center justify-center text-sm leading-none opacity-70 hover:opacity-100"
+                  className="group -my-2.5 inline-flex h-10 min-w-0 cursor-pointer items-center gap-1"
                 >
-                  ✎
+                  <span title={subject.name} className="min-w-0 truncate group-hover:underline">
+                    {subject.name}
+                  </span>
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-sm leading-none opacity-70 group-hover:opacity-100"
+                  >
+                    ✎
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -1454,7 +1463,11 @@ function GoogleCalendarStrip({ connection, dayKey }: GoogleCalendarStripProps) {
   )
 }
 
-export function PlannerPage() {
+/**
+ * 카드 탭 화면(/cards)입니다. 옛 주소 /planner 로 들어와도 여기로 옵니다. (router.tsx)
+ * 지금은 옛 계획 화면 그대로이고, 카드 만들기·타임라인으로 바꾸는 것은 #392·#394 에서 합니다.
+ */
+export function CardsPage() {
   const todayKey = getTodayKey()
 
   // 계획은 날짜별로 localStorage 에 저장돼서 새로고침해도 남습니다. (usePlans 훅)
@@ -1477,13 +1490,13 @@ export function PlannerPage() {
   // sessions: 공부 기록만 / allSessions: 노는 기록까지.
   // 계획별 실제 시간은 노는 계획에도 보여야 해서 allSessions 로 구합니다. (#238)
   const { sessions, allSessions } = useStudySessions()
-  // 보고 있는 날짜는 주소에 둡니다. (/planner = 오늘, /planner?date=2026-10-11 = 그날)
+  // 보고 있는 날짜는 주소에 둡니다. (/cards = 오늘, /cards?date=2026-10-11 = 그날)
   // replace: ◀ ▶ 를 여러 번 눌러도 뒤로 가기 한 번이면 계획 화면을 떠납니다.
   const [dateParam, setSelectedDate] = useQueryParam('date', todayKey, { replace: true })
   // 주소는 누구나 고칠 수 있어서, 진짜 날짜가 아니면 오늘로 봅니다.
   const selectedDate = isDateKey(dateParam) ? dateParam : todayKey
 
-  // 목록으로 볼지 플래너로 볼지도 주소에 둡니다. (/planner?view=timeline) (#237)
+  // 목록으로 볼지 플래너로 볼지도 주소에 둡니다. (/cards?view=timeline) (#237)
   // 주소에 없을 때는 지난번에 고른 보기(저장해 둔 값)로 엽니다.
   const [savedView] = useState<PlannerView>(loadPlannerView)
   const [viewParam, setViewParam] = useQueryParam('view', savedView)
@@ -1498,6 +1511,8 @@ export function PlannerPage() {
 
   // 과목 목록. 진짜 로그인이면 서버에서 받아 서버에 추가·삭제하고, 테스트 로그인이면 이 기기(localStorage)에 저장합니다. (hooks/useSubjects.ts)
   const { subjects, addSubject, removeSubject, renameSubject } = useSubjectManager()
+  // 진짜 로그인일 때만 서버(AI)를 쓸 수 있습니다. 테스트 로그인의 가짜 토큰은 서버가 모릅니다.
+  const isServerData = useIsServerData()
 
   // 계획을 만들고 옮기고 지울 때 구글 캘린더도 같이 바꿉니다. (연결했을 때만, #316)
   const calendar = usePlanCalendarSync({ subjects, setGoogleEventId })
@@ -1688,6 +1703,12 @@ export function PlannerPage() {
     if (!window.confirm(message)) return
     deleteRoutine(target.id)
     setRoutineNotice(null)
+  }
+
+  // 말로 추가에서 확인을 마친 계획들을 저장합니다. 구글 캘린더를 연결했으면 일정으로도 넣습니다. (#316)
+  function handleAddVoicePlans(plans: StudyPlan[]) {
+    addPlans(plans)
+    for (const plan of plans) calendar.onPlanAdded(plan, todayKey)
   }
 
   // 다른 날의 계획을 지금 보고 있는 날짜로 가져옵니다. 완료 표시는 지우고, 원래 날의 계획은 그대로 둡니다.
@@ -1933,6 +1954,16 @@ export function PlannerPage() {
                 </p>
               )}
             </Card>
+
+            {/* 말로 추가(#248): 한 문장을 AI 가 계획 초안 여러 개로 나눠 주고, 학생이 확인해야 저장됩니다. */}
+            <VoicePlanCard
+              date={selectedDate}
+              dateLabel={isToday ? '오늘' : `${month}월 ${day}일`}
+              subjects={subjects}
+              existingPlans={getPlans(selectedDate)}
+              canUseAi={isServerData}
+              onAddPlans={handleAddVoicePlans}
+            />
 
             <PlanAddForm
               subjects={subjects}

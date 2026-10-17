@@ -385,11 +385,19 @@ export type MissReason =
   | 'etc' // 기타
 
 /** 매일 체크인 (하루에 하나) */
+/**
+ * 하루 첫 한 줄에서 고르는 감정 태그 (#387, BE#220 과 같은 이름)
+ * 막막함 · 불안함 · 피곤함 · 짜증남 · 평온함 · 의욕 있음. 글자는 lib/quickCheckIn.ts 의 EMOTION_OPTIONS
+ */
+export type EmotionTag = 'STUCK' | 'ANXIOUS' | 'TIRED' | 'ANNOYED' | 'CALM' | 'MOTIVATED'
+
 export interface CheckIn {
   /** 체크인한 날짜 (예: '2026-09-28') */
   date: string
   /** 오늘 컨디션 (1 ~ 5) */
   condition: number
+  /** 하루 첫 한 줄에서 고른 감정 태그 (여러 개, #387). 안 골랐거나 옛 기록이면 없습니다. */
+  emotions?: EmotionTag[]
   /** 오늘 기분 (1 ~ 5) */
   mood: number
   /** 어제 계획을 다 못 채운 날에만 고르는 미달 원인 (#26) */

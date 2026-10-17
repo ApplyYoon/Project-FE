@@ -222,7 +222,7 @@ function countRecordDays(plans: StudyPlan[], sessions: StudySession[], todayKey:
 }
 
 export function ReportPage() {
-  // 주간·월간 탭은 주소에 둡니다. (/report = 주간, /report?view=monthly = 월간)
+  // 주간·월간 탭은 주소에 둡니다. (/analysis?tab=report = 주간, …&view=monthly = 월간)
   // 새로고침해도 보던 탭이 그대로이고, 뒤로 가기로 앞에 보던 탭에 돌아갑니다.
   const [viewParam, setView] = useQueryParam('view', 'weekly')
   // 주소는 누구나 고칠 수 있어서, 'monthly' 가 아닌 값은 모두 주간으로 봅니다.
@@ -237,13 +237,13 @@ export function ReportPage() {
       <div>
         {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
         <Link
-          to="/records"
+          to="/analysis"
           className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
         >
           ‹ 기록
         </Link>
 
-        {/* 주간 / 월간 탭. 같은 /report 주소에서 바꿔 봅니다. (#86) */}
+        {/* 주간 / 월간 탭. 같은 분석 › 리포트 주소에서 ?view= 로 바꿔 봅니다. (#86) */}
         <div className="mt-2 inline-flex rounded-lg bg-slate-100 p-1">
           <button
             type="button"
@@ -320,7 +320,7 @@ interface ReportSectionProps {
 
 /** 주간 리포트 (#72) */
 function WeeklyReport({ allPlans, sessions }: ReportSectionProps) {
-  // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ... 주소에 둡니다. (/report?weeksAgo=1)
+  // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ... 주소에 둡니다. (/analysis?tab=report&weeksAgo=1)
   // replace: ‹ › 를 여러 번 눌러도 뒤로 가기 한 번이면 리포트 화면을 떠납니다.
   const [weeksAgoParam, setWeeksAgoParam] = useQueryParam('weeksAgo', '0', { replace: true })
   // 주소의 값이 0 이상의 정수가 아니면 이번 주(0)로 봅니다.
@@ -1051,7 +1051,7 @@ function MonthlyReport({ allPlans, sessions }: ReportSectionProps) {
         <p className="mt-2 text-sm break-keep text-slate-500">
           실험 결과는{' '}
           <Link
-            to="/report?view=weekly"
+            to="/analysis?tab=report&view=weekly"
             className="text-brand inline-flex min-h-10 items-center font-semibold hover:underline"
           >
             주간 리포트

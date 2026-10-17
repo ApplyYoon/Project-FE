@@ -24,7 +24,7 @@ export function isServerDataMode(): boolean {
  * 과목 목록이 있어야 열리는 화면의 주소인지 확인합니다. (components/layout/Layout.tsx 가 이 화면들만 SubjectsGate 로 감쌉니다)
  * 설정 · 계정처럼 과목이 필요 없는 화면은 뺍니다. 서버가 멈춰도 거기서 로그아웃은 할 수 있어야 하기 때문입니다.
  *
- *   needsSubjectsPath('/planner')           -> true
+ *   needsSubjectsPath('/cards')             -> true
  *   needsSubjectsPath('/')                  -> true   (홈)
  *   needsSubjectsPath('/exams/abc/result')  -> true
  *   needsSubjectsPath('/settings')          -> false
@@ -32,9 +32,10 @@ export function isServerDataMode(): boolean {
 export function needsSubjectsPath(pathname: string): boolean {
   return (
     pathname === '/' ||
-    pathname === '/planner' ||
+    pathname === '/cards' ||
     pathname === '/timer' ||
-    pathname === '/records' ||
+    // 분석 탭(기록 · 리포트 · 사용설명서). 하위 탭은 ?tab= 이라 경로만으로는 나눌 수 없어 셋 다 받아 둡니다.
+    pathname === '/analysis' ||
     pathname === '/exams' ||
     /^\/exams\/[^/]+\/result$/.test(pathname)
   )
