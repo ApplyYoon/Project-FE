@@ -40,7 +40,10 @@ export interface ForestInput {
   /** 카드들. 어느 목표의 카드인지 보려고 씁니다 */
   cards: Pick<Card, 'id' | 'goalId'>[]
   /** 공부 기록들 (노는 기록이 섞여 있어도 됩니다. 여기서 뺍니다) */
-  sessions: Pick<StudySession, 'cardId' | 'startedAt' | 'endedAt' | 'pausedMs' | 'kind' | 'proof'>[]
+  sessions: Pick<
+    StudySession,
+    'cardId' | 'startedAt' | 'endedAt' | 'pausedMs' | 'kind' | 'endReport'
+  >[]
   /** 목표들. 화면에는 이 순서로 놓입니다 (진행 중인 것 먼저) */
   goals: ForestGoal[]
   /** 전체 기준 재발 신호가 있는지 (getRelapseSignal(…).hasSignal) */
@@ -97,7 +100,9 @@ function toSafeCount(value: number | undefined): number {
 function growthOf(session: ForestInput['sessions'][number]): number {
   const ms = session.endedAt - session.startedAt - (session.pausedMs ?? 0)
   if (!Number.isFinite(ms) || ms <= 0) return 0
-  const hasProof = Boolean(session.proof?.link?.trim() || session.proof?.summary?.trim())
+  // 산출물 증빙은 종료 팝업(#398)에서 받아 endReport.proof 에 있습니다.
+  const proof = session.endReport?.proof
+  const hasProof = Boolean(proof?.link?.trim() || proof?.summary?.trim())
   return (ms / MS_PER_MINUTE) * (hasProof ? 1 + PROOF_BONUS_RATE : 1)
 }
 
