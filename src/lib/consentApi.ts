@@ -73,7 +73,7 @@ export function isSameConsentVersion(status: ConsentStatus): boolean {
 }
 
 /**
- * 최신 문구에 다시 동의합니다. 필수 셋(이용약관 · 개인정보 · 만 14세 이상)은 화면에서 모두 체크해야 부릅니다.
+ * 최신 문구에 다시 동의합니다. 필수 셋(이용약관 · 개인정보 · 고등학생(만 14세 이상))은 화면에서 모두 체크해야 부릅니다.
  * 실패하면 ApiError 를 던집니다. 409 는 "문구가 바뀜" 또는 "이미 동의함" 이라, 부르는 쪽에서 상태를 다시 받아 봅니다.
  */
 export async function agreeConsent(): Promise<ConsentStatus> {

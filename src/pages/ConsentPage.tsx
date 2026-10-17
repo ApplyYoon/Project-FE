@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { TermsView } from '@/components/ui/TermsView'
-import { UnderFourteenView } from '@/components/ui/UnderFourteenView'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
@@ -33,15 +32,16 @@ type ConsentKey = keyof ConsentChecks
 interface ConsentItem {
   key: ConsentKey
   label: string
-  /** "보기" 로 여는 안내문 (lib/terms.ts). 만 14세 확인은 안내문이 없습니다. */
+  /** "보기" 로 여는 안내문 (lib/terms.ts). 고등학생 확인은 안내문이 없습니다. */
   terms?: TermsDocument
 }
 
 // 가입 화면(SignupPage)과 같은 문구입니다. 이 순서대로 보입니다.
+// 이 앱은 고등학생만 씁니다. 고등학생이면 만 14세 이상이라, 서버의 만 14세 확인(over14)은 "고등학생이에요" 체크로 받습니다.
 const consentItems: ConsentItem[] = [
   { key: 'terms', label: '서비스 이용약관', terms: serviceTerms },
   { key: 'privacy', label: '개인정보 수집·이용', terms: privacyConsent },
-  { key: 'over14', label: '만 14세 이상이에요' },
+  { key: 'over14', label: '고등학생이에요 (만 14세 이상)' },
 ]
 
 const noChecks: ConsentChecks = { terms: false, privacy: false, over14: false }
@@ -58,17 +58,9 @@ export function ConsentPage() {
   const { logout } = useAuth()
   const [fromParam] = useQueryParam('from', '')
   const returnPath = getConsentReturnPath(fromParam === '' ? null : fromParam)
-  // 만 14세 미만이라고 답했는지. 답하면 가입 때와 같은 안내 화면으로 바뀝니다.
-  const [isUnderFourteen, setIsUnderFourteen] = useState(false)
 
   // 테스트 로그인은 서버에 동의 기록이 없어서 이 화면을 쓰지 않습니다.
   if (!isServerData) return <Navigate to={returnPath} replace />
-
-  if (isUnderFourteen) {
-    return (
-      <UnderFourteenView note="계정과 기록은 그대로 있어요. 지우고 싶으면 다시 로그인해서 설정 › 내 계정에서 탈퇴할 수 있어요." />
-    )
-  }
 
   function handleLogout() {
     logout()
@@ -88,7 +80,7 @@ export function ConsentPage() {
         </header>
 
         <AsyncBoundary pendingFallback={<Skeleton className="h-72 w-full rounded-xl" />}>
-          <ConsentForm returnPath={returnPath} onUnderFourteen={() => setIsUnderFourteen(true)} />
+          <ConsentForm returnPath={returnPath} />
         </AsyncBoundary>
 
         {/* 동의하지 않아도 할 수 있는 것: 로그아웃 · 탈퇴 (보기 · 지우기는 서버가 막지 않습니다) */}
@@ -116,12 +108,10 @@ export function ConsentPage() {
 interface ConsentFormProps {
   /** 동의한 뒤에 돌아갈 주소 */
   returnPath: string
-  /** "만 14세 미만이에요" 를 눌렀을 때 */
-  onUnderFourteen: () => void
 }
 
 /** 내 동의 상태를 받아서, 필수 세 가지 체크와 [동의하고 계속하기] 를 보여 줍니다. */
-function ConsentForm({ returnPath, onUnderFourteen }: ConsentFormProps) {
+function ConsentForm({ returnPath }: ConsentFormProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: status } = useSuspenseQuery(consentStatusQuery())
@@ -231,14 +221,6 @@ function ConsentForm({ returnPath, onUnderFourteen }: ConsentFormProps) {
           ))}
         </ul>
       </fieldset>
-
-      <button
-        type="button"
-        onClick={onUnderFourteen}
-        className="inline-flex h-10 items-center self-start text-sm text-slate-500 underline underline-offset-4"
-      >
-        만 14세 미만이에요
-      </button>
 
       {errorMessage !== null && (
         <p role="alert" className="text-sm break-keep text-red-600">
