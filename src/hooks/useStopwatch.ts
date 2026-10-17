@@ -119,13 +119,19 @@ export function useStopwatch() {
   /**
    * 일시정지 횟수를 올리지 않고 멈춥니다. 다른 탭·앱에 가서 저절로 멈출 때 씁니다. (useAwayDetection)
    * 일시정지 횟수는 "내가 직접 멈춘 횟수" 여야 해서, 저절로 멈춘 것은 세지 않습니다. (딴짓 횟수는 따로 기록됩니다)
+   *
+   * at 을 주면 "그 시각에 멈춘 것" 으로 합니다. (안 주면 지금)
+   * 뽀모도로 휴식 중에 나갔다가 늦게 돌아왔을 때, 휴식이 끝난 시각에 멈춘 것으로 되돌리는 데 씁니다.
+   * 그러면 휴식이 끝난 뒤 자리에 없던 시간이 순공에서 빠집니다.
    */
-  const autoPause = () => {
+  const autoPause = (at?: number) => {
     const currentTime = Date.now()
     setNow(currentTime)
     setState((prev) => {
       if (prev.startedAt === null || prev.pausedAt !== null) return prev
-      return { ...prev, pausedAt: currentTime }
+      // 멈춘 시각은 시작한 시각보다 앞설 수 없고, 지금보다 뒤일 수도 없습니다.
+      const pausedAt = Math.min(currentTime, Math.max(prev.startedAt, at ?? currentTime))
+      return { ...prev, pausedAt }
     })
   }
 

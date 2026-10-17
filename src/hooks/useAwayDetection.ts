@@ -17,10 +17,20 @@ export const AUTO_RESUME_LIMIT_MS = 30 * 60 * 1000
 
 /** 나간 순간에 적어 두는 값입니다. 돌아오면 이걸로 AwayRecord 를 완성합니다. */
 interface PendingAway {
-  /** 나간 시각 (Date.now() 값) */
+  /**
+   * 딴짓이 시작된 시각 (Date.now() 값)
+   * 공부 중에 나갔으면 나간 시각입니다.
+   * 뽀모도로 휴식 중에 나갔으면 휴식이 끝나는 시각입니다. (그때까지는 쉬는 시간이라 딴짓이 아닙니다)
+   */
   leftAt: number
   /** 공부하던 과목 (Subject 의 id). 알 수 없으면 null */
   subjectId: string | null
+  /**
+   * 뽀모도로 휴식 중에 나갔으면 true.
+   * 이때는 휴식이 계속 흘러야 해서 나갈 때 타이머를 멈추지 않습니다.
+   * 휴식이 끝난 뒤에 돌아오면, 휴식이 끝난 시각(leftAt)에 멈춘 것으로 되돌립니다.
+   */
+  isDuringBreak: boolean
 }
 
 function loadPending(): PendingAway | null {
@@ -29,7 +39,12 @@ function loadPending(): PendingAway | null {
   const pending = saved as Record<string, unknown>
   if (typeof pending.leftAt !== 'number') return null
   if (pending.subjectId !== null && typeof pending.subjectId !== 'string') return null
-  return { leftAt: pending.leftAt, subjectId: pending.subjectId }
+  return {
+    leftAt: pending.leftAt,
+    subjectId: pending.subjectId,
+    // 이 값이 생기기 전에 저장된 흔적에는 없습니다. 그때는 공부 중에 나간 것이었으니 false 입니다.
+    isDuringBreak: pending.isDuringBreak === true,
+  }
 }
 
 /** 나간 정보(PendingAway)와 돌아온 시각으로 딴짓 기록 한 건을 만듭니다. */
@@ -68,7 +83,7 @@ type Leftover =
   | { action: 'discard' }
   | { action: 'wait'; pending: PendingAway }
   | { action: 'reload' }
-  | { action: 'finish'; record: AwayRecord }
+  | { action: 'finish'; record: AwayRecord; isDuringBreak: boolean }
 
 /** 저장소의 흔적을 읽어서 할 일을 정합니다. 읽기만 하고 저장소는 바꾸지 않습니다. (바꾸는 건 훅 안의 effect 가 합니다) */
 function readLeftover(isStarted: boolean): Leftover {
@@ -76,8 +91,14 @@ function readLeftover(isStarted: boolean): Leftover {
   if (pending === null) return { action: 'none' }
   if (!isStarted) return { action: 'discard' }
   if (document.hidden) return { action: 'wait', pending }
+  // 뽀모도로 휴식 중에 나갔다가 휴식이 끝나기 전에 돌아왔으면 딴짓이 아닙니다. 타이머도 멈춘 적이 없어서 그대로 둡니다.
+  if (pending.isDuringBreak && Date.now() <= pending.leftAt) return { action: 'discard' }
   if (isJustReloaded(pending.leftAt)) return { action: 'reload' }
-  return { action: 'finish', record: createRecord(pending, Date.now()) }
+  return {
+    action: 'finish',
+    record: createRecord(pending, Date.now()),
+    isDuringBreak: pending.isDuringBreak,
+  }
 }
 
 interface UseAwayDetectionOptions {
@@ -85,12 +106,18 @@ interface UseAwayDetectionOptions {
   isStarted: boolean
   /** 시간이 흐르는 중이면 true */
   isRunning: boolean
-  /** 쉬는 시간(뽀모도로 휴식)이면 true. 쉬는 중에 나가는 건 딴짓이 아니라서 멈추지도 기록하지도 않습니다. */
+  /** 쉬는 시간(뽀모도로 휴식 · 노는 중)이면 true. 쉬는 중에 나가는 건 딴짓이 아니라서 멈추지 않습니다. */
   isResting: boolean
+  /**
+   * 뽀모도로 휴식이 끝날 때까지 남은 초. 휴식 중이 아니면 null 입니다.
+   * 휴식 중에 나갔다가 휴식이 끝난 뒤에 돌아오면, 휴식이 끝난 순간부터 돌아온 순간까지를 딴짓으로 기록합니다.
+   * (노는 중처럼 끝이 정해지지 않은 쉬는 시간은 null 이라서 딴짓으로 세지 않습니다)
+   */
+  breakRemainingSeconds: number | null
   /** 공부 중인 과목 (Subject 의 id) */
   subjectId: string | null
-  /** 타이머를 일시정지하는 함수 */
-  pause: () => void
+  /** 타이머를 일시정지하는 함수. at 을 주면 그 시각에 멈춘 것으로 합니다. (안 주면 지금) */
+  pause: (at?: number) => void
   /** 타이머를 다시 흐르게 하는 함수 */
   start: () => void
   /** 공부 중에 나간 바로 그 순간에 부를 함수 (없어도 됩니다). 예) "돌아와" 알림 띄우기 */
@@ -110,6 +137,11 @@ interface UseAwayDetectionOptions {
  * (탭을 바꾸거나, 다른 앱으로 가거나, 휴대폰 화면이 꺼지면 document.hidden 이 true 가 됩니다)
  * 30분 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. 더 오래 비웠으면 멈춘 채로 두고, 시작을 눌러야 이어집니다.
  * 내가 직접 일시정지해 둔 상태에서 나갔다 온 것은 딴짓으로 세지 않고, 저절로 흐르게 하지도 않습니다.
+ *
+ * 뽀모도로 휴식 중에 나가면 타이머를 멈추지 않고 "휴식이 끝나는 시각" 만 적어 둡니다.
+ *   휴식이 끝나기 전에 돌아옴 -> 아무 일도 없습니다. (쉬는 시간이니까요)
+ *   휴식이 끝난 뒤에 돌아옴   -> 휴식이 끝난 시각부터 돌아온 시각까지를 딴짓으로 기록하고,
+ *                                타이머를 휴식이 끝난 시각에 멈춘 것으로 되돌립니다. (늦은 시간은 순공에서 빠집니다)
  */
 export function useAwayDetection(options: UseAwayDetectionOptions) {
   // 페이지가 열릴 때 한 번만 읽습니다. 나갔다 돌아와서 열린 거라면 그 기록이 처음부터 들어 있게 됩니다.
@@ -150,6 +182,15 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
     // discard · reload · finish 는 모두 저장소의 흔적을 지우면 끝입니다.
     removeData(PENDING_KEY)
 
+    // 뽀모도로 휴식 중에 나갔다가 휴식이 끝난 뒤에 돌아왔으면, 타이머는 그동안 계속 흘렀습니다.
+    // 휴식이 끝난 시각에 멈춘 것으로 되돌려서, 자리에 없던 시간이 순공에 들어가지 않게 합니다.
+    // (그 뒤에 30분 안이면 아래에서 다시 흐르게 합니다)
+    if (leftover.action === 'finish' && leftover.isDuringBreak) {
+      optionsRef.current.pause(leftover.record.leftAt)
+      if (leftover.record.awayMs <= AUTO_RESUME_LIMIT_MS) optionsRef.current.start()
+      return
+    }
+
     // 새로고침 때문에 멈춘 타이머와, 잠깐(30분 안) 나갔다 돌아온 타이머는 다시 흐르게 합니다.
     const shouldResume =
       leftover.action === 'reload' ||
@@ -162,14 +203,37 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
   // 탭을 떠나거나 돌아올 때를 지켜봅니다.
   useEffect(() => {
     function handleVisibilityChange() {
-      const { isRunning, isResting, subjectId, pause, start, onLeave, onReturn } =
-        optionsRef.current
+      const {
+        isRunning,
+        isResting,
+        breakRemainingSeconds,
+        subjectId,
+        pause,
+        start,
+        onLeave,
+        onReturn,
+      } = optionsRef.current
 
       if (document.hidden) {
-        // 시간이 흐르는 중일 때만 딴짓입니다. (이미 멈춰 있거나, 쉬는 중이거나, 이미 나간 상태면 무시)
-        if (!isRunning || isResting || pendingRef.current !== null) return
+        // 시간이 흐르는 중일 때만 딴짓입니다. (이미 멈춰 있거나, 이미 나간 상태면 무시)
+        if (!isRunning || pendingRef.current !== null) return
 
-        const pending: PendingAway = { leftAt: Date.now(), subjectId }
+        if (isResting) {
+          // 노는 중처럼 끝이 정해지지 않은 쉬는 시간은 딴짓으로 세지 않습니다.
+          if (breakRemainingSeconds === null) return
+          // 뽀모도로 휴식 중: 타이머는 멈추지 않고(휴식은 계속 흘러야 합니다) "휴식이 끝나는 시각" 만 적어 둡니다.
+          // 그 시각이 지나도 안 돌아오면, 그때부터가 딴짓입니다.
+          const breakPending: PendingAway = {
+            leftAt: Date.now() + breakRemainingSeconds * 1000,
+            subjectId,
+            isDuringBreak: true,
+          }
+          pendingRef.current = breakPending
+          saveData(PENDING_KEY, breakPending)
+          return
+        }
+
+        const pending: PendingAway = { leftAt: Date.now(), subjectId, isDuringBreak: false }
         pendingRef.current = pending
         // 휴대폰은 화면이 꺼진 직후 페이지가 얼어붙을 수 있어서, 나간 사실을 지금 바로 저장소에 적어 둡니다.
         saveData(PENDING_KEY, pending)
@@ -183,10 +247,18 @@ export function useAwayDetection(options: UseAwayDetectionOptions) {
       const pending = pendingRef.current
       if (pending === null) return
 
-      const record = createRecord(pending, Date.now())
+      const returnedAt = Date.now()
       // 같은 딴짓이 두 번 기록되지 않도록 먼저 지웁니다.
       pendingRef.current = null
       removeData(PENDING_KEY)
+
+      // 뽀모도로 휴식이 끝나기 전에 돌아왔으면 딴짓이 아닙니다. 타이머도 멈춘 적이 없어서 그대로 둡니다.
+      if (pending.isDuringBreak && returnedAt <= pending.leftAt) return
+
+      const record = createRecord(pending, returnedAt)
+      // 휴식 중에 나갔다면 타이머는 지금까지 계속 흘렀습니다.
+      // 휴식이 끝난 시각에 멈춘 것으로 되돌려서, 그 뒤로 자리에 없던 시간이 순공에 들어가지 않게 합니다.
+      if (pending.isDuringBreak) pause(pending.leftAt)
 
       setRecords((prev) => [...prev, record])
       setAwayNotice(record)
