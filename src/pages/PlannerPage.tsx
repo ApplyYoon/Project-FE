@@ -35,6 +35,7 @@ import {
 } from '@/lib/routines'
 import { loadData, saveData } from '@/lib/storage'
 import { busyTimesQuery, type BusyTime } from '@/lib/googleCalendar'
+import { checkPlanSlot, NO_SLOT_PROBLEM, type PlanSlotCheck } from '@/lib/planSlotCheck'
 import { formatMinutes, getNowLine, getTimeline, mergeBusyTimes } from '@/lib/timeline'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import type { PlanKind, Routine, StudyPlan, StudySession, Subject, SubjectColor } from '@/types'
@@ -163,8 +164,11 @@ interface PlanAddFormProps {
   frequentPlans: FrequentPlan[]
   /** 지금 보고 있는 날짜의 요일 (0 = 일요일 … 6 = 토요일). "매주 반복" 을 켤 때 이 요일을 미리 골라 둡니다. */
   defaultWeekday: number
-  /** 입력 검사를 통과했을 때, 새 계획에 들어갈 값을 부모에게 넘깁니다. */
-  onAdd: (input: PlanInput) => void
+  /**
+   * 입력 검사를 통과했을 때, 새 계획에 들어갈 값을 부모에게 넘깁니다.
+   * 부모는 시간이 다른 일정과 겹치는지 확인하고, 겹치면 계획을 넣지 않고 안내(conflictMessage)를 돌려줍니다. (#315)
+   */
+  onAdd: (input: PlanInput) => Promise<PlanSlotCheck>
 }
 
 /** 새 계획을 입력하는 폼입니다. (자주 쓰는 계획 · 과목 · 내용 · 시작 시각 · 목표 시간 · 매주 반복) */
@@ -186,6 +190,11 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
   const [contentError, setContentError] = useState('')
   // 시작 시각 ('HH:MM'). 안 정해도 됩니다. 비워 두면 "시간 미정" 계획이 됩니다. (#237)
   const [startTime, setStartTime] = useState('')
+  // 시작 시각이 다른 일정과 겹쳐서 못 넣었을 때의 안내. 그리고 구글 캘린더를 못 읽었을 때의 안내 (#315)
+  const [timeError, setTimeError] = useState('')
+  const [timeNotice, setTimeNotice] = useState('')
+  // 겹치는지 확인하는 중인지. 구글 캘린더를 받아오느라 시간이 걸릴 수 있어서, 그동안 또 눌러도 한 번만 넣습니다.
+  const [isChecking, setIsChecking] = useState(false)
   // "매주 반복" 을 켰는지와, 반복할 요일들 (0 = 일요일 … 6 = 토요일)
   const [isRepeat, setIsRepeat] = useState(false)
   const [repeatWeekdays, setRepeatWeekdays] = useState<number[]>([])
@@ -211,9 +220,10 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
     setRepeatError('')
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // 폼의 기본 동작(페이지 새로고침)을 막습니다.
     event.preventDefault()
+    if (isChecking) return
 
     // 띄어쓰기만 입력한 것도 빈 내용으로 봅니다.
     const trimmedContent = content.trim()
@@ -240,15 +250,30 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
       return
     }
 
-    onAdd({
-      kind,
-      // 노는 계획은 과목이 없어서 빈 글자를 넘깁니다.
-      subjectId: isPlay ? '' : selectedSubjectId,
-      content: finalContent,
-      targetMinutes: minutes,
-      startTime,
-      repeatWeekdays: isRepeat ? repeatWeekdays : [],
-    })
+    setIsChecking(true)
+    let result: PlanSlotCheck
+    try {
+      result = await onAdd({
+        kind,
+        // 노는 계획은 과목이 없어서 빈 글자를 넘깁니다.
+        subjectId: isPlay ? '' : selectedSubjectId,
+        content: finalContent,
+        targetMinutes: minutes,
+        startTime,
+        repeatWeekdays: isRepeat ? repeatWeekdays : [],
+      })
+    } finally {
+      setIsChecking(false)
+    }
+
+    // 시간이 다른 일정과 겹쳐서 넣지 않았습니다. 적은 내용은 그대로 두어서, 시작 시각만 고쳐 다시 누르면 됩니다. (#315)
+    // 구글 캘린더를 못 읽었다면, 겹쳐서 못 넣었든 넣었든 그 안내도 같이 보여 줍니다.
+    setTimeNotice(result.googleNotice ?? '')
+    if (result.conflictMessage !== null) {
+      setTimeError(result.conflictMessage)
+      return
+    }
+    setTimeError('')
 
     // 추가했으면 내용과 시작 시각 칸을 비웁니다. (고른 과목과 목표 시간은 그대로 둡니다)
     setContent('')
@@ -392,13 +417,26 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
         )}
 
         {/* 시작 시각은 안 정해도 됩니다. 정하면 플래너 보기에서 시간 순서대로 놓입니다. (#237) */}
-        <Input
-          name="planStartTime"
-          type="time"
-          label="시작 시각 (선택)"
-          value={startTime}
-          onChange={(event) => setStartTime(event.target.value)}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Input
+            name="planStartTime"
+            type="time"
+            label="시작 시각 (선택)"
+            value={startTime}
+            onChange={(event) => {
+              setStartTime(event.target.value)
+              setTimeError('')
+              setTimeNotice('')
+            }}
+            // 다른 일정과 겹치면 빨간 글씨로 어느 시간과 겹쳤는지, 언제부터 비는지 알려 줍니다. (#315)
+            error={timeError}
+          />
+          {timeNotice && (
+            <p role="status" className="text-xs break-keep text-slate-500">
+              {timeNotice}
+            </p>
+          )}
+        </div>
 
         {/* 숫자를 치는 대신 버튼으로 고릅니다. 버튼에 없는 시간은 "직접" 으로 적습니다. */}
         <MinutesPicker
@@ -454,8 +492,8 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
           )}
         </div>
 
-        <Button type="submit" className="w-full">
-          추가하기
+        <Button type="submit" className="w-full" disabled={isChecking}>
+          {isChecking ? '시간 확인 중…' : '추가하기'}
         </Button>
       </form>
     </Card>
@@ -667,8 +705,11 @@ interface PlanRowProps {
   /** 오늘 날짜 (새벽 4시 기준). 그날이 끝났는지 보고 결과(덜 함·안 함)를 정하는 데 씁니다 */
   todayKey: string
   onToggleDone: (planId: string) => void
-  /** 시작 시각을 바꿨을 때 호출됩니다. 지우면 빈 글자('')를 넘깁니다 */
-  onChangeStartTime: (planId: string, startTime: string) => void
+  /**
+   * 시작 시각을 바꿨을 때 호출됩니다. 지우면 빈 글자('')를 넘깁니다.
+   * 다른 일정과 겹치면 시각을 바꾸지 않고 안내(conflictMessage)를 돌려줍니다. (#315)
+   */
+  onChangeStartTime: (planId: string, startTime: string) => Promise<PlanSlotCheck>
   onDelete: (plan: StudyPlan) => void
   /** 구글 캘린더 상태 (#316). 구글 캘린더를 연결하지 않았거나 맞출 계획이 아니면 없음 */
   calendarState?: PlanCalendarState
@@ -695,6 +736,16 @@ function PlanRow({
 }: PlanRowProps) {
   // 시작 시각을 고치는 칸을 펼쳤는지
   const [isTimeOpen, setIsTimeOpen] = useState(false)
+  // 시작 시각을 바꾸려다 다른 일정과 겹쳐서 못 바꿨을 때의 안내. 그리고 구글 캘린더를 못 읽었을 때의 안내 (#315)
+  const [timeError, setTimeError] = useState('')
+  const [timeNotice, setTimeNotice] = useState('')
+
+  /** 시작 시각을 바꾸고, 겹쳤으면 안내를 보여 줍니다. */
+  async function handleChangeTime(startTime: string) {
+    const result = await onChangeStartTime(plan.id, startTime)
+    setTimeError(result.conflictMessage ?? '')
+    setTimeNotice(result.googleNotice ?? '')
+  }
   // 이 계획에서 타이머를 시작해 공부한 시간. "32 / 50분" 과 진행 막대에 씁니다. (lib/planProgress.ts)
   const progress = getPlanProgress(plan, sessions)
   // 계획한 시간에 실제로 했는지 (제때 함·늦게 함·덜 함 …). 아직 판정할 수 없으면 null 입니다. (lib/planResult.ts)
@@ -780,7 +831,12 @@ function PlanRow({
           type="button"
           aria-expanded={isTimeOpen}
           aria-label={`${plan.content} 시작 시각 ${plan.startTime ?? '정하기'}`}
-          onClick={() => setIsTimeOpen(!isTimeOpen)}
+          onClick={() => {
+            setIsTimeOpen(!isTimeOpen)
+            // 접거나 다시 펼 때는 지난 안내를 지웁니다.
+            setTimeError('')
+            setTimeNotice('')
+          }}
           className="h-10 shrink-0 cursor-pointer text-sm text-slate-500 tabular-nums underline decoration-dotted underline-offset-4 hover:text-slate-900"
         >
           {plan.startTime ?? '시간 미정'}
@@ -822,31 +878,48 @@ function PlanRow({
       )}
 
       {isTimeOpen && (
-        // items-end: 입력칸 위에 이름표(label)가 있어서, 버튼을 입력칸 높이에 맞추려고 아래로 붙입니다.
-        <div className="flex items-end gap-2 pb-2 pl-12">
-          <Input
-            name={`startTime-${plan.id}`}
-            type="time"
-            label="시작 시각"
-            value={plan.startTime ?? ''}
-            onChange={(event) => onChangeStartTime(plan.id, event.target.value)}
-          />
-          <Button
-            variant="ghost"
-            disabled={!plan.startTime}
-            onClick={() => onChangeStartTime(plan.id, '')}
-            className="shrink-0 px-3"
-          >
-            지우기
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => setIsTimeOpen(false)}
-            className="shrink-0 px-3"
-          >
-            닫기
-          </Button>
-        </div>
+        <>
+          {/* items-end: 입력칸 위에 이름표(label)가 있어서, 버튼을 입력칸 높이에 맞추려고 아래로 붙입니다. */}
+          <div className="flex items-end gap-2 pb-2 pl-12">
+            <Input
+              name={`startTime-${plan.id}`}
+              type="time"
+              label="시작 시각"
+              value={plan.startTime ?? ''}
+              onChange={(event) => handleChangeTime(event.target.value)}
+            />
+            <Button
+              variant="ghost"
+              disabled={!plan.startTime}
+              onClick={() => handleChangeTime('')}
+              className="shrink-0 px-3"
+            >
+              지우기
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setIsTimeOpen(false)
+                setTimeError('')
+                setTimeNotice('')
+              }}
+              className="shrink-0 px-3"
+            >
+              닫기
+            </Button>
+          </div>
+          {/* 다른 일정과 겹쳐서 시각을 못 바꿨을 때. 어느 시간과 겹쳤는지, 언제부터 비는지 알려 줍니다. (#315) */}
+          {timeError && (
+            <p role="alert" className="pb-2 pl-12 text-sm break-keep text-red-600">
+              {timeError}
+            </p>
+          )}
+          {timeNotice && (
+            <p role="status" className="pb-2 pl-12 text-sm break-keep text-slate-500">
+              {timeNotice}
+            </p>
+          )}
+        </>
       )}
     </li>
   )
@@ -1312,26 +1385,47 @@ export function PlannerPage() {
   }
 
   // 시작 시각을 바꿉니다. 구글 캘린더에 넣은 계획이면 일정도 옮기고, 시각을 지우면 일정도 지웁니다.
-  function handleChangeStartTime(planId: string, startTime: string) {
-    changeStartTime(planId, startTime)
+  // 바꾸려는 시간이 그날의 다른 계획이나 구글 일정과 겹치면 바꾸지 않고, 겹친 안내를 돌려줍니다. (#315)
+  async function handleChangeStartTime(planId: string, startTime: string): Promise<PlanSlotCheck> {
     const plan = allPlans.find((item) => item.id === planId)
-    if (!plan) return
+    if (!plan) return NO_SLOT_PROBLEM
+
+    const check = await checkPlanSlot({
+      dayKey: plan.date,
+      startTime,
+      targetMinutes: plan.targetMinutes,
+      plans: getPlans(plan.date),
+      ignorePlanId: plan.id, // 자기 자신과는 겹침을 보지 않습니다
+    })
+    if (check.conflictMessage !== null) return check
+
+    changeStartTime(planId, startTime)
     calendar.onPlanChanged(
       { ...plan, startTime: startTime === '' ? undefined : startTime },
       todayKey,
     )
+    return check
   }
 
   // 폼에서 받은 값으로 새 계획을 만들어 저장합니다. 지금 보고 있는 날짜의 계획이 됩니다.
   // repeatWeekdays 가 비어 있지 않으면 "매주 반복" 을 켠 것입니다. 루틴도 같이 저장합니다.
-  function handleAdd({
+  // 시작 시각이 그날의 다른 계획이나 구글 일정과 겹치면 아무것도 저장하지 않고(루틴도), 겹친 안내를 돌려줍니다. (#315)
+  async function handleAdd({
     kind,
     subjectId,
     content,
     targetMinutes,
     startTime,
     repeatWeekdays,
-  }: PlanInput) {
+  }: PlanInput): Promise<PlanSlotCheck> {
+    const check = await checkPlanSlot({
+      dayKey: selectedDate,
+      startTime,
+      targetMinutes,
+      plans: getPlans(selectedDate),
+    })
+    if (check.conflictMessage !== null) return check
+
     const now = Date.now()
     const newPlan: StudyPlan = {
       // 추가한 시각(밀리초)을 붙여서 다른 계획과 겹치지 않는 id 를 만듭니다.
@@ -1363,7 +1457,7 @@ export function PlannerPage() {
       setRoutineNotice(`루틴을 저장했어요. ${formatWeekdays(repeatWeekdays)}마다 계획에 들어와요.`)
 
       // 고른 요일에 지금 보고 있는 날짜가 없으면, 이 날짜에는 계획을 넣지 않습니다.
-      if (!repeatWeekdays.includes(getWeekday(selectedDate))) return
+      if (!repeatWeekdays.includes(getWeekday(selectedDate))) return check
       newPlan.routineId = routine.id
     }
 
@@ -1371,6 +1465,7 @@ export function PlannerPage() {
     addPlan(newPlan)
     // 구글 캘린더를 연결했으면 일정으로도 넣습니다. (#316)
     calendar.onPlanAdded(newPlan, todayKey)
+    return check
   }
 
   // 루틴을 지웁니다. 이미 만들어진 날의 계획은 그대로 남습니다.
