@@ -7,6 +7,7 @@ import { TermsView } from '@/components/ui/TermsView'
 import { useAuth } from '@/hooks/useAuth'
 import { getGoogleAuthErrorMessage, signupWithGoogle } from '@/lib/authApi'
 import { cn } from '@/lib/cn'
+import { isServerDataToken } from '@/lib/dataMode'
 import { clearPendingGoogleSignup, loadPendingGoogleSignup } from '@/lib/googleSignup'
 import type { School } from '@/lib/schoolSearch'
 import {
@@ -164,13 +165,16 @@ export function SignupPage() {
   const navigate = useNavigate()
   // useSearchParams: 주소의 ?step=2 같은 값을 읽고 바꿉니다.
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user, isLoggedIn, login, logout } = useAuth()
+  const { user, token, isLoggedIn, login, logout } = useAuth()
   // 구글로 처음 온 사람이면 구글이 준 정보(신분증·이름·이메일). 아니면 null (lib/googleSignup.ts)
   // 아래 값들은 화면이 처음 그려질 때 한 번만 정합니다. 가입하는 도중에 로그인 상태가 바뀌어도 화면이 달라지지 않게 하려는 것입니다.
   const [googleSignup] = useState(() => (isLoggedIn ? null : loadPendingGoogleSignup()))
   // 로그인했고 가입도 이미 마친 사람인지. (주소창에 /signup 을 직접 친 경우)
   // 처음 한 번만 정하는 이유: 가입을 막 마친 순간에도 가입 정보가 생기는데, 그때 홈으로 튕기면 안 되기 때문입니다.
-  const [isAlreadySignedUp] = useState(() => isLoggedIn && hasSignupInfo())
+  // 서버가 준 진짜 토큰이 있으면 이 기기에 가입 정보가 없어도 이미 가입한 사람입니다. (서버는 가입을 마친 사람에게만 토큰을 줍니다)
+  const [isAlreadySignedUp] = useState(
+    () => isLoggedIn && (hasSignupInfo() || isServerDataToken(token)),
+  )
   const [name, setName] = useState(googleSignup?.name ?? '')
   const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState(googleSignup?.email ?? '')

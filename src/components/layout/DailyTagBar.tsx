@@ -1,4 +1,5 @@
 import { useAuth } from '@/hooks/useAuth'
+import { useOnboardingCompletionSync } from '@/hooks/useOnboardingCompletionSync'
 import { usePsychTestSync } from '@/hooks/usePsychTestSync'
 import { useSendCheckIn, useUnsentCheckInRetry } from '@/hooks/useCheckInSync'
 import { todayServerCheckInQuery } from '@/lib/checkInsApi'
@@ -61,6 +62,8 @@ export function DailyTagBar() {
   const send = useSendCheckIn()
   // 아직 서버에 안 간 심리검사 결과를 앱을 열 때 보냅니다. (hooks/usePsychTestSync.ts)
   usePsychTestSync()
+  // 이 기기에서 온보딩을 끝냈는데 서버가 아직 모르면 알립니다. (hooks/useOnboardingCompletionSync.ts)
+  useOnboardingCompletionSync()
   // 예전에 서버로 못 보낸 체크인을 앱을 열 때 다시 보냅니다.
   useUnsentCheckInRetry()
 
