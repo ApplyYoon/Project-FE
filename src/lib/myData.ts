@@ -77,6 +77,8 @@ const RECORD_KEYS = [
   'ai-messages',
   'ai-message-notified-ids',
   'ai-message-sent-today',
+  // 주간 리포트에서 먼저 맞혀 본 답과 예측 정확도 (#409)
+  'predictions',
   ...DIARY_KEYS,
 ]
 

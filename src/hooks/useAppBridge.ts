@@ -1,0 +1,100 @@
+import { useAuth } from '@/hooks/useAuth'
+import { isInApp, onAppMessage, saveAppNotificationPermission, sendToApp } from '@/lib/appBridge'
+import { CALL_TIME_STORAGE_KEY, isCallTimeInQuietHours, parseCallTime } from '@/lib/callReminder'
+import { loadCardAlarms } from '@/lib/cardAlarms'
+import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
+import { getMessageSettings } from '@/lib/messageSettings'
+import { toQuietHours } from '@/lib/notifications'
+import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import { loadData } from '@/lib/storage'
+import { router } from '@/router'
+import { useEffect, useRef } from 'react'
+
+// 카드 · 전화 시각이 바뀌었는지 확인하는 간격(밀리초). 다른 알림 훅(useAppAlerts)과 같이 10초마다 봅니다.
+const SYNC_INTERVAL_MS = 10_000
+// 매일 전화 알림을 누르면 갈 주소 (전화 수신 화면)
+const CALL_URL = '/call'
+
+// 'ready' 를 보냈는지. 개발 모드(StrictMode)는 effect 를 두 번 돌려서, 훅 밖에 두고 한 번만 보냅니다.
+let isReadySent = false
+
+/**
+ * 휴대폰 앱 안에서 열렸을 때 앱과 연결합니다. 앱 밖(브라우저)에서는 아무 일도 하지 않습니다. (lib/appBridge.ts)
+ * 어느 화면에서든 돌아야 해서 App.tsx 에서 한 번만 부릅니다. (라우터 밖이라 주소 이동은 router.navigate 로 합니다)
+ *
+ * 1. 다 뜨면 'ready' 를 보내고, 앱이 보내는 'navigate'(알림을 눌렀을 때)로 그 주소에 갑니다.
+ * 2. 카드 알림(lib/cardAlarms.ts)과 매일 전화 시각을 10초마다 확인해서, 바뀌었을 때만 앱에 보냅니다.
+ */
+export function useAppBridge(): void {
+  const { isLoggedIn } = useAuth()
+  // 마지막으로 보낸 내용. 같은 내용을 10초마다 또 보내지 않으려고 기억해 둡니다. (undefined = 아직 안 보냄)
+  const lastAlarmsJson = useRef<string | undefined>(undefined)
+  const lastCallTime = useRef<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (!isInApp()) return
+    const stopListening = onAppMessage((message) => {
+      if (message.type === 'navigate') void router.navigate(message.payload.url)
+      // 휴대폰 설정에서 알림 권한이 바뀌면 적어 둡니다. (lib/notifications.ts 가 읽습니다)
+      if (message.type === 'notify.permission') {
+        saveAppNotificationPermission(message.payload.permission)
+      }
+    })
+    // 듣기 시작한 다음에 보냅니다. 앱은 'ready' 를 받자마자 기다리던 'navigate' 를 보내기 때문입니다.
+    if (!isReadySent) {
+      isReadySent = true
+      sendToApp('ready', {})
+    }
+    return stopListening
+  }, [])
+
+  useEffect(() => {
+    if (!isInApp()) return
+
+    function sync() {
+      // 로그인 전(로그아웃 뒤)에는 빈 목록 · 전화 끔을 보내서, 앞사람의 알림이 오지 않게 합니다.
+      const alarms = isLoggedIn ? loadCardAlarms(Date.now()) : []
+      const alarmsJson = JSON.stringify(alarms)
+      if (alarmsJson !== lastAlarmsJson.current) {
+        lastAlarmsJson.current = alarmsJson
+        sendToApp('alarms.set', { alarms })
+      }
+
+      const callTime = isLoggedIn ? loadCallTime() : null
+      if (callTime !== lastCallTime.current) {
+        lastCallTime.current = callTime
+        sendToApp('call.schedule', { time: callTime, url: CALL_URL })
+      }
+    }
+
+    sync()
+    const intervalId = setInterval(sync, SYNC_INTERVAL_MS)
+    // 앱이 다시 앞으로 오면 바로 맞춥니다. (뒤에 있는 동안은 10초 확인이 멈출 수 있습니다)
+    const stopListening = onAppMessage((message) => {
+      if (message.type === 'appState' && message.payload.state === 'active') sync()
+    })
+    return () => {
+      clearInterval(intervalId)
+      stopListening()
+    }
+  }, [isLoggedIn])
+}
+
+/**
+ * 저장된 전화 시각('HH:MM'). null 이면 앱의 전화 알림을 끕니다.
+ * 웹도 전화를 걸지 않는 때(hooks/useCallReminder.ts)는 null 입니다: 안 정함 · 연락 금지 시간 안 · 위기 표현 감지(#95)
+ */
+function loadCallTime(): string | null {
+  const saved = loadData<unknown>(CALL_TIME_STORAGE_KEY, null)
+  if (typeof saved !== 'string' || parseCallTime(saved) === null) return null
+  if (isCallTimeInQuietHours(saved, toQuietHours(getMessageSettings()))) return null
+
+  const { texts, moods } = loadSavedWritings()
+  const brake = getSafetyBrakeResult({
+    now: new Date(),
+    recentTexts: texts,
+    recentMoods: moods,
+    exams: loadExamDates(),
+  })
+  return brake.stopWhip ? null : saved
+}
