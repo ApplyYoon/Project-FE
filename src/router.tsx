@@ -8,6 +8,7 @@ import {
   ONBOARDING_RESULT_PATH,
   ONBOARDING_RESUME_PATH,
 } from '@/lib/onboardingProgress'
+import { CONSENT_PATH } from '@/lib/consentApi'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
 import { ANALYSIS_PATH } from '@/lib/tabMenu'
 import { PageBoundary } from '@/components/layout/PageBoundary'
@@ -89,6 +90,9 @@ const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
 const SignupPage = lazy(() => import('@/pages/SignupPage').then((m) => ({ default: m.SignupPage })))
+const ConsentPage = lazy(() =>
+  import('@/pages/ConsentPage').then((m) => ({ default: m.ConsentPage })),
+)
 const SupportPage = lazy(() =>
   import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
 )
@@ -313,6 +317,18 @@ export const router = createBrowserRouter([
       <PageBoundary fullScreen>
         <SignupPage />
       </PageBoundary>
+    ),
+  },
+  // 다시 동의 화면 (#512). 저장이 403 CONSENT_REQUIRED 로 막히면 여기로 옵니다. 가입 화면처럼 메뉴 없이 뜹니다.
+  {
+    path: CONSENT_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <ConsentPage />
+        </PageBoundary>
+      </RequireAuth>
     ),
   },
   // 도움 연결 안내는 헤더·하단 탭 없이 화면 전체를 쓰고, 힘든 순간에 로그인 때문에 막히면 안 돼서
