@@ -268,6 +268,8 @@ export interface Card {
  */
 export interface FixedBlock {
   id: string
+  /** 서버에 올라간 고정 일정의 번호 (BE /api/v1/fixed-blocks 의 id). 아직 안 올라갔거나 테스트 로그인이면 없음 (#516) */
+  serverId?: string
   /** 무슨 일정인지 (예: '학교', '수학 학원') */
   title: string
   /** 반복 요일 (0 = 일요일 … 6 = 토요일). 1개 이상 */
