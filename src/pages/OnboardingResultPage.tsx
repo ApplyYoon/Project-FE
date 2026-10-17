@@ -118,7 +118,7 @@ export function OnboardingResultPage() {
             ))}
           </ul>
           <p className="mt-3 text-xs break-keep text-slate-500">
-            문장 14개로 본 첫 짐작이에요. 성격이 아니라 지금의 공부 습관이에요.
+            처음 검사로 본 첫 짐작이에요. 성격이 아니라 지금의 공부 습관이에요.
           </p>
         </Card>
 
