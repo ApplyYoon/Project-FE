@@ -372,7 +372,7 @@ export function ExamsPage() {
                   <p className="mt-3 text-sm break-keep text-slate-600">
                     과목이 없어서 점수를 적을 수 없어요.{' '}
                     <Link
-                      to="/planner"
+                      to="/cards"
                       className="text-brand inline-flex h-10 items-center font-medium underline underline-offset-4"
                     >
                       계획 화면에서 과목 추가하기

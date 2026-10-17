@@ -48,7 +48,7 @@ function loadDraft(): Record<string, number> {
 function getNextStep(from: string): { path: string; label: string } {
   // 가입 설문에서 왔으면 처음 계획을 세우러, 기록 화면에서 왔으면 기록으로, 그 밖에는 홈으로 갑니다.
   if (from === 'onboarding') return { path: '/onboarding/plan', label: '다음: 처음 계획 세우기' }
-  if (from === 'records') return { path: '/records', label: '기록으로 돌아가기' }
+  if (from === 'records') return { path: '/analysis', label: '기록으로 돌아가기' }
   return { path: '/', label: '시작하기' }
 }
 
