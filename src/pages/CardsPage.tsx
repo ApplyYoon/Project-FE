@@ -7,6 +7,7 @@ import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { PlayBadge } from '@/components/ui/PlayBadge'
 import { VoicePlanCard } from '@/components/ui/VoicePlanCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { SchoolEventsCard } from '@/components/ui/SchoolEventsCard'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
@@ -2366,6 +2367,9 @@ export function CardsPage() {
 
       {/* 진행 중인 목표 (#391) */}
       <GoalList goals={activeGoals} />
+
+      {/* 학교 학사일정 · 시험이 다가오면 계획 다시 짜기 (#508) */}
+      <SchoolEventsCard />
 
       {/* 카드 일·주 타임라인 (#394). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
       <CardTimeline
