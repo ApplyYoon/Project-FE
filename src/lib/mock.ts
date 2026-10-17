@@ -4,7 +4,6 @@ import type {
   Evaluation,
   Insight,
   ManualItem,
-  ReflectionPrescription,
   StudyPlan,
   StudySession,
   Subject,
@@ -164,19 +163,6 @@ export const mockEvaluations: Evaluation[] = [
     summary: '절반은 해냈어요. 내일은 수학 시간을 조금 늘려 봐요.',
   },
 ]
-
-/**
- * 성찰 일기 처방 예시 (#70)
- * AI 가 패턴을 보고 내려주는 처방이라, 서버가 생기기 전까지 예시로 둡니다.
- * startDate 를 2일 전으로 둬서, 오늘 열면 "3일째 / 5일"이 됩니다.
- */
-export const mockReflectionPrescription: ReflectionPrescription = {
-  id: 'reflection-1',
-  startDate: dateDaysAgo(2),
-  days: 5,
-  reason: "최근 '하기 싫음'이 3번 나와서, 5일 동안 짧게 돌아보기로 했어.",
-  questions: ['오늘 계획을 못 지킨 진짜 이유는?', '내일 하나만 바꾼다면?', '오늘 잘한 한 가지는?'],
-}
 
 /**
  * 인사이트 2개 (#73)

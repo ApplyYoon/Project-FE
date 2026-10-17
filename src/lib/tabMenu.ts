@@ -48,16 +48,16 @@ export function getAnalysisTabPath(tab: AnalysisTab): string {
 /** 분석 탭 아래에 묶인 화면. 위에 "‹ 분석" 돌아가기 링크가 나옵니다. */
 const analysisCardPaths = ['/exams']
 
-/** 상담 탭 아래에 묶인 화면. 위에 "‹ 상담" 돌아가기 링크가 나옵니다. */
-const counselCardPaths = ['/diary']
+/** 상담 탭 아래에 묶인 화면. 위에 "‹ 상담" 돌아가기 링크가 나옵니다. (일기 · 성찰일기는 #417 에서 지워서 지금은 없습니다) */
+const counselCardPaths: string[] = []
 
 /**
  * pathname 이 base 이거나 그 아래 주소인지 봅니다.
  * 앞부분만 같은 다른 주소(/exams-old)는 아닙니다. (그래서 '/' 를 붙여서 비교합니다)
  *
- *   isUnder('/diary', '/diary')             -> true
- *   isUnder('/diary/reflection', '/diary')  -> true
- *   isUnder('/diarys', '/diary')            -> false
+ *   isUnder('/exams', '/exams')             -> true
+ *   isUnder('/exams/3/result', '/exams')    -> true
+ *   isUnder('/exams-old', '/exams')         -> false
  */
 function isUnder(pathname: string, base: string): boolean {
   return pathname === base || pathname.startsWith(`${base}/`)
@@ -73,7 +73,7 @@ export function isExamResultPath(pathname: string): boolean {
  *
  *   isAnalysisPath('/analysis')        -> true
  *   isAnalysisPath('/exams/3/result')  -> true
- *   isAnalysisPath('/diary')           -> false
+ *   isAnalysisPath('/counsel')         -> false
  */
 export function isAnalysisPath(pathname: string): boolean {
   return (
@@ -85,18 +85,17 @@ export function isAnalysisPath(pathname: string): boolean {
  * 지금 주소가 "상담" 탭에 속하는지.
  *
  *   isCounselPath('/counsel')            -> true
- *   isCounselPath('/diary/reflection')   -> true
+ *   isCounselPath('/counsel/chat')       -> true
  */
 export function isCounselPath(pathname: string): boolean {
   return isUnder(pathname, '/counsel') || counselCardPaths.some((path) => isUnder(pathname, path))
 }
 
 /**
- * 화면 위에 보여 줄 돌아가기 링크. 탭 아래에 묶인 화면(시험·일기)에서만 있고, 나머지는 null 입니다.
+ * 화면 위에 보여 줄 돌아가기 링크. 탭 아래에 묶인 화면(시험)에서만 있고, 나머지는 null 입니다.
  * 시험 결과 화면은 "‹ 시험" 으로 돌아가는 링크를 화면 안에 따로 두어서 뺍니다.
  *
  *   getBackToTabLink('/exams')   -> { to: '/analysis', label: '분석' }
- *   getBackToTabLink('/diary')   -> { to: '/counsel', label: '상담' }
  *   getBackToTabLink('/timer')   -> null
  */
 export function getBackToTabLink(pathname: string): { to: string; label: string } | null {

@@ -7,7 +7,6 @@ import {
   type AuthState,
 } from '@/lib/authStorage'
 import { clearServerMessages } from '@/lib/aiMessagesApi'
-import { disconnectCalendar } from '@/lib/googleCalendar'
 import { queryClient } from '@/lib/queryClient'
 import { makeKey, saveData } from '@/lib/storage'
 import { unsubscribeThisDevice } from '@/lib/webPush'
@@ -61,11 +60,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // 새로 로그인할 때마다 서버에서 받아 보관해 둔 것(내 정보 등)을 비웁니다.
     // 로그인한 채로 /login 에서 다른 계정으로 로그인하면, 안 비울 때 앞사람의 정보가 '내 계정' 칸에 남고 저장하면 새 계정에 덮어써집니다.
     queryClient.clear()
-    // 다른 사람으로 바뀌었으면 앞사람의 서버 메시지와 구글 캘린더 연결도 이 기기에서 정리합니다. (로그아웃과 같은 이유)
+    // 다른 사람으로 바뀌었으면 앞사람의 서버 메시지를 이 기기에서 정리합니다. (로그아웃과 같은 이유)
     const previous = authRef.current
     if (previous.user !== null && previous.user.id !== user.id) {
       clearServerMessages()
-      disconnectCalendar()
     }
     setAuth({ user, token })
   }, [])
@@ -73,9 +71,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(() => {
     // 서버에서 받아 보관해 둔 것(내 정보 등)을 지웁니다. 안 지우면 같은 기기에서 다른 사람이 로그인했을 때 앞사람의 정보가 잠깐 보입니다.
     queryClient.clear()
-    // 구글 캘린더 연결도 끊습니다. (이 기기의 출입증을 지우고 구글 쪽 허락도 취소)
-    // 안 끊으면 같은 기기에서 다음 사람이 로그인했을 때 앞사람의 구글 일정이 보이고, 새 계획이 앞사람의 캘린더에 들어갑니다.
-    disconnectCalendar()
     // 서버에서 받은 메시지도 이 기기에서 뺍니다. 안 빼면 다음 사람에게 앞사람 메시지가 보이고, 앞사람의 마지막 번호로 받기를 이어서 다음 사람의 메시지가 빠집니다.
     clearServerMessages()
     setAuth(loggedOutState)

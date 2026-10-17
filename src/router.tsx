@@ -46,7 +46,6 @@ const FixedBlocksPage = lazy(() =>
 const CounselPage = lazy(() =>
   import('@/pages/CounselPage').then((m) => ({ default: m.CounselPage })),
 )
-const DiaryPage = lazy(() => import('@/pages/DiaryPage').then((m) => ({ default: m.DiaryPage })))
 const ExamResultPage = lazy(() =>
   import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
 )
@@ -85,12 +84,6 @@ const OnboardingResumePage = lazy(() =>
 )
 const OnboardingVoicePage = lazy(() =>
   import('@/pages/OnboardingVoicePage').then((m) => ({ default: m.OnboardingVoicePage })),
-)
-const PhoneFocusGuidePage = lazy(() =>
-  import('@/pages/PhoneFocusGuidePage').then((m) => ({ default: m.PhoneFocusGuidePage })),
-)
-const ReflectionPage = lazy(() =>
-  import('@/pages/ReflectionPage').then((m) => ({ default: m.ReflectionPage })),
 )
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
@@ -147,10 +140,12 @@ export const router = createBrowserRouter([
       { path: 'analysis', element: <AnalysisPage /> },
       // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (하루 첫 한 줄은 어느 화면에서나 뜹니다)
       { path: 'check', element: <Navigate to="/" replace /> },
-      { path: 'diary', element: <DiaryPage /> },
-      { path: 'diary/reflection', element: <ReflectionPage /> },
+      // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 상담 탭으로 보냅니다.
+      { path: 'diary', element: <Navigate to="/counsel" replace /> },
+      { path: 'diary/reflection', element: <Navigate to="/counsel" replace /> },
       { path: 'exams', element: <ExamsPage /> },
-      { path: 'phone-focus', element: <PhoneFocusGuidePage /> },
+      // 휴대폰 집중 모드 안내(/phone-focus)는 #417 에서 지웠습니다. (OS 앱 잠금은 다음 버전)
+      { path: 'phone-focus', element: <Navigate to="/settings" replace /> },
       { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 자기 실험(가설·실험 탭)으로 보냅니다.
