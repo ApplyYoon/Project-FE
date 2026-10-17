@@ -38,6 +38,8 @@ import {
 import { getCardResult } from '@/lib/cardResult'
 import { loadLatestCareStage } from '@/lib/careStage'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import { getRunningExperimentFor, loadExperiments } from '@/lib/experiments'
+import { findStrategy } from '@/lib/strategyCatalog'
 import {
   REST_REASONS,
   addRestDay,
@@ -214,6 +216,12 @@ export function CardTimerPage() {
   const routinePostponeLimit = pageSettings.postponeLimitRoutine.value
   // 관리 4단계에서는 미루기가 잠깁니다. (「5.4」, 강제 장치 전체는 #408)
   const isPostponeLocked = isStage4Now(todayKey)
+  // 진행 중인 자기 실험의 규칙을 카드에 붙여 보여 줍니다. (#412)
+  const [experiments] = useState(loadExperiments)
+  function experimentRuleOf(cardId: string): string | undefined {
+    const running = getRunningExperimentFor(experiments, cardId)
+    return running ? findStrategy(running.strategyId)?.rule : undefined
+  }
   // 회복 모드(관리 0단계, 「4.5」): 위로 · What if · 계획 축소. 안전 조건으로 0 이 된 것도 같이 보여 줍니다.
   const latestStage = loadLatestCareStage(todayKey)
   const isRecoveryMode =
@@ -356,7 +364,15 @@ export function CardTimerPage() {
 
   if (active) {
     const activeCard = cards.find((card) => card.id === active.cardId)
-    return <SessionView session={session} card={activeCard} now={now} onFinished={setEndedRecord} />
+    return (
+      <SessionView
+        session={session}
+        card={activeCard}
+        now={now}
+        experimentRule={experimentRuleOf(active.cardId)}
+        onFinished={setEndedRecord}
+      />
+    )
   }
 
   const shownFlow = startFlow ?? paramFlow
@@ -545,6 +561,7 @@ export function CardTimerPage() {
                   card={card}
                   isNext={index === 0}
                   postponeLeft={postponeLeft(card)}
+                  experimentRule={experimentRuleOf(card.id)}
                   onStart={() => beginCard(card)}
                   onPostpone={() => setMissTarget({ card, action: 'postpone' })}
                   onFail={() => setMissTarget({ card, action: 'fail' })}
@@ -676,6 +693,8 @@ interface WaitingCardRowProps {
   isNext: boolean
   /** 남은 미루기 횟수 (0 이면 [실패로 기록] 만) */
   postponeLeft: number
+  /** 이 카드에 붙은 자기 실험 규칙 (#412). 없으면 undefined */
+  experimentRule?: string
   onStart: () => void
   onPostpone: () => void
   onFail: () => void
@@ -691,6 +710,7 @@ function WaitingCardRow({
   card,
   isNext,
   postponeLeft,
+  experimentRule,
   onStart,
   onPostpone,
   onFail,
@@ -707,6 +727,9 @@ function WaitingCardRow({
       <div className="min-w-0">
         {isNext && <p className="text-brand text-xs font-semibold">다음 카드</p>}
         <p className="truncate font-medium text-slate-900">{card.title}</p>
+        {experimentRule && (
+          <p className="truncate text-xs text-violet-700">실험: {experimentRule}</p>
+        )}
         <p className="text-sm text-slate-600">
           {card.startTime ?? '시간 미정'} · {formatMinutes(card.durationMinutes)}
           {card.priority === 'absolute' && ' · 꼭 해야 함'}
@@ -808,10 +831,12 @@ interface SessionViewProps {
   now: number
   /** 세션이 끝나 기록을 저장한 뒤 부릅니다 (종료 팝업을 띄움) */
   onFinished: (record: StudySession) => void
+  /** 이 카드에 붙은 자기 실험 규칙 (#412) */
+  experimentRule?: string
 }
 
 /** 세션 화면 — 나가는 길은 [일시정지] · [끝내기] 뿐입니다 */
-function SessionView({ session, card, now, onFinished }: SessionViewProps) {
+function SessionView({ session, card, now, onFinished, experimentRule }: SessionViewProps) {
   const active = session.active
   const [settings] = useState(loadAutoSettings)
   const [isEndOpen, setIsEndOpen] = useState(false)
@@ -864,6 +889,11 @@ function SessionView({ session, card, now, onFinished }: SessionViewProps) {
         <p className="max-w-full truncate text-lg font-semibold text-slate-900">
           {card?.title ?? '공부'}
         </p>
+        {experimentRule && (
+          <p className="rounded-full bg-violet-50 px-3 py-1 text-sm text-violet-800">
+            실험 중: {experimentRule}
+          </p>
+        )}
         <span
           className={cn(
             'rounded-full px-3 py-1 text-sm font-medium',
