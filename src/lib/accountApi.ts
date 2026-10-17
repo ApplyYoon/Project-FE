@@ -12,7 +12,9 @@
  * ⚠️ 비밀번호는 서버로 보내기만 합니다. 브라우저 저장소에 넣지 않고, console.log 로도 찍지 않습니다.
  */
 import { ApiError, api, isConnectionError } from '@/lib/api'
-import { turnOffWebPush } from '@/lib/webPush'
+import { getAuthToken } from '@/lib/authStorage'
+import { TEST_TOKEN } from '@/lib/testLogin'
+import { turnOffWebPush, unsubscribeThisDevice } from '@/lib/webPush'
 import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 멈춰도 로딩이 영원히 끝나지 않으면 안 되기 때문입니다. */
@@ -98,19 +100,31 @@ export async function changePassword(currentPassword: string, newPassword: strin
  * (서버에 닿지 못하면 그 토큰은 30일 뒤에 스스로 끝납니다)
  *
  * ⚠️ 이 기기의 로그인 정보를 지우기 "전에" 불러야 합니다. 지운 뒤에는 보낼 토큰이 없습니다.
+ * 부르는 쪽(설정 화면)은 이 함수가 끝나기를 기다리지 않고 바로 로그인 정보를 지웁니다. 그래서 이 함수는 맨 처음에
+ * 토큰을 읽어 두고, 서버를 부르는 두 요청(로그아웃 · 푸시 끄기)에 그 토큰을 직접 붙여서 보냅니다.
+ * (예전에는 푸시 끄기를 먼저 기다린 뒤에 로그아웃을 불러서, 그때는 토큰이 이미 지워져 토큰 없이 나갔고
+ *  서버의 로그인 토큰이 30일 동안 살아 있었습니다)
  */
 export async function logoutOnServer(): Promise<void> {
-  // 이 기기의 푸시 알림도 끕니다. 같은 기기를 다른 사람이 쓰면, 내 알림(생각 습관 작전)이 그 사람에게 가지 않게 하려는 것입니다.
-  // (토큰을 지우기 전에 해야 서버에도 알릴 수 있습니다. 실패해도 로그아웃은 계속합니다)
-  await turnOffWebPush().catch(() => undefined)
-  try {
-    await api<void>('/auth/logout', {
-      method: 'POST',
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
-  } catch {
-    // 일부러 아무것도 하지 않습니다. (위 설명)
-  }
+  const token = getAuthToken()
+  // 토큰이 없거나 테스트 로그인(가짜 토큰)이면 서버에 알릴 것이 없습니다. 이 기기의 푸시 구독만 정리합니다.
+  const authHeaders =
+    token !== null && token !== TEST_TOKEN ? { Authorization: `Bearer ${token}` } : undefined
+
+  await Promise.all([
+    // 이 기기의 푸시 알림도 끕니다. 같은 기기를 다른 사람이 쓰면, 내 알림(생각 습관 작전)이 그 사람에게 가지 않게 하려는 것입니다.
+    // 실패해도 로그아웃은 계속합니다.
+    authHeaders ? turnOffWebPush(authHeaders).catch(() => undefined) : unsubscribeThisDevice(),
+    authHeaders
+      ? api<void>('/auth/logout', {
+          method: 'POST',
+          headers: authHeaders,
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        }).catch(() => {
+          // 일부러 아무것도 하지 않습니다. (위 설명)
+        })
+      : Promise.resolve(),
+  ])
 }
 
 /** 탈퇴합니다. 서버의 계정과 기록이 지워집니다. 실패하면 에러를 던집니다. (비밀번호가 틀리면 400) */

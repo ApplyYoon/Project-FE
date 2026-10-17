@@ -8,6 +8,7 @@ import {
 } from '@/lib/authStorage'
 import { queryClient } from '@/lib/queryClient'
 import { saveData } from '@/lib/storage'
+import { unsubscribeThisDevice } from '@/lib/webPush'
 import type { AuthUser } from '@/types'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
@@ -43,9 +44,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // 서버가 "누구인지 모르겠다(401)" 고 하면 api.ts 가 알려 줍니다. 그러면 로그아웃해서,
   // 문지기(RequireAuth)가 로그인 화면으로 보내게 합니다. (#198)
+  // 로그인이 만료돼서 서버를 부를 수 없으니, 이 기기의 푸시 구독은 브라우저에서만 지웁니다.
+  // 남겨 두면 같은 기기에서 다른 사람이 로그인했을 때 설정에 "켜져 있어요" 가 뜨고 앞사람 알림이 옵니다.
   useEffect(() => {
-    window.addEventListener(UNAUTHORIZED_EVENT, logout)
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, logout)
+    function handleUnauthorized() {
+      void unsubscribeThisDevice()
+      logout()
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
   }, [logout])
 
   // useMemo: 로그인 정보가 바뀔 때만 값을 새로 만듭니다.

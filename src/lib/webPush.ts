@@ -146,7 +146,7 @@ export async function turnOnWebPush(): Promise<void> {
  * 이 기기의 푸시를 끕니다. 브라우저의 구독을 지우고 서버에도 알립니다.
  * 서버에 못 알려도 브라우저 구독은 지워서, 이 기기에는 더 이상 오지 않습니다. (서버는 다음에 보낼 때 "끝난 구독" 으로 알고 지웁니다)
  */
-export async function turnOffWebPush(): Promise<void> {
+export async function turnOffWebPush(authHeaders?: Record<string, string>): Promise<void> {
   const registration = await getRegistration()
   const subscription = registration ? await registration.pushManager.getSubscription() : null
   if (subscription === null) return
@@ -157,8 +157,29 @@ export async function turnOffWebPush(): Promise<void> {
     await api<void>('/push/subscriptions', {
       method: 'DELETE',
       body: JSON.stringify({ endpoint }),
+      // 로그아웃처럼 로그인 정보를 곧 지우는 때는, 지우기 전에 읽어 둔 토큰을 넘겨 받습니다.
+      // (이 함수는 서비스 워커를 기다리느라 늦게 서버를 부르는데, 그때는 이미 토큰이 지워져 있어서 토큰 없이 나갑니다)
+      headers: authHeaders,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
+  } catch {
+    // 일부러 아무것도 하지 않습니다. (위 설명)
+  }
+}
+
+/**
+ * 이 기기의 브라우저 푸시 구독만 지웁니다. 서버는 부르지 않습니다.
+ *
+ * 탈퇴하거나 로그인이 만료(401)돼서 서버를 부를 수 없을 때 씁니다. 구독이 남아 있으면 같은 기기에서
+ * 다른 사람이 로그인했을 때 설정에 "켜져 있어요" 가 뜨고, 앞사람 계정에 묶인 알림이 이 기기로 옵니다.
+ * 브라우저에서 구독을 지우면 서버가 다음에 보낼 때 "끝난 구독(404 · 410)" 으로 알고 스스로 지웁니다.
+ * 구독이 없거나 지우지 못해도 에러를 던지지 않습니다. (로그아웃 · 탈퇴를 막으면 안 되기 때문입니다)
+ */
+export async function unsubscribeThisDevice(): Promise<void> {
+  try {
+    const registration = await getRegistration()
+    const subscription = registration ? await registration.pushManager.getSubscription() : null
+    await subscription?.unsubscribe()
   } catch {
     // 일부러 아무것도 하지 않습니다. (위 설명)
   }
