@@ -431,11 +431,19 @@ function PlanAddForm({ subjects, frequentPlans, defaultWeekday, onAdd }: PlanAdd
             // 다른 일정과 겹치면 빨간 글씨로 어느 시간과 겹쳤는지, 언제부터 비는지 알려 줍니다. (#315)
             error={timeError}
           />
-          {timeNotice && (
-            <p role="status" className="text-xs break-keep text-slate-500">
-              {timeNotice}
-            </p>
-          )}
+          {/*
+            화면 낭독기용 안내 칸입니다. 낭독기는 글자가 "새로 생기는" 칸은 잘 안 읽고 "처음부터 있던 칸의 글자가 바뀔 때" 읽습니다.
+            그래서 위의 빨간 글씨와 같은 내용을 이 칸에도 넣어 두고, 이 칸은 비어 있을 때도 그려 둡니다. (눈에는 안 보입니다)
+          */}
+          <p role="alert" className="sr-only">
+            {timeError}
+          </p>
+          <p
+            role="status"
+            className={cn('text-xs break-keep text-slate-500', timeNotice === '' && 'sr-only')}
+          >
+            {timeNotice}
+          </p>
         </div>
 
         {/* 숫자를 치는 대신 버튼으로 고릅니다. 버튼에 없는 시간은 "직접" 으로 적습니다. */}
@@ -740,11 +748,29 @@ function PlanRow({
   const [timeError, setTimeError] = useState('')
   const [timeNotice, setTimeNotice] = useState('')
 
+  // 시각 칸에 고치는 중인 값. null 이면 고치는 중이 아니라서 계획의 시작 시각을 그대로 보여 줍니다.
+  // 키보드로 시각을 고치면 시 · 분을 한 칸씩 바꿀 때마다 값이 바뀌는데(예: 15:00 → 15:30 으로 가는 길에 15:3x),
+  // 그때마다 겹침을 확인하면 중간 값에서 겹침에 걸려 원하는 시각으로 못 갑니다. 그래서 다 고친 뒤(칸을 벗어나거나 Enter)에 한 번만 확인합니다.
+  const [draftTime, setDraftTime] = useState<string | null>(null)
+
   /** 시작 시각을 바꾸고, 겹쳤으면 안내를 보여 줍니다. */
   async function handleChangeTime(startTime: string) {
     const result = await onChangeStartTime(plan.id, startTime)
     setTimeError(result.conflictMessage ?? '')
     setTimeNotice(result.googleNotice ?? '')
+  }
+
+  /**
+   * 고치던 시각을 확정합니다. 칸을 벗어났을 때와 Enter 를 눌렀을 때 부릅니다.
+   * 시 · 분 중 일부만 적어서 값이 비어 보이면(예: "15:--") 아직 적는 중이라, 바꾸지 않고 원래 값으로 돌립니다.
+   * (그대로 확정하면 "시작 시각 지우기" 가 되어 버립니다)
+   */
+  function handleCommitTime(input: HTMLInputElement) {
+    if (draftTime === null) return
+    const next = draftTime
+    setDraftTime(null)
+    if (next === '' && input.validity.badInput) return
+    if (next !== (plan.startTime ?? '')) void handleChangeTime(next)
   }
   // 이 계획에서 타이머를 시작해 공부한 시간. "32 / 50분" 과 진행 막대에 씁니다. (lib/planProgress.ts)
   const progress = getPlanProgress(plan, sessions)
@@ -885,13 +911,25 @@ function PlanRow({
               name={`startTime-${plan.id}`}
               type="time"
               label="시작 시각"
-              value={plan.startTime ?? ''}
-              onChange={(event) => handleChangeTime(event.target.value)}
+              value={draftTime ?? plan.startTime ?? ''}
+              onChange={(event) => {
+                // 고치는 동안에는 값만 바꿔 두고, 확정할 때(칸을 벗어나거나 Enter) 겹침을 확인합니다.
+                setDraftTime(event.target.value)
+                setTimeError('')
+                setTimeNotice('')
+              }}
+              onBlur={(event) => handleCommitTime(event.currentTarget)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleCommitTime(event.currentTarget)
+              }}
             />
             <Button
               variant="ghost"
               disabled={!plan.startTime}
-              onClick={() => handleChangeTime('')}
+              onClick={() => {
+                setDraftTime(null)
+                void handleChangeTime('')
+              }}
               className="shrink-0 px-3"
             >
               지우기
@@ -900,6 +938,7 @@ function PlanRow({
               variant="secondary"
               onClick={() => {
                 setIsTimeOpen(false)
+                setDraftTime(null)
                 setTimeError('')
                 setTimeNotice('')
               }}
@@ -908,17 +947,22 @@ function PlanRow({
               닫기
             </Button>
           </div>
-          {/* 다른 일정과 겹쳐서 시각을 못 바꿨을 때. 어느 시간과 겹쳤는지, 언제부터 비는지 알려 줍니다. (#315) */}
-          {timeError && (
-            <p role="alert" className="pb-2 pl-12 text-sm break-keep text-red-600">
-              {timeError}
-            </p>
-          )}
-          {timeNotice && (
-            <p role="status" className="pb-2 pl-12 text-sm break-keep text-slate-500">
-              {timeNotice}
-            </p>
-          )}
+          {/*
+            다른 일정과 겹쳐서 시각을 못 바꿨을 때. 어느 시간과 겹쳤는지, 언제부터 비는지 알려 줍니다. (#315)
+            화면 낭독기가 읽으려면 안내 칸이 글자가 들어오기 전부터 화면에 있어야 해서, 비어 있을 때도 그려 둡니다.
+          */}
+          <p
+            role="alert"
+            className={cn('text-sm break-keep text-red-600', timeError !== '' && 'pb-2 pl-12')}
+          >
+            {timeError}
+          </p>
+          <p
+            role="status"
+            className={cn('text-sm break-keep text-slate-500', timeNotice !== '' && 'pb-2 pl-12')}
+          >
+            {timeNotice}
+          </p>
         </>
       )}
     </li>
@@ -1418,12 +1462,18 @@ export function PlannerPage() {
     startTime,
     repeatWeekdays,
   }: PlanInput): Promise<PlanSlotCheck> {
-    const check = await checkPlanSlot({
-      dayKey: selectedDate,
-      startTime,
-      targetMinutes,
-      plans: getPlans(selectedDate),
-    })
+    // "매주 반복" 에서 지금 보고 있는 날짜의 요일을 안 골랐으면, 이 날짜에는 계획이 들어가지 않습니다. (아래의 return check)
+    // 들어가지도 않는 날짜의 계획들과 겹치는지 검사하면 엉뚱하게 막히므로, 이때는 겹침을 확인하지 않습니다.
+    const isAddedToday =
+      repeatWeekdays.length === 0 || repeatWeekdays.includes(getWeekday(selectedDate))
+    const check = isAddedToday
+      ? await checkPlanSlot({
+          dayKey: selectedDate,
+          startTime,
+          targetMinutes,
+          plans: getPlans(selectedDate),
+        })
+      : NO_SLOT_PROBLEM
     if (check.conflictMessage !== null) return check
 
     const now = Date.now()
