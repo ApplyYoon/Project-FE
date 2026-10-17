@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -61,6 +62,7 @@ import { loadVoicePledge } from '@/lib/voicePledge'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildLateEntrySession, checkLateEntry, makeLateEntryReport } from '@/lib/lateEntry'
 import { loadData } from '@/lib/storage'
+import { requestFirstStep } from '@/lib/aiCardApi'
 import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
@@ -1517,6 +1519,20 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
   const [seconds, setSeconds] = useState(COUNTDOWN_SECONDS)
   const [level, setLevel] = useState(0)
   const firstItem = card.checklist[0]?.text ?? card.title
+  // AI 가 만든 준비 행동 (단계마다). 받기 전이나 못 받으면 기본 문장을 씁니다. (#413, BE /ai/first-step)
+  const [aiSteps, setAiSteps] = useState<Record<number, string>>({})
+  const { mutate: askFirstStep } = useMutation({
+    mutationFn: requestFirstStep,
+    onSuccess: (step, variables) => {
+      if (step) setAiSteps((prev) => ({ ...prev, [variables.level]: step }))
+    },
+  })
+  const shownStep = aiSteps[level] ?? getPrepStep(firstItem, level)
+
+  // 처음 한 번 0단계 준비 행동을 부탁합니다.
+  useEffect(() => {
+    askFirstStep({ item: firstItem, title: card.title, level: 0 })
+  }, [askFirstStep, firstItem, card.title])
   // 부모 화면이 다시 그려져서 onDone 이 새 함수가 되어도 카운트가 처음부터 다시 시작하지 않게, 최신 함수를 ref 에 둡니다.
   const onDoneRef = useRef(onDone)
   useEffect(() => {
@@ -1534,17 +1550,19 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
   }, [seconds])
 
   function handleShrink() {
-    setLevel((value) => Math.min(MAX_SHRINK, value + 1))
+    const next = Math.min(MAX_SHRINK, level + 1)
+    setLevel(next)
     setSeconds(COUNTDOWN_SECONDS)
+    // 방금 보여 준 것보다 더 작게 만들어 달라고 부탁합니다.
+    askFirstStep({ item: firstItem, title: card.title, level: next, previousStep: shownStep })
   }
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <Card className="flex flex-col items-center gap-4 py-10 text-center">
         <p className="text-sm font-medium text-slate-500">{card.title} · 이것만 먼저 해요</p>
-        <p className="text-2xl font-bold break-keep text-slate-900 sm:text-3xl">
-          {getPrepStep(firstItem, level)}
-        </p>
+        <p className="text-2xl font-bold break-keep text-slate-900 sm:text-3xl">{shownStep}</p>
+        {aiSteps[level] && <span className="text-xs font-semibold text-violet-700">AI 추천</span>}
         <p className="text-brand text-7xl font-bold tabular-nums" aria-live="polite">
           {Math.max(0, seconds)}
         </p>
