@@ -2,8 +2,10 @@ import { Layout } from '@/components/layout/Layout'
 import { RedirectWithQuery } from '@/components/layout/RedirectWithQuery'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import {
+  ONBOARDING_CARE_PATH,
   ONBOARDING_HYPOTHESES_PATH,
   ONBOARDING_INTRO_PATH,
+  ONBOARDING_RESULT_PATH,
   ONBOARDING_RESUME_PATH,
 } from '@/lib/onboardingProgress'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
@@ -61,6 +63,12 @@ const NotificationsPage = lazy(() =>
 )
 const OnboardingDonePage = lazy(() =>
   import('@/pages/OnboardingDonePage').then((m) => ({ default: m.OnboardingDonePage })),
+)
+const OnboardingCarePage = lazy(() =>
+  import('@/pages/OnboardingCarePage').then((m) => ({ default: m.OnboardingCarePage })),
+)
+const OnboardingResultPage = lazy(() =>
+  import('@/pages/OnboardingResultPage').then((m) => ({ default: m.OnboardingResultPage })),
 )
 const OnboardingIntroPage = lazy(() =>
   import('@/pages/OnboardingIntroPage').then((m) => ({ default: m.OnboardingIntroPage })),
@@ -185,7 +193,7 @@ export const router = createBrowserRouter([
     ),
   },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
-  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388)
+  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
   {
     path: ONBOARDING_INTRO_PATH,
     errorElement: <ErrorPage />,
@@ -219,6 +227,29 @@ export const router = createBrowserRouter([
       <RequireAuth>
         <PageBoundary fullScreen>
           <OnboardingPage mode="hypotheses" />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  // 관리 설정 동의 → 결과 (#389). 4문항 다음에 나옵니다.
+  {
+    path: ONBOARDING_CARE_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingCarePage />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: ONBOARDING_RESULT_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingResultPage />
         </PageBoundary>
       </RequireAuth>
     ),

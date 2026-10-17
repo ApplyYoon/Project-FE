@@ -2,8 +2,8 @@
  * 온보딩(가입 직후 처음 한 번 하는 설정)이 어디까지 됐는지 계산하고, 처음부터 다시 하게 지웁니다.
  * React 없이 저장된 값만 봅니다.
  *
- *   순서: 앱 소개 → 학년 → 심리검사 14문항 → 자기 인식 4문항(내 가설) → (준비 끝)   (기획서 4.1, 약 3분, #388)
- *   관리 설정 동의 · 결과 화면(#389)과 첫 목표 만들기(#391)는 그 이슈에서 이 목록에 더합니다.
+ *   순서: 앱 소개 → 학년 → 심리검사 14문항 → 자기 인식 4문항(내 가설) → 관리 설정 동의 → 결과   (기획서 4.1, 약 3분, #388 · #389)
+ *   첫 목표 만들기(#391, 건너뛰기 가능)는 그 이슈에서 이 목록에 더합니다.
  *   (처음 다짐 녹음은 첫 목표를 만들 때로, 생각 습관 테스트 · 처음 계획은 온보딩에서 빠졌습니다)
  *
  * 끝나지 않은 첫 단계가 "이어서 할 자리" 입니다. RequireAuth 가 이 자리로 보내서,
@@ -11,6 +11,7 @@
  * 하다 만 사람이 다음에 다시 들어오면 "이어하기 / 처음부터 다시" 를 먼저 고르게 합니다. (OnboardingResumePage)
  */
 import { loadMyHypotheses } from '@/lib/myHypotheses'
+import { hasCareConsent, hasSeenOnboardingResult, resetOnboardingCare } from '@/lib/onboardingCare'
 import {
   getFirstSteps,
   isFirstStageDone,
@@ -28,6 +29,12 @@ export const ONBOARDING_INTRO_PATH = '/onboarding/intro'
 
 /** 자기 인식 4문항(내 가설) 화면의 주소. OnboardingPage 를 mode="hypotheses" 로 씁니다. */
 export const ONBOARDING_HYPOTHESES_PATH = '/onboarding/hypotheses'
+
+/** 관리 설정 동의 화면의 주소 (#389) */
+export const ONBOARDING_CARE_PATH = '/onboarding/care'
+
+/** 결과 화면의 주소 (#389) */
+export const ONBOARDING_RESULT_PATH = '/onboarding/result'
 
 // 앱 소개를 봤다는 표시를 넣어 두는 이름입니다.
 const INTRO_SEEN_KEY = 'onboarding-intro-seen'
@@ -67,6 +74,9 @@ const STAGES: OnboardingStage[] = [
     path: ONBOARDING_HYPOTHESES_PATH,
     isDone: () => loadMyHypotheses() !== undefined,
   },
+  // [이대로 할게요] 를 눌러 동의해야 끝납니다. (명시적 동의)
+  { label: '관리 설정', path: ONBOARDING_CARE_PATH, isDone: hasCareConsent },
+  { label: '결과', path: ONBOARDING_RESULT_PATH, isDone: hasSeenOnboardingResult },
 ]
 
 /** 단계마다 이름과 끝냈는지를 돌려줍니다. "이어하기" 화면에서 어디까지 했는지 보여줄 때 씁니다. */
@@ -111,9 +121,11 @@ export function resetOnboarding(): void {
     if (Object.keys(kept).length === 0) removeData('onboarding-answers')
     else saveData('onboarding-answers', kept)
   }
-  // 심리검사 결과 (lib/psychTest.ts) · 내 가설 (lib/myHypotheses.ts)
+  // 심리검사 결과 (lib/psychTest.ts) · 내 가설 (lib/myHypotheses.ts) · 관리 설정 동의와 결과 표시 (lib/onboardingCare.ts)
+  // 동의 때 정한 설정 값(한도 · 연락 금지 등)은 지우지 않습니다. 다시 동의할 때 그 값을 보고 고치면 됩니다.
   removeData('psych-test')
   removeData('my-hypotheses')
+  resetOnboardingCare()
   for (const key of DRAFT_KEYS) removeData(key)
 }
 
