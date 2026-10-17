@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
@@ -12,7 +12,15 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCalendarConnect } from '@/hooks/useCalendarConnect'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { logoutOnServer } from '@/lib/accountApi'
+import {
+  SETTINGS_TEXT_MAX_LENGTH,
+  applySettingsProposal,
+  getSettingsChangeRows,
+  requestSettingsFromText,
+  type TalkableSettings,
+} from '@/lib/aiSettingsApi'
 import { getApiErrorMessage } from '@/lib/api'
 import { isInApp } from '@/lib/appBridge'
 import { canSyncCheckIns, deleteServerCheckIns } from '@/lib/checkInsApi'
@@ -222,6 +230,12 @@ export function SettingsPage() {
     setMessageSettings(next)
     // "저장" 버튼이 따로 없어서, 바꾸는 즉시 저장합니다.
     saveMessageSettings(next)
+  }
+
+  /** "말로 바꾸기" 에서 [이렇게 바꿀게요] 를 눌렀을 때. 아래 칸들을 직접 바꾼 것과 똑같이 바로 저장합니다. */
+  function handleApplyTalkedSettings(next: TalkableSettings) {
+    if (next.callTime !== callTime) handleChangeCallTime(next.callTime)
+    handleChangeMessageSettings(next.messageSettings)
   }
 
   /** 서버에 저장된 체크인을 지웁니다. 실패하면 안내와 "다시 지우기" 버튼이 보입니다. */
@@ -552,6 +566,11 @@ export function SettingsPage() {
         <div className="flex flex-col gap-6">
           <Card title="전화와 메시지">
             <div className="flex flex-col gap-5">
+              <SettingsFromTextSection
+                current={{ callTime, messageSettings }}
+                onApply={handleApplyTalkedSettings}
+              />
+
               <div className="flex flex-col gap-2">
                 <Input
                   id="call-time"
@@ -848,6 +867,163 @@ export function SettingsPage() {
           </>
         )}
       </Modal>
+    </div>
+  )
+}
+
+interface SettingsFromTextSectionProps {
+  /** 지금 설정 (전화 시간 · 메시지 설정) */
+  current: TalkableSettings
+  /** 변경안을 받아들였을 때 새 설정을 넘깁니다 */
+  onApply: (next: TalkableSettings) => void
+}
+
+/**
+ * 말로 설정 바꾸기 (#419 ⑩). "아침엔 알림 꺼 줘" 처럼 적으면 AI 가 변경안을 만들고,
+ * 학생이 "지금 → 바꿀 값" 을 확인하고 [이렇게 바꿀게요] 를 눌러야 바뀝니다. (lib/aiSettingsApi.ts)
+ * 숫자 · 시각은 코드가 검사한 값만 보여 주고, AI 의 문장은 설명 한 줄로만 씁니다.
+ */
+function SettingsFromTextSection({ current, onApply }: SettingsFromTextSectionProps) {
+  const isServerData = useIsServerData()
+  const [text, setText] = useState('')
+  // 방금 바꾼 내용 한 줄. 바꾼 뒤 "바꿨어요" 안내에 씁니다.
+  const [appliedSummary, setAppliedSummary] = useState('')
+  // useMutation: 버튼을 눌렀을 때만 서버에 묻는 요청입니다. 기다리는 중 · 결과를 대신 들고 있습니다. (docs/DATA-FETCHING.md 5장)
+  const mutation = useMutation({ mutationFn: requestSettingsFromText })
+  const result = mutation.data
+  const rows = result?.kind === 'proposal' ? getSettingsChangeRows(result.proposal, current) : []
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    // form 이 기본으로 하는 "페이지 새로고침" 을 막습니다.
+    event.preventDefault()
+    if (text.trim() === '' || mutation.isPending) return
+    setAppliedSummary('')
+    mutation.mutate(text)
+  }
+
+  function handleApply() {
+    if (result?.kind !== 'proposal') return
+    onApply(applySettingsProposal(result.proposal, current))
+    setAppliedSummary(result.proposal.summary)
+    setText('')
+    mutation.reset()
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3">
+      <h4 className="text-sm font-semibold text-slate-900">말로 바꾸기</h4>
+      <p className="text-sm break-keep text-slate-600">
+        예) &quot;아침엔 알림 꺼 줘&quot; · &quot;전화는 밤 9시에 해 줘&quot;. 전화 시간 · 메시지 수
+        · 연락 금지 시간만 바꿀 수 있어요.
+      </p>
+
+      {!isServerData ? (
+        <p className="text-sm break-keep text-slate-500">
+          구글로 로그인한 계정에서만 쓸 수 있어요. 아래에서 직접 바꿔 주세요.
+        </p>
+      ) : (
+        <form onSubmit={handleSubmit} className="flex items-end gap-2">
+          <div className="min-w-0 flex-1">
+            <Input
+              id="settings-from-text"
+              aria-label="바꾸고 싶은 것"
+              value={text}
+              maxLength={SETTINGS_TEXT_MAX_LENGTH}
+              placeholder="바꾸고 싶은 것을 적어 주세요"
+              onChange={(event) => setText(event.target.value)}
+              className="h-10 bg-white text-base"
+            />
+          </div>
+          <Button
+            type="submit"
+            className="shrink-0"
+            disabled={text.trim() === '' || mutation.isPending}
+          >
+            변경안 보기
+          </Button>
+        </form>
+      )}
+
+      {/* AI 가 답하는 동안 변경안 자리에 회색 상자를 둡니다. */}
+      {mutation.isPending && <Skeleton className="h-24 w-full" />}
+
+      {result?.kind === 'proposal' && rows.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3">
+          <p className="flex flex-wrap items-center gap-2 text-sm break-keep text-slate-900">
+            <span className="bg-brand-light text-brand shrink-0 rounded px-1.5 py-0.5 text-xs font-medium">
+              AI 추천
+            </span>
+            {result.proposal.summary}
+          </p>
+          <ul className="flex flex-col gap-1 text-sm">
+            {rows.map((row) => (
+              <li key={row.label} className="flex flex-wrap justify-between gap-x-3">
+                <span className="text-slate-600">{row.label}</span>
+                <span className="font-medium text-slate-900">
+                  {row.from} → {row.to}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button className="w-full sm:w-auto" onClick={handleApply}>
+              이렇게 바꿀게요
+            </Button>
+            <Button variant="ghost" className="w-full sm:w-auto" onClick={() => mutation.reset()}>
+              안 바꿀게요
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {result?.kind === 'proposal' && rows.length === 0 && (
+        <p role="status" className="text-sm break-keep text-slate-600">
+          이미 그렇게 되어 있어요.
+        </p>
+      )}
+      {result?.kind === 'none' && (
+        <p role="status" className="text-sm break-keep text-slate-600">
+          말로는 바꿀 수 없는 부탁이거나, 바꿀 것이 없었어요. 아래에서 직접 바꿔 주세요.
+        </p>
+      )}
+      {result?.kind === 'failed' && (
+        <p role="status" className="text-sm break-keep text-red-700">
+          지금은 AI 가 답하지 못했어요. 잠시 뒤 다시 하거나 아래에서 직접 바꿔 주세요.
+        </p>
+      )}
+      {result?.kind === 'help' && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm break-keep text-slate-900">
+            많이 힘들어 보여요. 혼자 버티지 말고 바로 이야기해 주세요.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {helpLines.map((line) => (
+              <li key={line.number}>
+                <a
+                  href={`tel:${line.number}`}
+                  aria-label={`${line.name} ${line.number} 전화 걸기`}
+                  className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 hover:bg-slate-100"
+                >
+                  <span className="font-semibold text-slate-900">{line.name}</span>
+                  <span className="text-brand text-xl font-bold">{line.number}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+          <Link
+            to={SUPPORT_PATH}
+            className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
+          >
+            도움 안내 화면 보기
+          </Link>
+        </div>
+      )}
+
+      {appliedSummary !== '' && (
+        <p role="status" className="text-sm break-keep text-emerald-700">
+          바꿨어요. {appliedSummary}
+        </p>
+      )}
     </div>
   )
 }
