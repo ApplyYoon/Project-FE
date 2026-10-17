@@ -23,7 +23,7 @@
  * ⚠️ 서버(BE Tmax-IT-Hope-School/Project-BE#219)와 RN 앱도 이 파일과 같은 이름·같은 계산을 씁니다.
  *    문항 id('S1'~'C5', 첫 글자가 척도)·척도 이름(startResistance 등)·5/3 경계를 바꾸면 그쪽에도 알려 주세요.
  *
- * 옛 "생각 습관 테스트"(lib/thinkingTest.ts)와는 다른 검사입니다. 그쪽은 통화·기록 화면에서 계속 씁니다.
+ * 옛 "생각 습관 테스트"는 2026-10-17 에 앱에서 뺐습니다. (FE#511) 성향은 이 검사 하나로 봅니다.
  */
 import { loadData, saveData } from '@/lib/storage'
 

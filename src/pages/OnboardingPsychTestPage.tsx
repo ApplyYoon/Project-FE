@@ -46,7 +46,7 @@ function loadDraft(): Record<string, number> {
  * (문항·채점: lib/psychTest.ts)
  *
  * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 35 · result) 뒤로 가기를 누르면 앞 단계로 갑니다.
- * 온보딩에서는 학년 다음에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
+ * 온보딩에서는 학년 다음, 자기 인식 4문항 앞에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
  */
 export function OnboardingPsychTestPage() {
   const navigate = useNavigate()
