@@ -4,11 +4,13 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { useAuth } from '@/hooks/useAuth'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import { canSyncThinkingTest, sendThinkingTest } from '@/lib/thinkingTestApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import {
   THINKING_TEST_PATH,
@@ -46,14 +48,15 @@ function loadDraft(): Record<string, number> {
 
 /** 결과를 본 뒤 갈 곳. from 은 주소의 ?from= 값입니다. */
 function getNextStep(from: string): { path: string; label: string } {
-  // 가입 설문에서 왔으면 처음 계획을 세우러, 기록 화면에서 왔으면 기록으로, 그 밖에는 홈으로 갑니다.
-  if (from === 'onboarding') return { path: '/onboarding/plan', label: '다음: 처음 계획 세우기' }
+  // 온보딩에서 왔으면 다음 온보딩 단계(자기 인식 4문항)로, 기록 화면에서 왔으면 기록으로, 그 밖에는 홈으로 갑니다.
+  // 다음 단계는 결과를 저장한 뒤에 정해서(이 테스트가 끝났다고 보이는 때) 버튼을 누를 때 묻습니다. (순서: lib/onboardingProgress.ts)
+  if (from === 'onboarding') return { path: getOnboardingResumePath() ?? '/', label: '다음으로' }
   if (from === 'records') return { path: '/analysis', label: '기록으로 돌아가기' }
   return { path: '/', label: '시작하기' }
 }
 
 /**
- * 생각 습관 테스트 화면입니다. 가입 설문 다음에 나오고, 안 했으면 RequireAuth 가 여기로 보냅니다.
+ * 생각 습관 테스트 화면입니다. 온보딩에서 심리검사 14문항 다음에 나오고, 안 했으면 RequireAuth 가 여기로 보냅니다.
  * 문장 24개에 7점 척도로 답하고 마지막에 "내가 생각하는 나의 약점" 을 고르면,
  * "지금 내 공부 스타일"(4개 축)과 많이 해당하는 생각 습관(인지편향)을 보여 줍니다.
  * (문항·채점·약점 칩: lib/thinkingTest.ts)
@@ -63,10 +66,10 @@ function getNextStep(from: string): { path: string; label: string } {
  */
 export function OnboardingThinkingPage() {
   const navigate = useNavigate()
+  const { token } = useAuth()
   const [step, setStep] = useQueryParam('step', 'intro')
   const [from] = useQueryParam('from', '')
   const [answers, setAnswers] = useState<Record<string, number>>(loadDraft)
-  const next = getNextStep(from)
   const total = thinkingTestItems.length
   // 온보딩 중이면 헤더에 "로그인 화면으로" 를 둡니다. (온보딩을 마친 뒤 기록 화면에서 다시 하는 경우에는 두지 않습니다)
   const [isOnboarding] = useState(() => getOnboardingResumePath() !== null)
@@ -91,6 +94,9 @@ export function OnboardingThinkingPage() {
     // 결과를 저장하고 임시 답은 지웁니다.
     saveThinkingTest(answers, weaknesses, weaknessNote)
     removeData(DRAFT_KEY)
+    // 서버에도 보냅니다. 못 보내면 다음에 앱을 열 때 다시 보냅니다. (hooks/useThinkingTestSync.ts)
+    // 기다리지 않습니다. 서버가 늦어도 결과 화면은 바로 보입니다.
+    if (canSyncThinkingTest(token)) void sendThinkingTest().catch(() => undefined)
     // "기타" 에 쓴 글에 위기 표현이 있으면 결과보다 도움 안내를 먼저 보여 줍니다. (안전이 먼저입니다)
     const brake = getSafetyBrakeResult({
       now: new Date(),
@@ -116,8 +122,8 @@ export function OnboardingThinkingPage() {
           isSameAnswer={isSameAnswerEverywhere(saved.answers)}
           weaknesses={saved.weaknesses}
           weaknessNote={saved.weaknessNote}
-          nextLabel={next.label}
-          onNext={() => navigate(next.path)}
+          nextLabel={getNextStep(from).label}
+          onNext={() => navigate(getNextStep(from).path)}
           onRetry={handleStart}
         />
       </PlainLayout>

@@ -263,24 +263,30 @@ export function buildCard(
   }
 }
 
+/** 종료 팝업을 거친 카드 하루치 하나 (계획 정확도 · 계획 패턴에 씁니다) */
+export interface ReportedCardDay {
+  card: Card
+  dateKey: string
+  sessions: StudySession[]
+}
+
 /**
- * 최근 4주 계획 정확도 — 카드 하루치마다 체크리스트를 몇 % 했는지의 평균입니다. (더닝-크루거 대응, 「4.3」)
- * 종료 팝업(endReport)을 거친 세션만 셉니다. 체크한 기록이 없는 옛 세션까지 세면 0% 로 보이기 때문입니다.
- * 카드 하루치가 5개보다 적으면 null 입니다. (그 전에는 숫자로 말하지 않습니다, 「2 수집 원칙」)
+ * 최근 4주(오늘 포함 28일) 동안 종료 팝업(endReport)을 거친 카드 하루치를 모읍니다.
+ * 체크한 기록이 없는 옛 세션까지 세면 0% 로 보이기 때문에, endReport 가 있는 세션만 봅니다.
+ * 한 카드를 같은 날 두 번 켰으면 한 하루치로 묶습니다.
  *
- *   카드 하루치 5개, 체크리스트 달성률 [1, 0.5, 0.5, 1, 0.1] -> { rate: 0.62, samples: 5 }
- *   카드 하루치 2개                                          -> null
+ *   카드 A 를 10/15 에 두 번, 10/16 에 한 번 켜고 끝냄 -> [ A·10/15 (세션 2개), A·10/16 (세션 1개) ]
  */
-export function getRecentPlanAccuracy(
+export function getRecentReportedCardDays(
   cards: Card[],
   sessions: StudySession[],
   todayKey: string,
-): { rate: number; samples: number } | null {
+): ReportedCardDay[] {
   const fromKey = moveDateKey(todayKey, -(PLAN_ACCURACY_DAYS - 1))
   const cardById = new Map(cards.map((card) => [card.id, card]))
 
   // 카드 id + 날짜 → 그날 그 카드의 세션들
-  const groups = new Map<string, { card: Card; dateKey: string; sessions: StudySession[] }>()
+  const groups = new Map<string, ReportedCardDay>()
   for (const session of sessions) {
     if (!session.cardId || !session.endReport) continue
     const card = cardById.get(session.cardId)
@@ -292,8 +298,25 @@ export function getRecentPlanAccuracy(
     group.sessions.push(session)
     groups.set(groupKey, group)
   }
+  return [...groups.values()]
+}
 
-  const rates = [...groups.values()].map((group) => getChecklistRate(group))
+/**
+ * 최근 4주 계획 정확도 — 카드 하루치마다 체크리스트를 몇 % 했는지의 평균입니다. (더닝-크루거 대응, 「4.3」)
+ * 종료 팝업(endReport)을 거친 세션만 셉니다. (getRecentReportedCardDays)
+ * 카드 하루치가 5개보다 적으면 null 입니다. (그 전에는 숫자로 말하지 않습니다, 「2 수집 원칙」)
+ *
+ *   카드 하루치 5개, 체크리스트 달성률 [1, 0.5, 0.5, 1, 0.1] -> { rate: 0.62, samples: 5 }
+ *   카드 하루치 2개                                          -> null
+ */
+export function getRecentPlanAccuracy(
+  cards: Card[],
+  sessions: StudySession[],
+  todayKey: string,
+): { rate: number; samples: number } | null {
+  const rates = getRecentReportedCardDays(cards, sessions, todayKey).map((day) =>
+    getChecklistRate(day),
+  )
   if (rates.length < PATTERN_MIN_SAMPLES) return null
   const rate = rates.reduce((sum, value) => sum + value, 0) / rates.length
   return { rate, samples: rates.length }

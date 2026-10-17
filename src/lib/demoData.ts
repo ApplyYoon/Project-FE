@@ -1,192 +1,221 @@
 import { loadAiMessages, saveAiMessages } from '@/lib/aiMessages'
-import { toDateKey } from '@/lib/dailyRecords'
-import { toDayDate } from '@/lib/date'
-import { mockAiMessages, mockSubjects } from '@/lib/mock'
-import { loadData, saveData } from '@/lib/storage'
-import type { StudyPlan, StudySession, Subject } from '@/types'
+import { getTodayKey } from '@/lib/date'
+import { DEMO_ID_PREFIX, buildDemoOnboarding, buildDemoPersona } from '@/lib/demoPersona'
+import { mockAiMessages } from '@/lib/mock'
+import { loadData, removeData, saveData } from '@/lib/storage'
+import type { StudySession } from '@/types'
 
 /**
- * 주간·월간 리포트를 미리 볼 수 있게 "가상 데이터"를 넣고 빼는 함수입니다. (개발할 때만 씁니다)
+ * 발표 시연용 "가상 사용자 28일" 을 저장소에 넣고 빼는 함수입니다. (FE#418)
+ * 어떤 사람 · 어떤 하루하루인지는 lib/demoPersona.ts 가 정합니다.
+ * 설정 화면의 '시연용 가상 데이터' 카드(설정 주소 끝에 ?demo=on)에서 부릅니다.
  *
- * 월간 리포트는 기록이 42일(6주) 넘게 쌓여야 열리고, "지난달보다" 비교까지 보려면 8주가 더 필요합니다.
- * 손으로 그만큼 기록할 수는 없으니, 최근 9주치 계획과 공부 기록을 한 번에 만들어 저장합니다.
- *
- * ■ 정해 둔 규칙
- *   - 가상 데이터의 id 는 모두 'demo-' 로 시작합니다. 그래서 지울 때 내가 직접 만든 기록은 남습니다.
- *   - 오래된 날일수록 공부를 적게, 늦게 시작하고 → 최근일수록 많이, 일찍 시작합니다. (리포트의 ↑↓ 가 보이도록)
- *   - 일요일과 가끔 하루는 쉽니다. (빈 날이 있어야 진짜 기록처럼 보입니다)
- *   - 오늘은 계획만 넣고 공부 기록은 넣지 않습니다. 아직 오지 않은 시각의 기록이 생기면 안 되기 때문입니다.
- *   - 알림 화면에 보일 예시 메시지 7개도 같이 넣습니다. 예시 메시지는 이때만 보입니다. (#255)
+ * ■ 넣을 때
+ *   - 카드 · 세션 · 목표 같은 목록은 내 기록 뒤에 붙입니다. 가상 데이터의 id 는 모두 'demo-' 로 시작합니다.
+ *   - 체크인 · 관리 단계 기록처럼 날짜별로 저장하는 값은, 내 기록이 없는 날짜에만 넣습니다.
+ *   - 온보딩 답 · 심리검사처럼 하나뿐인 값은, 비어 있을 때만 넣습니다. (온보딩을 끝낸 사람의 답은 건드리지 않음)
+ *   - 무엇을 넣었는지 'demo-manifest' 에 적어 둡니다.
+ * ■ 뺄 때
+ *   - 'demo-' 로 시작하는 것과, 'demo-manifest' 에 적힌 것만 지웁니다. 내가 직접 만든 기록은 남습니다.
  */
 
-/** 가상 데이터 id 앞에 붙는 글자. 지울 때 이걸로 골라냅니다. */
-const DEMO_ID_PREFIX = 'demo-'
+const MANIFEST_KEY = 'demo-manifest'
 
-/** 며칠 전까지 만들지 (9주 = 63일) */
-const DEMO_DAYS = 63
-
-const MINUTE = 60 * 1000 // 1분 = 60,000 밀리초
-
-/** 날짜('YYYY-MM-DD')마다 그날의 계획 목록. usePlans 가 저장하는 모양과 같습니다. */
-type PlansByDate = Record<string, StudyPlan[]>
-
-// 과목마다 쓸 계획 내용 예시. 과목 id 가 여기 없으면 '복습하기' 를 씁니다.
-const PLAN_CONTENTS: Record<string, string[]> = {
-  korean: ['비문학 지문 3개 읽기', '문학 작품 정리', '모의고사 국어 1회'],
-  math: ['수학 문제집 3단원', '오답노트 정리', '기출 20문제'],
-  english: ['영단어 50개 외우기', '듣기 1회분', '독해 지문 5개'],
-  science: ['화학 개념 정리', '물리 문제 풀기', '생명과학 인강 1강'],
-  social: ['한국사 인강 1강', '사회문화 요약', '세계지리 문제'],
+/** 무엇을 넣었는지 적어 두는 표. 뺄 때 이 표에 적힌 것만 지웁니다. */
+interface DemoManifest {
+  /** 넣은 시각 */
+  seededAt: number
+  /** 비어 있어서 통째로 넣은 키들 (온보딩 답 등) */
+  setKeys: string[]
+  /** 날짜별 저장값에 넣은 날짜들 */
+  checkinDates: string[]
+  careStageDates: string[]
+  restDates: string[]
+  /** 지난 주들의 예측 · 회고를 넣은 주 (그 주의 월요일 날짜) */
+  predictionWeeks: string[]
+  reviewWeeks: string[]
+  /** 인사이트 반응을 넣은 인사이트 id */
+  insightIds: string[]
 }
 
-/** min 이상 max 이하의 정수를 아무거나 하나 고릅니다. */
-function randomInt(min: number, max: number): number {
-  return min + Math.floor(Math.random() * (max - min + 1))
+/** id 가 있는 목록에 가상 항목을 붙여 저장합니다. */
+function appendList<T>(key: string, items: T[]): void {
+  saveData(key, [...loadData<T[]>(key, []), ...items])
 }
 
-/** 배열에서 아무거나 하나 고릅니다. */
-function pickOne<T>(items: T[]): T {
-  return items[randomInt(0, items.length - 1)]
+/** id 가 'demo-' 로 시작하는 항목을 목록에서 뺍니다. idOf 로 어느 칸을 볼지 정합니다. */
+function removeDemoItems<T>(key: string, idOf: (item: T) => string): void {
+  const items = loadData<unknown>(key, [])
+  if (!Array.isArray(items)) return
+  saveData(
+    key,
+    (items as T[]).filter((item) => {
+      const id = idOf(item)
+      return typeof id !== 'string' || !id.startsWith(DEMO_ID_PREFIX)
+    }),
+  )
 }
 
-/** 내 과목 목록. 플래너에서 과목을 바꿨으면 그 과목으로 만듭니다. */
-function loadSubjects(): Subject[] {
-  const subjects = loadData<Subject[]>('subjects', mockSubjects)
-  return subjects.length > 0 ? subjects : mockSubjects
-}
-
-/**
- * 하루치 가상 계획과 공부 기록을 만듭니다.
- * progress 는 0(가장 오래된 날) ~ 1(오늘) 사이 값입니다. 클수록 더 많이, 더 일찍 공부합니다.
- */
-function makeDemoDay(
-  date: Date,
-  progress: number,
-  subjects: Subject[],
-  isToday: boolean,
-): { plans: StudyPlan[]; sessions: StudySession[] } {
-  const dateKey = toDateKey(date)
-  const isSunday = date.getDay() === 0
-  // 일요일은 쉬고, 다른 날도 10번에 1번쯤은 쉽니다. (오늘은 계획을 보여주려고 쉬지 않습니다)
-  if (!isToday && (isSunday || Math.random() < 0.1)) return { plans: [], sessions: [] }
-
-  // 계획은 처음엔 2~3개, 후반(progress 0.5 넘음)엔 3~4개. 과목이 겹치지 않게 섞은 뒤 앞에서부터 고릅니다.
-  const planCount = Math.min(subjects.length, randomInt(2, 3) + (progress > 0.5 ? 1 : 0))
-  const daySubjects = [...subjects].sort(() => Math.random() - 0.5).slice(0, planCount)
-
-  // 계획을 얼마나 지키는지: 처음엔 50% 안팎 → 최근엔 90% 안팎
-  const keepRate = 0.5 + progress * 0.4
-
-  // 첫 시작 시각: 처음엔 밤 9시쯤 → 최근엔 저녁 7시쯤 (분 단위, 자정부터)
-  let startMinutes = Math.round(21 * 60 - progress * 120) + randomInt(-20, 20)
-
-  const plans: StudyPlan[] = []
-  const sessions: StudySession[] = []
-
-  daySubjects.forEach((subject, index) => {
-    const targetMinutes = pickOne([30, 40, 50, 60, 90])
-    // 실제로 공부한 시간 = 목표 × 지키는 비율 (±20% 흔들림)
-    const studiedMinutes = Math.round(targetMinutes * keepRate * (0.8 + Math.random() * 0.4))
-
-    plans.push({
-      id: `${DEMO_ID_PREFIX}plan-${dateKey}-${index}`,
-      date: dateKey,
-      subjectId: subject.id,
-      content: pickOne(PLAN_CONTENTS[subject.id] ?? ['복습하기']),
-      targetMinutes,
-      done: !isToday && studiedMinutes >= targetMinutes,
-    })
-
-    // 오늘은 공부 기록을 만들지 않습니다. (위 설명 참고) 10분이 안 되면 공부를 안 한 것으로 칩니다.
-    if (isToday || studiedMinutes < 10) return
-
-    const startedAt = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-    const sessionStart = startedAt + startMinutes * MINUTE
-    sessions.push({
-      id: `${DEMO_ID_PREFIX}session-${dateKey}-${index}`,
-      subjectId: subject.id,
-      startedAt: sessionStart,
-      endedAt: sessionStart + studiedMinutes * MINUTE,
-      pauseCount: randomInt(0, 3),
-    })
-
-    // 다음 과목은 끝나고 10분 쉰 뒤 시작합니다.
-    startMinutes += studiedMinutes + 10
-  })
-
-  return { plans, sessions }
+/** 시연용 가상 데이터가 들어 있는지 (설정 카드가 '지우기' 를 보여 줄지 정합니다) */
+export function isDemoSeeded(): boolean {
+  return loadData<unknown>(MANIFEST_KEY, null) !== null
 }
 
 /**
- * 최근 9주치 가상 데이터를 만들어 저장합니다.
- * 전에 넣은 가상 데이터는 먼저 지우고 새로 만듭니다. 내가 직접 만든 기록은 그대로 둡니다.
- * 온보딩에서 시험 날짜를 안 정했으면, 성장 곡선을 볼 수 있게 60일 뒤 "기말고사" 를 넣어 줍니다.
+ * 가상 사용자 28일을 넣습니다. 이미 들어 있으면 먼저 빼고 다시 넣습니다. (두 번 눌러도 두 배가 되지 않게)
+ * 화면들은 저장소를 처음 열 때만 읽으므로, 부른 뒤 새로고침해야 보입니다.
  */
 export function addDemoData(): void {
-  // 먼저 예전 가상 데이터를 빼서, 두 번 눌러도 기록이 두 배가 되지 않게 합니다.
   removeDemoData()
 
-  const subjects = loadSubjects()
-  const plansByDate = loadData<PlansByDate>('plans', {})
-  const sessions = loadData<StudySession[]>('sessions', [])
-
-  // 하루의 기준(새벽 4시)으로 "오늘" 을 정합니다. 새벽 2시에 넣어도 오늘 칸에 계획이 생깁니다.
-  const today = toDayDate(Date.now())
-  for (let daysAgo = DEMO_DAYS - 1; daysAgo >= 0; daysAgo -= 1) {
-    // new Date(년, 월, 일) 은 일이 범위를 넘어가면 달·해를 알아서 넘겨줍니다.
-    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysAgo)
-    const progress = 1 - daysAgo / (DEMO_DAYS - 1)
-    const day = makeDemoDay(date, progress, subjects, daysAgo === 0)
-
-    if (day.plans.length > 0) {
-      const dateKey = toDateKey(date)
-      plansByDate[dateKey] = [...(plansByDate[dateKey] ?? []), ...day.plans]
-    }
-    sessions.push(...day.sessions)
+  const now = Date.now()
+  const todayKey = getTodayKey()
+  const persona = buildDemoPersona(todayKey, now)
+  const manifest: DemoManifest = {
+    seededAt: now,
+    setKeys: [],
+    checkinDates: [],
+    careStageDates: [],
+    restDates: [],
+    predictionWeeks: [],
+    reviewWeeks: [],
+    insightIds: [],
   }
 
+  // 1) id 가 있는 목록 — 내 기록 뒤에 붙입니다.
+  appendList('cards', persona.cards)
+  appendList('sessions', persona.sessions)
+  appendList('goals', persona.goals)
+  appendList('fixed-blocks', persona.fixedBlocks)
+  appendList('card-day-marks', persona.marks)
+  appendList('experiments', persona.experiments)
+  appendList('manual-items', persona.manualItems)
+
+  // 홈 화면이 아직 읽는 옛 계획 (날짜 → 계획 목록)
+  const plansByDate = loadData<Record<string, unknown[]>>('plans', {})
+  for (const [dateKey, plans] of Object.entries(persona.plansByDate)) {
+    plansByDate[dateKey] = [...(plansByDate[dateKey] ?? []), ...plans]
+  }
   saveData('plans', plansByDate)
-  saveData('sessions', sessions)
 
-  // 예시 메시지도 id 앞에 'demo-' 를 붙여서 넣습니다. 그래야 뺄 때 진짜 알림은 남습니다.
-  const demoMessages = mockAiMessages.map((message) => ({
-    ...message,
-    id: `${DEMO_ID_PREFIX}${message.id}`,
-  }))
-  saveAiMessages([...loadAiMessages(), ...demoMessages])
+  // 2) id 가 없는 목록 — 내 기록과 날짜가 겹치지 않는 것만 넣고, 무엇을 넣었는지 적어 둡니다.
+  const restDays = loadData<{ date: string }[]>('rest-days', [])
+  const newRestDays = persona.restDays.filter(
+    (day) => !restDays.some((saved) => saved.date === day.date),
+  )
+  saveData('rest-days', [...restDays, ...newRestDays])
+  manifest.restDates = newRestDays.map((day) => day.date)
 
-  const onboardingAnswers = loadData<Record<string, string>>('onboarding-answers', {})
-  if (!onboardingAnswers.targetExamDate) {
-    const examDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 60)
-    saveData('onboarding-answers', {
-      ...onboardingAnswers,
-      targetExam: onboardingAnswers.targetExam || '기말고사',
-      targetExamDate: toDateKey(examDate),
-    })
+  const predictions = loadData<{ weekStart: string }[]>('predictions', [])
+  const newPredictions = persona.predictions.filter(
+    (item) => !predictions.some((saved) => saved.weekStart === item.weekStart),
+  )
+  saveData('predictions', [...predictions, ...newPredictions])
+  manifest.predictionWeeks = newPredictions.map((item) => item.weekStart)
+
+  const reviews = loadData<{ weekStart: string }[]>('weekly-reviews', [])
+  const newReviews = persona.weeklyReviews.filter(
+    (item) => !reviews.some((saved) => saved.weekStart === item.weekStart),
+  )
+  saveData('weekly-reviews', [...reviews, ...newReviews])
+  manifest.reviewWeeks = newReviews.map((item) => item.weekStart)
+
+  // 3) 날짜별 저장값 — 내 기록이 없는 날짜에만
+  const checkins = loadData<Record<string, unknown>>('checkins', {})
+  for (const [dateKey, checkin] of Object.entries(persona.checkins)) {
+    if (checkins[dateKey]) continue
+    checkins[dateKey] = checkin
+    manifest.checkinDates.push(dateKey)
   }
+  saveData('checkins', checkins)
+
+  const careStageLog = loadData<Record<string, unknown>>('care-stage-log', {})
+  for (const [dateKey, stage] of Object.entries(persona.careStageLog)) {
+    if (careStageLog[dateKey]) continue
+    careStageLog[dateKey] = stage
+    manifest.careStageDates.push(dateKey)
+  }
+  saveData('care-stage-log', careStageLog)
+
+  // 인사이트 예시 카드 하나에는 '몰랐는데 맞아' 를 눌러 둡니다.
+  const insightResponses = loadData<Record<string, string>>('insight-responses', {})
+  if (!insightResponses['insight-1']) {
+    saveData('insight-responses', { ...insightResponses, 'insight-1': 'surprised' })
+    manifest.insightIds.push('insight-1')
+  }
+
+  // 4) 하나뿐인 값 — 비어 있을 때만 (온보딩을 끝낸 상태로 만들기)
+  for (const [key, value] of Object.entries(buildDemoOnboarding(persona.startKey, todayKey))) {
+    if (loadData<unknown>(key, null) !== null) continue
+    saveData(key, value)
+    manifest.setKeys.push(key)
+  }
+
+  // 5) 알림 화면의 예시 메시지 (id 앞에 'demo-')
+  saveAiMessages([
+    ...loadAiMessages(),
+    ...mockAiMessages.map((message) => ({ ...message, id: `${DEMO_ID_PREFIX}${message.id}` })),
+  ])
+
+  saveData(MANIFEST_KEY, manifest)
+}
+
+/** 가상 데이터만 뺍니다. 'demo-' 로 시작하는 것과 'demo-manifest' 에 적힌 것만 지우고, 내 기록은 남깁니다. */
+export function removeDemoData(): void {
+  removeDemoItems<{ id: string }>('cards', (item) => item.id)
+  removeDemoItems<{ id: string }>('sessions', (item) => item.id)
+  removeDemoItems<{ id: string }>('goals', (item) => item.id)
+  removeDemoItems<{ id: string }>('fixed-blocks', (item) => item.id)
+  removeDemoItems<{ cardId: string }>('card-day-marks', (item) => item.cardId)
+  removeDemoItems<{ id: string }>('experiments', (item) => item.id)
+  removeDemoItems<{ id: string }>('manual-items', (item) => item.id)
+
+  const plansByDate = loadData<Record<string, { id: string }[]>>('plans', {})
+  const nextPlans: Record<string, { id: string }[]> = {}
+  for (const [dateKey, plans] of Object.entries(plansByDate)) {
+    const remaining = plans.filter((plan) => !plan.id.startsWith(DEMO_ID_PREFIX))
+    // 그날 계획이 하나도 안 남으면 날짜 칸도 지웁니다. (usePlans 의 deletePlan 과 같은 규칙)
+    if (remaining.length > 0) nextPlans[dateKey] = remaining
+  }
+  saveData('plans', nextPlans)
+
+  saveAiMessages(loadAiMessages().filter((message) => !message.id.startsWith(DEMO_ID_PREFIX)))
+
+  const manifest = loadData<DemoManifest | null>(MANIFEST_KEY, null)
+  if (manifest) {
+    saveData(
+      'rest-days',
+      loadData<{ date: string }[]>('rest-days', []).filter(
+        (day) => !manifest.restDates.includes(day.date),
+      ),
+    )
+    saveData(
+      'predictions',
+      loadData<{ weekStart: string }[]>('predictions', []).filter(
+        (item) => !manifest.predictionWeeks.includes(item.weekStart),
+      ),
+    )
+    saveData(
+      'weekly-reviews',
+      loadData<{ weekStart: string }[]>('weekly-reviews', []).filter(
+        (item) => !manifest.reviewWeeks.includes(item.weekStart),
+      ),
+    )
+    const checkins = loadData<Record<string, unknown>>('checkins', {})
+    for (const dateKey of manifest.checkinDates) delete checkins[dateKey]
+    saveData('checkins', checkins)
+    const careStageLog = loadData<Record<string, unknown>>('care-stage-log', {})
+    for (const dateKey of manifest.careStageDates) delete careStageLog[dateKey]
+    saveData('care-stage-log', careStageLog)
+    const insightResponses = loadData<Record<string, unknown>>('insight-responses', {})
+    for (const id of manifest.insightIds) delete insightResponses[id]
+    saveData('insight-responses', insightResponses)
+    for (const key of manifest.setKeys) removeData(key)
+  }
+  removeData(MANIFEST_KEY)
 }
 
 /** 가상 데이터가 들어 있는지 알려줍니다. id 가 'demo-' 로 시작하는 공부 기록이 하나라도 있으면 true 입니다. */
 export function hasDemoData(sessions: StudySession[]): boolean {
   return sessions.some((session) => session.id.startsWith(DEMO_ID_PREFIX))
-}
-
-/** 'demo-' 로 시작하는 가상 계획·공부 기록·예시 메시지만 지웁니다. 온보딩에 넣어 준 시험 날짜는 남겨 둡니다. */
-export function removeDemoData(): void {
-  const plansByDate = loadData<PlansByDate>('plans', {})
-  const nextPlans: PlansByDate = {}
-  for (const [date, plans] of Object.entries(plansByDate)) {
-    const remaining = plans.filter((plan) => !plan.id.startsWith(DEMO_ID_PREFIX))
-    // 그날 계획이 하나도 안 남으면 날짜 칸도 지웁니다. (usePlans 의 deletePlan 과 같은 규칙)
-    if (remaining.length > 0) nextPlans[date] = remaining
-  }
-  saveData('plans', nextPlans)
-
-  const sessions = loadData<StudySession[]>('sessions', [])
-  saveData(
-    'sessions',
-    sessions.filter((session) => !session.id.startsWith(DEMO_ID_PREFIX)),
-  )
-
-  saveAiMessages(loadAiMessages().filter((message) => !message.id.startsWith(DEMO_ID_PREFIX)))
 }

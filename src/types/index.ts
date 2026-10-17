@@ -259,6 +259,24 @@ export interface Card {
   createdAt: number
 }
 
+/**
+ * 고정 일정 블록 (최종 기획서 「4.3 카드」, #393)
+ * 학교·학원처럼 요일마다 정해진 시간. 카드가 아니라서 타이머가 없고, 의지력·순공 계산에서 빠집니다.
+ * 공부 가능 시간 계산 · 버퍼 · 수면 보호에만 씁니다. 칸은 BE(Project-BE#223)와 같은 뜻입니다.
+ */
+export interface FixedBlock {
+  id: string
+  /** 무슨 일정인지 (예: '학교', '수학 학원') */
+  title: string
+  /** 반복 요일 (0 = 일요일 … 6 = 토요일). 1개 이상 */
+  repeatDays: number[]
+  /** 시작 시각 'HH:MM' */
+  startTime: string
+  /** 끝 시각 'HH:MM' (시작보다 뒤) */
+  endTime: string
+  createdAt: number
+}
+
 /*
  * ── 목표 (최종 기획서 「4.7 목표와 숲」, #391) ──
  * 목표 = D-day 가 있는 장기 결과. 카드는 목표를 위한 일상 행동이고, 카드의 goalId 로 이어집니다.
@@ -314,6 +332,20 @@ export interface Goal {
   history: GoalTargetSnapshot[]
   /** 목표를 만든 시각 */
   createdAt: number
+  /** 완주형: 날짜별로 그날까지 한 누적 분량 (날짜 순). 목표 상세에서 적습니다 (#403) */
+  progressLog?: GoalProgressEntry[]
+  /** 2주 목표 점검을 마지막으로 한 때. 안 했으면 없음 → 만든 때부터 셉니다 (#403) */
+  lastCheckedAt?: number
+  /** 포기했을 때 적은 이유 (#403) */
+  givenUpReason?: string
+}
+
+/** 완주형 목표의 진척 한 줄 — 그 날짜까지 한 누적 분량 */
+export interface GoalProgressEntry {
+  /** 'YYYY-MM-DD' */
+  dateKey: string
+  /** 그날까지 한 분량 (누적, 예: 120쪽) */
+  doneAmount: number
 }
 
 /**
@@ -548,6 +580,10 @@ export interface Exam {
   subjectScores: ExamSubjectScore[]
   /** 시험 후 회고 (#81, 시험 날짜가 지나야 입력합니다) */
   reflection?: ExamReflection
+  /** 이 시험을 붙인 점수형 목표의 id (#403). 없으면 목표와 상관없는 시험 */
+  goalId?: string
+  /** 시험 3일 전에 고른 목표 기준 예상 (예: '3등급', '72점'). 아직 안 골랐으면 없음 (#403) */
+  goalPrediction?: string
 }
 
 /** 과거에 공부 계획이 무너졌던 때 (#89, 여러 개 고를 수 있습니다) */

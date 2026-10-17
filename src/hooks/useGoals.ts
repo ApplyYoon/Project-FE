@@ -5,8 +5,9 @@ import { useEffect, useState } from 'react'
 /**
  * 목표(최종 기획서 「4.7」)를 들고 있고, 바뀔 때마다 localStorage('study-goals')에 저장합니다. (#391)
  *
- *   const { goals, activeGoals, addGoal, changeTarget } = useGoals()
- *   addGoal(goal)   // 진행 중 목표가 이미 3개면 false 를 돌려주고 저장하지 않습니다
+ *   const { goals, activeGoals, addGoal, changeTarget, updateGoal } = useGoals()
+ *   addGoal(goal)      // 진행 중 목표가 이미 3개면 false 를 돌려주고 저장하지 않습니다
+ *   updateGoal(goal)   // 같은 id 의 목표를 통째로 바꿉니다 (진척 적기 · 목표 점검, lib/goalProgress.ts)
  */
 export function useGoals() {
   // 처음 한 번만 저장소에서 불러옵니다.
@@ -38,5 +39,10 @@ export function useGoals() {
     )
   }
 
-  return { goals, activeGoals: getActiveGoals(goals), addGoal, changeTarget }
+  /** 같은 id 의 목표를 통째로 바꿉니다. 진척 적기 · 목표 점검(유지 · 수정 · 포기)에서 씁니다. (#403) */
+  function updateGoal(next: Goal) {
+    setGoals((prev) => prev.map((goal) => (goal.id === next.id ? next : goal)))
+  }
+
+  return { goals, activeGoals: getActiveGoals(goals), addGoal, changeTarget, updateGoal }
 }
