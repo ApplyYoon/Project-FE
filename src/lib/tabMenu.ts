@@ -12,13 +12,15 @@
 export const ANALYSIS_PATH = '/analysis'
 
 /** 분석 탭 안의 하위 탭 이름. 주소의 ?tab= 값입니다. */
-export type AnalysisTab = 'records' | 'report' | 'manual'
+export type AnalysisTab = 'records' | 'report' | 'manual' | 'experiment'
 
 /** 분석 탭 위쪽의 하위 탭 막대에 나오는 순서와 글자. 첫 번째(기록)가 기본입니다. */
 export const analysisTabs: { tab: AnalysisTab; label: string }[] = [
   { tab: 'records', label: '기록' },
   { tab: 'report', label: '리포트' },
   { tab: 'manual', label: '사용설명서' },
+  // 내 가설 확인(#411) · 자기 실험(#412)
+  { tab: 'experiment', label: '가설·실험' },
 ]
 
 /**

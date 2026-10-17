@@ -11,12 +11,15 @@ import { useAiMessageSync } from '@/hooks/useAiMessageSync'
 import { useAppAlerts } from '@/hooks/useAppAlerts'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
+import { useCardAlerts } from '@/hooks/useCardAlerts'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
+import { useTimerLock } from '@/hooks/useTimerLock'
 import { cn } from '@/lib/cn'
 import { needsSubjectsPath } from '@/lib/dataMode'
 import { getBackToTabLink } from '@/lib/tabMenu'
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { TIMER_PATH } from '@/lib/timerLock'
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 /**
  * 모든 페이지가 공통으로 쓰는 껍데기입니다.
@@ -30,6 +33,8 @@ export function Layout() {
   useAppAlerts()
   // 정해 둔 "전화 받을 시간" 이 되면 알림을 띄우고 전화 수신 화면으로 보냅니다. (앱이 열려 있을 때만)
   useCallReminder()
+  // 카드 시작 알림 (카드에 쓴 문장 · 3분 뒤 '지금 시작해요' · 10분 전). 누르면 그 카드로 바로 시작합니다. (#399)
+  useCardAlerts()
   // 다른 화면으로 옮기면 맨 위부터 보이게 합니다. (같은 화면 안의 탭 · 날짜 바꾸기와 뒤로 가기는 그대로 둡니다)
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
@@ -47,11 +52,17 @@ export function Layout() {
   const backToTab = getBackToTabLink(pathname)
   // 과목이 필요한 화면인지. 그렇다면 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만)
   const needsSubjects = needsSubjectsPath(pathname)
+  // 타이머 잠금(#396): 공부 세션 · 놀기 중이면 탭을 숨기고, 다른 주소로 가도 타이머로 돌려보냅니다.
+  // (뒤로 가기 · 주소 직접 입력 · 알림 눌러 들어오기 모두 여기서 막힙니다)
+  const isTimerLocked = useTimerLock()
+  const isOutsideTimer = isTimerLocked && pathname !== TIMER_PATH
 
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
-    <div className={cn('flex min-h-screen flex-col', isLoggedIn && 'pb-14 sm:pb-0')}>
-      <Header />
+    <div
+      className={cn('flex min-h-screen flex-col', isLoggedIn && !isTimerLocked && 'pb-14 sm:pb-0')}
+    >
+      <Header hideNav={isTimerLocked} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
         {/* 그날 처음이면 어느 화면이든 맨 위에 "오늘 컨디션 + 감정 태그" 한 줄을 띄웁니다. 화면을 막지 않습니다. (#387) */}
@@ -79,7 +90,9 @@ export function Layout() {
           </div>
         )}
 
-        {isBlockedByFocusMode ? (
+        {isOutsideTimer ? (
+          <Navigate to={TIMER_PATH} replace />
+        ) : isBlockedByFocusMode ? (
           <FocusUnlockScreen onStay={() => navigate('/timer')} onUnlock={focusMode.unlock} />
         ) : (
           // 화면 파일을 받는 동안에는 이 본문 칸에만 스켈레톤을 보여줍니다. 헤더 · 하단 탭은 그대로입니다. (PageBoundary)
@@ -100,7 +113,8 @@ export function Layout() {
         © 2026 Tmax IT Hope School
       </footer>
 
-      {isLoggedIn && <BottomTabNav />}
+      {/* 세션 중에는 하단 탭을 숨깁니다. 나가는 길은 세션 화면의 [일시정지] · [끝내기] 뿐입니다. */}
+      {isLoggedIn && !isTimerLocked && <BottomTabNav />}
     </div>
   )
 }

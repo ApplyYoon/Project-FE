@@ -2,8 +2,10 @@ import { Layout } from '@/components/layout/Layout'
 import { RedirectWithQuery } from '@/components/layout/RedirectWithQuery'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import {
+  ONBOARDING_CARE_PATH,
   ONBOARDING_HYPOTHESES_PATH,
   ONBOARDING_INTRO_PATH,
+  ONBOARDING_RESULT_PATH,
   ONBOARDING_RESUME_PATH,
 } from '@/lib/onboardingProgress'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
@@ -40,6 +42,9 @@ const CardEditPage = lazy(() =>
 )
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
 const CheckPage = lazy(() => import('@/pages/CheckPage').then((m) => ({ default: m.CheckPage })))
+const FixedBlocksPage = lazy(() =>
+  import('@/pages/FixedBlocksPage').then((m) => ({ default: m.FixedBlocksPage })),
+)
 const CounselPage = lazy(() =>
   import('@/pages/CounselPage').then((m) => ({ default: m.CounselPage })),
 )
@@ -61,6 +66,12 @@ const NotificationsPage = lazy(() =>
 )
 const OnboardingDonePage = lazy(() =>
   import('@/pages/OnboardingDonePage').then((m) => ({ default: m.OnboardingDonePage })),
+)
+const OnboardingCarePage = lazy(() =>
+  import('@/pages/OnboardingCarePage').then((m) => ({ default: m.OnboardingCarePage })),
+)
+const OnboardingResultPage = lazy(() =>
+  import('@/pages/OnboardingResultPage').then((m) => ({ default: m.OnboardingResultPage })),
 )
 const OnboardingIntroPage = lazy(() =>
   import('@/pages/OnboardingIntroPage').then((m) => ({ default: m.OnboardingIntroPage })),
@@ -129,6 +140,8 @@ export const router = createBrowserRouter([
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
       { path: 'cards/new', element: <CardEditPage /> },
       { path: 'cards/:cardId/edit', element: <CardEditPage /> },
+      // 고정 일정(학교·학원) 입력 (#393)
+      { path: 'cards/fixed', element: <FixedBlocksPage /> },
       // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
       { path: 'goals/new', element: <GoalNewPage /> },
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
@@ -185,7 +198,7 @@ export const router = createBrowserRouter([
     ),
   },
   // 온보딩과 가입은 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 쓰므로 Layout 밖에 둡니다.
-  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388)
+  // 온보딩 순서(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)는 lib/onboardingProgress.ts 의 STAGES 가 정합니다. (#388 · #389)
   {
     path: ONBOARDING_INTRO_PATH,
     errorElement: <ErrorPage />,
@@ -219,6 +232,29 @@ export const router = createBrowserRouter([
       <RequireAuth>
         <PageBoundary fullScreen>
           <OnboardingPage mode="hypotheses" />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  // 관리 설정 동의 → 결과 (#389). 4문항 다음에 나옵니다.
+  {
+    path: ONBOARDING_CARE_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingCarePage />
+        </PageBoundary>
+      </RequireAuth>
+    ),
+  },
+  {
+    path: ONBOARDING_RESULT_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <PageBoundary fullScreen>
+          <OnboardingResultPage />
         </PageBoundary>
       </RequireAuth>
     ),
