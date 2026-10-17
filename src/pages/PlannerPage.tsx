@@ -690,17 +690,24 @@ function SubjectManager({ subjects, onAdd, onRename, onDelete }: SubjectManagerP
                   subjectColorStyles[subject.color],
                 )}
               >
-                <span title={subject.name} className="min-w-0 truncate">
-                  {subject.name}
-                </span>
-                {/* ✎: 이름 바꾸기. 누르는 영역은 × 와 같이 40px 로 둡니다. */}
+                {/* 이름과 ✎ 를 버튼 하나로 묶어서, 이름을 눌러도 ✎ 를 눌러도 이름 바꾸는 칸이 열립니다. */}
+                {/* min-w-0: 이름이 길면 버튼이 줄어들고 이름 끝이 … 로 잘립니다. (375px 가로 스크롤 방지) */}
+                {/* 누르는 영역은 × 와 같이 높이 40px 로 둡니다. */}
                 <button
                   type="button"
                   onClick={() => handleStartEdit(subject)}
                   aria-label={`${subject.name} 이름 바꾸기`}
-                  className="-my-2.5 -mr-1 inline-flex h-10 w-8 cursor-pointer items-center justify-center text-sm leading-none opacity-70 hover:opacity-100"
+                  className="group -my-2.5 inline-flex h-10 min-w-0 cursor-pointer items-center gap-1"
                 >
-                  ✎
+                  <span title={subject.name} className="min-w-0 truncate group-hover:underline">
+                    {subject.name}
+                  </span>
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-sm leading-none opacity-70 group-hover:opacity-100"
+                  >
+                    ✎
+                  </span>
                 </button>
                 <button
                   type="button"
