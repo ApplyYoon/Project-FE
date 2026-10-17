@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { GoogleButton } from '@/components/ui/GoogleButton'
 import { useAuth } from '@/hooks/useAuth'
 import { getGoogleAuthErrorMessage, startWithGoogle } from '@/lib/authApi'
 import { getAfterLoginPath, getReturnPath } from '@/lib/authRedirect'
@@ -7,15 +8,11 @@ import { isGoogleConfigured } from '@/lib/googleClient'
 import { savePendingGoogleSignup } from '@/lib/googleSignup'
 import { hasSignupInfo, markSignupDone } from '@/lib/signup'
 import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
-import { GoogleLogin } from '@react-oauth/google'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 // 테스트 로그인을 보여줄지. `.env` 값은 앱이 켜진 뒤에 바뀌지 않아서, 화면 밖에서 한 번만 정합니다.
 const isTestLoginOn = isTestLoginEnabled(import.meta.env.VITE_TEST_LOGIN)
-
-// 구글 버튼의 가장 넓은 폭(px). 구글이 400 보다 넓게는 그려 주지 않습니다.
-const GOOGLE_BUTTON_MAX_WIDTH = 400
 
 /* 왼쪽 소개에 나오는 세 줄. 아이콘은 글자를 꾸미는 것이라 화면 읽기 프로그램이 건너뜁니다(aria-hidden). */
 const features: { icon: ReactNode; text: string }[] = [
@@ -37,52 +34,6 @@ const features: { icon: ReactNode; text: string }[] = [
     text: '칭찬과 독촉의 세기는 내가 정해요',
   },
 ]
-
-interface GoogleStartButtonProps {
-  /** 구글이 신분증(credential)을 줬을 때 */
-  onCredential: (credential: string) => void
-  /** 구글 창이 실패했을 때 */
-  onFail: () => void
-}
-
-/**
- * [Google로 시작하기] 버튼입니다. 버튼은 구글이 직접 그립니다. (@react-oauth/google 의 GoogleLogin)
- * 구글 버튼은 폭을 숫자(px)로만 받아서, 감싼 칸의 폭을 재서 넘겨줍니다. 화면을 돌려 폭이 바뀌면 다시 잽니다.
- */
-function GoogleStartButton({ onCredential, onFail }: GoogleStartButtonProps) {
-  const boxRef = useRef<HTMLDivElement>(null)
-  // 감싼 칸의 폭. 재기 전에는 null 이라 버튼을 그리지 않습니다.
-  const [width, setWidth] = useState<number | null>(null)
-
-  useEffect(() => {
-    const box = boxRef.current
-    if (!box) return
-    // ResizeObserver: 칸의 크기가 바뀔 때마다 알려 주는 브라우저 기능입니다.
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(Math.min(GOOGLE_BUTTON_MAX_WIDTH, Math.floor(entry.contentRect.width)))
-    })
-    observer.observe(box)
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    // min-h-10: 버튼이 그려지기 전에도 자리를 잡아 두어서 아래 내용이 들썩이지 않게 합니다.
-    <div ref={boxRef} className="flex min-h-10 w-full justify-center">
-      {width !== null && (
-        <GoogleLogin
-          onSuccess={(response) => {
-            if (response.credential) onCredential(response.credential)
-            else onFail()
-          }}
-          onError={onFail}
-          text="continue_with"
-          shape="rectangular"
-          width={width}
-        />
-      )}
-    </div>
-  )
-}
 
 interface TestLoginPanelProps {
   /** "테스트로 시작하기" 를 눌렀을 때 */
@@ -221,7 +172,8 @@ export function LoginPage() {
       </section>
 
       {/* ---------- 오른쪽: 시작하기 ---------- */}
-      <div className="flex flex-col gap-6">
+      {/* max-w-md(448px): 구글 버튼은 400px 보다 넓어지지 않아서, 칸을 이만큼으로 두어야 버튼이 카드 폭을 꽉 채웁니다. */}
+      <div className="mx-auto flex w-full max-w-md flex-col gap-6">
         <Card title="시작하기" className="flex flex-col gap-4">
           <p className="-mt-1 text-sm break-keep text-slate-500">
             구글 계정으로 바로 시작해요. 처음이면 가입으로 이어져요.
@@ -229,7 +181,7 @@ export function LoginPage() {
 
           {/* 구글로 시작하기. 클라이언트 ID 가 없으면(lib/googleClient.ts) 버튼 대신 안내를 보여줍니다. */}
           {isGoogleConfigured ? (
-            <GoogleStartButton
+            <GoogleButton
               onCredential={(credential) => void handleGoogleCredential(credential)}
               onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
             />

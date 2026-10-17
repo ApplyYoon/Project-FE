@@ -1,6 +1,7 @@
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { GoogleButton } from '@/components/ui/GoogleButton'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolField } from '@/components/ui/SchoolField'
@@ -27,7 +28,6 @@ import {
 import { removeAllData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
 import { unsubscribeThisDevice } from '@/lib/webPush'
-import { GoogleLogin } from '@react-oauth/google'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -329,19 +329,10 @@ function WithdrawCard() {
 
           {/* 클라이언트 ID 가 없으면(lib/googleClient.ts) 구글 버튼 대신 안내를 보여줍니다. */}
           {isGoogleConfigured ? (
-            // 구글 버튼은 구글이 직접 그립니다. 폭을 정하지 않으면 글자에 맞는 폭이라 좁은 화면에서도 넘치지 않습니다.
-            // min-h-10: 버튼이 그려지기 전에도 자리를 잡아 두어서 아래 내용이 들썩이지 않게 합니다.
-            <div className="flex min-h-10 justify-center">
-              <GoogleLogin
-                onSuccess={(response) => {
-                  if (response.credential) handleCredential(response.credential)
-                  else setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')
-                }}
-                onError={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
-                text="continue_with"
-                shape="rectangular"
-              />
-            </div>
+            <GoogleButton
+              onCredential={handleCredential}
+              onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
+            />
           ) : (
             <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm break-keep text-slate-500">
               구글 확인이 아직 준비 중이라 탈퇴할 수 없어요.
