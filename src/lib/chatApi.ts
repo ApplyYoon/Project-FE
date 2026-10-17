@@ -3,14 +3,14 @@
  * 채팅은 "글로 하는 통화" 입니다. 통화와 같은 대본으로 AI 선생님과 이야기합니다.
  *
  * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "상담 채팅") 전부 로그인이 필요합니다.
- *   열기      POST /chats                 { careLevel, maxHarshness, card, selfReportedBiases, selfReportedWeaknesses }
+ *   열기      POST /chats                 { careLevel, maxHarshness, card }
  *                                         -> 200 { chatId, reply, showHelp, helpLines }   (reply = AI 의 첫 인사)
  *   말 보내기  POST /chats/{chatId}/messages { lines: [{ speaker: 'ai' | 'me', text }] }  (지금까지의 대화 전체)
  *                                         -> 200 { chatId, reply, showHelp, helpLines }
  *   끝내기    통화와 같은 기록이라 통화 결과 화면(/call/result)이 POST /calls/{chatId}/finish 로 정리합니다. (lib/callReview.ts)
  *   실패      400 대화 모양이 틀림 · 409 이미 끝났거나 서버가 대본을 잊음(새로 시작) · 429 오늘 AI 사용량을 다 씀 · 503 AI 가 꺼져 있음
  *
- * - 열기 요청은 통화를 걸 때와 똑같습니다. (말투 · 학생 카드 · 생각 습관 테스트. pages/CallActivePage.tsx)
+ * - 열기 요청은 통화를 걸 때와 똑같습니다. (말투 · 학생 카드. pages/CallActivePage.tsx)
  *   서버는 숫자를 서버의 기록으로 다시 계산하고, 서버에 기록이 없을 때만 이 카드를 씁니다.
  * - showHelp 가 true 면 학생의 말에서 위기 표현이 감지된 것입니다. reply 는 서버가 정해 둔 안내이고, 그 채팅은 끝납니다.
  *
@@ -20,7 +20,6 @@
 import { api, ApiError } from '@/lib/api'
 import { loadCallCard } from '@/lib/callCard'
 import type { CallLine } from '@/lib/callReview'
-import { loadSelfReportedHabits, loadSelfReportedWeaknesses } from '@/lib/thinkingTest'
 import { getCallTone } from '@/lib/todayCare'
 
 // 서버가 GPT 의 답을 기다리는 시간(15초)보다 조금 넉넉하게 기다립니다.
@@ -83,8 +82,7 @@ export function startChat(): Promise<ChatReply> {
     careLevel: tone.careLevel,
     maxHarshness: tone.maxHarshness,
     card: loadCallCard(),
-    selfReportedBiases: loadSelfReportedHabits(),
-    selfReportedWeaknesses: loadSelfReportedWeaknesses(),
+    // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
   })
 }
 
