@@ -1,7 +1,7 @@
 /**
  * 공부 기록(타이머로 한 번 잰 기록)을 서버(BE)에 저장하고, 기간별로 · 오늘 합계로 · 계획별로 받아오는 함수들입니다. (#203)
- * 화면은 아직 이 함수를 쓰지 않습니다. (타이머 · 기록 · 홈 등은 지금 localStorage 의 useStudySessions 훅을 씁니다)
- * 화면을 서버 기록으로 옮길 때 이 파일의 createSession · sessionsByRangeQuery · todayTotalQuery · planProgressQuery 를 씁니다.
+ * 화면은 지금 localStorage 의 useStudySessions 훅을 씁니다. 끝난 기록은 lib/sessionSync.ts 가 createSession 으로 서버에 보냅니다. (#516)
+ * sessionsByRangeQuery · todayTotalQuery · planProgressQuery 는 아직 화면이 쓰지 않습니다.
  *
  * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "공부 기록", BE 이슈 #13 · #14) 전부 로그인이 필요합니다.
  *   타이머 기록 저장  POST /study-sessions   { subjectId?, startedAt, endedAt, pauseCount, pausedMs?, planId?, targetMinutes?, stopReason?, kind? } -> 201 StudySession
@@ -28,7 +28,15 @@ import { isDateKey, toDayKey } from '@/lib/date'
 import { missReasonOptions } from '@/lib/missReasons'
 import { shouldRetryQuery } from '@/lib/queryRetry'
 import { queryOptions, type QueryClient } from '@tanstack/react-query'
-import type { MissReason, PlanKind, StudySession } from '@/types'
+import type {
+  MissReason,
+  PlanKind,
+  PlayTag,
+  SessionEndReport,
+  SessionMemo,
+  SessionPause,
+  StudySession,
+} from '@/types'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 멈춰도 로딩이 영원히 끝나지 않으면 안 되기 때문입니다. */
 const REQUEST_TIMEOUT_MS = 10000
@@ -65,6 +73,18 @@ export interface SessionCreateInput {
   stopReason?: MissReason
   /** 안 보내면 서버가 공부(study)로 봅니다 */
   kind?: PlanKind
+
+  /* 아래는 카드 기준으로 넓힌 칸입니다. (BE #224 · FE #516) 뜻은 types 의 StudySession 과 같습니다. */
+  /** 어느 카드의 세션인지 — **서버의 카드 번호** (Card 의 serverId). 이 기기의 카드 id 가 아닙니다 */
+  cardId?: string
+  /** 잰 방법. 사후 입력(selfReport)은 이 주소로 보내지 않습니다 */
+  mode?: 'normal' | 'offline'
+  pauses?: SessionPause[]
+  endedEarly?: boolean
+  endReport?: SessionEndReport
+  memos?: SessionMemo[]
+  playTag?: PlayTag
+  overRestMs?: number
 }
 
 /** 오늘 순공 합계 (타이머 화면의 "오늘 총 공부 시간") */
@@ -196,7 +216,75 @@ export function toCreateBody(input: SessionCreateInput): Record<string, unknown>
   if (input.planId !== undefined && input.planId !== '') body.planId = input.planId
   if (input.targetMinutes !== undefined) body.targetMinutes = input.targetMinutes
   if (input.stopReason !== undefined) body.stopReason = input.stopReason
+  // 카드 기준으로 넓힌 칸 (#516). 서버의 한도를 넘는 것은 잘라서 보냅니다. (넘으면 서버가 400 으로 기록 전체를 거절합니다)
+  if (input.cardId !== undefined && input.cardId !== '') body.cardId = input.cardId
+  if (input.mode !== undefined) body.mode = input.mode
+  if (input.endedEarly !== undefined) body.endedEarly = input.endedEarly
+  if (input.pauses !== undefined) body.pauses = toPausesBody(input)
+  if (input.endReport !== undefined) body.endReport = toEndReportBody(input.endReport)
+  if (input.memos !== undefined && input.memos.length > 0) body.memos = toMemosBody(input.memos)
+  if (input.kind === 'play' && input.playTag !== undefined) body.playTag = input.playTag
+  if (input.kind === 'play' && input.overRestMs !== undefined) {
+    body.overRestMs = Math.max(0, Math.round(input.overRestMs))
+  }
   return body
+}
+
+// 서버가 받는 한도 (BE docs/API.md 「공부 기록 · 저장」)
+const MAX_PAUSES = 200
+const MAX_NOTE_LENGTH = 100
+const MAX_CHECKED = 20
+const MAX_CHECKED_ID_LENGTH = 40
+const MAX_PROOF_LENGTH = 300
+const MAX_GOOD_REASONS = 6
+const MAX_MEMOS = 50
+const MAX_MEMO_LENGTH = 100
+
+/** 서버가 받는 시각인지 (2020년 이후이고 미래가 아님) */
+function isValidMoment(at: number): boolean {
+  return at >= SESSION_MIN_STARTED_AT && at <= Date.now()
+}
+
+/** 일시정지 목록. 서버는 기록의 시작 ~ 끝 밖의 일시정지를 거절해서, 그 사이로 맞춥니다. */
+function toPausesBody(input: SessionCreateInput): Record<string, unknown>[] {
+  return (input.pauses ?? []).slice(0, MAX_PAUSES).map((pause) => {
+    const startedAt = Math.min(Math.max(pause.startedAt, input.startedAt), input.endedAt)
+    const endedAt = Math.min(Math.max(pause.endedAt, startedAt), input.endedAt)
+    const note = pause.note?.trim().slice(0, MAX_NOTE_LENGTH)
+    return note
+      ? { startedAt, endedAt, tag: pause.tag, note }
+      : { startedAt, endedAt, tag: pause.tag }
+  })
+}
+
+/** 종료 팝업에서 받은 것. 이 기기에만 쓰는 칸(proofRequired)은 보내지 않습니다. */
+function toEndReportBody(report: SessionEndReport): Record<string, unknown> {
+  const checked = Object.fromEntries(
+    Object.entries(report.checked)
+      .filter(
+        ([id, at]) => id.length >= 1 && id.length <= MAX_CHECKED_ID_LENGTH && isValidMoment(at),
+      )
+      .slice(0, MAX_CHECKED),
+  )
+  const body: Record<string, unknown> = { checked }
+  if (report.shortfallReason !== undefined) body.shortfallReason = report.shortfallReason
+  if (report.withWhat !== undefined) body.withWhat = report.withWhat
+  if (report.goodReasons !== undefined)
+    body.goodReasons = report.goodReasons.slice(0, MAX_GOOD_REASONS)
+  const link = report.proof?.link?.trim().slice(0, MAX_PROOF_LENGTH) ?? ''
+  const summary = report.proof?.summary?.trim().slice(0, MAX_PROOF_LENGTH) ?? ''
+  if (link !== '' || summary !== '') {
+    body.proof = { ...(link !== '' ? { link } : {}), ...(summary !== '' ? { summary } : {}) }
+  }
+  return body
+}
+
+/** 딴생각 주차장 메모. 빈 메모와 시각이 이상한 메모는 뺍니다. */
+function toMemosBody(memos: SessionMemo[]): Record<string, unknown>[] {
+  return memos
+    .map((memo) => ({ at: memo.at, text: memo.text.trim().slice(0, MAX_MEMO_LENGTH) }))
+    .filter((memo) => memo.text !== '' && isValidMoment(memo.at))
+    .slice(0, MAX_MEMOS)
 }
 
 /**
