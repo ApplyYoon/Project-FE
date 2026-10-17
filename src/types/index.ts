@@ -124,6 +124,75 @@ export interface Routine {
   startTime?: string
 }
 
+/*
+ * ── 카드 (최종 기획서 2026-10-17, docs/PLAN.md 「4.3 카드」) ──
+ * 분석의 기본 단위가 하루 → 카드로 바뀌었습니다. 위의 StudyPlan · Routine 을 대신합니다. (#379)
+ * 칸 이름은 BE(Project-BE#222)와 같습니다. 바꾸면 BE 와 RN 앱(Project-App)에도 알려 주세요.
+ */
+
+/** 카드의 우선순위 — absolute: 미룰 수 없는 카드(과제 제출 등), flexible: 줄이거나 미룰 수 있는 카드 */
+export type CardPriority = 'absolute' | 'flexible'
+
+/** 카드의 유형 — self: 자습, lecture: 인강 */
+export type CardType = 'self' | 'lecture'
+
+/** 카드 체크리스트의 한 항목. 체크했는지는 카드가 아니라 그날의 세션 기록에 남깁니다 (#380) */
+export interface ChecklistItem {
+  /** 항목을 구분하는 고유 값 */
+  id: string
+  /** 할 일 (예: '수학 문제집 42~45쪽') */
+  text: string
+}
+
+/** 카드를 시작하라고 알려 주는 방법 */
+export interface CardAlert {
+  /** message: 알림 메시지, call: AI 전화 */
+  method: 'message' | 'call'
+  /** 시작 몇 분 전에 알릴지. 0 이면 정각 */
+  minutesBefore: number
+  /** 알림에 보일 문장. 없으면 기본 문구 */
+  text?: string
+}
+
+/**
+ * 카드 한 장 = "언제 + 무엇을" 정한 계획 하나. 1회성 카드와 요일마다 반복하는 카드가 있습니다.
+ * 반복 카드도 한 장으로 두고, 날마다 했는지는 세션 기록에 남깁니다. (매일 복사하지 않음)
+ */
+export interface Card {
+  /** 카드를 구분하는 고유 값 */
+  id: string
+  /** 무엇을 하는지 (예: '수학 문제집') */
+  title: string
+  /** 1회성 카드면 그 날짜, 반복 카드면 반복을 시작한 날짜 ('YYYY-MM-DD') */
+  date: string
+  /** 반복 카드면 요일 목록 (0 = 일요일 … 6 = 토요일). 1회성 카드면 없음 */
+  repeatDays?: number[]
+  /** 시작 시각 (예: '19:00'). 새 카드는 꼭 있고, 옛 계획에서 옮긴 카드만 없을 수 있습니다 */
+  startTime?: string
+  /** 길이 (분) */
+  durationMinutes: number
+  /** 체크리스트 (필수, 1개 이상). 비어 있으면 AI 기본값 또는 제목 1개로 채웁니다 */
+  checklist: ChecklistItem[]
+  /** 연결한 목표의 id. 없으면 "목표 없음" */
+  goalId?: string
+  /** 우선순위. 기본은 flexible */
+  priority: CardPriority
+  /** 유형. 기본은 self(자습) */
+  type: CardType
+  /** 예상 달성 개수. 없으면 "체크리스트 전부" 로 봅니다 */
+  expectedDone?: number
+  /** 예상 달성 개수를 낮춘 이유 (태그 1개) */
+  expectedDoneReason?: string
+  /** 예상 실패 원인 (내 행동에서 나오는 원인을 1개 이상 포함) */
+  expectedFailCauses?: string[]
+  /** 알림. 없으면 기본(정각 · 메시지 · 기본 문구) */
+  alert?: CardAlert
+  /** 카드 편집 화면을 연 순간부터 저장할 때까지 걸린 시간 (밀리초). '계획 대 실행 비율' 에 씁니다 */
+  planningMs?: number
+  /** 카드를 만든 시각 */
+  createdAt: number
+}
+
 /**
  * 온보딩에서 처음 세운 계획입니다.
  * 한 번 저장하면 나중에 루틴을 바꿔도 이 값은 바뀌지 않습니다. "처음의 나" 와 지금을 비교하는 기준입니다.
