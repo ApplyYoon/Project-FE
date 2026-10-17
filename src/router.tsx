@@ -114,7 +114,9 @@ const SuggestionsPage = lazy(() =>
 const SupportPage = lazy(() =>
   import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
 )
-const TimerRoute = lazy(() => import('@/pages/TimerRoute').then((m) => ({ default: m.TimerRoute })))
+const CardTimerPage = lazy(() =>
+  import('@/pages/CardTimerPage').then((m) => ({ default: m.CardTimerPage })),
+)
 
 /**
  * 페이지(주소)를 추가하려면 위의 lazy 목록에 한 줄, children 배열에 한 줄 추가하면 됩니다.
@@ -150,8 +152,8 @@ export const router = createBrowserRouter([
       { path: 'goals/new', element: <GoalNewPage /> },
       // 목표 상세 (진척 · 2주 목표 점검, #403). 카드 탭의 목표 목록에서 들어옵니다.
       { path: 'goals/:goalId', element: <GoalDetailPage /> },
-      // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
-      { path: 'timer', element: <TimerRoute /> },
+      // 카드 타이머 (최종 기획서 「4.4 타이머」, #395). 옛 계획 타이머(?plan=)는 #417 에서 지웠습니다.
+      { path: 'timer', element: <CardTimerPage /> },
       { path: 'counsel', element: <CounselPage /> },
       // 상담 채팅: 통화 대본의 글 버전 (#416, BE #238)
       { path: 'counsel/chat', element: <ChatPage /> },

@@ -36,7 +36,8 @@ import { getMessageSettings } from '@/lib/messageSettings'
 import { toQuietHours } from '@/lib/notifications'
 import { getDayProgress } from '@/lib/planProgress'
 import { isWithinQuietHours } from '@/lib/safetyBrake'
-import { loadData, loadRecord } from '@/lib/storage'
+import { loadRecord } from '@/lib/storage'
+import { isTimerLocked } from '@/lib/timerLock'
 import { hasStudiedToday } from '@/lib/streak'
 import { getSubjectsSnapshot } from '@/lib/subjects'
 import { getMondayKey } from '@/lib/weeklyFacts'
@@ -129,8 +130,6 @@ export function checkAppAlerts(now: Date = new Date()): void {
   // (getEventMessage 는 시각을 자정 기준으로 비교해서, 새벽 1시 계획을 저녁에 "지났다" 고 볼 수 있기 때문입니다)
   const isPlanTimePassed = firstPlan !== null && firstPlan.startAt <= now.getTime()
   const progress = getDayProgress(todayPlans, allSessions)
-  // 타이머 화면이 저장해 둔 스톱워치 상태입니다. 시작한 뒤 정지하기 전이면 startedAt 이 숫자입니다. (hooks/useStopwatch.ts)
-  const timer = loadData<{ startedAt?: unknown } | null>('timer', null)
 
   const eventType = getEventMessage({
     now,
@@ -138,7 +137,8 @@ export function checkAppAlerts(now: Date = new Date()): void {
     dailyCount: settings.dailyCount,
     alreadySentToday: EVENT_TYPES.filter((type) => sentIds.has(makeAlertId(type, todayKey))),
     plannedStartTime: isPlanTimePassed ? (firstPlan.plan.startTime ?? null) : null,
-    isTimerRunning: typeof timer?.startedAt === 'number',
+    // 카드 세션이나 놀기가 진행 중이면(일시정지 포함) 알림을 보내지 않습니다. (lib/timerLock.ts)
+    isTimerRunning: isTimerLocked(),
     hasStudiedToday: hasStudiedToday(sessions, now),
     // 계획에서 시작한 타이머로 공부한 시간의 합입니다. 홈의 "오늘 계획" 카드와 같은 숫자입니다.
     todayStudyMinutes: progress.actualMinutes,
