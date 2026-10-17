@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
@@ -20,6 +20,9 @@ import {
 import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
 import { getTodayKey, toDayKey } from '@/lib/date'
+import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
+import { loadLocalCheckIn } from '@/lib/quickCheckIn'
+import { playTick } from '@/lib/tick'
 import { showSystemNotification } from '@/lib/notifications'
 import { getSessionCardId } from '@/lib/sessionRecords'
 import {
@@ -83,6 +86,9 @@ export function CardTimerPage() {
   // 방금 끝낸 기록. 있으면 종료 팝업을 띄웁니다. (#398)
   const [endedRecord, setEndedRecord] = useState<StudySession | null>(null)
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
+  // 5초 카운트다운 중인 카드 (#399). 카운트다운이 끝나면 세션을 시작합니다.
+  const [countdownCard, setCountdownCard] = useState<CardModel | null>(null)
+  const [pageSettings] = useState(loadAutoSettings)
 
   const todayKey = getTodayKey()
   // 오늘 이미 세션을 한 카드 (반복 카드도 오늘 것만)
@@ -100,9 +106,23 @@ export function CardTimerPage() {
   useEffect(() => {
     if (cardParam === '') return
     const card = cards.find((item) => item.id === cardParam)
-    if (card && !active) session.start(card, todayKey)
+    if (card && !active) {
+      const emotions = loadLocalCheckIn(todayKey)?.emotions
+      if (isCountdownOn(pageSettings.countdown.value, emotions)) setCountdownCard(card)
+      else session.start(card, todayKey)
+    }
     setCardParam('')
-  }, [cardParam, cards, active, session, todayKey, setCardParam])
+  }, [cardParam, cards, active, session, todayKey, setCardParam, pageSettings])
+
+  /**
+   * 카드로 시작합니다. 5초 카운트다운이 켜져 있으면(설정 또는 오늘 감정 태그가 막막함·불안함) 카운트다운부터.
+   * [지금 시작] 즉석 카드는 할 일이 아직 없어서 바로 시작합니다.
+   */
+  function beginCard(card: CardModel) {
+    const emotions = loadLocalCheckIn(todayKey)?.emotions
+    if (isCountdownOn(pageSettings.countdown.value, emotions)) setCountdownCard(card)
+    else session.start(card, todayKey)
+  }
 
   function handleStartNow(minutes: number) {
     const startedAt = Date.now()
@@ -116,6 +136,19 @@ export function CardTimerPage() {
     return <SessionView session={session} card={activeCard} now={now} onFinished={setEndedRecord} />
   }
 
+  if (countdownCard) {
+    return (
+      <CountdownView
+        card={countdownCard}
+        onDone={() => {
+          session.start(countdownCard, todayKey)
+          setCountdownCard(null)
+        }}
+        onCancel={() => setCountdownCard(null)}
+      />
+    )
+  }
+
   if (session.play) {
     const nextCard = waitingCards[0]
     return (
@@ -126,7 +159,7 @@ export function CardTimerPage() {
         onStartNext={() => {
           // 놀기를 끝내고(초과 휴식이 기록됨) 바로 다음 카드를 시작합니다.
           session.finishPlay()
-          if (nextCard) session.start(nextCard, todayKey)
+          if (nextCard) beginCard(nextCard)
           else handleStartNow(DEFAULT_INSTANT_MINUTES)
         }}
       />
@@ -157,7 +190,7 @@ export function CardTimerPage() {
                   key={card.id}
                   card={card}
                   isNext={index === 0}
-                  onStart={() => session.start(card, todayKey)}
+                  onStart={() => beginCard(card)}
                 />
               ))}
             </ul>
@@ -890,6 +923,75 @@ function PlayView({ session, now, nextCard, onStartNext }: PlayViewProps) {
             </Button>
           </>
         )}
+      </Card>
+    </div>
+  )
+}
+
+// 카운트다운 길이 (초)
+const COUNTDOWN_SECONDS = 5
+
+interface CountdownViewProps {
+  card: CardModel
+  onDone: () => void
+  onCancel: () => void
+}
+
+/**
+ * 5초 카운트다운 (「4.4 타이머」 시작, #399)
+ * 체크리스트 첫 항목을 아주 작은 준비 행동으로 바꿔 보여 주고, 5초 동안 째깍 소리를 낸 뒤 시작합니다.
+ * [더 작게] 로 최대 2번 더 쪼갤 수 있고, 누르면 5초부터 다시 셉니다.
+ * (준비 행동 문장은 지금은 기본 문장이고, AI 추천은 #413 에서 붙입니다)
+ */
+function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
+  const [seconds, setSeconds] = useState(COUNTDOWN_SECONDS)
+  const [level, setLevel] = useState(0)
+  const firstItem = card.checklist[0]?.text ?? card.title
+  // 부모 화면이 다시 그려져서 onDone 이 새 함수가 되어도 카운트가 처음부터 다시 시작하지 않게, 최신 함수를 ref 에 둡니다.
+  const onDoneRef = useRef(onDone)
+  useEffect(() => {
+    onDoneRef.current = onDone
+  })
+
+  useEffect(() => {
+    if (seconds <= 0) {
+      onDoneRef.current()
+      return
+    }
+    playTick()
+    const id = setTimeout(() => setSeconds((value) => value - 1), 1000)
+    return () => clearTimeout(id)
+  }, [seconds])
+
+  function handleShrink() {
+    setLevel((value) => Math.min(MAX_SHRINK, value + 1))
+    setSeconds(COUNTDOWN_SECONDS)
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+      <Card className="flex flex-col items-center gap-4 py-10 text-center">
+        <p className="text-sm font-medium text-slate-500">{card.title} · 이것만 먼저 해요</p>
+        <p className="text-2xl font-bold break-keep text-slate-900 sm:text-3xl">
+          {getPrepStep(firstItem, level)}
+        </p>
+        <p className="text-brand text-7xl font-bold tabular-nums" aria-live="polite">
+          {Math.max(0, seconds)}
+        </p>
+        <div className="grid w-full max-w-sm grid-cols-2 gap-3">
+          <Button
+            size="lg"
+            variant="secondary"
+            disabled={level >= MAX_SHRINK}
+            onClick={handleShrink}
+          >
+            더 작게
+          </Button>
+          <Button size="lg" variant="ghost" className="border border-slate-300" onClick={onCancel}>
+            그만
+          </Button>
+        </div>
+        <p className="text-xs text-slate-500">0 이 되면 바로 시작해요.</p>
       </Card>
     </div>
   )
