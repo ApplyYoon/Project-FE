@@ -77,7 +77,7 @@ export function isMissResult(result: CardResult): boolean {
  * 1. 사람이 처리한 표시가 있으면 그것 (휴식 → rest, 미루기 → postponed, 실패 → failed)
  * 2. 세션이 없으면: 카드 시간이 끝났으면 unhandled, 아니면 null
  *    (시작 시각이 없는 옛 카드는 그날이 끝나면(새벽 4시) 끝난 것으로 봅니다)
- * 3. 세션이 사후 입력뿐이면 selfReport
+ * 3. 세션이 증빙 없는 사후 입력뿐이면 selfReport (증빙이 있으면 일반 실행과 똑같이 봅니다, 「4.4」 사후 입력)
  * 4. [끝내기] 로 끝낸 세션이 있고 실행률이 1 이 안 되면 endedEarly
  * 5. 처음 시작한 시각이 예정 시각 + 10분 안이면 done, 더 늦으면 late (일찍 시작해도 done, 시작 시각이 없으면 done)
  *
@@ -105,7 +105,9 @@ export function getCardResult(day: CardDay, now: number): CardResult | null {
   }
 
   // 규칙 3
-  if (day.sessions.every((session) => session.mode === 'selfReport')) return 'selfReport'
+  if (day.sessions.every((session) => session.mode === 'selfReport' && !hasProof(session))) {
+    return 'selfReport'
+  }
 
   // 규칙 4
   if (day.sessions.some((session) => session.endedEarly) && getRunRate(day) < 1) return 'endedEarly'
@@ -132,6 +134,11 @@ export function isStartedOnTime(day: CardDay): boolean | null {
   return firstStartAt - scheduledStartAt <= ON_TIME_GRACE_MINUTES * MS_PER_MINUTE
 }
 
+/** 산출물 증빙(링크나 요약)이 있는 기록인지 */
+function hasProof(session: StudySession): boolean {
+  return Boolean(session.endReport?.proof?.link || session.endReport?.proof?.summary)
+}
+
 /**
  * 실행률 = 실제 실행 시간(일시정지 제외) ÷ 계획 시간, 최대 1
  * - 증빙 없는 사후 입력은 0.5 로 넣습니다 (증빙이 있으면 다른 세션과 똑같이 계산)
@@ -145,10 +152,7 @@ export function getRunRate(day: CardDay): number {
   const plannedMs = day.card.durationMinutes * MS_PER_MINUTE
   if (plannedMs <= 0) return 0
   const unprovenSelfReport = day.sessions.some(
-    (session) =>
-      session.mode === 'selfReport' &&
-      !session.endReport?.proof?.link &&
-      !session.endReport?.proof?.summary,
+    (session) => session.mode === 'selfReport' && !hasProof(session),
   )
   if (unprovenSelfReport) return SELF_REPORT_RUN_RATE
   const runMs = day.sessions.reduce((sum, session) => sum + getStudyMs(session), 0)
