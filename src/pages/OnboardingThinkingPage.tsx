@@ -4,11 +4,13 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { useAuth } from '@/hooks/useAuth'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
+import { canSyncThinkingTest, sendThinkingTest } from '@/lib/thinkingTestApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import {
   THINKING_TEST_PATH,
@@ -64,6 +66,7 @@ function getNextStep(from: string): { path: string; label: string } {
  */
 export function OnboardingThinkingPage() {
   const navigate = useNavigate()
+  const { token } = useAuth()
   const [step, setStep] = useQueryParam('step', 'intro')
   const [from] = useQueryParam('from', '')
   const [answers, setAnswers] = useState<Record<string, number>>(loadDraft)
@@ -91,6 +94,9 @@ export function OnboardingThinkingPage() {
     // 결과를 저장하고 임시 답은 지웁니다.
     saveThinkingTest(answers, weaknesses, weaknessNote)
     removeData(DRAFT_KEY)
+    // 서버에도 보냅니다. 못 보내면 다음에 앱을 열 때 다시 보냅니다. (hooks/useThinkingTestSync.ts)
+    // 기다리지 않습니다. 서버가 늦어도 결과 화면은 바로 보입니다.
+    if (canSyncThinkingTest(token)) void sendThinkingTest().catch(() => undefined)
     // "기타" 에 쓴 글에 위기 표현이 있으면 결과보다 도움 안내를 먼저 보여 줍니다. (안전이 먼저입니다)
     const brake = getSafetyBrakeResult({
       now: new Date(),
