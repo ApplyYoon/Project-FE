@@ -1,15 +1,20 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { ExperimentSection } from '@/components/ui/ExperimentSection'
 import { InsightCard } from '@/components/ui/InsightCard'
 import { useCards } from '@/hooks/useCards'
-import { usePlans } from '@/hooks/usePlans'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { loadStudySessions } from '@/lib/dailyRecords'
-import { moveDateKey, toDateKey, toDayDate } from '@/lib/date'
+import { getTodayKey, moveDateKey, toDateKey, toDayDate } from '@/lib/date'
+import {
+  EXPERIMENT_DAYS,
+  EXPERIMENT_STATUS_LABELS,
+  getExperimentDay,
+  loadExperiments,
+} from '@/lib/experiments'
 import { getInsightsToShow } from '@/lib/insights'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
+import { findStrategy } from '@/lib/strategyCatalog'
 import { loadRecord } from '@/lib/storage'
 import {
   getWeekCardDays,
@@ -68,7 +73,6 @@ function formatPercent(value: number | null): string {
 }
 
 export function ReportPage() {
-  const { allPlans } = usePlans()
   // 타이머가 저장해 둔 공부 기록을 불러옵니다. 없으면 빈 목록입니다. (예시 숫자를 보여주지 않습니다)
   const [sessions] = useState<StudySession[]>(loadStudySessions)
 
@@ -84,13 +88,12 @@ export function ReportPage() {
         </Link>
       </div>
 
-      <WeeklyReport allPlans={allPlans} sessions={sessions} />
+      <WeeklyReport sessions={sessions} />
     </div>
   )
 }
 
 interface WeeklyReportProps {
-  allPlans: StudyPlan[]
   sessions: StudySession[]
 }
 
@@ -98,7 +101,7 @@ interface WeeklyReportProps {
  * 주간 리포트 (#72, 칸 고정은 #409 · 최종 기획서 「4.6 분석」)
  * 칸 5개를 이 순서로 고정합니다: ① 예측 후 공개 → ② 숫자 3개 → ③ 인사이트 1개 → ④ 지난 실험 결과 → ⑤ 다음 실험 제안
  */
-function WeeklyReport({ allPlans, sessions }: WeeklyReportProps) {
+function WeeklyReport({ sessions }: WeeklyReportProps) {
   // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ... 주소에 둡니다. (/analysis?tab=report&weeksAgo=1)
   // replace: ‹ › 를 여러 번 눌러도 뒤로 가기 한 번이면 리포트 화면을 떠납니다.
   const [weeksAgoParam, setWeeksAgoParam] = useQueryParam('weeksAgo', '0', { replace: true })
@@ -154,7 +157,6 @@ function WeeklyReport({ allPlans, sessions }: WeeklyReportProps) {
         weekName={weekName}
         isCurrentWeek={weeksAgo === 0}
         days={days}
-        allPlans={allPlans}
         sessions={sessions}
       />
     </>
@@ -170,7 +172,6 @@ interface WeekCellsProps {
   isCurrentWeek: boolean
   /** 이 주에 판정이 끝난 카드 하루치 */
   days: WeekCardDay[]
-  allPlans: StudyPlan[]
   sessions: StudySession[]
 }
 
@@ -179,14 +180,7 @@ interface WeekCellsProps {
  * 예측을 고르기 전에는 ① 질문만 보이고, 고르면 ② ~ ⑤ 가 열립니다. (숫자를 먼저 보면 맞혀 볼 수 없어서)
  * 맞혀 볼 숫자가 없는 주(판정이 끝난 카드가 없음)는 질문 없이 바로 엽니다.
  */
-function WeekCells({
-  mondayKey,
-  weekName,
-  isCurrentWeek,
-  days,
-  allPlans,
-  sessions,
-}: WeekCellsProps) {
+function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekCellsProps) {
   // 이 주에 이미 고른 답 ('study-predictions'). 처음 그릴 때 한 번만 읽습니다.
   const [prediction, setPrediction] = useState<WeeklyPrediction | undefined>(() =>
     findPrediction(mondayKey),
@@ -254,29 +248,59 @@ function WeekCells({
             )}
           </section>
 
-          {/* ④ 지난 실험 결과. 끝난 실험의 결과와, 도전 중인 실험의 진행 상황 (#93) */}
+          {/* ④ 지난 실험 결과. 가장 최근 자기 실험(#412)이 진행 중이면 며칠째인지, 끝났으면 판정 */}
           <section>
             <h2 className="text-lg font-bold text-slate-900">지난 실험 결과</h2>
-            <ExperimentSection plans={allPlans} sessions={sessions} className="mt-3" />
+            <LatestExperimentLine />
           </section>
 
-          {/* ⑤ 다음 실험 제안. 고르는 일은 개선안 고르기 화면에서 합니다. 여기서는 그리로 안내만 합니다. */}
+          {/* ⑤ 다음 실험 제안. 고르는 일은 가설·실험 탭에서 합니다. 여기서는 그리로 안내만 합니다. */}
           <section>
             <h2 className="text-lg font-bold text-slate-900">다음 실험 제안</h2>
             <p className="mt-2 text-sm break-keep text-slate-500">
-              다음 주에 해 볼 실험은{' '}
+              다음에 해 볼 실험은{' '}
               <Link
-                to="/suggestions"
+                to="/analysis?tab=experiment"
                 className="text-brand inline-flex min-h-10 items-center font-semibold hover:underline"
               >
-                개선안 고르기
+                가설·실험
               </Link>
-              에서 고를 수 있어.
+              에서 내 기록으로 골라 줘요.
             </p>
           </section>
         </>
       )}
     </>
+  )
+}
+
+/**
+ * 주간 리포트 ④ — 가장 최근에 시작한 자기 실험(lib/experiments.ts) 한 줄.
+ *   진행 중   -> "'폰을 다른 방에' · 진행 중 · 5 / 14일째"
+ *   끝남      -> "'폰을 다른 방에' · 효과 있음 · 실행률 50% → 70%"
+ *   없음      -> "아직 해 본 실험이 없어요."
+ */
+function LatestExperimentLine() {
+  // 실험은 화면을 열 때 한 번만 읽습니다. (이 화면에서는 실험을 바꾸지 않습니다)
+  const [experiments] = useState(loadExperiments)
+  const latest = [...experiments].sort((a, b) => b.startDate.localeCompare(a.startDate))[0]
+  if (!latest) {
+    return <p className="mt-2 text-sm text-slate-500">아직 해 본 실험이 없어요.</p>
+  }
+  const rule = findStrategy(latest.strategyId)?.rule ?? latest.hypothesis
+  // 진행 중이면 며칠째인지, 끝났으면 실험 전 → 실험 중 실행률을 붙입니다.
+  let detail = ''
+  if (latest.status === 'running') {
+    detail = `${getExperimentDay(latest, getTodayKey())} / ${EXPERIMENT_DAYS}일째`
+  } else if (latest.baselineRate !== undefined && latest.experimentRate !== undefined) {
+    detail = `실행률 ${Math.round(latest.baselineRate * 100)}% → ${Math.round(latest.experimentRate * 100)}%`
+  }
+  return (
+    <p className="mt-2 text-sm break-keep text-slate-700">
+      <span className="font-semibold text-slate-900">&quot;{rule}&quot;</span> ·{' '}
+      {EXPERIMENT_STATUS_LABELS[latest.status]}
+      {detail !== '' && ` · ${detail}`}
+    </p>
   )
 }
 

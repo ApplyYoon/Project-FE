@@ -8,7 +8,6 @@ import type {
   StudyPlan,
   StudySession,
   Subject,
-  Suggestion,
 } from '@/types'
 
 /**
@@ -178,41 +177,6 @@ export const mockReflectionPrescription: ReflectionPrescription = {
   reason: "최근 '하기 싫음'이 3번 나와서, 5일 동안 짧게 돌아보기로 했어.",
   questions: ['오늘 계획을 못 지킨 진짜 이유는?', '내일 하나만 바꾼다면?', '오늘 잘한 한 가지는?'],
 }
-
-/**
- * 폰·SNS 때문에 계획을 못 채운 사람에게 맞춘 개선안 3개 (쉬움·보통·강함)
- * 원인별 분기(#91)가 생기기 전까지는 이 세트 하나만 보여줍니다.
- * 누구에게나 똑같이 보여주는 예시라서, reason 에 "내 기록을 분석한 것 같은" 말은 쓰지 않습니다.
- */
-export const mockSuggestions: Suggestion[] = [
-  {
-    id: 'suggestion-1',
-    cause: 'phone',
-    level: 'easy',
-    ifText: '공부를 시작하면',
-    thenText: '알림을 모두 끈다',
-    reason: '버튼 하나라 부담이 제일 적어.',
-    status: 'suggested',
-  },
-  {
-    id: 'suggestion-2',
-    cause: 'phone',
-    level: 'normal',
-    ifText: '학원에서 돌아오면',
-    thenText: '폰을 가방에 넣고 시작한다',
-    reason: '집에 오자마자가 제일 흔들리기 쉬운 시간이야.',
-    status: 'suggested',
-  },
-  {
-    id: 'suggestion-3',
-    cause: 'phone',
-    level: 'hard',
-    ifText: '계획된 공부 시간이 되면',
-    thenText: '집중 모드를 켠다',
-    reason: '나가려면 10초 기다리고 이유를 적어야 해.',
-    status: 'suggested',
-  },
-]
 
 /**
  * 인사이트 2개 (#73)
