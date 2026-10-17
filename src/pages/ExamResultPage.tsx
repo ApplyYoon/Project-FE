@@ -1,11 +1,14 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useExams } from '@/hooks/useExams'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
+import { examThinkingGapQuery } from '@/lib/examThinkingGap'
 import {
   REFLECTION_MAX_LENGTH,
   STUDY_LOOKBACK_DAYS,
@@ -20,7 +23,9 @@ import {
   parseScore,
 } from '@/lib/exams'
 import { loadSubjects } from '@/lib/subjects'
+import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import type { Exam, ExamReflection, ExamSubjectScore, StudySession, Subject } from '@/types'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -305,6 +310,85 @@ function ExamResultForm({ exam, subjects, sessions, onSave }: ExamResultFormProp
   )
 }
 
+interface ExamThinkingGapProps {
+  /** 시험 날짜 'YYYY-MM-DD'. 서버가 이 날의 14일 전 ~ 하루 전 기록을 봅니다 */
+  examDate: string
+}
+
+/**
+ * 시험 전 2주의 기록을 생각 습관 테스트와 견준 카드입니다. ("시험을 망쳤다면, 내 생각과 실제는 어디가 달랐을까")
+ * 서버에서 받아오는 부분만 AsyncBoundary 로 감쌉니다. 받아오는 동안 스켈레톤, 실패하면 안내와 다시 시도 버튼
+ */
+function ExamThinkingGapCard({ examDate }: ExamThinkingGapProps) {
+  return (
+    <Card title="내 생각 vs 시험 전 2주">
+      <AsyncBoundary
+        pendingFallback={<ExamThinkingGapSkeleton />}
+        errorMessage="시험 전 2주의 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+      >
+        <ExamThinkingGapView examDate={examDate} />
+      </AsyncBoundary>
+    </Card>
+  )
+}
+
+/** 받아오는 동안 보여 주는 자리 (진짜 내용과 비슷한 크기) */
+function ExamThinkingGapSkeleton() {
+  return (
+    <div role="status" className="flex flex-col gap-3">
+      <span className="sr-only">시험 전 2주의 기록을 불러오는 중이에요</span>
+      <Skeleton className="h-24 w-full rounded-lg" />
+    </div>
+  )
+}
+
+/**
+ * 서버가 만든 문장을 그대로 보여 줍니다. 숫자와 판정은 서버의 코드가 정합니다. (AI 안 씀)
+ * 생각 습관 테스트를 안 했으면(서버가 null) 테스트로 가는 길을 보여 줍니다.
+ */
+function ExamThinkingGapView({ examDate }: ExamThinkingGapProps) {
+  const { data: gap } = useSuspenseQuery(examThinkingGapQuery(examDate))
+
+  if (gap === null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm break-keep text-slate-600">
+          생각 습관 테스트를 하면, 시험 전 2주의 기록이 내 생각과 맞았는지 같이 볼 수 있어.
+        </p>
+        <Link
+          to={THINKING_TEST_PATH}
+          className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
+        >
+          생각 습관 테스트 해 보기
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm break-keep text-slate-600">
+        {formatExamDate(gap.fromDate)} ~ {formatExamDate(gap.toDate)}의 기록을 생각 습관 테스트와
+        견줘 봤어.
+      </p>
+      <ul className="flex flex-col gap-2">
+        {gap.sentences.map((sentence) => (
+          <li
+            key={sentence}
+            className="rounded-lg border border-slate-200 p-3 text-sm break-keep text-slate-800"
+          >
+            {sentence}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs break-keep text-slate-500">
+        타이머를 멈출 때 고른 이유와 통화에서 말한 이유로 셌어. 생각 습관은 성격이 아니라,
+        알아차리면 바꿀 수 있는 버릇이야.
+      </p>
+    </div>
+  )
+}
+
 export function ExamResultPage() {
   const { examId } = useParams()
   const { exams, updateExam } = useExams()
@@ -351,7 +435,10 @@ export function ExamResultPage() {
           </p>
         </Card>
       ) : (
-        <ExamResultForm exam={exam} subjects={subjects} sessions={sessions} onSave={updateExam} />
+        <>
+          <ExamResultForm exam={exam} subjects={subjects} sessions={sessions} onSave={updateExam} />
+          <ExamThinkingGapCard examDate={exam.date} />
+        </>
       )}
     </div>
   )
