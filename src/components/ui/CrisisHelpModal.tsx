@@ -4,6 +4,8 @@ import { Modal } from '@/components/ui/Modal'
 interface CrisisHelpModalProps {
   isOpen: boolean
   onClose: () => void
+  /** "쓴 글은 잘 저장되어 있어요" 를 보여 줄지. 아직 저장 전인 글(AI 도우미에 보낸 글)이면 false */
+  showSavedNote?: boolean
 }
 
 /**
@@ -12,12 +14,12 @@ interface CrisisHelpModalProps {
  *
  * ⚠️ 간단한 임시 안내입니다. 전용 안내 화면(#96)이 만들어지면 그걸로 바꾸세요.
  */
-export function CrisisHelpModal({ isOpen, onClose }: CrisisHelpModalProps) {
+export function CrisisHelpModal({ isOpen, onClose, showSavedNote = true }: CrisisHelpModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="혼자 힘들어하지 않아도 돼요">
       <p className="text-sm break-words text-slate-700">
-        요즘 많이 힘들어 보여서 마음이 쓰여요. 쓴 글은 잘 저장되어 있어요. 이야기할 사람이 필요하면
-        아래로 언제든 연락해 보세요. 무료이고 비밀이 지켜져요.
+        요즘 많이 힘들어 보여서 마음이 쓰여요. {showSavedNote && '쓴 글은 잘 저장되어 있어요. '}
+        이야기할 사람이 필요하면 아래로 언제든 연락해 보세요. 무료이고 비밀이 지켜져요.
       </p>
 
       {/* 모바일에서는 눌러서 바로 전화가 걸립니다. 누르는 곳은 최소 40px(h-11 = 44px) */}
