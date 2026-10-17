@@ -39,6 +39,14 @@ import { getCardResult } from '@/lib/cardResult'
 import { loadLatestCareStage } from '@/lib/careStage'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import {
+  REST_REASONS,
+  addRestDay,
+  getRestLeft,
+  loadRestDays,
+  needsRecoveryCheck,
+  type RestReason,
+} from '@/lib/restDays'
+import {
   PLEDGE_GATE_SECONDS,
   isStage4AbsoluteOn,
   isStage4Now,
@@ -185,11 +193,19 @@ export function CardTimerPage() {
     const id = setInterval(() => setListNow(Date.now()), 30 * 1000)
     return () => clearInterval(id)
   }, [])
-  const openCards = todayCards.filter(
-    (card) =>
-      !doneTodayIds.has(card.id) &&
-      !isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
-  )
+  // 휴식 처리한 날 (#407). 오늘을 쉰 날로 처리했으면 오늘 카드는 모두 처리된 것입니다.
+  const [restDays, setRestDays] = useState(loadRestDays)
+  const [isRestOpen, setIsRestOpen] = useState(false)
+  const [isRecoveryCheckOpen, setIsRecoveryCheckOpen] = useState(false)
+  const isTodayRest = restDays.some((day) => day.date === todayKey)
+  const restLeft = getRestLeft(restDays, todayKey)
+  const openCards = isTodayRest
+    ? []
+    : todayCards.filter(
+        (card) =>
+          !doneTodayIds.has(card.id) &&
+          !isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
+      )
   // 카드 시간이 끝났는데 시작도 처리도 안 한 카드 → [미루기] / [실패로 기록] 을 고르게 합니다.
   const unhandledCards = openCards.filter(
     (card) => getCardResult({ card, dateKey: todayKey, sessions: [] }, listNow) === 'unhandled',
@@ -198,6 +214,10 @@ export function CardTimerPage() {
   const routinePostponeLimit = pageSettings.postponeLimitRoutine.value
   // 관리 4단계에서는 미루기가 잠깁니다. (「5.4」, 강제 장치 전체는 #408)
   const isPostponeLocked = isStage4Now(todayKey)
+  // 회복 모드(관리 0단계, 「4.5」): 위로 · What if · 계획 축소. 안전 조건으로 0 이 된 것도 같이 보여 줍니다.
+  const latestStage = loadLatestCareStage(todayKey)
+  const isRecoveryMode =
+    latestStage?.stage === 0 && (latestStage.rule === 'recovery' || latestStage.rule === 'safety')
 
   function postponeLeft(card: CardModel): number {
     if (isPostponeLocked) return 0
@@ -310,6 +330,24 @@ export function CardTimerPage() {
       : card
   }
 
+  function handleRest(reason: RestReason) {
+    const next = addRestDay(todayKey, reason)
+    setRestDays(next)
+    setIsRestOpen(false)
+    setNotice('오늘은 쉰 날로 처리했어요. 오늘 카드는 실패로 세지 않아요. 푹 쉬어요.')
+    // 3일 연속이거나 이번 달 휴식을 다 썼으면 회복 모드 · 기분 점검으로 이어 줍니다.
+    if (needsRecoveryCheck(next, todayKey)) setIsRecoveryCheckOpen(true)
+  }
+
+  /** 회복 모드의 '지금 할 수 있는 가장 작은 것' 으로 15분 즉석 카드를 시작합니다 */
+  function handleRecoveryStart(smallStep: string) {
+    const base = createInstantCardNow(todayKey, RECOVERY_MINUTES)
+    const title = smallStep.trim() || '아주 작게 시작'
+    const card = { ...base, title, checklist: [{ id: `${base.id}-item-0`, text: title }] }
+    addCard(card)
+    session.start(card, todayKey)
+  }
+
   function handleStartNow(minutes: number) {
     const card = createInstantCardNow(todayKey, minutes)
     addCard(card)
@@ -384,6 +422,10 @@ export function CardTimerPage() {
         </p>
       </div>
 
+      {isRecoveryMode && (
+        <RecoveryCard reason={latestStage?.reason} onStart={handleRecoveryStart} />
+      )}
+
       {isStage4 && (
         <Card className="border-red-200 bg-red-50">
           <p className="font-semibold text-red-800">관리 4단계 · 강제적 채찍</p>
@@ -430,6 +472,16 @@ export function CardTimerPage() {
           <p className="text-sm text-slate-600">
             시작하지 못했어요. 미룰지, 못 했다고 남길지 골라요.
           </p>
+          {/* 아프거나 너무 지쳐서 오늘 전체를 못 한 날은 사후에 '쉰 날' 로 처리할 수 있어요. (월 4회, #407) */}
+          <button
+            type="button"
+            onClick={() => (restLeft > 0 ? setIsRestOpen(true) : setIsRecoveryCheckOpen(true))}
+            className="mt-2 h-10 text-sm font-medium text-slate-700 underline underline-offset-2"
+          >
+            {restLeft > 0
+              ? `아프거나 너무 지쳤어요 · 오늘은 쉰 날로 (이번 달 ${restLeft}번 남음)`
+              : '이번 달 쉬는 날을 다 썼어요'}
+          </button>
           <ul className="mt-3 flex flex-col gap-2">
             {unhandledCards.map(withStage4).map((card) => {
               const left = postponeLeft(card)
@@ -545,6 +597,51 @@ export function CardTimerPage() {
         />
       )}
       <CrisisHelpModal isOpen={isCrisisOpen} onClose={() => setIsCrisisOpen(false)} />
+      <Modal
+        isOpen={isRestOpen}
+        onClose={() => setIsRestOpen(false)}
+        title="오늘은 쉰 날로 할까요?"
+      >
+        <p className="text-sm text-slate-700">
+          어쩔 수 없이 못 한 날만 쉰 날로 해요. 쉰 날의 카드는 실패로 세지 않아요. 이번 달{' '}
+          {restLeft}번 남았어요.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {REST_REASONS.map((item) => (
+            <Button
+              key={item.key}
+              variant="secondary"
+              className="h-12"
+              onClick={() => handleRest(item.key)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+      </Modal>
+      <Modal
+        isOpen={isRecoveryCheckOpen}
+        onClose={() => setIsRecoveryCheckOpen(false)}
+        title="요즘 많이 지쳤나 봐요"
+      >
+        <p className="text-sm break-keep text-slate-700">
+          쉬는 날이 이어지고 있어요. 앱은 회복 모드로 계획을 줄여서 갈게요. 혼자 버티기 힘들면 주변
+          어른이나 상담에 이야기해 보세요.
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Button variant="secondary" onClick={() => setIsRecoveryCheckOpen(false)}>
+            알겠어요
+          </Button>
+          <Button
+            onClick={() => {
+              setIsRecoveryCheckOpen(false)
+              setIsCrisisOpen(true)
+            }}
+          >
+            도움 연결 보기
+          </Button>
+        </div>
+      </Modal>
 
       {endedRecord && (
         <EndPopup
@@ -1493,5 +1590,46 @@ function PledgeGate({ cardTitle, audioDataUrl, text, onDone }: PledgeGateProps) 
         </p>
       </Card>
     </div>
+  )
+}
+
+// 회복 모드에서 시작하는 즉석 카드 길이 (분)
+const RECOVERY_MINUTES = 15
+
+interface RecoveryCardProps {
+  /** 판정이 남긴 이유 한 줄 */
+  reason: string | undefined
+  onStart: (smallStep: string) => void
+}
+
+/**
+ * 회복 모드 카드 (최종 기획서 「4.5 상담」 회복 모드, #407)
+ * What if 기법 — 최악의 상황을 떠올린 뒤, 그래도 지금 할 수 있는 가장 작은 것 하나를 15분만 해 봅니다.
+ * 회복 모드에서는 나무가 시들지 않고 채찍도 쓰지 않습니다. 다음 날 다시 평가합니다.
+ */
+function RecoveryCard({ reason, onStart }: RecoveryCardProps) {
+  const [smallStep, setSmallStep] = useState('')
+  return (
+    <Card className="border-sky-200 bg-sky-50">
+      <p className="font-semibold text-sky-900">회복 모드</p>
+      {reason && <p className="mt-1 text-sm break-keep text-sky-900">{reason}</p>}
+      <ol className="mt-3 list-decimal pl-5 text-sm break-keep text-sky-900">
+        <li>오늘 최악의 경우는 뭘까? (아무것도 못 해도 괜찮아. 세상이 끝나지 않아)</li>
+        <li>그래도 지금 할 수 있는 가장 작은 것 하나는?</li>
+      </ol>
+      <input
+        value={smallStep}
+        onChange={(event) => setSmallStep(event.target.value)}
+        maxLength={60}
+        placeholder="예: 영어 단어 10개만 보기"
+        className="mt-3 h-10 w-full rounded-lg border border-sky-300 bg-white px-3 text-sm"
+      />
+      <Button className="mt-3 w-full" onClick={() => onStart(smallStep)}>
+        {RECOVERY_MINUTES}분만 해 보기
+      </Button>
+      <p className="mt-2 text-xs text-sky-800">
+        회복 모드에서는 나무가 시들지 않아요. 내일 다시 볼게요.
+      </p>
+    </Card>
   )
 }
