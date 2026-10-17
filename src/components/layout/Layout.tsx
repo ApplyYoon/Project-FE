@@ -11,6 +11,7 @@ import { useAiMessageSync } from '@/hooks/useAiMessageSync'
 import { useAppAlerts } from '@/hooks/useAppAlerts'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
+import { useCardAlerts } from '@/hooks/useCardAlerts'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { useTimerLock } from '@/hooks/useTimerLock'
@@ -32,6 +33,8 @@ export function Layout() {
   useAppAlerts()
   // 정해 둔 "전화 받을 시간" 이 되면 알림을 띄우고 전화 수신 화면으로 보냅니다. (앱이 열려 있을 때만)
   useCallReminder()
+  // 카드 시작 알림 (카드에 쓴 문장 · 3분 뒤 '지금 시작해요' · 10분 전). 누르면 그 카드로 바로 시작합니다. (#399)
+  useCardAlerts()
   // 다른 화면으로 옮기면 맨 위부터 보이게 합니다. (같은 화면 안의 탭 · 날짜 바꾸기와 뒤로 가기는 그대로 둡니다)
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
