@@ -31,6 +31,9 @@ const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
+const CardEditPage = lazy(() =>
+  import('@/pages/CardEditPage').then((m) => ({ default: m.CardEditPage })),
+)
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
 const CheckPage = lazy(() => import('@/pages/CheckPage').then((m) => ({ default: m.CheckPage })))
 const CounselPage = lazy(() =>
@@ -113,6 +116,9 @@ export const router = createBrowserRouter([
       { path: 'about', element: <AboutPage /> },
       // 아래 탭 5개: 홈 · 카드 · 타이머 · 상담 · 분석 (기획서 3장, #386)
       { path: 'cards', element: <CardsPage /> },
+      // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
+      { path: 'cards/new', element: <CardEditPage /> },
+      { path: 'cards/:cardId/edit', element: <CardEditPage /> },
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
       { path: 'timer', element: <TimerRoute /> },
       { path: 'counsel', element: <CounselPage /> },
