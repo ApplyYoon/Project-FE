@@ -38,7 +38,7 @@ export interface CanSendAiMessageNotificationInput {
   /** 보내려는 메시지의 관리 강도 */
   careLevel: CareLevel
   /** 안전 브레이크 판정 결과 (getSafetyBrakeResult 의 반환값) */
-  brake: Pick<SafetyBrakeResult, 'quiet' | 'stopWhip' | 'recoveryMode'>
+  brake: Pick<SafetyBrakeResult, 'quiet' | 'stopWhip' | 'recoveryMode' | 'examPeriod'>
   /** 사용자가 정한 관리 강도 최대 한도 (#59). 이 단계보다 센 메시지는 보내지 않습니다. */
   maxCareLevel: CareLevel
 }
@@ -54,6 +54,8 @@ export interface CanSendAiMessageNotificationInput {
  * 3) 안전 브레이크(#95)가 켜졌으면(stopWhip 또는 recoveryMode) 채찍 메시지(3~4단계)는 보내지 않습니다.
  *      예4) { careLevel: 3, maxCareLevel: 4, brake: { quiet: false, stopWhip: true, recoveryMode: false } } -> false
  *      예5) { careLevel: 3, maxCareLevel: 4, brake: { quiet: false, stopWhip: false, recoveryMode: true } } -> false
+ *    시험 기간(examPeriod)도 관리 단계 상한이 2 라서 채찍 메시지(3~4단계)는 보내지 않습니다. (#384)
+ *      예5-2) { careLevel: 3, maxCareLevel: 4, brake: { …, examPeriod: true } } -> false
  * 4) 그 외에는 보냅니다. 브레이크가 켜져도 당근·넛지(0~2단계)는 그대로 보냅니다.
  *      예6) { careLevel: 1, maxCareLevel: 4, brake: { quiet: false, stopWhip: true, recoveryMode: false } } -> true
  */
@@ -64,7 +66,9 @@ export function canSendAiMessageNotification({
 }: CanSendAiMessageNotificationInput): boolean {
   if (brake.quiet) return false
   if (careLevel > maxCareLevel) return false
-  if ((brake.stopWhip || brake.recoveryMode) && careLevel >= WHIP_CARE_LEVEL) return false
+  // 시험 기간은 상한 2단계라서 채찍(3단계 이상) 메시지도 막습니다. (#384)
+  if ((brake.stopWhip || brake.recoveryMode || brake.examPeriod) && careLevel >= WHIP_CARE_LEVEL)
+    return false
   return true
 }
 
