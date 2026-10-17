@@ -10,6 +10,9 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
 import { useCards } from '@/hooks/useCards'
+import { useGoals } from '@/hooks/useGoals'
+import { formatDday, getDaysUntil } from '@/lib/exams'
+import { MAX_ACTIVE_GOALS } from '@/lib/goals'
 import { cn } from '@/lib/cn'
 import { useGoalAdjust } from '@/hooks/useGoalAdjust'
 import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
@@ -46,6 +49,7 @@ import { formatMinutes, getNowLine, getTimeline, mergeBusyTimes } from '@/lib/ti
 import { useSuspenseQuery } from '@tanstack/react-query'
 import type {
   Card as CardData,
+  Goal,
   PlanKind,
   Routine,
   StudyPlan,
@@ -1472,6 +1476,53 @@ function GoogleCalendarStrip({ connection, dayKey }: GoogleCalendarStripProps) {
   )
 }
 
+interface GoalListProps {
+  /** 진행 중인 목표 (최대 3개) */
+  goals: Goal[]
+}
+
+/** 진행 중인 목표 목록과 [목표 만들기] 버튼 (최종 기획서 3장 카드 탭 「목표 목록(최대 3개)」, #391) */
+function GoalList({ goals }: GoalListProps) {
+  const isFull = goals.length >= MAX_ACTIVE_GOALS
+  return (
+    <Card title={`목표 ${goals.length}/${MAX_ACTIVE_GOALS}`}>
+      {goals.length === 0 ? (
+        <p className="text-sm break-keep text-slate-500">
+          아직 목표가 없어요. 목표를 세우면 카드를 목표별로 묶어서 볼 수 있어요.
+        </p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-slate-100">
+          {goals.map((goal) => (
+            <li key={goal.id} className="flex min-h-10 items-center gap-3 py-2">
+              <span className="text-brand w-14 shrink-0 text-sm font-semibold">
+                {formatDday(getDaysUntil(goal.dDay))}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
+                {goal.title}
+              </span>
+              <span className="shrink-0 text-xs text-slate-500">
+                {goal.kind === 'score' ? '점수형' : '완주형'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {isFull ? (
+        <p className="mt-3 text-xs break-keep text-slate-500">
+          목표는 동시에 {MAX_ACTIVE_GOALS}개까지예요.
+        </p>
+      ) : (
+        <Link
+          to="/goals/new"
+          className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
+        >
+          + 목표 만들기
+        </Link>
+      )}
+    </Card>
+  )
+}
+
 interface DayCardListProps {
   /** 그 날짜에 하는 카드 (시작 시각 순) */
   cards: CardData[]
@@ -1551,6 +1602,8 @@ export function CardsPage() {
   const { routines, addRoutine, deleteRoutine } = useRoutines()
   // 새 방식의 카드 (최종 기획서 「4.3」, #392)
   const { getCards } = useCards()
+  // 목표 (최종 기획서 「4.7」, #391)
+  const { activeGoals } = useGoals()
   // 루틴을 방금 저장했을 때 보여줄 안내
   const [routineNotice, setRoutineNotice] = useState<string | null>(null)
   // sessions: 공부 기록만 / allSessions: 노는 기록까지.
@@ -1913,6 +1966,9 @@ export function CardsPage() {
         {/* 구글 캘린더: 연결하기 · 그날 구글 일정 (#323) */}
         <GoogleCalendarStrip connection={calendarConnection} dayKey={selectedDate} />
       </div>
+
+      {/* 진행 중인 목표 (#391) */}
+      <GoalList goals={activeGoals} />
 
       {/* 새 방식의 카드 (#392). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
       <DayCardList cards={getCards(selectedDate)} dateKey={selectedDate} />
