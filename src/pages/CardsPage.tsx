@@ -61,6 +61,8 @@ import {
   getWeekDateKeys,
 } from '@/lib/cardTimeline'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
+import { PATTERN_LOOSE_OVER, PATTERN_MIN_SAMPLES, PATTERN_OVER_UNDER } from '@/lib/cardResult'
+import { PLAN_PATTERN_TEXT, getGoalPlanPatterns } from '@/lib/planPatternGuide'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import type {
   Card as CardData,
@@ -1880,6 +1882,113 @@ function CardTimeline({
   )
 }
 
+interface PlanPatternGuideProps {
+  cards: CardData[]
+  sessions: StudySession[]
+  /** 진행 중인 목표 (타임라인과 같은 색 순서) */
+  goals: Goal[]
+  todayKey: string
+}
+
+/**
+ * 계획 패턴 안내 (최종 기획서 「4.3 카드」, #394).
+ * 같은 목표 카드의 최근 4주 체크리스트 달성률과 판정(과대 / 적정 / 느슨)을 보여 주고,
+ * [상세 보기] 를 누르면 지난 카드마다 예상한 개수와 실제로 한 개수를 보여 줍니다.
+ */
+function PlanPatternGuide({ cards, sessions, goals, todayKey }: PlanPatternGuideProps) {
+  // 어느 목표의 상세를 펼쳤는지는 주소에 둡니다. (/cards?pattern=목표id) 새로고침해도 그대로입니다.
+  const [openId, setOpenId] = useQueryParam('pattern', '', { replace: true })
+  const patterns = getGoalPlanPatterns(
+    cards,
+    sessions,
+    goals.map((goal) => goal.id),
+    todayKey,
+  )
+  if (patterns.length === 0) return null
+
+  return (
+    <Card title="계획 패턴">
+      <p className="text-sm break-keep text-slate-500">
+        최근 4주 동안 체크리스트를 계획한 만큼 해낸 비율이에요.{' '}
+        {Math.round(PATTERN_OVER_UNDER * 100)}% 밑이면 계획이 큰 편,{' '}
+        {Math.round(PATTERN_LOOSE_OVER * 100)}% 를 넘으면 느슨한 편이에요.
+      </p>
+      <ul className="mt-3 flex flex-col divide-y divide-slate-100">
+        {patterns.map((group) => {
+          const goalIndex = goals.findIndex((goal) => goal.id === group.goalId)
+          const title = goalIndex >= 0 ? goals[goalIndex].title : '목표 없는 카드'
+          const isOpen = openId === group.goalId
+          return (
+            <li key={group.goalId} className="flex flex-col gap-2 py-3">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'h-2.5 w-2.5 shrink-0 rounded-full',
+                    goalIndex >= 0 ? GOAL_DOT_STYLES[goalIndex] : 'bg-slate-300',
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{title}</span>
+                {group.averageRate !== null && (
+                  <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
+                    {Math.round(group.averageRate * 100)}%
+                  </span>
+                )}
+                {group.pattern && (
+                  <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                    {PLAN_PATTERN_TEXT[group.pattern].label}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm break-keep text-slate-600">
+                {group.pattern
+                  ? PLAN_PATTERN_TEXT[group.pattern].message
+                  : `카드를 ${PATTERN_MIN_SAMPLES}번 끝내면 판정해요. (지금 ${group.days.length}번)`}
+              </p>
+              {group.days.length > 0 && (
+                <Button
+                  variant="ghost"
+                  aria-expanded={isOpen}
+                  onClick={() => setOpenId(isOpen ? '' : group.goalId)}
+                  className="text-brand self-start px-0"
+                >
+                  {isOpen ? '상세 닫기' : '상세 보기'}
+                </Button>
+              )}
+              {isOpen && group.days.length > 0 && (
+                <ul className="flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                  {group.days.map((day) => (
+                    <li
+                      key={`${day.cardId}-${day.dateKey}`}
+                      className="flex min-h-10 items-center gap-2"
+                    >
+                      <span className="w-12 shrink-0 text-slate-500 tabular-nums">
+                        {Number(day.dateKey.slice(5, 7))}/{Number(day.dateKey.slice(8))}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-slate-900">
+                        {day.cardTitle}
+                      </span>
+                      {/* 예상 → 실제. 예상보다 덜 했으면 주황 글자로 씁니다 (빨강은 쓰지 않습니다) */}
+                      <span
+                        className={cn(
+                          'shrink-0 tabular-nums',
+                          day.checked < day.expected ? 'text-amber-700' : 'text-slate-600',
+                        )}
+                      >
+                        예상 {day.expected} → 실제 {day.checked} / {day.total}개
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
+  )
+}
+
 /**
  * 카드 탭 화면(/cards)입니다. 옛 주소 /planner 로 들어와도 여기로 옵니다. (router.tsx)
  * 위쪽 목표 목록(#391) · 카드 일·주 타임라인(#394)은 새 방식이고, 그 아래 "옛 공부 계획" 은 아직 옛 계획 화면입니다.
@@ -2264,6 +2373,9 @@ export function CardsPage() {
         onChangePeriod={setPeriodParam}
         onSelectDate={setSelectedDate}
       />
+
+      {/* 계획 패턴 안내 (#394): 같은 목표 카드의 최근 4주 체크리스트 달성률 */}
+      <PlanPatternGuide cards={cards} sessions={sessions} goals={activeGoals} todayKey={todayKey} />
 
       {/* 옛 공부 계획: 카드로 옮겨 가는 동안 그대로 둡니다. */}
       {/* 제목 옆에 "목록 | 플래너" 전환 버튼을 둡니다. 화면이 좁으면 flex-wrap 으로 다음 줄로 내려갑니다. */}
