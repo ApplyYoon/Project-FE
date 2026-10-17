@@ -176,6 +176,19 @@ export function shouldSuggestSelfChecklist(
   return now - firstCreatedAt >= SUGGEST_SELF_CHECKLIST_DAYS * 24 * 60 * 60 * 1000
 }
 
+/**
+ * 예상 실패 원인 칸에 원인 하나를 넣거나, 이미 있으면 뺍니다. (AI 선지를 누를 때, #419)
+ *
+ *   toggleFailCause('', '폰 보기')              -> '폰 보기'
+ *   toggleFailCause('졸림', '폰 보기')          -> '졸림, 폰 보기'
+ *   toggleFailCause('졸림, 폰 보기', '폰 보기') -> '졸림'
+ */
+export function toggleFailCause(text: string, cause: string): string {
+  const causes = splitFailCauses(text)
+  const next = causes.includes(cause) ? causes.filter((item) => item !== cause) : [...causes, cause]
+  return next.join(', ')
+}
+
 /** '수학, 영어 ,' → ['수학', '영어'] */
 export function splitFailCauses(text: string): string[] {
   return text
