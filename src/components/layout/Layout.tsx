@@ -32,8 +32,8 @@ export function Layout() {
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  // 로그인 전(로그인 화면)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
-  // (헤더는 로그인 전이면 스스로 "로그인" 만 보여줍니다. Header.tsx)
+  // 로그인 전에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
+  // (로그인 화면은 Layout 밖의 PlainLayout 을 씁니다. 헤더는 로그인 전이면 스스로 "로그인" 만 보여줍니다. Header.tsx)
   const { isLoggedIn } = useAuth()
 
   // 집중 모드(#69). 켜진 동안 설정·안전 브레이크를 계속 확인해서, 필요하면 자동으로 풉니다.

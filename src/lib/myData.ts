@@ -32,6 +32,8 @@ const DIARY_KEYS = ['diary', 'reflection-entries', 'diary-draft']
  */
 const RECORD_KEYS = [
   'plans',
+  // 카드(#379). 지운 뒤 다시 열면 남아 있는 루틴만 반복 카드로 다시 옮겨집니다. (hooks/useCards.ts)
+  'cards',
   'sessions',
   'timer',
   'timer-subject',
