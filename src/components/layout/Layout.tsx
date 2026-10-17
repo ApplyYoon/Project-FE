@@ -3,6 +3,7 @@ import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
 import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
 import { PageBoundary } from '@/components/layout/PageBoundary'
+import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
 import { useAiMessageNotifications } from '@/hooks/useAiMessageNotifications'
 import { useAiMessageSync } from '@/hooks/useAiMessageSync'
@@ -12,6 +13,7 @@ import { useCallReminder } from '@/hooks/useCallReminder'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { cn } from '@/lib/cn'
+import { needsSubjectsPath } from '@/lib/dataMode'
 import { getBackToTabLink } from '@/lib/tabMenu'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -31,8 +33,8 @@ export function Layout() {
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  // 로그인 전(로그인 화면)에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
-  // (헤더는 로그인 전이면 스스로 "로그인" 만 보여줍니다. Header.tsx)
+  // 로그인 전에는 하단 탭을 숨깁니다. 눌러도 어차피 로그인 화면으로 돌아오기 때문입니다.
+  // (로그인 화면은 Layout 밖의 PlainLayout 을 씁니다. 헤더는 로그인 전이면 스스로 "로그인" 만 보여줍니다. Header.tsx)
   const { isLoggedIn } = useAuth()
 
   // 집중 모드(#69). 켜진 동안 설정·안전 브레이크를 계속 확인해서, 필요하면 자동으로 풉니다.
@@ -42,6 +44,8 @@ export function Layout() {
   const isBlockedByFocusMode = focusMode.isOn && pathname !== '/timer'
   // 탭 아래에 묶인 화면(시험·일기 등)이면 맨 위에 "‹ 분석" · "‹ 상담" 돌아가기 링크를 둡니다. 아니면 null (lib/tabMenu.ts)
   const backToTab = getBackToTabLink(pathname)
+  // 과목이 필요한 화면인지. 그렇다면 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만)
+  const needsSubjects = needsSubjectsPath(pathname)
 
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
@@ -77,7 +81,14 @@ export function Layout() {
         ) : (
           // 화면 파일을 받는 동안에는 이 본문 칸에만 스켈레톤을 보여줍니다. 헤더 · 하단 탭은 그대로입니다. (PageBoundary)
           <PageBoundary>
-            <Outlet />
+            {/* 과목이 필요한 화면은 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만. components/layout/SubjectsGate.tsx) */}
+            {needsSubjects ? (
+              <SubjectsGate>
+                <Outlet />
+              </SubjectsGate>
+            ) : (
+              <Outlet />
+            )}
           </PageBoundary>
         )}
       </main>

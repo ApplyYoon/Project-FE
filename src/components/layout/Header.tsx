@@ -8,7 +8,7 @@ import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 interface HeaderProps {
-  /** true 면 메뉴를 숨깁니다. (온보딩처럼 탭 없이 뜨는 화면에서 씁니다) */
+  /** true 면 메뉴를 숨깁니다. (로그인·가입·온보딩처럼 탭 없이 뜨는 화면에서 씁니다) */
   hideNav?: boolean
   /** 메뉴를 숨겼을 때 오른쪽에 대신 보여줄 것. 예) "나중에 하기" 링크 */
   action?: ReactNode
@@ -16,9 +16,9 @@ interface HeaderProps {
 
 /*
  * 헤더 오른쪽에는 셋 중 하나가 보입니다.
+ *   hideNav           -> action 만 (온보딩의 "나중에 하기" 등). 없으면 앱 이름만 보입니다.
+ *                         로그인·가입·온보딩처럼 탭 없이 뜨는 화면(PlainLayout)이라, 로그인 전이어도 "로그인" 을 띄우지 않습니다.
  *   로그인 전          -> "로그인" 하나만 (처음 온 사람도 로그인 화면에서 시작하면 가입으로 이어지기 때문입니다, #319)
- *                         로그인 화면에서는 이미 그 화면이라 아무것도 안 보여줍니다.
- *   로그인 + hideNav   -> action (온보딩의 "나중에 하기" 등)
  *   로그인             -> 메뉴와 알림 종
  */
 
@@ -40,20 +40,17 @@ export function Header({ hideNav = false, action }: HeaderProps) {
           STARFLOW
         </NavLink>
 
-        {!isLoggedIn ? (
+        {hideNav ? (
+          // 메뉴를 숨기는 화면(로그인·가입·온보딩 등)에서는 종 아이콘도 숨기고 action 만 보여줍니다.
+          action
+        ) : !isLoggedIn ? (
           // 로그인 전에는 로그인만 보여줍니다. 모바일에서도 그대로 보입니다. (하단 탭이 없어서)
           // 회원가입은 따로 두지 않습니다. 로그인 화면에서 시작하면 처음인 사람은 가입으로 이어집니다. (#319)
-          // 로그인 화면에서는 같은 화면으로 가는 버튼이라 숨깁니다.
-          pathname !== '/login' && (
-            <nav aria-label="로그인 메뉴" className="flex items-center gap-1">
-              <NavLink to="/login" className={guestLinkClass}>
-                로그인
-              </NavLink>
-            </nav>
-          )
-        ) : hideNav ? (
-          // 메뉴를 숨기는 화면(온보딩 등)에서는 종 아이콘도 숨기고 action 만 보여줍니다.
-          action
+          <nav aria-label="로그인 메뉴" className="flex items-center gap-1">
+            <NavLink to="/login" className={guestLinkClass}>
+              로그인
+            </NavLink>
+          </nav>
         ) : (
           <div className="flex items-center gap-2">
             {/* 데스크톱(sm 이상)에서만 보이는 가로 메뉴. 모바일은 하단 탭(BottomTabNav)을 씁니다. */}
