@@ -250,6 +250,18 @@ export function todayServerCheckInQuery(todayKey: string) {
   })
 }
 
+/**
+ * 서버에 저장된 내 체크인을 모두 지웁니다. 설정의 "모든 기록 지우기" 가 부릅니다. (BE: DELETE /checkins -> 204)
+ * 이 기기의 체크인은 따로 지웁니다. (lib/myData.ts 의 deleteMyData)
+ * 실패하면 에러를 던집니다.
+ */
+export async function deleteServerCheckIns(): Promise<void> {
+  await api<void>('/checkins', {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+}
+
 /** 서버에 못 보낸 체크인의 날짜들 */
 export function loadUnsentDates(): string[] {
   const saved = loadData<unknown>(UNSENT_CHECKINS_KEY, [])
