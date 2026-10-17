@@ -1493,16 +1493,22 @@ function GoalList({ goals }: GoalListProps) {
       ) : (
         <ul className="flex flex-col divide-y divide-slate-100">
           {goals.map((goal) => (
-            <li key={goal.id} className="flex min-h-10 items-center gap-3 py-2">
-              <span className="text-brand w-14 shrink-0 text-sm font-semibold">
-                {formatDday(getDaysUntil(goal.dDay))}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
-                {goal.title}
-              </span>
-              <span className="shrink-0 text-xs text-slate-500">
-                {goal.kind === 'score' ? '점수형' : '완주형'}
-              </span>
+            <li key={goal.id}>
+              {/* 누르면 목표 상세(진척 · 2주 점검, #403)로 갑니다. */}
+              <Link
+                to={`/goals/${goal.id}`}
+                className="flex min-h-10 items-center gap-3 py-2 hover:bg-slate-50"
+              >
+                <span className="text-brand w-14 shrink-0 text-sm font-semibold">
+                  {formatDday(getDaysUntil(goal.dDay))}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
+                  {goal.title}
+                </span>
+                <span className="shrink-0 text-xs text-slate-500">
+                  {goal.kind === 'score' ? '점수형' : '완주형'}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>

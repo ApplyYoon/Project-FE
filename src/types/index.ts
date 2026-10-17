@@ -310,6 +310,20 @@ export interface Goal {
   history: GoalTargetSnapshot[]
   /** 목표를 만든 시각 */
   createdAt: number
+  /** 완주형: 날짜별로 그날까지 한 누적 분량 (날짜 순). 목표 상세에서 적습니다 (#403) */
+  progressLog?: GoalProgressEntry[]
+  /** 2주 목표 점검을 마지막으로 한 때. 안 했으면 없음 → 만든 때부터 셉니다 (#403) */
+  lastCheckedAt?: number
+  /** 포기했을 때 적은 이유 (#403) */
+  givenUpReason?: string
+}
+
+/** 완주형 목표의 진척 한 줄 — 그 날짜까지 한 누적 분량 */
+export interface GoalProgressEntry {
+  /** 'YYYY-MM-DD' */
+  dateKey: string
+  /** 그날까지 한 분량 (누적, 예: 120쪽) */
+  doneAmount: number
 }
 
 /**
