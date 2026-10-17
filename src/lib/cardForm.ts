@@ -20,6 +20,8 @@ export interface CardFormValues {
   durationMinutes: number
   /** 체크리스트. 빈 줄은 저장할 때 뺍니다 */
   checklist: ChecklistItem[]
+  /** 연결한 목표의 id. 빈 글자('')면 "목표 없음" */
+  goalId: string
   priority: CardPriority
   type: CardType
   /** 예상 달성 개수. null 이면 "체크리스트 전부" */
@@ -63,7 +65,7 @@ function isTimeText(value: string): boolean {
 }
 
 /** 새 카드 폼의 처음 값. 체크리스트는 빈 줄 하나로 시작합니다 */
-export function createEmptyForm(dateKey: string, now: number): CardFormValues {
+export function createEmptyForm(dateKey: string, now: number, goalId = ''): CardFormValues {
   return {
     title: '',
     date: dateKey,
@@ -72,6 +74,7 @@ export function createEmptyForm(dateKey: string, now: number): CardFormValues {
     startTime: '',
     durationMinutes: 60,
     checklist: [{ id: `item-${now}-0`, text: '' }],
+    goalId,
     priority: 'flexible',
     type: 'self',
     expectedDone: null,
@@ -94,6 +97,7 @@ export function cardToForm(card: Card): CardFormValues {
     startTime: card.startTime ?? '',
     durationMinutes: card.durationMinutes,
     checklist: card.checklist,
+    goalId: card.goalId ?? '',
     priority: card.priority,
     type: card.type,
     // 예상이 "전부" 와 같으면 전부(null)로 보여 줍니다.
@@ -186,6 +190,7 @@ export function buildCard(
     startTime: values.startTime,
     durationMinutes: values.durationMinutes,
     checklist,
+    goalId: values.goalId !== '' ? values.goalId : undefined,
     priority: values.priority,
     type: values.type,
     expectedDone,

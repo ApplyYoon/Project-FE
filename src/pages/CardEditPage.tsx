@@ -1,8 +1,11 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ChipButton } from '@/components/ui/ChipButton'
 import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { useCards } from '@/hooks/useCards'
+import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import {
@@ -21,81 +24,13 @@ import {
 } from '@/lib/cardForm'
 import { cn } from '@/lib/cn'
 import { getTodayKey, isDateKey } from '@/lib/date'
+import { getLatestActiveGoal } from '@/lib/goals'
 import { PLAN_MAX_MINUTES } from '@/lib/plansApi'
 import { WEEKDAY_ORDER, getWeekdayName } from '@/lib/routines'
 import { loadAutoSettings } from '@/lib/settingsMapping'
-import type { Card as CardData } from '@/types'
+import type { Card as CardData, Goal } from '@/types'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-
-interface ToggleOption<T extends string> {
-  value: T
-  label: string
-}
-
-interface SegmentedToggleProps<T extends string> {
-  /** 화면 읽기 프로그램에 읽어 줄 이름 (예: '우선순위') */
-  label: string
-  options: ToggleOption<T>[]
-  value: T
-  onChange: (value: T) => void
-}
-
-/** 두세 개 중 하나를 고르는 버튼 묶음 (1회성/반복, 유연/절대 등) */
-function SegmentedToggle<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: SegmentedToggleProps<T>) {
-  return (
-    <div role="group" aria-label={label} className="flex w-full rounded-lg bg-slate-100 p-1">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            'h-10 flex-1 cursor-pointer rounded-md px-3 text-sm font-medium transition-colors',
-            value === option.value
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-500 hover:text-slate-900',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-interface ChipButtonProps {
-  selected: boolean
-  onClick: () => void
-  children: string
-  className?: string
-}
-
-/** 여러 개 중 하나(또는 여러 개)를 고르는 동그란 버튼 */
-function ChipButton({ selected, onClick, children, className }: ChipButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={cn(
-        'h-10 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors',
-        selected
-          ? 'border-brand bg-brand/10 text-brand'
-          : 'border-slate-200 text-slate-600 hover:border-slate-300',
-        className,
-      )}
-    >
-      {children}
-    </button>
-  )
-}
 
 interface CardFormProps {
   initialValues: CardFormValues
@@ -107,6 +42,8 @@ interface CardFormProps {
   optionalOpenByDefault: boolean
   /** 최근 4주 계획 정확도. 기록이 모자라면 null */
   accuracy: { rate: number; samples: number } | null
+  /** "목표 연결" 에서 고를 수 있는 목표 (진행 중인 목표 + 이 카드에 이미 걸린 목표) */
+  goalOptions: Goal[]
   onSave: (card: CardData) => void
 }
 
@@ -117,6 +54,7 @@ function CardForm({
   failCauseRequired,
   optionalOpenByDefault,
   accuracy,
+  goalOptions,
   onSave,
 }: CardFormProps) {
   const [values, setValues] = useState<CardFormValues>(initialValues)
@@ -354,7 +292,7 @@ function CardForm({
           <span className="min-w-0">
             <span className="block text-base font-semibold text-slate-900">더 정하기 (선택)</span>
             <span className="block truncate text-xs text-slate-500">
-              우선순위 · 유형 · 예상 달성 개수 · 알림
+              목표 · 우선순위 · 유형 · 예상 달성 개수 · 알림
             </span>
           </span>
           <span aria-hidden className="shrink-0 text-slate-400">
@@ -364,6 +302,31 @@ function CardForm({
 
         {isMoreOpen && (
           <div className="mt-5 flex flex-col gap-5">
+            {/* 목표 연결: 카테고리 대신 목표로 카드를 묶습니다. 기본은 가장 최근 목표 (「4.3」) */}
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium text-slate-700">목표</p>
+              <div className="flex flex-wrap gap-2">
+                <ChipButton selected={values.goalId === ''} onClick={() => change('goalId', '')}>
+                  목표 없음
+                </ChipButton>
+                {goalOptions.map((goal) => (
+                  <ChipButton
+                    key={goal.id}
+                    selected={values.goalId === goal.id}
+                    onClick={() => change('goalId', goal.id)}
+                    className="max-w-full truncate"
+                  >
+                    {goal.title}
+                  </ChipButton>
+                ))}
+              </div>
+              {goalOptions.length === 0 && (
+                <Link to="/goals/new" className="text-brand inline-flex h-10 items-center text-sm">
+                  + 목표 만들기
+                </Link>
+              )}
+            </div>
+
             {/* 우선순위: 드래그 대신 절대/유연 토글 (「4.3」 규칙) */}
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium text-slate-700">우선순위</p>
@@ -519,6 +482,13 @@ export function CardEditPage() {
 
   const editingCard = cardId ? cards.find((card) => card.id === cardId) : undefined
   const accuracy = getRecentPlanAccuracy(cards, sessions, todayKey)
+  // 목표 연결 칸: 진행 중인 목표 + (고치는 카드에 이미 끝난 목표가 걸려 있으면) 그 목표
+  const { goals, activeGoals } = useGoals()
+  const linkedGoal = goals.find((goal) => goal.id === editingCard?.goalId)
+  const goalOptions =
+    linkedGoal && !activeGoals.includes(linkedGoal) ? [...activeGoals, linkedGoal] : activeGoals
+  // 새 카드의 목표 기본값은 가장 최근에 만든 진행 중 목표입니다.
+  const defaultGoalId = getLatestActiveGoal(goals)?.id ?? ''
 
   function handleSave(card: CardData) {
     if (editingCard) {
@@ -562,11 +532,14 @@ export function CardEditPage() {
       <CardForm
         // 다른 카드로 옮겨 가면 폼을 처음부터 다시 그립니다.
         key={cardId ?? 'new'}
-        initialValues={editingCard ? cardToForm(editingCard) : createEmptyForm(startDate, now)}
+        initialValues={
+          editingCard ? cardToForm(editingCard) : createEmptyForm(startDate, now, defaultGoalId)
+        }
         editingCard={editingCard}
         failCauseRequired={settings.failCauseRequired.value}
         optionalOpenByDefault={settings.optionalFieldsOpen.value}
         accuracy={accuracy}
+        goalOptions={goalOptions}
         onSave={handleSave}
       />
     </div>

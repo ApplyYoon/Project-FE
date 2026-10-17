@@ -44,6 +44,9 @@ const ExamResultPage = lazy(() =>
   import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
 )
 const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
+const GoalNewPage = lazy(() =>
+  import('@/pages/GoalNewPage').then((m) => ({ default: m.GoalNewPage })),
+)
 const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 const NotFoundPage = lazy(() =>
@@ -119,6 +122,8 @@ export const router = createBrowserRouter([
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
       { path: 'cards/new', element: <CardEditPage /> },
       { path: 'cards/:cardId/edit', element: <CardEditPage /> },
+      // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
+      { path: 'goals/new', element: <GoalNewPage /> },
       // 카드 타이머가 기본이고, 옛 계획으로 연 타이머만 옛 화면입니다. (pages/TimerRoute.tsx, #395)
       { path: 'timer', element: <TimerRoute /> },
       { path: 'counsel', element: <CounselPage /> },
