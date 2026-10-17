@@ -9,13 +9,21 @@ import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { playAlarm } from '@/lib/alarm'
 import { formatClock } from '@/lib/away'
-import { createInstantCard, getRemainingMs, getRunMs } from '@/lib/cardSession'
+import {
+  LONG_PAUSE_MINUTES,
+  createInstantCard,
+  getRemainingMs,
+  getRunMs,
+  shouldAlertLongPause,
+} from '@/lib/cardSession'
 import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
 import { getTodayKey, toDayKey } from '@/lib/date'
+import { showSystemNotification } from '@/lib/notifications'
 import { getSessionCardId } from '@/lib/sessionRecords'
+import { PAUSE_TAGS } from '@/lib/sessionTags'
 import { loadAutoSettings } from '@/lib/settingsMapping'
-import type { Card as CardModel } from '@/types'
+import type { Card as CardModel, PauseTag } from '@/types'
 
 /**
  * 타이머 탭 — 카드 기준 (최종 기획서 「4.4 타이머」, #395)
@@ -190,6 +198,7 @@ function SessionView({ session, card, now }: SessionViewProps) {
   const active = session.active
   const [settings] = useState(loadAutoSettings)
   const [isEndOpen, setIsEndOpen] = useState(false)
+  const [isPauseOpen, setIsPauseOpen] = useState(false)
   const [memo, setMemo] = useState('')
   const remainingMs = active ? getRemainingMs(active, now) : 0
   useKeepScreenOn(active !== null)
@@ -201,6 +210,20 @@ function SessionView({ session, card, now }: SessionViewProps) {
       session.finish()
     }
   }, [active, remainingMs, session])
+
+  // 일시정지가 15분을 넘으면 복귀 알림을 한 번 보냅니다. (앱을 뒤로 보내 둔 동안에도 뜨게 시스템 알림도 씁니다)
+  const isLongPause = active !== null && shouldAlertLongPause(active, now)
+  useEffect(() => {
+    if (!isLongPause) return
+    playAlarm()
+    void showSystemNotification({
+      title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
+      body: '다시 시작할까요? 끝나는 시각은 그대로예요.',
+      tag: 'card-pause-long',
+      url: '/timer',
+    })
+    session.markLongPauseAlerted()
+  }, [isLongPause, session])
 
   if (!active) return null
   const runMinutes = Math.floor(getRunMs(active, now) / MS_PER_MINUTE)
@@ -229,6 +252,11 @@ function SessionView({ session, card, now }: SessionViewProps) {
         >
           {isPaused ? '잠깐 멈춤' : '● 공부 중'}
         </span>
+        {active.pausedNow?.alerted && (
+          <p className="text-sm font-medium text-amber-700">
+            {LONG_PAUSE_MINUTES}분 넘게 멈춰 있어요. 준비되면 다시 시작해요.
+          </p>
+        )}
         <p
           className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl"
           aria-live="off"
@@ -250,7 +278,7 @@ function SessionView({ session, card, now }: SessionViewProps) {
               다시 시작
             </Button>
           ) : (
-            <Button size="lg" variant="secondary" onClick={() => session.pause('other')}>
+            <Button size="lg" variant="secondary" onClick={() => setIsPauseOpen(true)}>
               일시정지
             </Button>
           )}
@@ -316,6 +344,15 @@ function SessionView({ session, card, now }: SessionViewProps) {
         </Card>
       )}
 
+      <PausePicker
+        isOpen={isPauseOpen}
+        onClose={() => setIsPauseOpen(false)}
+        onPick={(tag, note) => {
+          setIsPauseOpen(false)
+          session.pause(tag, note)
+        }}
+      />
+
       <Modal isOpen={isEndOpen} onClose={() => setIsEndOpen(false)} title="지금 끝낼까요?">
         <p className="text-slate-700">
           아직 {formatMinutes(Math.ceil(remainingMs / MS_PER_MINUTE))} 남았어요. 지금 끝내면 '중간에
@@ -336,5 +373,71 @@ function SessionView({ session, card, now }: SessionViewProps) {
         </div>
       </Modal>
     </div>
+  )
+}
+
+interface PausePickerProps {
+  isOpen: boolean
+  onClose: () => void
+  onPick: (tag: PauseTag, note?: string) => void
+}
+
+/**
+ * 일시정지 이유 1탭 (「4.4 타이머」 일시정지, #397)
+ * 누르는 순간 멈춥니다. '기타' 만 한 줄을 받고(빈칸 허용) [멈추기] 를 누릅니다.
+ * 이유는 귀인(내 쪽 / 바깥)과 주의 분산을 보는 재료라서 꼭 하나를 고르게 합니다.
+ */
+function PausePicker({ isOpen, onClose, onPick }: PausePickerProps) {
+  const [isOther, setIsOther] = useState(false)
+  const [note, setNote] = useState('')
+
+  function handleClose() {
+    setIsOther(false)
+    setNote('')
+    onClose()
+  }
+
+  function pick(tag: PauseTag, text?: string) {
+    setIsOther(false)
+    setNote('')
+    onPick(tag, text?.trim() || undefined)
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={handleClose} title="왜 멈추나요?">
+      {isOther ? (
+        <div className="flex flex-col gap-3">
+          <input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            maxLength={100}
+            placeholder="한 줄로 적어요 (안 적어도 돼요)"
+            className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="secondary" onClick={() => setIsOther(false)}>
+              뒤로
+            </Button>
+            <Button onClick={() => pick('other', note)}>멈추기</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {PAUSE_TAGS.map((item) => (
+            <Button
+              key={item.key}
+              variant="secondary"
+              className="h-12"
+              onClick={() => (item.key === 'other' ? setIsOther(true) : pick(item.key))}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+      )}
+      <p className="mt-3 text-xs text-slate-500">
+        멈춘 시간은 한 시간에서 빠지고, 끝나는 시각은 그대로예요.
+      </p>
+    </Modal>
   )
 }
