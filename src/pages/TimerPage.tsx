@@ -236,10 +236,12 @@ export function TimerPage() {
   // 공부 중에 다른 탭·앱으로 나가면 자동으로 일시정지하고, 돌아오면 안내를 띄우며 딴짓으로 기록합니다. (#22)
   // 30분 안에 돌아오면 타이머가 저절로 이어서 흐릅니다. (#234)
   // 뽀모도로 휴식 중이거나 노는 중에는 나가도 괜찮아서 isResting 으로 알려 줍니다.
+  // 다만 뽀모도로 휴식은 끝나는 시각이 있어서, 휴식이 끝났는데도 안 돌아오면 그때부터 딴짓으로 기록합니다. (breakRemainingSeconds)
   const { awayNotice, awayCountToday, dismissAwayNotice } = useAwayDetection({
     isStarted,
     isRunning,
     isResting: isBreak || isPlay,
+    breakRemainingSeconds: isBreak && !isPlay ? pomodoro.remainingSeconds : null,
     subjectId: selectedSubjectId,
     // 저절로 멈출 때는 일시정지 횟수를 올리지 않는 autoPause 를 씁니다. (횟수는 내가 직접 멈춘 것만 셉니다)
     pause: autoPause,
