@@ -21,9 +21,22 @@ import { formatMinutes } from '@/lib/dailyRecords'
 import { getTodayKey, toDayKey } from '@/lib/date'
 import { showSystemNotification } from '@/lib/notifications'
 import { getSessionCardId } from '@/lib/sessionRecords'
-import { PAUSE_TAGS } from '@/lib/sessionTags'
+import {
+  countChecklistComplete,
+  isChecklistComplete,
+  isUntitledInstantCard,
+  shouldAskGoodReason,
+  splitInstantLine,
+} from '@/lib/endReport'
+import { GOOD_REASONS, PAUSE_TAGS, SHORTFALL_REASONS, WITH_WHAT_OPTIONS } from '@/lib/sessionTags'
 import { loadAutoSettings } from '@/lib/settingsMapping'
-import type { Card as CardModel, PauseTag } from '@/types'
+import type {
+  Card as CardModel,
+  PauseTag,
+  SessionEndReport,
+  ShortfallReason,
+  StudySession,
+} from '@/types'
 
 /**
  * 타이머 탭 — 카드 기준 (최종 기획서 「4.4 타이머」, #395)
@@ -50,9 +63,11 @@ function formatRemaining(ms: number): string {
 }
 
 export function CardTimerPage() {
-  const { cards, getCards, addCard } = useCards()
+  const { cards, getCards, addCard, updateCard } = useCards()
   const session = useCardSession()
   const { active, now, allSessions } = session
+  // 방금 끝낸 기록. 있으면 종료 팝업을 띄웁니다. (#398)
+  const [endedRecord, setEndedRecord] = useState<StudySession | null>(null)
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
 
   const todayKey = getTodayKey()
@@ -84,8 +99,10 @@ export function CardTimerPage() {
 
   if (active) {
     const activeCard = cards.find((card) => card.id === active.cardId)
-    return <SessionView session={session} card={activeCard} now={now} />
+    return <SessionView session={session} card={activeCard} now={now} onFinished={setEndedRecord} />
   }
+
+  const endedCard = endedRecord ? cards.find((card) => card.id === endedRecord.cardId) : undefined
 
   return (
     <div className="flex flex-col gap-6">
@@ -118,6 +135,19 @@ export function CardTimerPage() {
 
         <InstantStart onStart={handleStartNow} />
       </div>
+
+      {endedRecord && (
+        <EndPopup
+          record={endedRecord}
+          card={endedCard}
+          onSave={(changes) => {
+            session.updateSession(endedRecord.id, changes)
+            setEndedRecord({ ...endedRecord, ...changes })
+          }}
+          onRenameCard={(changes) => endedCard && updateCard(endedCard.id, changes)}
+          onClose={() => setEndedRecord(null)}
+        />
+      )}
     </div>
   )
 }
@@ -191,10 +221,12 @@ interface SessionViewProps {
   session: ReturnType<typeof useCardSession>
   card: CardModel | undefined
   now: number
+  /** 세션이 끝나 기록을 저장한 뒤 부릅니다 (종료 팝업을 띄움) */
+  onFinished: (record: StudySession) => void
 }
 
 /** 세션 화면 — 나가는 길은 [일시정지] · [끝내기] 뿐입니다 */
-function SessionView({ session, card, now }: SessionViewProps) {
+function SessionView({ session, card, now, onFinished }: SessionViewProps) {
   const active = session.active
   const [settings] = useState(loadAutoSettings)
   const [isEndOpen, setIsEndOpen] = useState(false)
@@ -207,9 +239,10 @@ function SessionView({ session, card, now }: SessionViewProps) {
   useEffect(() => {
     if (active && remainingMs === 0) {
       playAlarm()
-      session.finish()
+      const record = session.finish()
+      if (record) onFinished(record)
     }
-  }, [active, remainingMs, session])
+  }, [active, remainingMs, session, onFinished])
 
   // 일시정지가 15분을 넘으면 복귀 알림을 한 번 보냅니다. (앱을 뒤로 보내 둔 동안에도 뜨게 시스템 알림도 씁니다)
   const isLongPause = active !== null && shouldAlertLongPause(active, now)
@@ -365,7 +398,8 @@ function SessionView({ session, card, now }: SessionViewProps) {
           <Button
             onClick={() => {
               setIsEndOpen(false)
-              session.finish()
+              const record = session.finish()
+              if (record) onFinished(record)
             }}
           >
             끝내기
@@ -438,6 +472,233 @@ function PausePicker({ isOpen, onClose, onPick }: PausePickerProps) {
       <p className="mt-3 text-xs text-slate-500">
         멈춘 시간은 한 시간에서 빠지고, 끝나는 시각은 그대로예요.
       </p>
+    </Modal>
+  )
+}
+
+/** 종료 팝업의 단계 — 체크리스트 → 같이 한 것 → 증빙 → (가끔) 잘 된 이유 → 다음 행동 */
+type EndStep = 'checklist' | 'with' | 'proof' | 'good' | 'next'
+
+interface EndPopupProps {
+  record: StudySession
+  card: CardModel | undefined
+  /** 기록에 붙일 칸 (endReport) — 단계마다 저장해서, 중간에 닫아도 고른 것은 남습니다 */
+  onSave: (changes: Pick<StudySession, 'endReport'>) => void
+  /** 즉석 카드의 제목 · 체크리스트를 정했을 때 */
+  onRenameCard: (changes: Pick<CardModel, 'title' | 'checklist'>) => void
+  onClose: () => void
+}
+
+/**
+ * 종료 팝업 (최종 기획서 「4.4 타이머」 종료, #398) — 산출물 말고는 모두 1탭입니다.
+ * 1. 체크리스트 최종 확인 (다 못 했으면 미달 사유 1탭) · 즉석 카드면 "무엇을 했나요?" 한 줄
+ * 2. 같이 한 것: 음악 / 영상 틀어둠 / 없음
+ * 3. 산출물 증빙: 링크나 2~3줄 요약 (선택 — 남기면 나무가 더 자람)
+ * 4. 잘 된 이유: 체크리스트를 다 했을 때 N번에 1번만
+ * 5. 다음 행동
+ */
+function EndPopup({ record, card, onSave, onRenameCard, onClose }: EndPopupProps) {
+  const [step, setStep] = useState<EndStep>('checklist')
+  const [settings] = useState(loadAutoSettings)
+  const report: SessionEndReport = record.endReport ?? { checked: {} }
+  const [checked, setChecked] = useState<Record<string, number>>(report.checked)
+  const [shortfall, setShortfall] = useState<ShortfallReason | undefined>(report.shortfallReason)
+  const [line, setLine] = useState('')
+  const [proofText, setProofText] = useState('')
+  const isInstant = card !== undefined && isUntitledInstantCard(card)
+  const checklist = card?.checklist ?? []
+  const isComplete = isInstant || isChecklistComplete(checklist, checked)
+
+  function save(changes: Partial<SessionEndReport>) {
+    onSave({ endReport: { ...report, checked, ...changes } })
+  }
+
+  function handleChecklistDone() {
+    let finalChecked = checked
+    if (isInstant && card) {
+      const parsed = splitInstantLine(line, card.id)
+      if (parsed) {
+        onRenameCard(parsed)
+        // 즉석 카드는 "한 것" 을 적는 것이라 적은 항목을 모두 한 것으로 봅니다.
+        finalChecked = Object.fromEntries(parsed.checklist.map((item) => [item.id, record.endedAt]))
+        setChecked(finalChecked)
+      }
+    }
+    onSave({
+      endReport: {
+        ...report,
+        checked: finalChecked,
+        ...(isComplete ? {} : { shortfallReason: shortfall }),
+      },
+    })
+    setStep('with')
+  }
+
+  function handleProofDone(skip: boolean) {
+    const text = proofText.trim()
+    if (!skip && text !== '') {
+      const isLink = /^https?:\/\//.test(text)
+      save({ proof: isLink ? { link: text } : { summary: text } })
+    }
+    // 잘 된 이유는 체크리스트를 다 했을 때만, 설정의 빈도대로 가끔 묻습니다.
+    const askGood =
+      isComplete && shouldAskGoodReason(countChecklistComplete(), settings.goodReasonEvery.value)
+    setStep(askGood ? 'good' : 'next')
+  }
+
+  const needsShortfall = !isInstant && !isComplete && shortfall === undefined
+  const canFinishChecklist = isInstant ? line.trim() !== '' : !needsShortfall
+
+  return (
+    <Modal isOpen onClose={onClose} title="수고했어요! 마무리해요">
+      {step === 'checklist' && (
+        <div className="flex flex-col gap-3">
+          {isInstant ? (
+            <>
+              <p className="text-sm text-slate-700">
+                무엇을 했나요? 쉼표(,)로 나누면 할 일이 여러 개가 돼요.
+              </p>
+              <input
+                value={line}
+                onChange={(event) => setLine(event.target.value)}
+                maxLength={100}
+                placeholder="예: 수학, 문제집 42쪽, 오답 정리"
+                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+              />
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-slate-700">체크리스트를 마지막으로 확인해요.</p>
+              <ul className="flex flex-col gap-1">
+                {checklist.map((item) => (
+                  <li key={item.id}>
+                    <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        className="accent-brand size-5"
+                        checked={checked[item.id] !== undefined}
+                        onChange={() =>
+                          setChecked((prev) => {
+                            const next = { ...prev }
+                            if (next[item.id] !== undefined) delete next[item.id]
+                            else next[item.id] = record.endedAt
+                            return next
+                          })
+                        }
+                      />
+                      <span className="text-slate-800">{item.text}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {!isComplete && (
+                <div>
+                  <p className="text-sm font-medium text-slate-800">다 못 한 이유는요?</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {SHORTFALL_REASONS.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        aria-pressed={shortfall === item.key}
+                        onClick={() => setShortfall(item.key)}
+                        className={cn(
+                          'h-10 rounded-lg border text-sm',
+                          shortfall === item.key
+                            ? 'border-brand bg-brand/10 text-brand'
+                            : 'border-slate-200 text-slate-700',
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          <Button size="lg" disabled={!canFinishChecklist} onClick={handleChecklistDone}>
+            다음
+          </Button>
+        </div>
+      )}
+
+      {step === 'with' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-slate-700">공부하면서 같이 한 게 있나요?</p>
+          <div className="grid grid-cols-3 gap-2">
+            {WITH_WHAT_OPTIONS.map((item) => (
+              <Button
+                key={item.key}
+                variant="secondary"
+                className="h-12"
+                onClick={() => {
+                  save({ withWhat: item.key })
+                  setStep('proof')
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 'proof' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-slate-700">
+            한 것을 남겨 볼까요? 링크나 2~3줄 요약이면 돼요. 남기면 나무가 더 자라요.
+          </p>
+          <textarea
+            value={proofText}
+            onChange={(event) => setProofText(event.target.value)}
+            maxLength={300}
+            rows={3}
+            placeholder="예: 42~45쪽 풀고 틀린 3문제 다시 풂"
+            className="w-full rounded-lg border border-slate-300 p-3 text-sm"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="secondary" onClick={() => handleProofDone(true)}>
+              건너뛰기
+            </Button>
+            <Button disabled={proofText.trim() === ''} onClick={() => handleProofDone(false)}>
+              남기기
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === 'good' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-slate-700">다 해냈어요! 잘 된 이유는 뭐였을까요?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {GOOD_REASONS.map((item) => (
+              <Button
+                key={item.key}
+                variant="secondary"
+                className="h-12"
+                onClick={() => {
+                  save({ goodReasons: [item.key] })
+                  setStep('next')
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 'next' && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-slate-700">다음은 무엇을 할까요?</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="secondary" onClick={onClose}>
+              닫기
+            </Button>
+            <Button onClick={onClose}>다음 카드 보기</Button>
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }

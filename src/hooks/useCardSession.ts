@@ -35,7 +35,7 @@ export function loadActiveCardSession(): ActiveCardSession | null {
  */
 export function useCardSession() {
   // 끝낸 기록을 붙이는 곳과 화면이 읽는 곳이 같아야 해서, 기록 목록도 이 훅이 같이 돌려줍니다.
-  const { allSessions, addSession } = useStudySessions()
+  const { allSessions, addSession, updateSession } = useStudySessions()
   const [active, setActive] = useState<ActiveCardSession | null>(loadActiveCardSession)
   const [now, setNow] = useState(() => Date.now())
   // 같은 세션을 두 번 저장하지 않게, 마지막으로 끝낸 세션의 시작 시각을 기억합니다.
@@ -136,6 +136,7 @@ export function useCardSession() {
     pause,
     resume,
     markLongPauseAlerted,
+    updateSession,
     toggleCheck,
     addMemo,
     finish,
