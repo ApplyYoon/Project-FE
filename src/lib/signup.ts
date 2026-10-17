@@ -36,14 +36,14 @@ export interface SignupConsents {
   diaryAnalysis: boolean
 }
 
-/** 가입을 마치고 저장해 두는 정보입니다. (만 14세 미만은 가입할 수 없어서 아무것도 저장하지 않습니다) */
+/** 가입을 마치고 저장해 두는 정보입니다. */
 export interface SignupInfo {
   /** 이름 (실명) */
   name: string
   /** 앱에서 부르는 이름 */
   nickname: string
   email: string
-  /** 다니는 고등학교. 고르지 않았으면 null 입니다. (졸업했거나 목록에 없는 경우) */
+  /** 다니는 고등학교. 고르지 않았으면 null 입니다. (목록에 없는 경우) */
   school: School | null
   consents: SignupConsents
   /** 동의한 시각 (Date.now() 값) */
@@ -212,7 +212,7 @@ export function parseSignupStep(value: string | null): number {
  * 주소를 직접 고쳐서 ?step=3 으로 들어오거나, 새로고침으로 입력이 사라졌을 때 앞 단계로 돌려보내는 데 씁니다.
  *
  *   getMaxSignupStep(false, false) -> 1   (계정 정보를 아직 못 채움)
- *   getMaxSignupStep(true, false)  -> 2   (계정 정보는 채웠고, 만 14세 확인은 아직)
+ *   getMaxSignupStep(true, false)  -> 2   (계정 정보는 채웠고, 고등학생 확인은 아직)
  *   getMaxSignupStep(true, true)   -> 3
  */
 export function getMaxSignupStep(isAccountReady: boolean, isAgeReady: boolean): number {
@@ -226,8 +226,8 @@ export interface SignupForm {
   name: string
   nickname: string
   email: string
-  /** 만 14세 이상인지. 아직 안 골랐으면 null, 네 = true, 아니요 = false */
-  isOver14: boolean | null
+  /** "고등학생이에요 (만 14세 이상)" 에 체크했는지. 서버에는 만 14세 확인(over14)으로 보냅니다. */
+  isOver14: boolean
   consents: SignupConsents
 }
 
@@ -235,7 +235,7 @@ export interface SignupForm {
  * "다음 · 온보딩 시작" 을 누를 수 있는 상태인지 알려줍니다.
  * 세 가지가 모두 맞아야 합니다.
  *  1) 이름·닉네임·이메일이 규칙에 맞는다
- *  2) 만 14세 이상이라고 답했다 (아직 안 골랐으면 null, 아니라고 했으면 false 라서 안 됩니다)
+ *  2) 고등학생(만 14세 이상)이라고 체크했다
  *  3) 필수 동의 둘을 모두 체크했다
  */
 export function canSubmitSignup(form: SignupForm): boolean {
@@ -243,7 +243,7 @@ export function canSubmitSignup(form: SignupForm): boolean {
     getNameError(form.name) === null &&
     getNicknameError(form.nickname) === null &&
     getEmailError(form.email) === null &&
-    form.isOver14 === true &&
+    form.isOver14 &&
     hasRequiredConsents(form.consents)
   )
 }

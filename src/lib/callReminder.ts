@@ -142,12 +142,11 @@ export function isCallTimeInQuietHours(savedTime: unknown, quietHours: QuietHour
 /**
  * 전화가 울려도 화면을 넘기면 안 되는 때인지 확인합니다. (hooks/useCallReminder.ts)
  *  - 집중 모드 중: 전화 화면(/call)은 집중 모드 화면 밖에 있어서, 넘어가면 집중이 깨집니다.
- *  - 글을 쓰는 화면: 일기 · 성찰 일기 · 체크인 · 시험 결과는 화면을 옮기면 쓰던 글이 사라집니다.
+ *  - 글을 쓰는 화면: 시험 결과는 화면을 옮기면 쓰던 글이 사라집니다.
  * 이런 때는 이번 전화를 건너뜁니다. (정해진 시간으로부터 5분 안에 이 화면들을 벗어나면 그때 울립니다)
  *
  *   isBusyForCall('/timer', true)               -> true   (집중 모드 중)
  *   isBusyForCall('/timer', false)              -> false
- *   isBusyForCall('/diary/reflection', false)   -> true   (성찰 일기 쓰는 중)
  *   isBusyForCall('/exams/abc/result', false)   -> true   (시험 결과 쓰는 중)
  *   isBusyForCall('/exams', false)              -> false  (시험 목록은 괜찮음)
  *
@@ -155,12 +154,7 @@ export function isCallTimeInQuietHours(savedTime: unknown, quietHours: QuietHour
  */
 export function isBusyForCall(pathname: string, isFocusModeOn: boolean): boolean {
   if (isFocusModeOn) return true
-  return (
-    pathname === '/diary' ||
-    pathname === '/diary/reflection' ||
-    pathname === '/check' ||
-    /^\/exams\/[^/]+\/result$/.test(pathname)
-  )
+  return /^\/exams\/[^/]+\/result$/.test(pathname)
 }
 
 /** 글자를 적는 칸으로 치는 input 종류들. 체크박스·버튼·색 고르기처럼 글을 적지 않는 것은 뺍니다. */

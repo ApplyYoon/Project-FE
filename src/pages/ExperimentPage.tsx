@@ -15,6 +15,7 @@ import {
   DEFAULT_MIN_GAIN_PP,
   EXPERIMENT_DAYS,
   createExperimentNow,
+  EXPERIMENT_STATUS_LABELS,
   getExperimentDay,
   isJudgeDay,
   judgeExperiment,
@@ -48,13 +49,6 @@ import type { Card as CardModel } from '@/types'
 const LOOKBACK_DAYS = EXPERIMENT_DAYS * 2
 // 그만둘 기준으로 고를 수 있는 값 (%p)
 const GAIN_OPTIONS = [5, 10, 15]
-
-const STATUS_LABELS: Record<Experiment['status'], string> = {
-  running: '진행 중',
-  effective: '효과 있음',
-  noEffect: '효과 없음',
-  unclear: '기록이 모자라 알 수 없음',
-}
 
 /** 숫자(0 ~ 1)를 '62%' 로. 없으면 '–' */
 function percent(rate: number | null | undefined): string {
@@ -176,7 +170,7 @@ export function ExperimentPage() {
               <li key={item.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
                 <p className="font-medium text-slate-900">{findStrategy(item.strategyId)?.rule}</p>
                 <p className="text-slate-600">
-                  {STATUS_LABELS[item.status]} · 실행률 {percent(item.baselineRate)} →{' '}
+                  {EXPERIMENT_STATUS_LABELS[item.status]} · 실행률 {percent(item.baselineRate)} →{' '}
                   {percent(item.experimentRate)}
                 </p>
               </li>

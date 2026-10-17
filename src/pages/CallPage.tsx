@@ -114,10 +114,11 @@ export function CallPage() {
           </section>
 
           {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
-          {/* 권한을 바꾸기 전에는 "다시 시도" 가 소용없어서, 바로 할 수 있는 체크인을 첫 번째(진한) 버튼으로 둡니다. (#460) */}
+          {/* 권한을 바꾸기 전에는 "다시 시도" 가 소용없어서, 바로 할 수 있는 채팅을 첫 번째(진한) 버튼으로 둡니다. (#460) */}
+          {/* 채팅은 통화와 같은 대본을 글로 합니다. (최종 기획서 「4.5」 "통화를 못 받았을 때 같은 대본을 채팅으로") */}
           <div className="mt-auto flex w-full flex-col gap-3 pt-10">
-            <Button size="lg" className="w-full" onClick={() => navigate('/check')}>
-              말 대신 체크인 화면으로
+            <Button size="lg" className="w-full" onClick={() => navigate('/counsel/chat')}>
+              말 대신 채팅으로 하기
             </Button>
             <Button
               size="lg"

@@ -1,7 +1,6 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { Card } from '@/components/ui/Card'
@@ -11,7 +10,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
-import { useCalendarConnect } from '@/hooks/useCalendarConnect'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { logoutOnServer } from '@/lib/accountApi'
@@ -32,15 +30,10 @@ import {
   parseCallTime,
 } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
-import { getTodayKey } from '@/lib/date'
 import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
 import { helpLines, SUPPORT_PATH } from '@/lib/helpLines'
-import { loadInitialPlan } from '@/lib/initialPlan'
-import { getUnansweredSteps, loadOnboardingAnswers } from '@/lib/onboardingSteps'
-import { parseSubjectLevels } from '@/lib/subjectLevel'
-import { PHONE_FOCUS_PATH } from '@/lib/phoneFocus'
 import {
   getCareLimits,
   setAllowFocusMode,
@@ -69,7 +62,6 @@ import {
   turnOnWebPush,
   type WebPushStatus,
 } from '@/lib/webPush'
-import { busyTimesQuery, type CalendarStatus } from '@/lib/googleCalendar'
 import { loadSignupProfile } from '@/lib/signup'
 import {
   AUTO_SETTING_ROWS,
@@ -91,20 +83,12 @@ import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
 import { loadVoicePledge, removeVoicePledge } from '@/lib/voicePledge'
 
-// 일기 기능을 켰는지 끄는 설정입니다. 기록이 아니라 설정값이라 "모든 기록 지우기" 로는 안 지워집니다.
-const DIARY_ENABLED_KEY = 'diary-enabled'
-
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
-  diary: {
-    question: '일기를 모두 지울까요?',
-    detail: '쓴 일기가 전부 사라져요.',
-    done: '일기를 모두 지웠어요.',
-  },
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 주간 회고, 개선안, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
+      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
@@ -167,7 +151,6 @@ export function SettingsPage() {
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
-  const [initialPlan] = useState(loadInitialPlan)
   // 처음의 다짐(목소리·글). 없으면 null 입니다. 여기서 지울 수 있어서 바꿀 수 있는 상태로 둡니다. (#241)
   const [voicePledge, setVoicePledge] = useState(loadVoicePledge)
 
@@ -175,8 +158,6 @@ export function SettingsPage() {
     // 정말 지워졌을 때만 화면에서도 없앱니다.
     if (removeVoicePledge()) setVoicePledge(null)
   }
-  // 온보딩 답. "내 정보 더 알려주기" 에서 남은 질문 수를 세는 데 씁니다. (#239)
-  const [onboardingAnswers] = useState(loadOnboardingAnswers)
 
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
@@ -220,13 +201,6 @@ export function SettingsPage() {
     })
     setIsTestNotificationShown(isShown)
   }
-
-  // 일기 기능을 켰는지. 켜면 기록 화면에 일기 메뉴가 보입니다. (기본은 꺼짐 — #63 "원할 때만 켜는 기능")
-  const [isDiaryEnabled, setIsDiaryEnabled] = useState(() => loadData(DIARY_ENABLED_KEY, false))
-
-  useEffect(() => {
-    saveData(DIARY_ENABLED_KEY, isDiaryEnabled)
-  }, [isDiaryEnabled])
 
   function handleChangeMessageSettings(next: MessageSettings) {
     setMessageSettings(next)
@@ -273,17 +247,7 @@ export function SettingsPage() {
     setVoicePledge(loadVoicePledge())
   }
 
-  // 온보딩에서 미뤄 둔 질문이 몇 개 남았는지 셉니다. 설문을 한 번도 안 했으면 답이 null 입니다. (#239)
-  const remainingCount =
-    onboardingAnswers === null ? 0 : getUnansweredSteps(onboardingAnswers).length
-  // 과목별 성적·자신감을 알려 준 과목 수 (#88). 아직 이 질문에 답하지 않았으면 null, 건너뛰었으면 0 입니다.
-  const subjectLevelCount =
-    onboardingAnswers !== null && 'subjectLevels' in onboardingAnswers
-      ? parseSubjectLevels(onboardingAnswers.subjectLevels).length
-      : null
   // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스. h-10 으로 누르는 높이를 40px 로 둡니다.
-  const moreLinkClass =
-    'bg-brand hover:bg-brand-dark mt-3 inline-flex h-10 items-center rounded-lg px-4 text-sm font-medium text-white transition-colors'
   const secondaryLinkClass =
     'mt-3 inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50'
 
@@ -346,80 +310,10 @@ export function SettingsPage() {
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 왼쪽은 관리 강도 한도, 오른쪽은 내 데이터 등 그 밖의 설정입니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
-          {/* 온보딩에서 미뤄 둔 질문을 여기서 이어서 답합니다. (#239) */}
-          <Card title="내 정보와 처음의 나">
-            <h4 className="text-sm font-semibold text-slate-900">내 정보 더 알려주기</h4>
-            {onboardingAnswers === null ? (
-              <>
-                <p className="mt-1 text-sm break-keep text-slate-500">
-                  아직 처음 질문에 답하지 않았어요. 질문 몇 개면 끝나요.
-                </p>
-                <Link to="/onboarding" className={moreLinkClass}>
-                  처음 질문 답하기
-                </Link>
-              </>
-            ) : remainingCount > 0 ? (
-              <>
-                <p className="mt-1 text-sm break-keep text-slate-500">
-                  남은 질문 {remainingCount}개 · 안 해도 앱은 그대로 쓸 수 있어요
-                </p>
-                <Link to="/onboarding/more" className={moreLinkClass}>
-                  이어서 답하기
-                </Link>
-              </>
-            ) : (
-              <p className="mt-1 text-sm break-keep text-slate-500">
-                질문에 다 답했어요. 알려준 만큼 더 잘 맞춰 줄게요.
-              </p>
-            )}
-
-            {/*
-              과목별 성적·자신감 (#88). "남은 질문" 에서는 한 번 답하거나 건너뛰면 빠져서 다시 답할 길이 없었습니다.
-              여기서 언제든 다시 알려 주거나 고칠 수 있게 합니다. (온보딩 화면이 ?only=subjectLevels 로 이 질문 하나만 보여 줍니다)
-            */}
-            {onboardingAnswers !== null && (
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <h4 className="text-sm font-semibold text-slate-900">과목별 성적·자신감</h4>
-                <p className="mt-1 text-sm break-keep text-slate-500">
-                  {subjectLevelCount === null
-                    ? '아직 알려 주지 않았어요. 과목마다 최근 성적과 자신감을 알려 주면 공부 시간을 더 잘 맞춰 줘요.'
-                    : subjectLevelCount === 0
-                      ? '건너뛰었어요. 알려 주고 싶을 때 언제든 알려 줄 수 있어요.'
-                      : `과목 ${subjectLevelCount}개를 알려 줬어요.`}
-                </p>
-                <Link to="/onboarding/more?only=subjectLevels" className={secondaryLinkClass}>
-                  {subjectLevelCount !== null && subjectLevelCount > 0 ? '고치기' : '알려 주기'}
-                </Link>
-              </div>
-            )}
-
-            {/* 처음 계획: 온보딩 마지막에 한 약속. 여기서 누를 때만 다시 세울 수 있습니다. (#240) */}
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <h4 className="text-sm font-semibold text-slate-900">처음 계획</h4>
-              {initialPlan === null ? (
-                <>
-                  <p className="mt-1 text-sm break-keep text-slate-500">
-                    아직 처음 계획을 세우지 않았어요.
-                  </p>
-                  <Link to="/onboarding/plan" className={secondaryLinkClass}>
-                    처음 계획 세우기
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p className="mt-1 text-sm break-keep text-slate-500">
-                    하루 {initialPlan.dailyMinutes / 60}시간 · 주 {initialPlan.daysPerWeek}일 ·{' '}
-                    {initialPlan.createdDate} 에 세움
-                  </p>
-                  <Link to="/onboarding/plan?redo=1" className={secondaryLinkClass}>
-                    다시 세우기
-                  </Link>
-                </>
-              )}
-            </div>
-
+          {/* 처음의 다짐 (#241). "내 정보 더 알려주기" · 과목별 성적 · 처음 계획은 최종 기획서에 없어서 #417 에서 지웠습니다. */}
+          <Card title="처음의 나">
             {/* 처음의 다짐: 내 목소리와 글 한마디. 이 기기에만 저장됩니다. (#241) */}
-            <div className="mt-4 border-t border-slate-100 pt-4">
+            <div>
               <h4 className="text-sm font-semibold text-slate-900">처음의 다짐</h4>
               {voicePledge === null ? (
                 <>
@@ -543,26 +437,6 @@ export function SettingsPage() {
               </label>
             </div>
           </Card>
-
-          {/* 웹은 다른 앱을 못 잠가서, 휴대폰 기본 기능으로 직접 잠그는 법을 안내합니다. (#106) */}
-          <Card title="휴대폰 집중 모드">
-            <p className="text-sm text-slate-500">
-              공부 시간에 SNS 앱을 잠그고 싶다면, 휴대폰의 스크린 타임·집중 모드를 켜는 법을
-              알려줄게요.
-            </p>
-            {/* 집중 모드 잠금(강제적 채찍)을 허용한 사람에게는 이 안내를 한 번 더 권합니다. */}
-            {limits.allowFocusMode && (
-              <p className="mt-2 text-sm font-medium text-slate-700">
-                집중 모드 잠금을 허용했어요. 휴대폰에서도 SNS 앱을 같이 잠가 두면 더 잘 지켜져요.
-              </p>
-            )}
-            <Link
-              to={PHONE_FOCUS_PATH}
-              className="text-brand mt-2 inline-flex h-11 items-center text-sm font-medium underline"
-            >
-              휴대폰 집중 모드 켜는 법 보기
-            </Link>
-          </Card>
         </div>
 
         <div className="flex flex-col gap-6">
@@ -612,33 +486,6 @@ export function SettingsPage() {
                 value={messageSettings}
                 onChange={handleChangeMessageSettings}
               />
-            </div>
-          </Card>
-
-          <Card title="일기 쓰기">
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-slate-500">
-                원할 때만 쓰는 자유 일기예요. 켜면 기록 화면에 일기 메뉴가 보여요.
-              </p>
-
-              <div className="flex gap-3">
-                <Button
-                  variant={isDiaryEnabled ? 'primary' : 'secondary'}
-                  aria-pressed={isDiaryEnabled}
-                  className="h-11 flex-1"
-                  onClick={() => setIsDiaryEnabled(true)}
-                >
-                  켜기
-                </Button>
-                <Button
-                  variant={!isDiaryEnabled ? 'primary' : 'secondary'}
-                  aria-pressed={!isDiaryEnabled}
-                  className="h-11 flex-1"
-                  onClick={() => setIsDiaryEnabled(false)}
-                >
-                  끄기
-                </Button>
-              </div>
             </div>
           </Card>
 
@@ -697,25 +544,12 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card title="구글 캘린더">
-            <GoogleCalendarSection />
-          </Card>
-
           <Card title="내 데이터 관리">
             <div className="flex flex-col gap-4">
-              <p className="text-sm text-slate-500">
-                일기 원문은 나만 볼 수 있어요. 지우면 되돌릴 수 없어요.
-              </p>
+              <p className="text-sm text-slate-500">지우면 되돌릴 수 없어요.</p>
 
               {/* 모바일은 세로로 쌓고, sm 부터 가로로 나란히. 누르는 곳은 최소 40px(h-11 = 44px) */}
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  variant="secondary"
-                  className="h-11 w-full sm:flex-1"
-                  onClick={() => setPendingKind('diary')}
-                >
-                  일기만 지우기
-                </Button>
                 <Button
                   variant="danger"
                   className="h-11 w-full sm:flex-1"
@@ -996,32 +830,12 @@ function SettingsFromTextSection({ current, onApply }: SettingsFromTextSectionPr
           지금은 AI 가 답하지 못했어요. 잠시 뒤 다시 하거나 아래에서 직접 바꿔 주세요.
         </p>
       )}
+      {/* 위기 표현이 있으면 도움 연결 안내는 다른 AI 도우미와 같은 팝업(AiHelpListener)으로 뜹니다. 여기에는 한 줄만 남깁니다. */}
       {result?.kind === 'help' && (
-        <div className="flex flex-col gap-2">
-          <p className="text-sm break-keep text-slate-900">
-            많이 힘들어 보여요. 혼자 버티지 말고 바로 이야기해 주세요.
-          </p>
-          <ul className="flex flex-col gap-2">
-            {helpLines.map((line) => (
-              <li key={line.number}>
-                <a
-                  href={`tel:${line.number}`}
-                  aria-label={`${line.name} ${line.number} 전화 걸기`}
-                  className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 hover:bg-slate-100"
-                >
-                  <span className="font-semibold text-slate-900">{line.name}</span>
-                  <span className="text-brand text-xl font-bold">{line.number}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-          <Link
-            to={SUPPORT_PATH}
-            className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
-          >
-            도움 안내 화면 보기
-          </Link>
-        </div>
+        <p role="status" className="text-sm break-keep text-slate-600">
+          설정은 그대로 두었어요. 힘들 때는 아래 &quot;힘들 때 도움받기&quot; 에서 바로 전화할 수
+          있어요.
+        </p>
       )}
 
       {appliedSummary !== '' && (
@@ -1244,97 +1058,6 @@ function WebPushSection() {
             : '알림 설정을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.'
           : ''}
       </p>
-    </div>
-  )
-}
-
-// 연결 상태마다 보여 줄 안내 문장
-const calendarMessages: Record<CalendarStatus, string> = {
-  unavailable: '아직 준비 중이에요.',
-  off: '연결하면 학원·약속처럼 구글 캘린더에 있는 일정과 공부 계획이 겹치지 않게 도와줘요. 일정 제목은 가져오지 않고, 바쁜 시간만 봐요.',
-  expired: '연결이 끝났어요. 구글이 한 시간마다 다시 확인해서, 다시 연결을 한 번 눌러 주세요.',
-  on: '연결됐어요.',
-}
-
-/** 바쁜 시간 한 칸을 "15:00 ~ 16:30" 으로 보여 줍니다. */
-function formatBusyTime(start: number, end: number): string {
-  const toClock = (time: number) =>
-    new Date(time).toLocaleTimeString('ko-KR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-  return `${toClock(start)} ~ ${toClock(end)}`
-}
-
-/** 오늘 구글 캘린더의 바쁜 시간. 연결이 잘 됐는지 눈으로 확인하는 곳입니다. (AsyncBoundary 안에서 씁니다) */
-function TodayBusyTimes() {
-  const { data: busyTimes } = useSuspenseQuery(busyTimesQuery(getTodayKey()))
-
-  if (busyTimes.length === 0) {
-    return <p className="text-sm text-slate-500">오늘 구글 캘린더에 시간이 정해진 일정이 없어요.</p>
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="text-sm text-slate-500">오늘 구글 캘린더의 바쁜 시간 {busyTimes.length}개</p>
-      <ul className="flex flex-wrap gap-2">
-        {busyTimes.map((busy) => (
-          <li
-            key={`${busy.start}-${busy.end}`}
-            className="rounded bg-slate-100 px-2 py-1 text-sm text-slate-700 tabular-nums"
-          >
-            {formatBusyTime(busy.start, busy.end)}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-/**
- * 구글 캘린더 연결 · 끊기. (lib/googleCalendar.ts, #314)
- * 로그인은 이메일로 하고, 구글에서는 캘린더 권한만 받습니다.
- */
-function GoogleCalendarSection() {
-  // 연결 상태와 연결 · 끊기 (계획 화면과 같이 쓰는 훅, hooks/useCalendarConnect.ts)
-  const { status, isReady, isConnecting, errorMessage, connect, disconnect } = useCalendarConnect()
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm break-keep text-slate-500">{calendarMessages[status]}</p>
-
-      {status === 'on' && (
-        <AsyncBoundary
-          pendingFallback={<Skeleton className="h-12 w-full" />}
-          errorMessage="구글 캘린더를 읽지 못했어요. 연결 끊기를 누른 뒤 다시 연결해 주세요."
-        >
-          <TodayBusyTimes />
-        </AsyncBoundary>
-      )}
-
-      {/* 모바일은 세로로 쌓고, sm 부터 가로로 나란히. 누르는 곳은 최소 40px(h-11 = 44px) */}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        {(status === 'off' || status === 'expired') && (
-          <Button
-            className="h-11 w-full sm:w-auto"
-            disabled={isConnecting || !isReady}
-            onClick={connect}
-          >
-            {isConnecting ? '연결하는 중…' : status === 'off' ? '구글 캘린더 연결' : '다시 연결'}
-          </Button>
-        )}
-        {(status === 'on' || status === 'expired') && (
-          <Button variant="secondary" className="h-11 w-full sm:w-auto" onClick={disconnect}>
-            연결 끊기
-          </Button>
-        )}
-      </div>
-
-      {errorMessage && (
-        <p role="status" className="text-sm break-keep text-red-700">
-          {errorMessage}
-        </p>
-      )}
     </div>
   )
 }

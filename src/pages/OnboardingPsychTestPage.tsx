@@ -1,4 +1,7 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
+import { useAuth } from '@/hooks/useAuth'
+import { isServerDataToken } from '@/lib/dataMode'
+import { sendPsychTest } from '@/lib/psychTestApi'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
@@ -20,7 +23,7 @@ import {
   type ScaleLevel,
 } from '@/lib/psychTest'
 import { loadData, removeData, saveData } from '@/lib/storage'
-import { likertLabels } from '@/lib/thinkingTest'
+import { likertLabels } from '@/lib/likert'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
@@ -39,14 +42,15 @@ function loadDraft(): Record<string, number> {
 }
 
 /**
- * 온보딩 심리검사 화면입니다. 문장 14개에 7점 척도로 답하면 성향 척도 7개의 높낮이를 보여 줍니다.
+ * 온보딩 심리검사 화면입니다. 문장 35개에 7점 척도로 답하면 성향 척도 7개의 높낮이를 보여 줍니다.
  * (문항·채점: lib/psychTest.ts)
  *
- * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 14 · result) 뒤로 가기를 누르면 앞 단계로 갑니다.
- * 온보딩에서는 학년 다음, 생각 습관 테스트 앞에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
+ * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 35 · result) 뒤로 가기를 누르면 앞 단계로 갑니다.
+ * 온보딩에서는 학년 다음, 자기 인식 4문항 앞에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
  */
 export function OnboardingPsychTestPage() {
   const navigate = useNavigate()
+  const { token } = useAuth()
   const [step, setStep] = useQueryParam('step', 'intro')
   const [answers, setAnswers] = useState<Record<string, number>>(loadDraft)
   const total = psychTestItems.length
@@ -72,6 +76,8 @@ export function OnboardingPsychTestPage() {
     // 마지막 문장까지 답했으면 결과를 저장하고 임시 답은 지웁니다.
     if (isPsychTestComplete(nextAnswers)) {
       savePsychTest(nextAnswers)
+      // 진짜 로그인이면 서버에도 보냅니다. 못 보내면 다음에 앱을 열 때 다시 보냅니다. (hooks/usePsychTestSync.ts)
+      if (isServerDataToken(token)) void sendPsychTest().catch(() => undefined)
       removeData(DRAFT_KEY)
       setStep('result')
     }
@@ -83,7 +89,7 @@ export function OnboardingPsychTestPage() {
     if (saved === undefined) return <Navigate to={PSYCH_TEST_PATH} replace />
     return (
       <PlainLayout headerAction={exitAction}>
-        {/* 온보딩 중이면 다음 단계(생각 습관 테스트)로, 아니면 홈으로 갑니다. (순서: lib/onboardingProgress.ts) */}
+        {/* 온보딩 중이면 다음 단계로, 아니면 홈으로 갑니다. (순서: lib/onboardingProgress.ts) */}
         <PsychTestResultView
           result={saved}
           onNext={() => navigate(getOnboardingResumePath() ?? '/')}
@@ -204,7 +210,7 @@ function PsychTestIntro({ total, onStart }: PsychTestIntroProps) {
             · 문장 {total}개가 나와요. 나와 얼마나 비슷한지 1(전혀 아니다) ~ 7(매우 그렇다)로 골라
             줘.
           </li>
-          <li>· 2분쯤 걸려요. 정답은 없어요.</li>
+          <li>· 4분쯤 걸려요. 정답은 없어요. 중간에 나가도 이어서 할 수 있어요.</li>
           <li>· 2주 동안 실제 기록이 쌓이면 이 답 대신 기록으로 다시 맞춰요.</li>
         </ul>
       </Card>

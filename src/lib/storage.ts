@@ -83,7 +83,7 @@ export function removeData(key: string): boolean {
  * `.map` · `.filter` 에서 에러가 나서 화면 전체가 멈춥니다. 목록을 읽을 때는 이 함수를 쓰세요.
  *
  * 사용 예:
- *   const checks = loadList<SuggestionCheck>('suggestion-checks')
+ *   const goals = loadList<Goal>('goals')
  */
 export function loadList<T>(key: string, fallback: T[] = []): T[] {
   const saved = loadData<unknown>(key, fallback)

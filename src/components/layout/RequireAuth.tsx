@@ -1,5 +1,7 @@
+import { ConsentRequiredListener } from '@/components/layout/ConsentRequiredListener'
 import { useAuth } from '@/hooks/useAuth'
 import { isPublicPath, type LoginRedirectState } from '@/lib/authRedirect'
+import { CONSENT_PATH } from '@/lib/consentApi'
 import {
   ONBOARDING_RESUME_PATH,
   getOnboardingResumePath,
@@ -21,10 +23,11 @@ interface RequireAuthProps {
  *   로그인 없이 열리는 주소     -> 로그인·회원가입·도움 연결 안내는 그대로 보여줍니다. (lib/authRedirect.ts 의 PUBLIC_PATHS)
  *   로그인 안 했다             -> /login 으로 보냅니다. 가려던 주소도 같이 넘겨서, 로그인하면 거기로 돌아가게 합니다.
  *   로그인했지만 가입을 안 마쳤다 -> /signup 으로 보냅니다. 가입을 건너뛰고 앱에 들어갈 수 없습니다. (테스트 로그인은 예외)
- *   온보딩을 안 끝냈다          -> 끝나지 않은 첫 단계로 보냅니다. (다짐 → 질문 → 생각 습관 테스트 → 처음 계획)
+ *   온보딩을 안 끝냈다          -> 끝나지 않은 첫 단계로 보냅니다. (lib/onboardingProgress.ts 의 STAGES 순서)
  *                                 로고·홈을 눌러도 하던 자리로 돌아옵니다. 테스트 로그인도 똑같습니다.
  *                                 하다 만 사람이 다음에 들어오면 "이어하기 / 처음부터 다시" 를 먼저 고르게 합니다.
  *   로그인했고 온보딩도 마쳤다   -> 감싼 화면을 그대로 보여줍니다.
+ *                                 저장이 "다시 동의가 필요하다(403)" 로 막히면 다시 동의 화면(/consent)으로 보냅니다. (ConsentRequiredListener)
  *
  * "막을 주소" 가 아니라 "열어 줄 주소" 를 적어 두는 방식이라, 새 페이지를 만들어도 따로 할 일이 없습니다.
  * (깜빡하고 안 적어도 막히는 쪽이 안전합니다)
@@ -63,14 +66,17 @@ export function RequireAuth({ children }: RequireAuthProps) {
     return <Navigate to="/signup" replace />
   }
 
-  // 온보딩(앱 소개 → 학년 → 심리검사 → 생각 습관 테스트 → 자기 인식 4문항 → 관리 설정 → 결과)을 다 끝내야 앱의 다른 화면을 열어 줍니다.
+  // 온보딩(앱 소개 → 학년 → 심리검사 → 자기 인식 4문항 → 관리 설정 → 결과)을 다 끝내야 앱의 다른 화면을 열어 줍니다.
   // 끝나지 않았으면 끝나지 않은 첫 단계로 보냅니다. 그래서 로고나 홈을 눌러도 하던 자리로 돌아옵니다. (lib/onboardingProgress.ts)
   // 테스트 로그인도 똑같이 거칩니다. 시연에서도 진짜 가입과 같은 흐름을 보여 주기 위해서입니다. (2026-10-17)
   // 온보딩 화면(/onboarding…)은 그 단계들 자체라 막지 않습니다.
   // 설정(/settings…)도 막지 않습니다. 로그아웃·탈퇴는 언제나 할 수 있어야 하기 때문입니다.
+  // 다시 동의 화면(/consent)도 막지 않습니다. 온보딩 중의 저장도 동의가 필요하면 막히기 때문입니다. (#512)
   // (도움 연결 안내 /support 는 RequireAuth 로 감싸지 않아서 처음부터 막히지 않습니다)
   const isOnboardingFreePath =
-    location.pathname.startsWith('/onboarding') || location.pathname.startsWith('/settings')
+    location.pathname.startsWith('/onboarding') ||
+    location.pathname.startsWith('/settings') ||
+    location.pathname === CONSENT_PATH
   const resumePath = getOnboardingResumePath()
   if (resumePath !== null && !isOnboardingFreePath) {
     // 하다 만 게 있고 이번 접속에서 아직 안 물었으면(= 다음에 다시 들어왔으면) 이어서 할지 먼저 고르게 합니다.
@@ -80,5 +86,10 @@ export function RequireAuth({ children }: RequireAuthProps) {
     return <Navigate to={resumePath} replace />
   }
 
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      <ConsentRequiredListener />
+    </>
+  )
 }

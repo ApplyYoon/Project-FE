@@ -20,6 +20,7 @@ const DIARY_KEYS = ['diary', 'reflection-entries', 'diary-draft']
  *   routines    루틴(요일마다 반복되는 계획의 틀). 과목처럼 내가 정한 설정이라 남깁니다. (#236)
  *   planner-view  계획 화면을 목록으로 볼지 플래너로 볼지 고른 값. 이것도 설정이라 남깁니다. (#237)
  *   timer-mode, timer-target  고른 타이머 방식(목표 정하기·뽀모도로·목표 없이)과 목표 시간. 이것도 설정입니다.
+ *   (initial-plan · routines · planner-view · timer-mode · timer-target 을 쓰던 화면은 #417 에서 지웠습니다. 옛 값이 남아도 읽지 않습니다)
  *   onboarding-draft  온보딩 설문을 끝내기 전에 고르던 답(임시). 설문을 끝내면 스스로 지워집니다. 아래 onboarding-answers 와 같은 이유로 남깁니다.
  *   onboarding-answers  온보딩 설문 답. 기록이 아니라 내 정보이고, 지우면 설문을 처음부터 다시 하게 되어서 남깁니다.
  *   signup-info  가입 때 정한 닉네임과 동의 내역. 기록이 아니라 계정 정보이고, 동의한 기록은 남겨 두어야 해서 남깁니다.
@@ -55,7 +56,7 @@ const RECORD_KEYS = [
   'routine-filled',
   // 타이머가 재고 있던 계획 (timer-subject 와 같이 지웁니다)
   'timer-plan',
-  // 매일 체크인(기분 · 컨디션 · 약속 · 못 채운 이유)과 주간 회고
+  // 매일 체크인(기분 · 컨디션 · 못 채운 이유)과 옛 주간 회고(#417 에서 지움 — 남아 있는 옛 기록도 지우려고 목록에 둡니다)
   'checkins',
   // 서버로 아직 못 보낸 체크인의 날짜들 (#321). 체크인을 지우면 보낼 것도 없습니다.
   // ⚠️ 서버에 이미 보낸 체크인은 이 버튼으로 지워지지 않습니다. (서버 기록은 탈퇴할 때 지워집니다)
@@ -82,8 +83,8 @@ const RECORD_KEYS = [
   ...DIARY_KEYS,
 ]
 
-/** diary: 일기만 / all: 모든 기록 */
-export type DeleteKind = 'diary' | 'all'
+/** all: 모든 기록 (일기만 지우기는 일기 기능과 함께 #417 에서 지웠습니다. 옛 일기는 모든 기록 지우기로 같이 지워집니다) */
+export type DeleteKind = 'all'
 
 export interface DeleteResult {
   /** 전부 실제로 사라졌으면 true */
@@ -95,10 +96,11 @@ export interface DeleteResult {
 /**
  * 내 데이터를 지우고, 정말 사라졌는지 확인한 결과를 돌려줍니다.
  *
- *   const { isSuccess } = deleteMyData('diary')
+ *   const { isSuccess } = deleteMyData('all')
  */
 export function deleteMyData(kind: DeleteKind): DeleteResult {
-  const keys = kind === 'diary' ? DIARY_KEYS : RECORD_KEYS
+  // 지금은 '모든 기록' 한 가지뿐입니다. (kind 는 나중에 종류가 늘 때를 위해 남겨 둡니다)
+  const keys = kind === 'all' ? RECORD_KEYS : []
 
   // 하나가 실패해도 나머지는 계속 지웁니다. (일부만 지워진 채로 멈추지 않게)
   const failedKeys = keys.filter((key) => !removeData(key))

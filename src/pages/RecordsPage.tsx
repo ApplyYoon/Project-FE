@@ -1,7 +1,7 @@
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -47,7 +47,6 @@ import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { loadData, loadRecord } from '@/lib/storage'
 import { thinkingHabitsQuery } from '@/lib/thinkingHabits'
-import { THINKING_TEST_PATH, hasThinkingTest } from '@/lib/thinkingTest'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
 import type { CareLevel, CheckIn, EmotionTag, StudyPlan, StudySession, Subject } from '@/types'
 
@@ -97,8 +96,6 @@ function SubjectTag({ subject }: SubjectTagProps) {
 
 export function RecordsPage() {
   const navigate = useNavigate()
-  // 설정 화면에서 켠 사람에게만 일기 메뉴를 보여줍니다. (#63)
-  const isDiaryEnabled = loadData('diary-enabled', false)
 
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
@@ -147,15 +144,6 @@ export function RecordsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">기록·통계</h1>
-
-      {isDiaryEnabled && (
-        <Card title="일기">
-          <p className="text-sm text-slate-600">원할 때만 쓰는 자유 일기예요.</p>
-          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/diary')}>
-            일기 쓰러 가기
-          </Button>
-        </Card>
-      )}
 
       {/* 최근 4주 실행률 · 최근 7일 막대그래프 · 주간 리포트 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       {/* items-start: 높이가 다른 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
@@ -295,17 +283,6 @@ export function RecordsPage() {
         >
           <ThinkingHabitList />
         </AsyncBoundary>
-        {/* 가입 때 한 생각 습관 테스트. 했으면 결과를, 안 했으면 테스트를 엽니다. 통화에서 보인 것과 비교해 볼 수 있습니다. */}
-        <Link
-          to={
-            hasThinkingTest()
-              ? `${THINKING_TEST_PATH}?step=result&from=records`
-              : `${THINKING_TEST_PATH}?from=records`
-          }
-          className="text-brand mt-4 inline-flex h-10 items-center text-sm font-medium underline"
-        >
-          {hasThinkingTest() ? '처음 한 생각 습관 테스트 결과 보기' : '생각 습관 테스트 해 보기'}
-        </Link>
       </Card>
     </div>
   )
@@ -438,9 +415,6 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
                 <span className="text-sm font-semibold break-words text-slate-900">
                   {summary.headline}
                 </span>
-                {summary.promise && (
-                  <span className="text-brand text-sm break-words">약속: {summary.promise}</span>
-                )}
               </button>
             </li>
           ))}
@@ -468,11 +442,6 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
             <CareBadge level={selected.careLevel} />
             <SummaryRow label="어제 요약" value={selected.headline} />
             <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
-            <SummaryRow
-              label="오늘 예상 순공시간"
-              value={formatMinutes(selected.expectedMinutes)}
-            />
-            <SummaryRow label="오늘의 약속" value={selected.promise} emptyText="정하지 않았어요" />
             <SummaryRow label="AI 한마디" value={selected.aiComment} emptyText="아직 없어요" />
           </dl>
         )}

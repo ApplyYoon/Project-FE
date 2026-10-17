@@ -77,7 +77,7 @@ export interface GoogleSignupInput {
   /** 고른 고등학교. 안 골랐으면 null */
   school: School | null
   consents: SignupConsents
-  /** 만 14세 이상이라고 확인했는지. 가입 화면에서 "네" 를 골랐을 때만 true 이고, true 가 아니면 서버가 가입을 거절합니다 */
+  /** 만 14세 이상이라고 확인했는지. 가입 화면에서 "고등학생이에요 (만 14세 이상)" 에 체크했을 때만 true 이고, true 가 아니면 서버가 가입을 거절합니다 */
   isOver14: boolean
 }
 

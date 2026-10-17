@@ -1,3 +1,4 @@
+import { AI_SHOW_HELP_EVENT } from '@/lib/aiCardApi'
 import { ApiError, api } from '@/lib/api'
 import { isServerDataMode } from '@/lib/dataMode'
 import { DAILY_COUNT_OPTIONS, type MessageSettings } from '@/lib/messageSettings'
@@ -35,7 +36,7 @@ export interface SettingsProposal {
  * 서버에 물어본 결과
  *   proposal: 변경안을 받음
  *   none:     바꿀 칸이 없음 · 말로는 못 바꾸는 부탁 · AI 가 꺼졌거나 하루 한도
- *   help:     부탁에 위기 표현이 있어서 AI 를 쓰지 않음 → 도움 안내를 먼저 보여 줍니다
+ *   help:     부탁에 위기 표현이 있어서 AI 를 쓰지 않음 → 다른 AI 도우미와 같은 도움 연결 안내를 띄웁니다
  *   failed:   연결이 안 되거나 서버가 실패함
  */
 export type SettingsFromTextResult =
@@ -85,7 +86,11 @@ export async function requestSettingsFromText(text: string): Promise<SettingsFro
       string,
       unknown
     >
-    if (record.showHelp === true) return { kind: 'help' }
+    if (record.showHelp === true) {
+      // 어느 화면에서든 같은 도움 연결 안내(components/layout/AiHelpListener)가 뜨게 알립니다.
+      window.dispatchEvent(new Event(AI_SHOW_HELP_EVENT))
+      return { kind: 'help' }
+    }
     const proposal = readProposal(record.proposal)
     return proposal ? { kind: 'proposal', proposal } : { kind: 'none' }
   } catch (error) {
