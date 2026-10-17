@@ -34,16 +34,20 @@ export function OnboardingVoicePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const isFromSettings = searchParams.get('from') === 'settings'
-  // 끝나고 갈 곳: 설정에서 왔으면 설정, 온보딩 중이면 홈 (홈에서 RequireAuth 가 다음 단계로 보냅니다)
-  const exitPath = isFromSettings ? '/settings' : '/'
+  // 첫 목표를 만든 뒤에 오면 ?from=goal (#391, 최종 기획서 「4.7」 — 다짐은 첫 목표 때 남깁니다)
+  const isFromGoal = searchParams.get('from') === 'goal'
+  // 끝나고 갈 곳: 설정에서 왔으면 설정, 목표에서 왔으면 카드, 온보딩 중이면 홈 (홈에서 RequireAuth 가 다음 단계로 보냅니다)
+  const exitPath = isFromSettings ? '/settings' : isFromGoal ? '/cards' : '/'
+  // 온보딩 중이 아니라 다른 화면에서 들어왔는지
+  const isOutsideOnboarding = isFromSettings || isFromGoal
 
   // 이 화면을 한 번 보여줬다고 적어 둡니다. 건너뛰어도 다시 띄우지 않기 위해서입니다.
   // 이번 접속에서 온보딩을 시작했다는 것도 적어 둡니다. 그래야 다음 단계로 갈 때 "이어하기" 를 묻지 않습니다.
-  // (설정에서 "다시 남기기" 로 온 경우는 온보딩이 아니라서 적지 않습니다)
+  // (설정에서 "다시 남기기" 로 왔거나 첫 목표 뒤에 온 경우는 온보딩이 아니라서 적지 않습니다)
   useEffect(() => {
     markPledgeSeen()
-    if (!isFromSettings) markResumeAsked()
-  }, [isFromSettings])
+    if (!isOutsideOnboarding) markResumeAsked()
+  }, [isOutsideOnboarding])
 
   // 전에 남긴 다짐이 있으면 그것으로 시작합니다. (설정에서 다시 들어온 경우)
   const [savedPledge] = useState(loadVoicePledge)
@@ -99,11 +103,12 @@ export function OnboardingVoicePage() {
     >
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
         <div>
-          <p className="text-brand text-sm font-semibold">처음의 나</p>
+          <p className="text-brand text-sm font-semibold">{isFromGoal ? '첫 목표' : '처음의 나'}</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight break-keep sm:text-3xl">
-            처음의 나에게 한마디 남길래?
+            {isFromGoal ? '첫 목표의 다짐을 남길래?' : '처음의 나에게 한마디 남길래?'}
           </h1>
           <p className="mt-2 break-keep text-slate-600">
+            {isFromGoal && '다짐 한 문장을 소리 내어 다섯 번 말해 보세요. '}
             그만두고 싶어질 때, 지금의 내 목소리를 다시 들려줄게요.{' '}
             {formatSeconds(MAX_RECORD_SECONDS)}까지 녹음돼요.
           </p>
@@ -196,7 +201,7 @@ export function OnboardingVoicePage() {
             {isFromSettings ? '취소' : '건너뛰기'}
           </Button>
           <Button size="lg" className="min-w-0 flex-1" disabled={!canSave} onClick={handleSave}>
-            {isFromSettings ? '저장하기' : '저장하고 시작하기'}
+            {isOutsideOnboarding ? '저장하기' : '저장하고 시작하기'}
           </Button>
         </div>
       </div>
