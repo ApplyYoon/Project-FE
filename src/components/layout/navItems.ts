@@ -20,7 +20,7 @@ export const navItems = [
  * 묶인 메뉴는 여기서 따로 확인합니다. (NavLink 의 isActive 와 함께 씁니다)
  */
 export function isNavItemSelected(to: string, pathname: string): boolean {
-  // 목표 만들기(/goals/new)는 카드 탭에서 들어오는 화면이라 카드 탭을 선택된 모양으로 둡니다. (#391)
+  // 목표 만들기(/goals/new) · 목표 상세(/goals/:id)는 카드 탭에서 들어오는 화면이라 카드 탭을 선택된 모양으로 둡니다. (#391, #403)
   if (to === '/cards') return pathname.startsWith('/goals')
   if (to === ANALYSIS_PATH) return isAnalysisPath(pathname)
   if (to === '/counsel') return isCounselPath(pathname)

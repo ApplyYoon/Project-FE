@@ -471,8 +471,8 @@ export function getWeaknessLabel(key: string): string | null {
 const STORAGE_KEY = 'thinking-test'
 
 // 테스트 모양이 바뀌면 올리는 번호입니다. 번호가 다른 옛 기록은 "아직 안 함" 으로 보고 다시 하게 합니다.
-// (1: 상황 4지선다 · 2: 리커트 7점 척도)
-const TEST_VERSION = 2
+// (1: 상황 4지선다 · 2: 리커트 7점 척도) 서버에도 이 번호를 같이 보냅니다. (lib/thinkingTestApi.ts)
+export const TEST_VERSION = 2
 
 /** 저장해 두는 테스트 기록 */
 export interface SavedThinkingTest {
