@@ -11,7 +11,7 @@
  * ⚠️ OpenAI API 키(sk-...)는 절대 이 코드나 .env 에 넣지 않습니다.
  *    브라우저는 서버가 만들어 준 짧게 쓰고 버리는 임시 키만 씁니다.
  */
-import { ApiError, api } from '@/lib/api'
+import { ApiError, api, parseErrorBody } from '@/lib/api'
 import type { CallCard } from '@/lib/callCard'
 import { createConnectionWatcher } from '@/lib/connectionWatch'
 import type { CallTone } from '@/lib/todayCare'
@@ -23,6 +23,10 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 const SESSION_PATH = '/realtime/session'
+
+// BE 대신 Vercel 함수(api/voice-key.ts)에서 임시 키를 받을 때 쓰는 주소입니다. 비어 있으면 위의 BE 에서 받습니다.
+// BE 가 배포되기 전에 통화를 써 보려고 둔 임시 길이라, Vercel 의 환경변수에만 /api/voice-key 로 넣습니다.
+const VOICE_KEY_URL = import.meta.env.VITE_VOICE_KEY_URL?.trim() ?? ''
 
 // 말투를 넘기지 않았을 때 쓰는 값입니다. (1 = 당근, 독설 수위 3 = 설정의 기본값)
 const DEFAULT_TONE: CallTone = { careLevel: 1, maxHarshness: 3 }
@@ -126,17 +130,19 @@ async function requestCallSession(
   selfReportedWeaknesses: string[],
 ): Promise<CallSession> {
   try {
-    const data = await api<unknown>(SESSION_PATH, {
-      method: 'POST',
-      body: JSON.stringify({
-        careLevel: tone.careLevel,
-        maxHarshness: tone.maxHarshness,
-        card,
-        selfReportedBiases,
-        selfReportedWeaknesses,
-      }),
-      signal,
-    })
+    const data = VOICE_KEY_URL
+      ? await requestKeyFromVercel(signal)
+      : await api<unknown>(SESSION_PATH, {
+          method: 'POST',
+          body: JSON.stringify({
+            careLevel: tone.careLevel,
+            maxHarshness: tone.maxHarshness,
+            card,
+            selfReportedBiases,
+            selfReportedWeaknesses,
+          }),
+          signal,
+        })
     const record =
       typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {}
     const value = record.value
@@ -161,6 +167,22 @@ async function requestCallSession(
         : undefined
     throw new RealtimeCallError('token', `임시 키를 받지 못했어요: ${detail}`, userMessage)
   }
+}
+
+/**
+ * Vercel 함수(api/voice-key.ts)에서 임시 키를 받습니다.
+ * 같은 사이트 안의 주소라서 api() 대신 fetch 를 바로 씁니다. (api() 는 BE 주소와 로그인 토큰을 붙이는데, 둘 다 필요 없습니다)
+ * 이 함수는 학생 카드를 쓰지 않아서 아무것도 보내지 않습니다.
+ * 실패하면 ApiError 로 던집니다. 그래야 503 의 안내 문장이 BE 때와 똑같이 통화 화면에 나옵니다.
+ */
+async function requestKeyFromVercel(signal: AbortSignal): Promise<unknown> {
+  const response = await fetch(VOICE_KEY_URL, { method: 'POST', signal })
+  const data: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = parseErrorBody(data).message ?? `요청에 실패했습니다 (${response.status})`
+    throw new ApiError(message, response.status)
+  }
+  return data
 }
 
 /** 마이크를 켭니다. 거부되면 'mic' 이유로 실패합니다. */
