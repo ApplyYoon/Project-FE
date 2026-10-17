@@ -98,23 +98,26 @@ export function getCardResult(day: CardDay, now: number): CardResult | null {
   const scheduledStartAt = getPlannedStartAt({ date: day.dateKey, startTime: day.card.startTime })
 
   // 규칙 2
-  if (day.sessions.length === 0) {
+  if (countedSessions(day).length === 0) {
     if (scheduledStartAt === null) return toDayKey(now) > day.dateKey ? 'unhandled' : null
     const scheduledEndAt = scheduledStartAt + day.card.durationMinutes * MS_PER_MINUTE
     return now >= scheduledEndAt ? 'unhandled' : null
   }
 
   // 규칙 3
-  if (day.sessions.every((session) => session.mode === 'selfReport' && !hasProof(session))) {
+  if (
+    countedSessions(day).every((session) => session.mode === 'selfReport' && !hasProof(session))
+  ) {
     return 'selfReport'
   }
 
   // 규칙 4
-  if (day.sessions.some((session) => session.endedEarly) && getRunRate(day) < 1) return 'endedEarly'
+  if (countedSessions(day).some((session) => session.endedEarly) && getRunRate(day) < 1)
+    return 'endedEarly'
 
   // 규칙 5
   if (scheduledStartAt === null) return 'done'
-  const firstStartAt = Math.min(...day.sessions.map((session) => session.startedAt))
+  const firstStartAt = Math.min(...countedSessions(day).map((session) => session.startedAt))
   const isOnTime = firstStartAt - scheduledStartAt <= ON_TIME_GRACE_MINUTES * MS_PER_MINUTE
   return isOnTime ? 'done' : 'late'
 }
@@ -126,7 +129,7 @@ export function getCardResult(day: CardDay, now: number): CardResult | null {
  *   19:00 카드, 19:05 시작 -> true    19:00 카드, 19:20 시작 -> false    세션 없음 -> null
  */
 export function isStartedOnTime(day: CardDay): boolean | null {
-  const measured = day.sessions.filter((session) => session.mode !== 'selfReport')
+  const measured = countedSessions(day).filter((session) => session.mode !== 'selfReport')
   if (measured.length === 0) return null
   const scheduledStartAt = getPlannedStartAt({ date: day.dateKey, startTime: day.card.startTime })
   if (scheduledStartAt === null) return null
@@ -137,6 +140,15 @@ export function isStartedOnTime(day: CardDay): boolean | null {
 /** 산출물 증빙(링크나 요약)이 있는 기록인지 */
 function hasProof(session: StudySession): boolean {
   return Boolean(session.endReport?.proof?.link || session.endReport?.proof?.summary)
+}
+
+/**
+ * 판정에 넣는 세션 — 관리 4단계에서 증빙이 꼭 필요했는데 증빙 없이 끝낸 세션은 실행으로 인정하지 않아 뺍니다. (#408)
+ *
+ *   [보통 세션, 증빙 필요인데 없음] -> [보통 세션]
+ */
+function countedSessions(day: CardDay): StudySession[] {
+  return day.sessions.filter((session) => !(session.endReport?.proofRequired && !hasProof(session)))
 }
 
 /**
@@ -151,11 +163,11 @@ function hasProof(session: StudySession): boolean {
 export function getRunRate(day: CardDay): number {
   const plannedMs = day.card.durationMinutes * MS_PER_MINUTE
   if (plannedMs <= 0) return 0
-  const unprovenSelfReport = day.sessions.some(
+  const unprovenSelfReport = countedSessions(day).some(
     (session) => session.mode === 'selfReport' && !hasProof(session),
   )
   if (unprovenSelfReport) return SELF_REPORT_RUN_RATE
-  const runMs = day.sessions.reduce((sum, session) => sum + getStudyMs(session), 0)
+  const runMs = countedSessions(day).reduce((sum, session) => sum + getStudyMs(session), 0)
   return Math.min(1, runMs / plannedMs)
 }
 
@@ -163,7 +175,7 @@ export function getRunRate(day: CardDay): number {
 export function getCheckedCount(day: CardDay): number {
   const itemIds = new Set(day.card.checklist.map((item) => item.id))
   const checked = new Set<string>()
-  for (const session of day.sessions) {
+  for (const session of countedSessions(day)) {
     for (const itemId of Object.keys(session.endReport?.checked ?? {})) {
       if (itemIds.has(itemId)) checked.add(itemId)
     }
@@ -189,7 +201,7 @@ export function getChecklistRate(day: CardDay): number {
  *   체크 2/3, 실행률 0.5   -> 'execution'
  */
 export function getPlanAxis(day: CardDay): 'complete' | 'overPlanned' | 'execution' | null {
-  if (day.sessions.length === 0) return null
+  if (countedSessions(day).length === 0) return null
   if (getChecklistRate(day) >= 1) return 'complete'
   return getRunRate(day) >= PLAN_AXIS_RUN_RATE ? 'overPlanned' : 'execution'
 }
@@ -202,7 +214,7 @@ export function getPlanAxis(day: CardDay): 'complete' | 'overPlanned' | 'executi
  *   체크리스트 5개, 예상 3개, 3개 체크   -> 0
  */
 export function getPredictionGap(day: CardDay): number | null {
-  if (day.sessions.length === 0) return null
+  if (countedSessions(day).length === 0) return null
   const expected = day.card.expectedDone ?? day.card.checklist.length
   return getCheckedCount(day) - expected
 }
