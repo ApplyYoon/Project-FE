@@ -206,6 +206,8 @@ export interface ChecklistItem {
   id: string
   /** 할 일 (예: '수학 문제집 42~45쪽') */
   text: string
+  /** AI 가 추천해서 넣었고 아직 사람이 안 고쳤으면 true. 폼에서 'AI 추천' 표시를 붙입니다 (#413) */
+  aiSuggested?: boolean
 }
 
 /** 카드를 시작하라고 알려 주는 방법 */
@@ -346,19 +348,6 @@ export interface GoalProgressEntry {
   doneAmount: number
 }
 
-/**
- * 온보딩에서 처음 세운 계획입니다.
- * 한 번 저장하면 나중에 루틴을 바꿔도 이 값은 바뀌지 않습니다. "처음의 나" 와 지금을 비교하는 기준입니다.
- */
-export interface InitialPlan {
-  /** 처음 계획을 세운 날짜 (예: '2026-10-10') */
-  createdDate: string
-  /** 하루에 공부하기로 한 시간 (분) */
-  dailyMinutes: number
-  /** 일주일에 며칠 하기로 했는지 */
-  daysPerWeek: number
-}
-
 /** 공부 중에 다른 탭·앱으로 나갔다 돌아온 기록 (딴짓 한 번) */
 export interface AwayRecord {
   /** 기록을 구분하는 고유 값 */
@@ -373,50 +362,6 @@ export interface AwayRecord {
   returnedAt: number
   /** 나가 있던 시간 (밀리초). returnedAt - leftAt 과 같습니다. */
   awayMs: number
-}
-
-/** 뽀모도로의 구간 — study: 공부, break: 휴식 */
-export type PomodoroPhase = 'study' | 'break'
-
-/** 개선안의 강도 — easy: 쉬움, normal: 보통, hard: 강함 */
-export type SuggestionLevel = 'easy' | 'normal' | 'hard'
-
-/** 개선안의 진행 상태 */
-export type SuggestionStatus = 'suggested' | 'active' | 'done' | 'dropped'
-
-/** AI 가 실패 원인에 맞춰 고른 개선안 한 장. "만약 ~하면 → ~한다" 문장입니다. */
-export interface Suggestion {
-  /** 개선안을 구분하는 고유 값 */
-  id: string
-  /** 어떤 실패 원인에 맞춘 것인지 */
-  cause: MissReason
-  /** 강도 — 쉬움·보통·강함 */
-  level: SuggestionLevel
-  /** "만약 ~하면" 에 들어갈 문장 */
-  ifText: string
-  /** "~한다" 에 들어갈 문장 */
-  thenText: string
-  /** 왜 추천하는지 한 줄 */
-  reason: string
-  /** 지금 상태 */
-  status: SuggestionStatus
-  /** 도전을 시작한 날짜 ('YYYY-MM-DD'). 아직 안 골랐으면 없음 */
-  startDate?: string
-  /** 실험 기간 (7~14일). 아직 안 골랐으면 없음 */
-  days?: number
-}
-
-/**
- * 도전 중인 개선안을 그날 지켰는지 적은 기록 (#65)
- * 개선안 하나 · 날짜 하나마다 하나씩 남습니다. (개선안은 동시에 2개까지 도전할 수 있어서 개선안마다 따로 적습니다)
- */
-export interface SuggestionCheck {
-  /** 어떤 개선안인지 (Suggestion 의 id) */
-  suggestionId: string
-  /** 지켰는지 확인한 날짜 (예: '2026-09-28'). 체크인한 날이 아니라 "지켰는지 묻는 날(어제)" 입니다. */
-  date: string
-  /** 지켰으면 true, 못 지켰으면 false */
-  kept: boolean
 }
 
 /** 하루가 끝난 뒤 AI 가 내린 평가 (날짜마다 하나) */
@@ -439,20 +384,6 @@ export interface DiaryEntry {
   mood: number
   /** 일기 내용 (원문은 본인만 봅니다) */
   content: string
-}
-
-/** AI 가 내준 성찰 일기 처방 (#70) */
-export interface ReflectionPrescription {
-  /** 처방을 구분하는 고유 값 */
-  id: string
-  /** 처방이 시작된 날짜 */
-  startDate: string
-  /** 처방 기간(일). 예: 5 */
-  days: number
-  /** 왜 처방했는지 (예: "최근 '하기 싫음'이 3번 나와서...") */
-  reason: string
-  /** 기간 동안 매일 똑같이 묻는 질문 목록 */
-  questions: string[]
 }
 
 /** 성찰 일기 하루 답 (questions 와 같은 순서로 answers 를 저장합니다) */
@@ -495,25 +426,9 @@ export interface CheckIn {
   missReason?: MissReason
   /** 미달 원인을 '기타'(etc)로 골랐을 때 적은 한 줄 (최대 50자) */
   missReasonNote?: string
-  /** 오늘 예상 순공시간(분) */
-  expectedMinutes: number
-  /** 오늘의 약속 "만약 ~하면" (#79) */
-  promiseIf?: string
-  /** 오늘의 약속 "~한다" (#79) */
-  promiseThen?: string
   /**
-   * 이 날 정한 약속을 지켰는지. 약속을 정한 다음 날 체크인에서 "지켰어 / 못 지켰어" 로 답한 값입니다. (#79)
-   * 약속을 안 정했거나 아직 안 골랐으면 없습니다. ("못 지킴" 이 아니라 "모름")
-   */
-  promiseKept?: boolean
-  /**
-   * 어제 휴대폰 집중 모드(스크린 타임·집중 모드·앱 타이머)를 켰는지 내가 한 답 (#106).
-   * "체크인에서 확인받기" 를 켠 사람만 묻고, 안 골랐으면 없습니다. 정말 켰는지는 확인할 수 없습니다.
-   */
-  phoneFocusKept?: boolean
-  /**
-   * 앱을 처음 열 때 기분 하나로 만든 1탭 체크인이면 true (#242). 자세한 체크인(/check)을 저장하면 없어집니다.
-   * /check 가 \"오늘 체크인 완료\" 를 붙일지 정하는 데 씁니다. (1탭만 한 사람은 자세한 체크인을 아직 안 한 것입니다)
+   * 하루 첫 한 줄(DailyTagBar)로 만든 1탭 체크인이면 true (#242). 서버에 올릴 때 출처를 정하는 데 씁니다.
+   * (오늘 예상 순공 · 오늘의 약속 · 약속 지켰어? · 휴대폰 집중 모드 칸은 v2 체크인과 함께 #417 에서 지웠습니다. 옛 기록에는 남아 있어도 읽지 않습니다)
    */
   isQuick?: boolean
 }
@@ -584,59 +499,21 @@ export interface Exam {
   goalPrediction?: string
 }
 
-/** 과거에 공부 계획이 무너졌던 때 (#89, 여러 개 고를 수 있습니다) */
-export type PastFailureCause =
-  | 'afterExam' // 시험 끝난 직후
-  | 'weekend' // 주말
-  | 'lateAcademy' // 학원 늦게 끝난 날
-  | 'phone' // 폰 보다가
-  | 'tooMuchPlan' // 계획이 많아서
-
 /** 아침형 / 밤형 (#89 자기 인식) */
 export type Chronotype = 'morning' | 'night'
 
-/** 온보딩에서 받은 과목별 현재 수준 (#88) */
-export interface SubjectLevel {
-  /** 어떤 과목인지 (Subject 의 id) */
-  subjectId: string
-  /** 최근 등급 (1 ~ 9). 점수로 입력했으면 없습니다 */
-  grade?: number
-  /** 최근 점수. 등급으로 입력했으면 없습니다 */
-  score?: number
-  /** 이 과목에 대한 자신감 (1 ~ 5) */
-  confidence: number
-}
-
 /**
- * 온보딩 설문 답 (#58, #88, #89)
- * 처음에는 학년 · 시험 · 시험 날짜 · 하루 공부 가능 시간만 꼭 묻습니다.
- * ? 가 붙은 항목은 나중에 "내 정보 더 알려주기" 에서 답하는 것이라 없을 수 있습니다. (#239)
+ * 온보딩 설문 답 (#58, #88, #89 → 최종 기획서 「4.1」)
+ * 처음 온보딩은 학년과 자기 인식 4문항만 묻고, 취침 · 기상 시각은 관리 설정 화면이 같은 칸에 저장합니다.
+ * (예전 "내 정보 더 알려주기" 의 질문은 #417 에서 지웠습니다. 시험 이름 · 날짜 · 공부 이유는 옛 답이 있으면 다짐 녹음 화면이 읽습니다)
  */
 export interface OnboardingAnswers {
   /** 학년 */
   grade: '고1' | '고2' | '고3' | 'N수' | '대학생'
-  /** 목표로 하는 시험 이름 (예: '수능') */
-  targetExam: string
-  /** 목표 시험 날짜 (D-day 계산용) */
-  targetExamDate: string
-  /** 목표 대학 (선택) */
-  targetUniversity?: string
-  /** 목표 점수 (선택) */
-  targetScore?: string
-  /** 평소 기상 시각 ('HH:MM') */
+  /** 평소 기상 시각 ('HH:MM'). 관리 설정의 수면 보호 */
   wakeUpTime?: string
-  /** 평소 취침 시각 ('HH:MM') */
+  /** 평소 취침 시각 ('HH:MM'). 관리 설정의 수면 보호 */
   sleepTime?: string
-  /** 학교 끝나는 시각 ('HH:MM') */
-  schoolEndTime?: string
-  /** 학원 끝나는 시각 ('HH:MM') */
-  academyEndTime?: string
-  /** 주로 공부하는 장소 */
-  studyPlace?: string
-  /** 과목별 최근 성적·자신감 (#88, 건너뛰면 빈 배열) */
-  subjectLevels?: SubjectLevel[]
-  /** 과거에 계획이 무너졌던 때 (여러 개) */
-  pastFailureCauses?: PastFailureCause[]
   /** 아침형 / 밤형 */
   chronotype?: Chronotype
   /** 한 번에 집중 가능한 시간(분) */
@@ -645,10 +522,12 @@ export interface OnboardingAnswers {
   biggestDistraction?: string
   /** 하루 공부 가능 시간(분) */
   dailyAvailableMinutes: number
-  /** 공부하는 이유 (한 줄, 최대 50자). 비워 둘 수 있습니다 */
+  /** (옛 답) 목표로 하는 시험 이름 (예: '수능') */
+  targetExam?: string
+  /** (옛 답) 목표 시험 날짜 */
+  targetExamDate?: string
+  /** (옛 답) 공부하는 이유 (한 줄) */
   motivationReason?: string
-  /** 목표를 이루면 하고 싶은 것 (한 줄, 최대 50자) */
-  goalReward?: string
 }
 
 /** 나 사용설명서 항목의 분류 (#87) */
@@ -704,23 +583,4 @@ export interface AiMessage {
   text: string
   /** 읽었으면 true, 아직 안 읽었으면 false */
   read: boolean
-}
-
-/**
- * 주간 회고 하나 (#82). 한 주(월~일)에 하나만 저장됩니다.
- * 건너뛴 주도 skipped: true 로 저장해서, 같은 주에 다시 묻지 않습니다.
- */
-export interface WeeklyReview {
-  /** 그 주의 월요일 날짜 (예: '2026-10-05'). 어느 주의 회고인지 구분합니다. */
-  weekStart: string
-  /** ① 이번 주 가장 잘한 것 (최대 100자) */
-  best: string
-  /** ② 가장 아쉬운 것 (최대 100자) */
-  regret: string
-  /** ③ 다음 주에 바꿀 한 가지 (최대 100자) */
-  change: string
-  /** 건너뛰었으면 true. 이때 세 답은 빈 글자입니다. */
-  skipped: boolean
-  /** 저장한 시각 (Date.now() 값) */
-  savedAt: number
 }

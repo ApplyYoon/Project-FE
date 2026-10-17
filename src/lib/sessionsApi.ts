@@ -33,7 +33,7 @@ import type { MissReason, PlanKind, StudySession } from '@/types'
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 멈춰도 로딩이 영원히 끝나지 않으면 안 되기 때문입니다. */
 const REQUEST_TIMEOUT_MS = 10000
 
-/** 순공이 이보다 짧으면(1분 미만) 서버가 저장하지 않습니다. 타이머(TimerPage)의 MIN_SAVE_SECONDS 와 같은 규칙입니다. */
+/** 순공이 이보다 짧으면(1분 미만) 서버가 저장하지 않습니다. */
 export const SESSION_MIN_STUDY_SECONDS = 60
 /** 시작 시각이 이보다 앞서면(2020-01-01 UTC 이전) 서버가 거절합니다. (시계가 초기화된 기기의 1970년 기록 등) */
 export const SESSION_MIN_STARTED_AT = Date.UTC(2020, 0, 1)

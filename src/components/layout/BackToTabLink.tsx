@@ -8,7 +8,7 @@ interface BackToTabLinkProps {
 }
 
 /**
- * 탭 아래에 묶인 화면(시험·개선안 고르기·일기) 위에 나오는 "‹ 분석" · "‹ 상담" 돌아가기 링크입니다. (#101, #386)
+ * 탭 아래에 묶인 화면(시험·일기) 위에 나오는 "‹ 분석" · "‹ 상담" 돌아가기 링크입니다. (#101, #386)
  * 어느 화면에서 무엇을 보여 줄지는 Layout 이 lib/tabMenu.ts 의 getBackToTabLink 로 정합니다.
  */
 export function BackToTabLink({ to, label }: BackToTabLinkProps) {

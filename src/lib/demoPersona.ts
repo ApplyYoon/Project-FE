@@ -32,7 +32,6 @@ import type {
   ShortfallReason,
   StudyPlan,
   StudySession,
-  WeeklyReview,
 } from '@/types'
 
 /**
@@ -348,7 +347,6 @@ export interface DemoPersona {
   careStageLog: Record<string, SavedCareStage>
   experiments: Experiment[]
   manualItems: ManualItem[]
-  weeklyReviews: WeeklyReview[]
   predictions: WeeklyPrediction[]
 }
 
@@ -676,7 +674,6 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
       emotions: emotionsFor(condition, random),
       mood: isHardDay ? 2 : Math.max(3, condition - (random() < 0.3 ? 1 : 0)),
       ...(yesterdayCauses.length > 0 ? { missReason: toMissReason(yesterdayCauses[0]) } : {}),
-      expectedMinutes: 150 + 10 * Math.floor(random() * 6),
     }
   }
 
@@ -845,31 +842,11 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
     })
   }
 
-  // ── 지난 주들의 예측과 주간 회고 (이번 주 예측은 시연 때 직접 하도록 비워 둡니다) ──
+  // ── 지난 주들의 예측 (이번 주 예측은 시연 때 직접 하도록 비워 둡니다) ──
   const currentMonday = moveDateKey(todayKey, -((getWeekday(todayKey) + 6) % 7))
   const predictions: WeeklyPrediction[] = []
-  const weeklyReviews: WeeklyReview[] = []
-  // 주간 회고 글. 바로 지난주가 첫 줄입니다. (지난주 → 2주 전 → 3주 전 …, 모자라면 마지막 줄을 씀)
-  const REVIEW_TEXTS = [
-    {
-      best: '아파서 쉰 다음 날 바로 다시 시작했어',
-      regret: '주말 모의고사를 놓쳤어',
-      change: '토요일 아침 알림을 30분 전으로 바꾸기',
-    },
-    {
-      best: '폰을 다른 방에 두니까 밤에도 시작이 됐어',
-      regret: '문제집 체크리스트가 늘 하나씩 남아',
-      change: '문제집은 6쪽 말고 4쪽으로 잡기',
-    },
-    {
-      best: '아침 영단어를 한 번도 안 빼먹었어',
-      regret: '학원 끝나고 밤 수학을 두 번이나 못 했어',
-      change: '학원 가방에 오답노트를 넣어 두기',
-    },
-  ]
   // 지난주 월요일부터 0번째 날이 든 주까지 거꾸로 갑니다.
   const firstMonday = moveDateKey(startKey, -((getWeekday(startKey) + 6) % 7))
-  let week = 0
   for (
     let monday = moveDateKey(currentMonday, -7);
     monday >= firstMonday;
@@ -878,7 +855,7 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
     const numbers = getWeeklyNumbers(getWeekCardDays(cards, sessions, monday, now))
     const kind = pickPredictionKind(monday, getAvailableKinds(numbers))
     const actual = kind ? getActualValue(kind, numbers) : null
-    // 다음 주 월요일 밤에 예측하고 회고를 썼다고 둡니다. (지금보다 미래가 되지 않게)
+    // 다음 주 월요일 밤에 예측했다고 둡니다. (지금보다 미래가 되지 않게)
     const answeredAt = Math.min(now, atTime(moveDateKey(monday, 7), '21:00'))
     if (kind && actual !== null) {
       // 예측은 실제보다 조금 낙관적으로 (계획 오류) — 시작 지연은 실제보다 짧게 봄
@@ -893,9 +870,6 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
         answeredAt,
       })
     }
-    const texts = REVIEW_TEXTS[Math.min(week, REVIEW_TEXTS.length - 1)]
-    weeklyReviews.push({ weekStart: monday, ...texts, skipped: false, savedAt: answeredAt })
-    week++
   }
 
   return {
@@ -911,7 +885,6 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
     careStageLog,
     experiments,
     manualItems,
-    weeklyReviews,
     predictions,
   }
 }
@@ -969,7 +942,6 @@ export function buildDemoOnboarding(startKey: string, todayKey: string): Record<
     },
     'onboarding-care-consent': doneAt,
     'onboarding-result-seen': true,
-    'initial-plan': { createdDate: moveDateKey(startKey, -1), dailyMinutes: 180, daysPerWeek: 6 },
     // 관리 단계 3 까지 보이도록 한도 3 (온보딩이 제안하는 값과 같음)
     'care-limits': {
       maxCareLevel: 3,

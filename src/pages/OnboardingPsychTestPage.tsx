@@ -20,7 +20,7 @@ import {
   type ScaleLevel,
 } from '@/lib/psychTest'
 import { loadData, removeData, saveData } from '@/lib/storage'
-import { likertLabels } from '@/lib/thinkingTest'
+import { likertLabels } from '@/lib/likert'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 

@@ -196,10 +196,6 @@ export function HomePage() {
           >
             <SettingsIcon />
           </Link>
-          {/* 체크인은 꼭 해야 하는 일이 아니라서, 큰 카드 대신 작은 글자로 둡니다. (#243) */}
-          <Link to="/check" className={cn(textLinkClass, 'whitespace-nowrap')}>
-            자세히 체크인
-          </Link>
         </div>
       </section>
 

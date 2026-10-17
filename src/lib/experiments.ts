@@ -21,6 +21,14 @@ export const MIN_SAMPLES = 5
 
 export type ExperimentStatus = 'running' | 'effective' | 'noEffect' | 'unclear'
 
+/** 판정마다 화면에 보일 글자 (가설·실험 탭 · 주간 리포트 ④ 가 같이 씁니다) */
+export const EXPERIMENT_STATUS_LABELS: Record<ExperimentStatus, string> = {
+  running: '진행 중',
+  effective: '효과 있음',
+  noEffect: '효과 없음',
+  unclear: '기록이 모자라 알 수 없음',
+}
+
 export interface Experiment {
   id: string
   /** 가설 한 줄 (예: '폰·SNS 때문에 놓치는 날이 많다') */

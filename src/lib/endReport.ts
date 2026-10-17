@@ -64,3 +64,19 @@ export function splitInstantLine(
     checklist: items.map((text, index) => ({ id: `${cardId}-item-${index}`, text })),
   }
 }
+
+/**
+ * AI 가 정리한 초안(#419 표 7번)을 즉석 카드의 제목 · 체크리스트로 바꿉니다. splitInstantLine 과 같은 id 규칙입니다.
+ *
+ *   draftToInstant({ title: '수학 문제집', items: ['42쪽 펴기', '5문제 풀기'] }, 'k')
+ *     -> { title: '수학 문제집', checklist: [{ id: 'k-item-0', text: '42쪽 펴기' }, { id: 'k-item-1', text: '5문제 풀기' }] }
+ */
+export function draftToInstant(
+  draft: { title: string; items: string[] },
+  cardId: string,
+): { title: string; checklist: ChecklistItem[] } {
+  return {
+    title: draft.title,
+    checklist: draft.items.map((text, index) => ({ id: `${cardId}-item-${index}`, text })),
+  }
+}

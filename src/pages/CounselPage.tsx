@@ -30,8 +30,6 @@ export function CounselPage() {
     const saved = loadData<unknown>(CALL_TIME_STORAGE_KEY, '')
     return typeof saved === 'string' && parseCallTime(saved) !== null ? saved : ''
   })
-  // 설정 화면에서 켠 사람에게만 일기를 보여줍니다. (#63)
-  const [isDiaryEnabled] = useState(() => loadData('diary-enabled', false))
   // 처음에 녹음해 둔 다짐. 없으면 null (lib/voicePledge.ts)
   const [voicePledge] = useState(loadVoicePledge)
 
@@ -92,9 +90,6 @@ export function CounselPage() {
             <div className="flex flex-col gap-1 text-sm">
               <p className="text-slate-500">{latestSummary.date}</p>
               <p className="font-medium break-keep text-slate-900">{latestSummary.headline}</p>
-              {latestSummary.promise && (
-                <p className="break-words text-slate-600">약속 · {latestSummary.promise}</p>
-              )}
             </div>
           )}
           <Button
@@ -152,15 +147,6 @@ export function CounselPage() {
             </p>
           )}
         </Card>
-
-        {isDiaryEnabled && (
-          <Card title="일기">
-            <p className="text-sm text-slate-600">원할 때만 쓰는 자유 일기예요.</p>
-            <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/diary')}>
-              일기 쓰러 가기
-            </Button>
-          </Card>
-        )}
       </div>
     </div>
   )

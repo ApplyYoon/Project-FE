@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -61,6 +62,9 @@ import { loadVoicePledge } from '@/lib/voicePledge'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildLateEntrySession, checkLateEntry, makeLateEntryReport } from '@/lib/lateEntry'
 import { loadData } from '@/lib/storage'
+import { requestFirstStep, requestQuickCard, type QuickCardDraft } from '@/lib/aiCardApi'
+import { useIsServerData } from '@/hooks/useIsServerData'
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
@@ -68,6 +72,7 @@ import { showSystemNotification } from '@/lib/notifications'
 import { getSessionCardId } from '@/lib/sessionRecords'
 import {
   countChecklistComplete,
+  draftToInstant,
   isChecklistComplete,
   isUntitledInstantCard,
   shouldAskGoodReason,
@@ -107,6 +112,8 @@ import type {
 
 // [지금 시작] 의 길이 고르기 (분). 가운데 값이 처음 골라져 있습니다.
 const INSTANT_MINUTES = [25, 50, 80]
+/** 즉석 카드의 한 줄을 적고 이만큼 멈추면 AI 에게 정리를 부탁합니다 (#419) */
+const QUICK_CARD_WAIT_MS = 1500
 const DEFAULT_INSTANT_MINUTES = 50
 const MS_PER_MINUTE = 60 * 1000
 
@@ -1136,10 +1143,37 @@ function EndPopup({
   const [checked, setChecked] = useState<Record<string, number>>(report.checked)
   const [shortfall, setShortfall] = useState<ShortfallReason | undefined>(report.shortfallReason)
   const [line, setLine] = useState('')
+  // 즉석 카드: AI 가 한 줄을 제목 + 체크리스트로 정리한 초안 (#419 표 7번, BE /ai/quick-card)
+  const isServerData = useIsServerData()
+  const [draft, setDraft] = useState<(QuickCardDraft & { line: string }) | null>(null)
+  const [draftChoice, setDraftChoice] = useState<'ai' | 'mine'>('ai')
+  // 같은 한 줄로 두 번 묻지 않게, 마지막으로 물어본 한 줄을 기억합니다. (하루 한도가 있어서)
+  const [askedLine, setAskedLine] = useState('')
+  const { mutate: askQuickCard, isPending: isAskingQuickCard } = useMutation({
+    mutationFn: requestQuickCard,
+    onSuccess: (result, sentLine) => {
+      if (!result) return
+      setDraft({ ...result, line: sentLine })
+      setDraftChoice('ai')
+    },
+  })
+  // 지금 적힌 한 줄을 정리한 초안만 씁니다. 한 줄을 고치면 예전 초안은 쓰지 않습니다.
+  const currentDraft = draft !== null && draft.line === line.trim() ? draft : null
   const [proofText, setProofText] = useState('')
   const isInstant = card !== undefined && isUntitledInstantCard(card)
   const checklist = card?.checklist ?? []
   const isComplete = isInstant || isChecklistComplete(checklist, checked)
+
+  // 즉석 카드의 한 줄을 다 적고 1.5초 멈추면 AI 에게 정리를 부탁합니다. (글자마다 묻지 않으려고 기다립니다)
+  useEffect(() => {
+    const trimmed = line.trim()
+    if (!isInstant || !isServerData || trimmed === '' || trimmed === askedLine) return
+    const timerId = setTimeout(() => {
+      setAskedLine(trimmed)
+      askQuickCard(trimmed)
+    }, QUICK_CARD_WAIT_MS)
+    return () => clearTimeout(timerId)
+  }, [line, isInstant, isServerData, askedLine, askQuickCard])
 
   function save(changes: Partial<SessionEndReport>) {
     onSave({ endReport: { ...report, checked, ...changes } })
@@ -1148,7 +1182,11 @@ function EndPopup({
   function handleChecklistDone() {
     let finalChecked = checked
     if (isInstant && card) {
-      const parsed = splitInstantLine(line, card.id)
+      // AI 정리를 골랐으면 그 초안으로, 아니면 내가 쓴 한 줄 그대로 나눕니다.
+      const parsed =
+        currentDraft && draftChoice === 'ai'
+          ? draftToInstant(currentDraft, card.id)
+          : splitInstantLine(line, card.id)
       if (parsed) {
         onRenameCard(parsed)
         // 즉석 카드는 "한 것" 을 적는 것이라 적은 항목을 모두 한 것으로 봅니다.
@@ -1204,6 +1242,32 @@ function EndPopup({
                 placeholder="예: 수학, 문제집 42쪽, 오답 정리"
                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
               />
+              {isAskingQuickCard && <p className="text-xs text-slate-500">AI 가 정리하는 중…</p>}
+              {currentDraft && (
+                <div className="flex flex-col gap-2 rounded-lg bg-violet-50 px-3 py-3 text-sm">
+                  <p className="break-keep text-slate-700">
+                    <span className="text-xs font-semibold text-violet-700">AI 추천</span> 이렇게
+                    정리할까요? 한 일과 다르면 &quot;내가 쓴 그대로&quot; 를 골라 주세요.
+                  </p>
+                  <p className="font-semibold break-keep text-slate-900">{currentDraft.title}</p>
+                  <ul className="list-disc pl-5 text-slate-700">
+                    {currentDraft.items.map((item) => (
+                      <li key={item} className="break-keep">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                  <SegmentedToggle
+                    label="한 줄 정리 방법"
+                    options={[
+                      { value: 'ai', label: 'AI 정리' },
+                      { value: 'mine', label: '내가 쓴 그대로' },
+                    ]}
+                    value={draftChoice}
+                    onChange={setDraftChoice}
+                  />
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -1517,6 +1581,20 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
   const [seconds, setSeconds] = useState(COUNTDOWN_SECONDS)
   const [level, setLevel] = useState(0)
   const firstItem = card.checklist[0]?.text ?? card.title
+  // AI 가 만든 준비 행동 (단계마다). 받기 전이나 못 받으면 기본 문장을 씁니다. (#413, BE /ai/first-step)
+  const [aiSteps, setAiSteps] = useState<Record<number, string>>({})
+  const { mutate: askFirstStep } = useMutation({
+    mutationFn: requestFirstStep,
+    onSuccess: (step, variables) => {
+      if (step) setAiSteps((prev) => ({ ...prev, [variables.level]: step }))
+    },
+  })
+  const shownStep = aiSteps[level] ?? getPrepStep(firstItem, level)
+
+  // 처음 한 번 0단계 준비 행동을 부탁합니다.
+  useEffect(() => {
+    askFirstStep({ item: firstItem, title: card.title, level: 0 })
+  }, [askFirstStep, firstItem, card.title])
   // 부모 화면이 다시 그려져서 onDone 이 새 함수가 되어도 카운트가 처음부터 다시 시작하지 않게, 최신 함수를 ref 에 둡니다.
   const onDoneRef = useRef(onDone)
   useEffect(() => {
@@ -1534,17 +1612,19 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
   }, [seconds])
 
   function handleShrink() {
-    setLevel((value) => Math.min(MAX_SHRINK, value + 1))
+    const next = Math.min(MAX_SHRINK, level + 1)
+    setLevel(next)
     setSeconds(COUNTDOWN_SECONDS)
+    // 방금 보여 준 것보다 더 작게 만들어 달라고 부탁합니다.
+    askFirstStep({ item: firstItem, title: card.title, level: next, previousStep: shownStep })
   }
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <Card className="flex flex-col items-center gap-4 py-10 text-center">
         <p className="text-sm font-medium text-slate-500">{card.title} · 이것만 먼저 해요</p>
-        <p className="text-2xl font-bold break-keep text-slate-900 sm:text-3xl">
-          {getPrepStep(firstItem, level)}
-        </p>
+        <p className="text-2xl font-bold break-keep text-slate-900 sm:text-3xl">{shownStep}</p>
+        {aiSteps[level] && <span className="text-xs font-semibold text-violet-700">AI 추천</span>}
         <p className="text-brand text-7xl font-bold tabular-nums" aria-live="polite">
           {Math.max(0, seconds)}
         </p>

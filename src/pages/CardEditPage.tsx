@@ -1,14 +1,19 @@
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
 import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
+import { failCauseOptionsQuery, requestChecklist } from '@/lib/aiCardApi'
 import {
   ALERT_MINUTES_OPTIONS,
   ALERT_TEXT_MAX_LENGTH,
@@ -20,6 +25,11 @@ import {
   createEmptyForm,
   getFilledChecklist,
   getRecentPlanAccuracy,
+  isAiChecklistItem,
+  mergeAiChecklist,
+  shouldSuggestSelfChecklist,
+  splitFailCauses,
+  toggleFailCause,
   validateCardForm,
   type CardFormValues,
 } from '@/lib/cardForm'
@@ -52,12 +62,64 @@ interface CardFormProps {
   accuracy: { rate: number; samples: number } | null
   /** "목표 연결" 에서 고를 수 있는 목표 (진행 중인 목표 + 이 카드에 이미 걸린 목표) */
   goalOptions: Goal[]
+  /**
+   * 체크리스트 AI 추천(#413)
+   * - 'auto': 제목을 적고 나가면 체크리스트가 비어 있을 때 저절로 받아 둡니다 (+ 버튼)
+   * - 'manual': 버튼으로만 받습니다 (성향상 2주 뒤 "직접 써 볼까요?")
+   * - 'off': 테스트 로그인이라 서버에 물을 수 없습니다
+   */
+  aiChecklist: 'auto' | 'manual' | 'off'
   /** 수면 보호 시간. 겹치면 저장할 수 없습니다 (#393) */
   sleepWindow: SleepWindow
   /** 10분 버퍼를 볼 때 비교하는 전체 카드 · 고정 일정 (#393) */
   allCards: CardData[]
   fixedBlocks: FixedBlock[]
   onSave: (card: CardData) => void
+}
+
+interface FailCauseOptionsProps {
+  /** 제목 칸에서 나갈 때 정해진 카드 제목 (글자를 칠 때마다 묻지 않으려고) */
+  title: string
+  /** 지금 예상 실패 원인 칸의 글 (쉼표로 나뉨) */
+  value: string
+  onToggle: (cause: string) => void
+}
+
+/**
+ * AI 가 내 최근 30일 기록으로 만든 예상 실패 원인 선지 3개 (#419 표 3번, BE POST /ai/fail-cause-options).
+ * 누르면 칸에 넣고, 다시 누르면 뺍니다. 기록이 모자라거나 못 받으면 아무것도 안 보입니다 (주관식 그대로).
+ */
+function FailCauseOptions({ title, value, onToggle }: FailCauseOptionsProps) {
+  const { data: options } = useSuspenseQuery(failCauseOptionsQuery(title))
+  if (!options) return null
+  const picked = splitFailCauses(value)
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs break-keep text-slate-500">
+        <span className="font-semibold text-violet-700">AI 추천</span> 내 기록으로 고른 선지예요.
+        눌러서 넣어요.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => (
+          <ChipButton
+            key={option.text}
+            selected={picked.includes(option.text)}
+            onClick={() => onToggle(option.text)}
+          >
+            {/* 내 행동에서 나오는 원인은 글자로도 표시합니다 */}
+            {option.inner ? `${option.text} · 내 쪽` : option.text}
+          </ChipButton>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** AI 가 체크리스트를 만들어 달라는 부탁 하나. auto 는 제목 칸에서 나갈 때 저절로 부탁한 것입니다. */
+interface ChecklistAsk {
+  title: string
+  goal?: string
+  auto: boolean
 }
 
 /** 카드 만들기 · 고치기 폼 */
@@ -68,6 +130,7 @@ function CardForm({
   optionalOpenByDefault,
   accuracy,
   goalOptions,
+  aiChecklist,
   sleepWindow,
   allCards,
   fixedBlocks,
@@ -89,6 +152,48 @@ function CardForm({
 
   const errors = validateCardForm(values, { failCauseRequired })
   const shownErrors = triedSave ? errors : {}
+
+  // 체크리스트 AI 추천 (#413, BE POST /ai/checklist). 실패해도 저장은 그대로 됩니다.
+  const [aiNotice, setAiNotice] = useState('')
+  // 같은 제목으로 저절로 두 번 묻지 않게, 마지막으로 저절로 물어본 제목을 기억합니다.
+  const [autoAskedTitle, setAutoAskedTitle] = useState('')
+  const { mutate: askChecklist, isPending: isAskingChecklist } = useMutation({
+    mutationFn: (ask: ChecklistAsk) => requestChecklist(ask.title, ask.goal),
+    onSuccess: (items, ask) => {
+      if (!items) {
+        // 저절로 부탁한 것은 조용히 넘어갑니다. 버튼을 눌렀을 때만 알려 줍니다.
+        if (!ask.auto) setAiNotice('지금은 AI 추천을 못 받았어요. 직접 적어 주세요.')
+        return
+      }
+      setAiNotice('')
+      const stamp = Date.now()
+      setValues((prev) => {
+        // 저절로 부탁한 사이에 내가 직접 적기 시작했으면 덮지 않습니다.
+        if (ask.auto && getFilledChecklist(prev.checklist).length > 0) return prev
+        return { ...prev, checklist: mergeAiChecklist(prev.checklist, items, stamp) }
+      })
+    },
+  })
+  const goalTitle = goalOptions.find((goal) => goal.id === values.goalId)?.title
+
+  // 예상 실패 원인 선지(#419)는 제목 칸에서 나갈 때 정해진 제목으로 묻습니다.
+  const [committedTitle, setCommittedTitle] = useState(initialValues.title.trim())
+  // 테스트 로그인이면 서버의 AI 를 쓸 수 없습니다.
+  const isAiEnabled = aiChecklist !== 'off'
+
+  function handleTitleBlur() {
+    const title = values.title.trim()
+    setCommittedTitle(title)
+    if (aiChecklist !== 'auto' || title === '' || title === autoAskedTitle) return
+    if (getFilledChecklist(values.checklist).length > 0) return
+    setAutoAskedTitle(title)
+    askChecklist({ title, goal: goalTitle, auto: true })
+  }
+
+  function handleAskChecklist() {
+    setAiNotice('')
+    askChecklist({ title: values.title.trim(), goal: goalTitle, auto: false })
+  }
   const filledCount = getFilledChecklist(values.checklist).length
   // 체크리스트를 비워 두면 제목 한 줄로 채우므로, 예상 개수의 최댓값은 최소 1개입니다.
   const checklistTotal = Math.max(1, filledCount)
@@ -126,7 +231,8 @@ function CardForm({
   function handleChangeChecklistItem(itemId: string, text: string) {
     setValues((prev) => ({
       ...prev,
-      checklist: prev.checklist.map((item) => (item.id === itemId ? { ...item, text } : item)),
+      // 사람이 고친 항목은 AI 추천 표시(aiSuggested)를 뺍니다. id 는 그대로 둡니다 (지난 기록의 체크가 이 id 를 가리킵니다)
+      checklist: prev.checklist.map((item) => (item.id === itemId ? { id: item.id, text } : item)),
     }))
   }
 
@@ -178,14 +284,28 @@ function CardForm({
 
   // 예상 실패 원인 칸. 성향상 꼭 받아야 하면 필수 칸 쪽에, 아니면 접힌 칸 안에 둡니다.
   const failCauseField = (
-    <Input
-      id="card-fail-causes"
-      label={failCauseRequired ? '예상 실패 원인 (필수)' : '예상 실패 원인'}
-      value={values.failCauses}
-      onChange={(event) => change('failCauses', event.target.value)}
-      placeholder="예: 폰을 책상에 두면 계속 보게 돼요"
-      error={shownErrors.failCauses}
-    />
+    <div className="flex flex-col gap-2">
+      <Input
+        id="card-fail-causes"
+        label={failCauseRequired ? '예상 실패 원인 (필수)' : '예상 실패 원인'}
+        value={values.failCauses}
+        onChange={(event) => change('failCauses', event.target.value)}
+        placeholder="예: 폰을 책상에 두면 계속 보게 돼요"
+        error={shownErrors.failCauses}
+      />
+      {isAiEnabled && committedTitle !== '' && (
+        <AsyncBoundary
+          pendingFallback={<Skeleton className="h-10 w-full rounded-lg" />}
+          resetKeys={[committedTitle]}
+        >
+          <FailCauseOptions
+            title={committedTitle}
+            value={values.failCauses}
+            onToggle={(cause) => change('failCauses', toggleFailCause(values.failCauses, cause))}
+          />
+        </AsyncBoundary>
+      )}
+    </div>
   )
 
   return (
@@ -210,6 +330,7 @@ function CardForm({
             label="무엇을 할까요?"
             value={values.title}
             onChange={(event) => change('title', event.target.value)}
+            onBlur={handleTitleBlur}
             maxLength={CARD_TITLE_MAX_LENGTH}
             placeholder="예: 수학 문제집"
             error={shownErrors.title}
@@ -295,6 +416,9 @@ function CardForm({
                     placeholder="예: 42~45쪽 풀기"
                     className="focus:border-brand focus:ring-brand/20 h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:ring-2"
                   />
+                  {isAiChecklistItem(item) && (
+                    <span className="shrink-0 text-xs font-semibold text-violet-700">AI 추천</span>
+                  )}
                   <Button
                     variant="ghost"
                     onClick={() => handleDeleteChecklistItem(item.id)}
@@ -306,10 +430,30 @@ function CardForm({
                 </li>
               ))}
             </ul>
-            <Button variant="secondary" onClick={handleAddChecklistItem} className="self-start">
-              + 항목 더하기
-            </Button>
-            <p className="text-xs break-keep text-slate-500">비워 두면 제목으로 한 줄 채워요.</p>
+            {aiChecklist === 'manual' && (
+              <p className="text-sm break-keep text-slate-600">
+                이번엔 직접 써 볼까요? 막히면 [AI 추천 받기] 를 눌러도 돼요.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={handleAddChecklistItem}>
+                + 항목 더하기
+              </Button>
+              {aiChecklist !== 'off' && (
+                <Button
+                  variant="secondary"
+                  onClick={handleAskChecklist}
+                  disabled={values.title.trim() === '' || isAskingChecklist}
+                >
+                  {isAskingChecklist ? 'AI 가 만드는 중…' : 'AI 추천 받기'}
+                </Button>
+              )}
+            </div>
+            {aiNotice && <p className="text-xs break-keep text-slate-500">{aiNotice}</p>}
+            <p className="text-xs break-keep text-slate-500">
+              비워 두면 제목으로 한 줄 채워요.
+              {aiChecklist !== 'off' && ' AI 가 넣은 항목도 고치거나 지울 수 있어요.'}
+            </p>
           </div>
 
           {failCauseRequired && failCauseField}
@@ -526,6 +670,7 @@ export function CardEditPage() {
   // 성향 설정(#385)은 화면을 열 때 한 번만 읽습니다.
   const [settings] = useState(loadAutoSettings)
   const [now] = useState(() => Date.now())
+  const isServerData = useIsServerData()
   const { blocks: fixedBlocks } = useFixedBlocks()
   // 수면 보호 시간은 온보딩에서 답한 취침 · 기상 시각으로 만듭니다. (화면을 열 때 한 번만 읽습니다)
   const [sleepWindow] = useState(() => {
@@ -542,6 +687,12 @@ export function CardEditPage() {
     linkedGoal && !activeGoals.includes(linkedGoal) ? [...activeGoals, linkedGoal] : activeGoals
   // 새 카드의 목표 기본값은 가장 최근에 만든 진행 중 목표입니다.
   const defaultGoalId = getLatestActiveGoal(goals)?.id ?? ''
+  // 체크리스트 AI 추천(#413): 테스트 로그인이면 끄고, 성향상 2주가 지났으면 버튼으로만 받습니다.
+  const aiChecklist = !isServerData
+    ? 'off'
+    : shouldSuggestSelfChecklist(settings.checklistWriter.value, cards, now)
+      ? 'manual'
+      : 'auto'
 
   function handleSave(card: CardData) {
     if (editingCard) {
@@ -593,6 +744,7 @@ export function CardEditPage() {
         optionalOpenByDefault={settings.optionalFieldsOpen.value}
         accuracy={accuracy}
         goalOptions={goalOptions}
+        aiChecklist={aiChecklist}
         sleepWindow={sleepWindow}
         allCards={cards}
         fixedBlocks={fixedBlocks}

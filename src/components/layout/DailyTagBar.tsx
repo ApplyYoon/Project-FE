@@ -1,6 +1,5 @@
 import { useAuth } from '@/hooks/useAuth'
 import { useSendCheckIn, useUnsentCheckInRetry } from '@/hooks/useCheckInSync'
-import { useThinkingTestSync } from '@/hooks/useThinkingTestSync'
 import { todayServerCheckInQuery } from '@/lib/checkInsApi'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
@@ -61,8 +60,6 @@ export function DailyTagBar() {
   const send = useSendCheckIn()
   // 예전에 서버로 못 보낸 체크인을 앱을 열 때 다시 보냅니다.
   useUnsentCheckInRetry()
-  // 아직 서버에 안 간 생각 습관 테스트 결과도 앱을 열 때 보냅니다. (hooks/useThinkingTestSync.ts)
-  useThinkingTestSync()
 
   const todayKey = getTodayKey()
   const [picked, setPicked] = useState<Picked | null>(null)
@@ -105,7 +102,7 @@ export function DailyTagBar() {
   }
 
   if (!isLoggedIn || closedDate === todayKey || isDailyTagSkipped(todayKey)) return null
-  // 오늘 체크인이 이미 있으면(자세히 체크인 · 다른 기기 · 통화) 묻지 않습니다. 이 한 줄에서 방금 저장한 것은 닫을 때까지 둡니다.
+  // 오늘 체크인이 이미 있으면(다른 기기 · 통화) 묻지 않습니다. 이 한 줄에서 방금 저장한 것은 닫을 때까지 둡니다.
   if (!isSavedHere && hasCheckIn(todayKey)) return null
 
   const bar = (
