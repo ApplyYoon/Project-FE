@@ -148,6 +148,7 @@ function CardForm({
   // 예상 실패 원인 칸. 성향상 꼭 받아야 하면 필수 칸 쪽에, 아니면 접힌 칸 안에 둡니다.
   const failCauseField = (
     <Input
+      id="card-fail-causes"
       label={failCauseRequired ? '예상 실패 원인 (필수)' : '예상 실패 원인'}
       value={values.failCauses}
       onChange={(event) => change('failCauses', event.target.value)}
@@ -174,6 +175,7 @@ function CardForm({
       <Card title="꼭 적을 것">
         <div className="flex flex-col gap-5">
           <Input
+            id="card-title"
             label="무엇을 할까요?"
             value={values.title}
             onChange={(event) => change('title', event.target.value)}
@@ -221,6 +223,7 @@ function CardForm({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
+              id="card-date"
               type="date"
               label={values.repeat ? '반복 시작 날짜' : '날짜'}
               value={values.date}
@@ -230,6 +233,7 @@ function CardForm({
               }}
             />
             <Input
+              id="card-start-time"
               type="time"
               label="시작 시각"
               value={values.startTime}
