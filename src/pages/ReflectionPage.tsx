@@ -1,14 +1,18 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useReflectionEntries } from '@/hooks/useReflectionEntries'
 import { getTodayKey } from '@/lib/date'
+import { hasDemoData } from '@/lib/demoData'
 import { shouldShowCrisisHelp } from '@/lib/diarySafety'
 import { SUPPORT_PATH } from '@/lib/helpLines'
 import { loadStudySessions } from '@/lib/dailyRecords'
-import { getReflectionPrescription } from '@/lib/reflectionPrescription'
+import { reflectionPrescriptionQuery } from '@/lib/reflectionPrescription'
 import { loadRecord } from '@/lib/storage'
 import type { DiaryEntry, ReflectionEntry } from '@/types'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -23,11 +27,28 @@ function countDays(fromKey: string, toKey: string): number {
   return Math.round(diffMs / msPerDay) + 1
 }
 
-export function ReflectionPage() {
+/** 처방을 받아오는 동안 보여 주는 자리 (진짜 내용과 비슷한 크기) */
+function ReflectionSkeleton() {
+  return (
+    <div role="status" className="flex flex-col gap-4">
+      <span className="sr-only">성찰 일기 처방을 불러오는 중이에요</span>
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-24 w-full rounded-lg" />
+    </div>
+  )
+}
+
+interface ReflectionContentProps {
+  /** 개발용 가상 데이터를 넣었는지. 넣었으면 서버 대신 예시 처방을 씁니다. */
+  isDemo: boolean
+}
+
+/** 처방을 받아온 뒤의 화면: 제목, 처방 이유, 질문과 답 칸 */
+function ReflectionContent({ isDemo }: ReflectionContentProps) {
   const navigate = useNavigate()
   const todayKey = getTodayKey()
-  // 지금 내려진 처방. 없으면 null 입니다. (서버가 생기기 전까지 진짜 사용자에게는 처방이 없습니다. lib/reflectionPrescription.ts)
-  const [prescription] = useState(() => getReflectionPrescription(loadStudySessions()))
+  // 지금 내려진 처방. 서버가 처방하지 않았으면 null 입니다. (lib/reflectionPrescription.ts)
+  const { data: prescription } = useSuspenseQuery(reflectionPrescriptionQuery(isDemo))
 
   // 처방이 없으면 0일째로 두고, 아래에서 "기간이 아니에요" 를 보여줍니다.
   const dayIndex = prescription === null ? 0 : countDays(prescription.startDate, todayKey)
@@ -74,16 +95,9 @@ export function ReflectionPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
       <div>
-        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
-        <Link
-          to="/diary"
-          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
-        >
-          ‹ 일기
-        </Link>
-        <p className="text-brand mt-2 text-sm font-semibold">AI 선생님이 처방한 성찰 일기</p>
+        <p className="text-brand text-sm font-semibold">AI 선생님이 처방한 성찰 일기</p>
         <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
           {isWithinPrescription
             ? `오늘의 성찰 · ${dayIndex}일째 / ${prescription.days}일`
@@ -140,6 +154,30 @@ export function ReflectionPage() {
           )}
         </>
       )}
+    </>
+  )
+}
+
+export function ReflectionPage() {
+  // 가상 데이터인지는 처음 열 때 한 번만 봅니다.
+  const [isDemo] = useState(() => hasDemoData(loadStudySessions()))
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. 받아오는 동안에도 돌아갈 수 있게 밖에 둡니다. */}
+      <Link
+        to="/diary"
+        className="-mb-4 inline-flex h-10 items-center self-start text-sm text-slate-500 hover:text-slate-700"
+      >
+        ‹ 일기
+      </Link>
+      {/* 서버에서 받아오는 부분만 AsyncBoundary 로 감쌉니다. 받아오는 동안 스켈레톤, 실패하면 안내와 다시 시도 버튼 */}
+      <AsyncBoundary
+        pendingFallback={<ReflectionSkeleton />}
+        errorMessage="성찰 일기 처방을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+      >
+        <ReflectionContent isDemo={isDemo} />
+      </AsyncBoundary>
     </div>
   )
 }
