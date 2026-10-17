@@ -14,7 +14,7 @@ import { usePlans } from '@/hooks/usePlans'
 import { useStopwatch } from '@/hooks/useStopwatch'
 import { cn } from '@/lib/cn'
 import { DEFAULT_TARGET_MINUTES, normalizeTargetMinutes } from '@/lib/countdown'
-import { groupSessionsByDate, loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
+import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { getTodayKey, toDayDate, toDayKey } from '@/lib/date'
 import { dailyCoachQuery, getYesterdayLine, type YesterdayLine } from '@/lib/dailyCoach'
 import { getDaySummary } from '@/lib/daySummary'
@@ -30,7 +30,8 @@ import { loadData } from '@/lib/storage'
 import { sortPlansForNow } from '@/lib/timeline'
 import { getTimerDisplay, loadTimerMode } from '@/lib/timerDisplay'
 import { getTodayCareLevel, getTodayCareReason } from '@/lib/todayCare'
-import { getTreeState, type TreeState } from '@/lib/tree'
+import type { ForestState, ForestTree } from '@/lib/forest'
+import { loadForestState } from '@/lib/forestData'
 import { loadVoicePledge } from '@/lib/voicePledge'
 import { getMondayKey, getWeeklyFacts } from '@/lib/weeklyFacts'
 import {
@@ -42,7 +43,6 @@ import {
   saveWeeklyGoalChoice,
   type WeeklyGoalChoice,
 } from '@/lib/weeklyGoal'
-import { loadWeeklyReviews } from '@/lib/weeklyReview'
 import type { InitialPlan, StudyPlan, StudySession, Subject } from '@/types'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -84,25 +84,6 @@ function formatMinutes(totalMinutes: number): string {
   return `${hours}시간 ${minutes}분`
 }
 
-/** 공부 기록으로 지금 나무 상태를 계산합니다. */
-function calculateTree(): TreeState {
-  const days = groupSessionsByDate(loadStudySessions())
-  const totalStudyMinutes = days.reduce((sum, day) => sum + day.totalMinutes, 0)
-  const today = days.find((day) => day.date === getTodayKey())
-
-  return getTreeState({
-    totalStudyMinutes,
-    todayStudyMinutes: today?.totalMinutes ?? 0,
-    careLevel: getTodayCareLevel(),
-    // 잎 = 건너뛰지 않고 쓴 주간 회고의 수 (#82)
-    reflectionCount: loadWeeklyReviews().filter((review) => !review.skipped).length,
-    // TODO(#73): 진짜 인사이트가 아직 없어서 0 입니다. (지금 인사이트는 개발용 예시뿐입니다)
-    insightCount: 0,
-    // 열매 = "나 사용설명서" 에 올라간 효과가 확인된 방법의 수 (#87, #93)
-    manualItemCount: loadManualItems().length,
-  })
-}
-
 /** 오늘 날짜를 '10월 10일 토요일' 처럼 보여줍니다. (새벽 4시 전이면 어제 날짜를 넘겨받습니다) */
 function formatToday(date: Date): string {
   return date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })
@@ -118,7 +99,10 @@ const textLinkClass =
 
 export function HomePage() {
   const navigate = useNavigate()
-  const [tree] = useState(calculateTree)
+  // 숲 (#404). 재발 신호가 있을 때만 시들고, 회복 모드에서는 시들지 않습니다. (lib/forest.ts · lib/forestData.ts)
+  const [forest] = useState(() =>
+    loadForestState(getTodayKey(), Date.now(), loadManualItems().length),
+  )
   // 오늘의 관리 강도와, 내가 정한 최대 한도입니다. 화면이 처음 그려질 때 한 번만 읽습니다. (#94)
   const [careLevel] = useState(getTodayCareLevel)
   const [maxCareLevel] = useState(() => getCareLimits().maxCareLevel)
@@ -276,8 +260,8 @@ export function HomePage() {
           </div>
         </Card>
 
-        {/* 내 나무 (#68) */}
-        <TreeCard tree={tree} />
+        {/* 내 숲 (#404): 가운데 전체 나무 + 둘레의 목표 나무 */}
+        <ForestCard forest={forest} />
       </section>
 
       {/* 이번 주 발견 (#73) */}
@@ -719,38 +703,49 @@ function TodayCard({ plans, subjects, sessions }: TodayCardProps) {
   )
 }
 
-interface TreeCardProps {
-  tree: TreeState
+interface ForestCardProps {
+  forest: ForestState
 }
 
-/** "내 나무" 카드. 나무 그림 + 잎·열매 개수 + 다음 단계까지 남은 시간 */
-function TreeCard({ tree }: TreeCardProps) {
+/** 목표 나무 아래에 보여 줄 상태 글자 */
+function goalTreeStatus(tree: ForestTree): string {
+  if (tree.isFinished) return '끝난 목표'
+  if (tree.isWilted) return `${tree.stageName} · 시듦`
+  return tree.stageName
+}
+
+/**
+ * "내 숲" 카드 (#404). 가운데 전체 나무 그림 + 잎·열매 개수 + 다음 단계까지 남은 시간,
+ * 그 아래 목표 나무들(진행 중인 목표 먼저, 끝난 목표는 흐리게). 목표가 없으면 전체 나무만 보입니다.
+ */
+function ForestCard({ forest }: ForestCardProps) {
+  const { main } = forest
   return (
     <Card>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-slate-900">내 나무</h3>
+        <h3 className="text-base font-semibold text-slate-900">내 숲</h3>
         <p className="text-sm text-slate-500">
-          {tree.stageName} · {tree.stage + 1}단계
-          {tree.isWilted && <span className="font-semibold text-amber-700"> · 시듦</span>}
+          {main.stageName} · {main.stage + 1}단계
+          {main.isWilted && <span className="font-semibold text-amber-700"> · 시듦</span>}
         </p>
       </div>
 
       <div className="mt-3 flex justify-center rounded-lg bg-slate-50 px-4 py-3">
-        <TreeDrawing tree={tree} />
+        <TreeDrawing tree={main} />
       </div>
 
-      {tree.isWilted && (
-        <p className="mt-3 text-sm text-amber-700">
-          나무가 조금 시들었어. 오늘 공부를 시작하면 바로 다시 살아나.
+      {main.isWilted && (
+        <p className="mt-3 text-sm break-keep text-amber-700">
+          미루거나 못 한 카드가 이어져서 조금 시들었어. 다시 카드를 하면 살아나.
         </p>
       )}
 
       <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
         <span>
-          <span className="font-semibold text-green-700">잎 {tree.leafCount}</span> · 회고·인사이트
+          <span className="font-semibold text-green-700">잎 {main.leafCount}</span> · 회고·인사이트
         </span>
         <span>
-          <span className="font-semibold text-orange-600">열매 {tree.fruitCount}</span> · 효과가
+          <span className="font-semibold text-orange-600">열매 {main.fruitCount}</span> · 효과가
           확인된 방법
         </span>
       </p>
@@ -759,11 +754,42 @@ function TreeCard({ tree }: TreeCardProps) {
         <div className="flex items-center justify-between gap-2 text-sm text-slate-600">
           <span>다음 단계까지</span>
           <span>
-            {tree.isFullGrown ? '다 자랐어!' : `${formatMinutes(tree.minutesToNextStage)} 남음`}
+            {main.isFullGrown ? '다 자랐어!' : `${formatMinutes(main.minutesToNextStage)} 남음`}
           </span>
         </div>
-        <ProgressBar value={tree.progressPercent} />
+        <ProgressBar value={main.progressPercent} />
       </div>
+
+      {forest.goals.length > 0 && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-sm font-semibold text-slate-900">목표 나무</p>
+          {/* 375px 에서도 3그루가 한 줄에 들어가고, 지난 목표가 늘면 다음 줄로 내려갑니다. (가로 스크롤 없음) */}
+          <ul className="mt-2 grid grid-cols-3 gap-2">
+            {forest.goals.map((tree) => (
+              <li
+                key={tree.goalId}
+                className={cn(
+                  'flex min-w-0 flex-col items-center rounded-lg bg-slate-50 px-1 py-2',
+                  tree.isFinished && 'opacity-60',
+                )}
+              >
+                <TreeDrawing tree={tree} className="h-16" />
+                <p className="mt-1 w-full truncate text-center text-xs font-medium text-slate-800">
+                  {tree.title}
+                </p>
+                <p
+                  className={cn(
+                    'text-center text-xs',
+                    tree.isWilted ? 'text-amber-700' : 'text-slate-500',
+                  )}
+                >
+                  {goalTreeStatus(tree)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Card>
   )
 }
@@ -788,11 +814,14 @@ const FRUIT_SPOTS = [
 ]
 
 interface TreeDrawingProps {
-  tree: TreeState
+  /** 그릴 나무 (전체 나무 · 목표 나무 모두 같은 모양으로 그립니다) */
+  tree: Pick<ForestTree, 'stage' | 'stageName' | 'isWilted' | 'leafCount' | 'fruitCount'>
+  /** 그림 높이. 기본은 h-36(전체 나무), 목표 나무는 더 작게 넘깁니다 */
+  className?: string
 }
 
 /** 나무 그림 (라이브러리 없이 SVG 를 직접 그립니다) */
-function TreeDrawing({ tree }: TreeDrawingProps) {
+function TreeDrawing({ tree, className }: TreeDrawingProps) {
   // 시들면 초록 잎이 누런 갈색으로 바뀝니다. transition-colors 로 색이 천천히 바뀝니다.
   const leafColor = tree.isWilted ? 'fill-amber-600' : 'fill-green-500'
   const darkLeafColor = tree.isWilted ? 'fill-amber-700' : 'fill-green-700'
@@ -803,7 +832,12 @@ function TreeDrawing({ tree }: TreeDrawingProps) {
   const fruitSpots = tree.stage === 3 ? FRUIT_SPOTS.slice(0, tree.fruitCount) : []
 
   return (
-    <svg role="img" aria-label={label} viewBox="0 0 200 140" className="h-36 w-full max-w-full">
+    <svg
+      role="img"
+      aria-label={label}
+      viewBox="0 0 200 140"
+      className={cn('h-36 w-full max-w-full', className)}
+    >
       {/* 땅 그림자 */}
       <ellipse cx="100" cy="128" rx="60" ry="6" className="fill-slate-200" />
 
