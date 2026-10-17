@@ -1,4 +1,7 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
+import { useAuth } from '@/hooks/useAuth'
+import { isServerDataToken } from '@/lib/dataMode'
+import { sendPsychTest } from '@/lib/psychTestApi'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
@@ -43,10 +46,11 @@ function loadDraft(): Record<string, number> {
  * (문항·채점: lib/psychTest.ts)
  *
  * 지금 보고 있는 단계는 주소에 둡니다. (?step=intro · 1 ~ 35 · result) 뒤로 가기를 누르면 앞 단계로 갑니다.
- * 온보딩에서는 학년 다음, 생각 습관 테스트 앞에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
+ * 온보딩에서는 학년 다음에 나옵니다. (#388) 설정 요약까지 보여 주는 결과 화면은 #389 에서 합니다.
  */
 export function OnboardingPsychTestPage() {
   const navigate = useNavigate()
+  const { token } = useAuth()
   const [step, setStep] = useQueryParam('step', 'intro')
   const [answers, setAnswers] = useState<Record<string, number>>(loadDraft)
   const total = psychTestItems.length
@@ -72,6 +76,8 @@ export function OnboardingPsychTestPage() {
     // 마지막 문장까지 답했으면 결과를 저장하고 임시 답은 지웁니다.
     if (isPsychTestComplete(nextAnswers)) {
       savePsychTest(nextAnswers)
+      // 진짜 로그인이면 서버에도 보냅니다. 못 보내면 다음에 앱을 열 때 다시 보냅니다. (hooks/usePsychTestSync.ts)
+      if (isServerDataToken(token)) void sendPsychTest().catch(() => undefined)
       removeData(DRAFT_KEY)
       setStep('result')
     }
