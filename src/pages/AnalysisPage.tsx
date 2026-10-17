@@ -13,9 +13,12 @@ const RecordsPage = lazy(() =>
   import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
 )
 const ReportPage = lazy(() => import('@/pages/ReportPage').then((m) => ({ default: m.ReportPage })))
+const ExperimentPage = lazy(() =>
+  import('@/pages/ExperimentPage').then((m) => ({ default: m.ExperimentPage })),
+)
 
 /**
- * 분석 탭 화면(/analysis)입니다. 위의 하위 탭 막대로 [기록 | 리포트 | 사용설명서] 를 오갑니다. (#386)
+ * 분석 탭 화면(/analysis)입니다. 위의 하위 탭 막대로 [기록 | 리포트 | 사용설명서 | 자기 실험] 을 오갑니다. (#386, #412)
  * 보고 있는 하위 탭은 주소에 둡니다. (/analysis = 기록, /analysis?tab=report = 리포트, ?tab=manual = 사용설명서)
  * 옛 주소 /records · /report · /manual 로 들어와도 여기로 옵니다. (router.tsx)
  */
@@ -33,6 +36,7 @@ export function AnalysisPage() {
         {tab === 'records' && <RecordsPage />}
         {tab === 'report' && <ReportPage />}
         {tab === 'manual' && <ManualPage />}
+        {tab === 'experiment' && <ExperimentPage />}
       </PageBoundary>
     </>
   )

@@ -1580,6 +1580,13 @@ function DayCardList({ cards, dateKey }: DayCardListProps) {
       >
         + 카드 만들기
       </Link>
+      {/* 학교·학원은 카드가 아니라 고정 일정으로 넣습니다 (#393) */}
+      <Link
+        to="/cards/fixed"
+        className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
+      >
+        학교·학원 고정 일정
+      </Link>
     </Card>
   )
 }

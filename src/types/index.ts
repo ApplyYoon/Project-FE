@@ -158,6 +158,8 @@ export interface SessionEndReport {
   proof?: { link?: string; summary?: string }
   /** 잘 된 이유 (물었을 때만) */
   goodReasons?: GoodReason[]
+  /** 관리 4단계라 증빙이 꼭 필요했던 세션이면 true — 증빙이 없으면 실행으로 인정하지 않습니다 (#408) */
+  proofRequired?: boolean
 }
 
 /** 딴생각 주차장 메모 한 줄 */
@@ -252,6 +254,24 @@ export interface Card {
   /** 카드 편집 화면을 연 순간부터 저장할 때까지 걸린 시간 (밀리초). '계획 대 실행 비율' 에 씁니다 */
   planningMs?: number
   /** 카드를 만든 시각 */
+  createdAt: number
+}
+
+/**
+ * 고정 일정 블록 (최종 기획서 「4.3 카드」, #393)
+ * 학교·학원처럼 요일마다 정해진 시간. 카드가 아니라서 타이머가 없고, 의지력·순공 계산에서 빠집니다.
+ * 공부 가능 시간 계산 · 버퍼 · 수면 보호에만 씁니다. 칸은 BE(Project-BE#223)와 같은 뜻입니다.
+ */
+export interface FixedBlock {
+  id: string
+  /** 무슨 일정인지 (예: '학교', '수학 학원') */
+  title: string
+  /** 반복 요일 (0 = 일요일 … 6 = 토요일). 1개 이상 */
+  repeatDays: number[]
+  /** 시작 시각 'HH:MM' */
+  startTime: string
+  /** 끝 시각 'HH:MM' (시작보다 뒤) */
+  endTime: string
   createdAt: number
 }
 

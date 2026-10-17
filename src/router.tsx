@@ -42,6 +42,9 @@ const CardEditPage = lazy(() =>
 )
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
 const CheckPage = lazy(() => import('@/pages/CheckPage').then((m) => ({ default: m.CheckPage })))
+const FixedBlocksPage = lazy(() =>
+  import('@/pages/FixedBlocksPage').then((m) => ({ default: m.FixedBlocksPage })),
+)
 const CounselPage = lazy(() =>
   import('@/pages/CounselPage').then((m) => ({ default: m.CounselPage })),
 )
@@ -140,6 +143,8 @@ export const router = createBrowserRouter([
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
       { path: 'cards/new', element: <CardEditPage /> },
       { path: 'cards/:cardId/edit', element: <CardEditPage /> },
+      // 고정 일정(학교·학원) 입력 (#393)
+      { path: 'cards/fixed', element: <FixedBlocksPage /> },
       // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
       { path: 'goals/new', element: <GoalNewPage /> },
       // 목표 상세 (진척 · 2주 목표 점검, #403). 카드 탭의 목표 목록에서 들어옵니다.

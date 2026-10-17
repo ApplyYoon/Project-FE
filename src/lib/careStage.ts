@@ -73,7 +73,16 @@ export interface CareStageResult {
   /** 오늘의 관리 단계 (0 ~ 4) */
   stage: CareLevel
   /** 어느 규칙으로 정했는지 */
-  rule: 'safety' | 'recovery' | 'up' | 'holdUnavoidable' | 'holdOverload' | 'holdUnknown' | 'toBase'
+  rule:
+    | 'safety'
+    | 'recovery'
+    | 'up'
+    | 'holdUnavoidable'
+    | 'holdOverload'
+    | 'holdUnknown'
+    | 'toBase'
+    /** 4단계에서 증빙 있는 실행을 해서 3단계로 내려옴 (lib/stage4.ts) */
+    | 'release'
   /** 계획을 줄여 보자고 제안할지 */
   suggestShrink: boolean
   /** 왜 이 단계인지 한 줄 (홈 · 통화) */
