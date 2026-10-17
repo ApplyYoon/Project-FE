@@ -1,6 +1,7 @@
 import { isMissResult, type CardResult } from '@/lib/cardResult'
 import { moveDateKey } from '@/lib/date'
-import type { CardPriority, MissReason } from '@/types'
+import type { CardFailCause } from '@/lib/cardMarks'
+import type { CardPriority } from '@/types'
 
 /**
  * 재발 신호 (최종 기획서 「5.2 재발 신호」, #382)
@@ -29,7 +30,7 @@ export interface JudgedCardDay {
   /** getRunRate 의 값 (0 ~ 1). 미실행이면 0 */
   runRate: number
   /** 미실행일 때 고른 원인 태그. 아직 안 골랐으면 없음 */
-  missReason?: MissReason
+  missReason?: CardFailCause
   /** cardResult.ts 의 isStartedOnTime 값. 시작하지 않았으면 없음 (의지력의 정시 시작 비율에 씀) */
   startedOnTime?: boolean
   /** 그 카드 · 그날 체크리스트 달성률 (0 ~ 1). 세션이 없으면 없음 (관리 단계의 '성공' 판정에 씀) */
@@ -50,7 +51,7 @@ export interface RelapseSignal {
   recentRate: number | null
   baselineRate: number | null
   /** 최근 7일 미실행 원인 중 가장 많은 것 (관리 단계 판정에 씀). 없으면 undefined */
-  mainCause?: MissReason
+  mainCause?: CardFailCause
 }
 
 /** ① 몇 번 연속이면 신호인지 */
@@ -69,8 +70,8 @@ function averageRunRate(days: JudgedCardDay[], from: string, to: string): number
 }
 
 /** 가장 많이 나온 원인. 수가 같으면 더 최근에 나온 것 */
-function findMainCause(days: JudgedCardDay[]): MissReason | undefined {
-  const counts = new Map<MissReason, { count: number; lastDate: string }>()
+function findMainCause(days: JudgedCardDay[]): CardFailCause | undefined {
+  const counts = new Map<CardFailCause, { count: number; lastDate: string }>()
   for (const day of days) {
     if (!day.missReason) continue
     const prev = counts.get(day.missReason) ?? { count: 0, lastDate: '' }
@@ -79,7 +80,7 @@ function findMainCause(days: JudgedCardDay[]): MissReason | undefined {
       lastDate: day.dateKey > prev.lastDate ? day.dateKey : prev.lastDate,
     })
   }
-  let best: { cause: MissReason; count: number; lastDate: string } | undefined
+  let best: { cause: CardFailCause; count: number; lastDate: string } | undefined
   for (const [cause, value] of counts) {
     const isBetter =
       best === undefined ||

@@ -20,7 +20,7 @@ export const NUDGE_AFTER_MINUTES = 3
 /** 알림 시각이 지난 뒤 이 시간(분) 안에만 보냅니다. (앱을 몇 시간 뒤에 열었을 때 지난 알림이 한꺼번에 오지 않게) */
 export const ALERT_WINDOW_MINUTES = 10
 
-export type CardAlertKind = 'early' | 'start' | 'nudge'
+export type CardAlertKind = 'early' | 'start' | 'nudge' | 'missed'
 
 /** 지금 보낼 알림 하나 */
 export interface DueCardAlert {
@@ -41,13 +41,14 @@ export function formatSpokenTime(time: number): string {
 
 /**
  * 지금 보낼 카드 알림을 고릅니다. React 도 저장소도 쓰지 않는 순수 함수입니다.
- * - startedCardIds: 오늘 이미 시작한(또는 끝낸) 카드 — 이 카드는 알리지 않습니다
+ * - startedCardIds: 오늘 이미 시작했거나(끝냈거나) 미루기 · 실패로 처리한 카드 — 이 카드는 알리지 않습니다
  * - sentKeys: 이미 보낸 알림 이름
  * - earlyMinutes: 10분 전 알림을 더할지 (0 이면 안 함)
  *
  * ■ 예시 (10/17 19:00 수학 카드, 알림 정각)
  *   지금 18:50, earlyMinutes 10 -> [ early ]   지금 19:00 -> [ start ]   지금 19:03 -> [ nudge '7시 03분이야 …' ]
  *   지금 19:30 (start 를 못 보냄)  -> [ nudge ] (start 는 10분이 지나 버림)
+ *   지금 20:00 (카드가 끝남)       -> [ missed '수학 시간이 끝났어요' ]
  *   이미 시작한 카드 · 시작 시각이 없는 카드 -> []
  */
 export function getDueCardAlerts(
@@ -66,6 +67,7 @@ export function getDueCardAlerts(
     const endAt = startAt + card.durationMinutes * MS_PER_MINUTE
     const key = (kind: CardAlertKind) => `${card.id}:${dateKey}:${kind}`
     // 알림 시각 ~ 그 뒤 10분 (또는 카드가 끝날 때까지) 안이면 보낼 때입니다.
+    // (카드가 끝난 뒤의 'missed' 알림은 아래에서 따로 봅니다)
     const isDue = (at: number, until = at + ALERT_WINDOW_MINUTES * MS_PER_MINUTE) =>
       now >= at && now < Math.min(until, endAt)
 
@@ -94,6 +96,20 @@ export function getDueCardAlerts(
         kind: 'nudge',
         title: card.title,
         body: `${formatSpokenTime(now)}이야. 10분 기다리지 말고 지금 시작해요.`,
+      })
+    }
+    // 카드 시간이 끝날 때까지 시작하지 않았으면: 미룰지 · 못 했다고 남길지 고르러 오게 합니다. (#400)
+    if (
+      !sentKeys.has(key('missed')) &&
+      now >= endAt &&
+      now < endAt + ALERT_WINDOW_MINUTES * MS_PER_MINUTE
+    ) {
+      due.push({
+        key: key('missed'),
+        cardId: card.id,
+        kind: 'missed',
+        title: `${card.title} 시간이 끝났어요`,
+        body: '미룰지, 못 했다고 남길지 골라요.',
       })
     }
   }

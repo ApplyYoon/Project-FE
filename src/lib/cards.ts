@@ -11,7 +11,7 @@ import type { Card, Routine, StudyPlan } from '@/types'
 export const CARDS_KEY = 'cards'
 
 /** 1회성 카드인지 (반복 요일이 없으면 1회성) */
-export function isOneOffCard(card: Card): boolean {
+export function isOneOffCard(card: Pick<Card, 'repeatDays'>): boolean {
   return card.repeatDays === undefined || card.repeatDays.length === 0
 }
 

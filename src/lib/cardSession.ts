@@ -151,6 +151,12 @@ function toTimeText(time: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+/** 지금 시각으로 즉석 카드를 만듭니다. (화면 코드가 Date.now() 를 직접 부르지 않게 여기서 시각을 찍습니다) */
+export function createInstantCardNow(dateKey: string, minutes: number): Card {
+  const now = Date.now()
+  return createInstantCard(`card-${now}`, dateKey, now, minutes)
+}
+
 /**
  * [지금 시작] 으로 만드는 즉석 카드 — '언제 = 지금' 입니다 (「4.2 홈」).
  * 제목과 체크리스트는 종료 팝업에서 한 줄로 받으므로 처음에는 '지금 시작한 공부' 한 줄입니다.
