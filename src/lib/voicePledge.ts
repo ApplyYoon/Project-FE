@@ -21,6 +21,12 @@ export const RECORD_BITS_PER_SECOND = 16000
 /** 글로 남기는 한마디의 최대 글자 수 */
 export const PLEDGE_TEXT_MAX_LENGTH = 50
 
+/** 처음의 다짐을 남기는 화면의 주소 */
+export const PLEDGE_PATH = '/onboarding/voice'
+
+// "처음의 다짐 화면을 한 번 봤다" 는 표시를 넣는 이름입니다. (실제 키는 'study-voice-pledge-seen')
+const SEEN_KEY = 'voice-pledge-seen'
+
 /** 저장해 두는 처음의 다짐 */
 export interface VoicePledge {
   /** 녹음한 소리. 'data:audio/webm;base64,…' 처럼 소리를 글자로 바꾼 것입니다. 녹음하지 않았으면 null */
@@ -136,4 +142,18 @@ export function saveVoicePledge(input: {
 /** 처음의 다짐을 지웁니다. 정말 사라졌으면 true 입니다. */
 export function removeVoicePledge(): boolean {
   return removeData(STORAGE_KEY)
+}
+
+/**
+ * 처음의 다짐 화면을 이미 한 번 봤는지 알려줍니다. 다짐을 남겨 뒀어도 본 것으로 칩니다.
+ * 한 번 봤으면(건너뛰었어도) 다시 띄우지 않습니다. RequireAuth 가 이걸 보고 딱 한 번만 이 화면으로 보냅니다.
+ */
+export function hasSeenPledge(): boolean {
+  // 표시를 먼저 봅니다. 녹음은 커서(약 60KB) 표시가 없을 때만 읽습니다.
+  return loadData<boolean>(SEEN_KEY, false) === true || loadVoicePledge() !== null
+}
+
+/** 처음의 다짐 화면을 봤다고 적어 둡니다. */
+export function markPledgeSeen(): void {
+  saveData(SEEN_KEY, true)
 }

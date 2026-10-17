@@ -8,6 +8,7 @@
  *    앱이 닫혀 있을 때 알림을 보내려면 서버가 보내는 웹 푸시와 서비스 워커(#105)가 필요합니다.
  */
 import { showSystemNotification } from '@/lib/notifications'
+import { isWithinQuietHours, type QuietHours } from '@/lib/safetyBrake'
 
 // 저장소에 넣는 이름들입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다)
 /** 전화 받을 시간. 'HH:MM' 글자 (예: '22:00'). 아직 안 정했으면 저장돼 있지 않습니다. */
@@ -113,4 +114,44 @@ export function showCallNotification(): void {
     tag: 'ai-call',
     url: '/call',
   })
+}
+
+/**
+ * 정해 둔 전화 시간이 연락 금지 시간 안인지 확인합니다. 안이면 전화가 매일 조용히 건너뛰어집니다. (hooks/useCallReminder.ts)
+ * 설정 화면이 "이 시간에는 전화가 안 울려요" 하고 미리 알려 주려고 씁니다.
+ *
+ *   연락 금지 23:00 ~ 07:00 일 때
+ *   isCallTimeInQuietHours('23:30', quietHours)  -> true
+ *   isCallTimeInQuietHours('06:59', quietHours)  -> true
+ *   isCallTimeInQuietHours('07:00', quietHours)  -> false  (끝나는 시각부터는 울립니다)
+ *   isCallTimeInQuietHours('', quietHours)       -> false  (아직 안 정함)
+ */
+export function isCallTimeInQuietHours(savedTime: unknown, quietHours: QuietHours): boolean {
+  const minutes = parseCallTime(savedTime)
+  if (minutes === null) return false
+  // 날짜는 상관없고 시각만 보므로, 아무 날(2000-01-01)의 그 시각으로 만들어 확인합니다.
+  const time = new Date(2000, 0, 1, Math.floor(minutes / 60), minutes % 60)
+  return isWithinQuietHours(time, quietHours)
+}
+
+/**
+ * 전화가 울려도 화면을 넘기면 안 되는 때인지 확인합니다. (hooks/useCallReminder.ts)
+ *  - 집중 모드 중: 전화 화면(/call)은 집중 모드 화면 밖에 있어서, 넘어가면 집중이 깨집니다.
+ *  - 글을 쓰는 화면: 일기 · 성찰 일기 · 체크인 · 시험 결과는 화면을 옮기면 쓰던 글이 사라집니다.
+ * 이런 때는 이번 전화를 건너뜁니다. (정해진 시간으로부터 5분 안에 이 화면들을 벗어나면 그때 울립니다)
+ *
+ *   isBusyForCall('/timer', true)               -> true   (집중 모드 중)
+ *   isBusyForCall('/timer', false)              -> false
+ *   isBusyForCall('/diary/reflection', false)   -> true   (성찰 일기 쓰는 중)
+ *   isBusyForCall('/exams/abc/result', false)   -> true   (시험 결과 쓰는 중)
+ *   isBusyForCall('/exams', false)              -> false  (시험 목록은 괜찮음)
+ */
+export function isBusyForCall(pathname: string, isFocusModeOn: boolean): boolean {
+  if (isFocusModeOn) return true
+  return (
+    pathname === '/diary' ||
+    pathname === '/diary/reflection' ||
+    pathname === '/check' ||
+    /^\/exams\/[^/]+\/result$/.test(pathname)
+  )
 }

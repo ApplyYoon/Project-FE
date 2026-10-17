@@ -58,8 +58,9 @@ const RECORD_KEYS = [
   'weekly-reviews',
   // 개선안과 도전 상태. 이행 기록(suggestion-checks)만 지우고 이것을 남기면 "도전 중" 인데 기록이 0 인 상태가 됩니다.
   'suggestions',
-  // 처음의 다짐 (내 목소리 녹음과 글 한마디) (#241)
+  // 처음의 다짐 (내 목소리 녹음과 글 한마디) (#241)과, 그 화면을 한 번 봤다는 표시
   'voice-pledge',
+  'voice-pledge-seen',
   // 주마다 고른 "이번 주 목표" 와 쉬기로 한 주 (#247)
   'weekly-goals',
   // AI 가 써 준 "어제 한 줄" (그날 다시 묻지 않으려고 저장해 둔 것. lib/dailyCoach.ts)

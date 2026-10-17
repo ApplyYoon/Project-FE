@@ -1,6 +1,7 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { cn } from '@/lib/cn'
@@ -13,6 +14,7 @@ import {
   getUnansweredSteps,
   isAnswerValid,
   loadOnboardingAnswers,
+  onboardingSteps,
   parseMultiAnswer,
   toChoiceOption,
   toggleMultiAnswer,
@@ -31,7 +33,7 @@ import {
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import type { SubjectLevel } from '@/types'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 // 설문을 끝내고 답을 저장하는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-onboarding-answers' 가 됩니다)
 const STORAGE_KEY = 'onboarding-answers'
@@ -87,6 +89,15 @@ const EMPTY_LEVEL_DRAFT: LevelDraft = { kind: 'grade', scoreText: '', confidence
 
 /** 자신감 버튼에 보이는 숫자 (1 ~ 5) */
 const CONFIDENCE_CHOICES = [1, 2, 3, 4, 5]
+
+// 자신감 버튼의 뜻. 화면에는 양끝만 보이지만, 스크린리더는 버튼마다 뜻을 같이 읽어 줍니다.
+const CONFIDENCE_LABELS: Record<number, string> = {
+  1: '전혀 자신 없어요',
+  2: '별로 자신 없어요',
+  3: '보통이에요',
+  4: '꽤 자신 있어요',
+  5: '아주 자신 있어요',
+}
 
 /** 성적 종류 고르기 버튼에 보이는 글자 */
 const SCORE_KIND_OPTIONS: { kind: ScoreKind; label: string }[] = [
@@ -232,6 +243,7 @@ function SubjectLevelInput({ value, onChange }: SubjectLevelInputProps) {
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
+                      aria-label={`${choice}, ${CONFIDENCE_LABELS[choice]}`}
                       onClick={() => handleChangeDraft(subject.id, { confidence: choice })}
                       className={cn(
                         'h-10 rounded-lg border-2 text-sm font-medium',
@@ -427,13 +439,28 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   const isMore = mode === 'more'
   // 저장된 답. 설문을 한 번도 안 했으면 null 입니다.
   const [savedAnswers] = useState(loadOnboardingAnswers)
+  // 주소의 ?only=질문이름 : 이미 답했거나 건너뛴 질문 "하나만" 다시 답하거나 고치러 온 경우입니다. (#88)
+  // 한 번 넘기면 "남은 질문" 에서 빠져서 다시 답할 길이 없었기 때문에, 설정에서 이 주소로 들어오게 합니다.
+  // 주소는 누구나 고칠 수 있어서, 우리 질문 목록에 있는 이름일 때만 인정합니다. (없는 이름이면 평소처럼 남은 질문을 묻습니다)
+  const [searchParams] = useSearchParams()
+  const [editOneStep] = useState(() =>
+    isMore ? onboardingSteps.find((item) => item.key === searchParams.get('only')) : undefined,
+  )
   // 이번에 물어볼 질문들. 화면이 처음 그려질 때 한 번만 정합니다.
   // (답할 때마다 목록이 줄어들면 "3 / 12" 같은 번호가 흔들리기 때문입니다)
-  const [steps] = useState(() => (isMore ? getUnansweredSteps(savedAnswers ?? {}) : firstSteps))
+  const [steps] = useState(() => {
+    if (!isMore) return firstSteps
+    return editOneStep ? [editOneStep] : getUnansweredSteps(savedAnswers ?? {})
+  })
   // 처음 설문은 전에 하다 만 곳이 있으면 거기서부터 이어서 합니다. (새로고침해도 답이 남습니다)
-  const [draft] = useState(() =>
-    isMore ? { stepIndex: 0, answers: {} } : loadDraft(firstSteps.length),
-  )
+  // 한 질문만 고치러 온 경우에는 저장된 답으로 시작해서, 적어 둔 것을 보고 고칠 수 있게 합니다.
+  const [draft] = useState(() => {
+    if (!isMore) return loadDraft(firstSteps.length)
+    const startAnswers = editOneStep
+      ? { [editOneStep.key]: savedAnswers?.[editOneStep.key] ?? '' }
+      : {}
+    return { stepIndex: 0, answers: startAnswers }
+  })
   const [stepIndex, setStepIndex] = useState(draft.stepIndex)
   // 지금 화면에서 고른 답. 예) { grade: '고2', targetExam: '수능' }
   // "이전" 으로 돌아가도 여기에 남아 있어서 고른 답이 그대로 보입니다.
@@ -480,6 +507,8 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   // 넘어가는 버튼에 보여줄 글자
   let nextLabel = isLastStep ? '완료' : '다음'
   if (isMore && isEmpty) nextLabel = isLastStep ? '건너뛰고 끝내기' : '건너뛰기'
+  // 한 질문만 고치러 온 경우: 저장하면 설정으로 돌아갑니다. 비워서 저장하면 "답하지 않음" 이 됩니다.
+  if (editOneStep) nextLabel = isEmpty ? '비워서 저장' : '저장'
 
   function handleChangeAnswer(nextValue: string) {
     setAnswers((prev) => ({ ...prev, [step.key]: nextValue }))
@@ -533,13 +562,18 @@ export function OnboardingPage({ mode = 'first' }: OnboardingPageProps) {
   return (
     <PlainLayout
       headerAction={
-        // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
-        <Link
-          to={isMore ? '/settings' : '/'}
-          className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
-        >
-          {isMore ? '그만하고 설정으로' : '나중에 하기'}
-        </Link>
+        // 처음 설문은 온보딩을 끝내기 전에 나갈 수 없어서 "나중에 하기" 대신 "로그인 화면으로" 를 둡니다. 답은 남아서 다음에 이어 할 수 있습니다. (RequireAuth)
+        isMore ? (
+          // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
+          <Link
+            to="/settings"
+            className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
+          >
+            그만하고 설정으로
+          </Link>
+        ) : (
+          <OnboardingExitButton />
+        )
       }
     >
       <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">

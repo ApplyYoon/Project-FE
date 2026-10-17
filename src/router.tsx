@@ -1,5 +1,6 @@
 import { Layout } from '@/components/layout/Layout'
 import { RequireAuth } from '@/components/layout/RequireAuth'
+import { ONBOARDING_RESUME_PATH } from '@/lib/onboardingProgress'
 import { THINKING_TEST_PATH } from '@/lib/thinkingTest'
 import { RequireDailyCheckIn } from '@/components/layout/RequireDailyCheckIn'
 import { AboutPage } from '@/pages/AboutPage'
@@ -20,6 +21,7 @@ import { NotificationsPage } from '@/pages/NotificationsPage'
 import { OnboardingDonePage } from '@/pages/OnboardingDonePage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { OnboardingPlanPage } from '@/pages/OnboardingPlanPage'
+import { OnboardingResumePage } from '@/pages/OnboardingResumePage'
 import { OnboardingThinkingPage } from '@/pages/OnboardingThinkingPage'
 import { OnboardingVoicePage } from '@/pages/OnboardingVoicePage'
 import { PhoneFocusGuidePage } from '@/pages/PhoneFocusGuidePage'
@@ -112,6 +114,16 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
+  // 온보딩을 하다 만 사람이 다음에 들어왔을 때 "이어하기 / 처음부터 다시" 를 고르는 화면. RequireAuth 가 보냅니다.
+  {
+    path: ONBOARDING_RESUME_PATH,
+    errorElement: <ErrorPage />,
+    element: (
+      <RequireAuth>
+        <OnboardingResumePage />
+      </RequireAuth>
+    ),
+  },
   // 설정의 "내 정보 더 알려주기". 같은 설문 화면으로 아직 안 답한 질문만 이어서 묻습니다. (#239)
   {
     path: '/onboarding/more',
@@ -142,7 +154,7 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 처음의 나에게 한마디(목소리·글) 남기기. 처음 계획 다음, "준비 끝" 앞에 나옵니다. (#241)
+  // 처음의 나에게 한마디(목소리·글) 남기기. 가입 직후 맨 처음, 온보딩 질문 앞에 나옵니다. 건너뛸 수 있습니다. (#241)
   {
     path: '/onboarding/voice',
     errorElement: <ErrorPage />,

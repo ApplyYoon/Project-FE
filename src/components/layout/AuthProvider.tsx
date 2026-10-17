@@ -6,8 +6,10 @@ import {
   loggedOutState,
   type AuthState,
 } from '@/lib/authStorage'
+import { disconnectCalendar } from '@/lib/googleCalendar'
 import { queryClient } from '@/lib/queryClient'
 import { saveData } from '@/lib/storage'
+import { unsubscribeThisDevice } from '@/lib/webPush'
 import type { AuthUser } from '@/types'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 
@@ -38,14 +40,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(() => {
     // 서버에서 받아 보관해 둔 것(내 정보 등)을 지웁니다. 안 지우면 같은 기기에서 다른 사람이 로그인했을 때 앞사람의 정보가 잠깐 보입니다.
     queryClient.clear()
+    // 구글 캘린더 연결도 끊습니다. (이 기기의 출입증을 지우고 구글 쪽 허락도 취소)
+    // 안 끊으면 같은 기기에서 다음 사람이 로그인했을 때 앞사람의 구글 일정이 보이고, 새 계획이 앞사람의 캘린더에 들어갑니다.
+    disconnectCalendar()
     setAuth(loggedOutState)
   }, [])
 
   // 서버가 "누구인지 모르겠다(401)" 고 하면 api.ts 가 알려 줍니다. 그러면 로그아웃해서,
   // 문지기(RequireAuth)가 로그인 화면으로 보내게 합니다. (#198)
+  // 로그인이 만료돼서 서버를 부를 수 없으니, 이 기기의 푸시 구독은 브라우저에서만 지웁니다.
+  // 남겨 두면 같은 기기에서 다른 사람이 로그인했을 때 설정에 "켜져 있어요" 가 뜨고 앞사람 알림이 옵니다.
   useEffect(() => {
-    window.addEventListener(UNAUTHORIZED_EVENT, logout)
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, logout)
+    function handleUnauthorized() {
+      void unsubscribeThisDevice()
+      logout()
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
   }, [logout])
 
   // useMemo: 로그인 정보가 바뀔 때만 값을 새로 만듭니다.

@@ -11,6 +11,7 @@ import {
 } from '@/lib/notifications'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, loadList, saveData } from '@/lib/storage'
+import { useAuth } from '@/hooks/useAuth'
 import { useEffect } from 'react'
 
 // 한 번 알림을 보낸 메시지의 id 를 저장해 두는 키. 새로고침하거나 다른 페이지로 가도
@@ -40,6 +41,10 @@ function notifyUnreadMessages(): void {
   // (예전에는 권한이 없어도 "이미 알린 메시지" 로 적어 두어서, 나중에 알림을 켜도 그 메시지는 영영 알림이 안 왔습니다)
   if (getNotificationPermission() !== 'granted') return
 
+  // 알림 화면을 보고 있는 중이면 휴대폰 알림을 또 띄우지 않습니다. (화면에서 이미 보이고, 화면이 곧 "읽음" 으로 바꿉니다)
+  // "이미 알렸다" 고 적지도 않아서, 화면을 떠난 뒤에도 안 읽은 채로 남은 것이 있으면 그때 알립니다.
+  if (window.location.pathname === '/notifications' && document.visibilityState === 'visible')
+    return
   const messages = loadAiMessages()
   if (countUnreadAiMessages(messages) === 0) return
 
@@ -66,18 +71,24 @@ function notifyUnreadMessages(): void {
     quietHours: toQuietHours(settings),
   })
 
-  // 저장된 값이 깨져 있을 수 있어서 모양을 확인하고 씁니다.
-  const savedSent = loadData<Partial<SentToday> | null>(SENT_TODAY_KEY, null)
-  const hasTodayCount = savedSent?.date === today && typeof savedSent.count === 'number'
-  // 날짜가 지났으면(또는 값이 없으면) 0 부터 다시 셉니다.
-  const sentCountBefore = hasTodayCount ? (savedSent.count ?? 0) : 0
+  /** 오늘 보낸 알림 개수를 저장소에서 읽습니다. (저장된 값이 깨져 있을 수 있어서 모양을 확인하고 씁니다) */
+  function readSentCountToday(): number {
+    const savedSent = loadData<Partial<SentToday> | null>(SENT_TODAY_KEY, null)
+    const hasTodayCount = savedSent?.date === today && typeof savedSent.count === 'number'
+    // 날짜가 지났으면(또는 값이 없으면) 0 부터 다시 셉니다.
+    return hasTodayCount ? (savedSent.count ?? 0) : 0
+  }
+
+  function writeSentCountToday(count: number) {
+    saveData<SentToday>(SENT_TODAY_KEY, { date: today, count: Math.max(0, count) })
+  }
 
   /** 고른 메시지를 하나씩 알림으로 띄우고, 오늘 보낸 개수를 저장합니다. */
   async function sendNotifications() {
-    let sentCount = sentCountBefore
-
     for (const message of targets) {
-      const hasRoomToday = sentCount < settings.dailyCount
+      // 알림을 띄우는 일은 기다려야 해서(아래 await), 이 함수가 두 번 겹쳐 돌 수 있습니다.
+      // 시작할 때 개수를 한 번만 읽어 두면 둘 다 같은 숫자에서 출발해 하루 한도를 넘기므로, 메시지마다 저장소에서 다시 읽습니다.
+      const hasRoomToday = readSentCountToday() < settings.dailyCount
       const canSend = canSendAiMessageNotification({
         careLevel: message.careLevel,
         brake,
@@ -85,14 +96,13 @@ function notifyUnreadMessages(): void {
       })
       if (!hasRoomToday || !canSend) continue
 
-      // 실제로 알림이 뜬 것만 "오늘 보낸 개수" 로 셉니다. (브라우저가 막으면 false 가 옵니다)
+      // 띄우기 전에 자리를 먼저 하나 잡아 둡니다. (기다리는 동안 겹쳐 도는 쪽이 이 자리를 보고 한도를 지킵니다)
+      writeSentCountToday(readSentCountToday() + 1)
+      // 브라우저가 막으면 false 가 옵니다. 실제로 뜬 것만 세어야 해서, 안 뜨면 잡아 둔 자리를 돌려줍니다.
       const isShown = await showAiMessageNotification(message)
-      if (isShown) sentCount += 1
+      if (!isShown) writeSentCountToday(readSentCountToday() - 1)
     }
-
-    saveData<SentToday>(SENT_TODAY_KEY, { date: today, count: sentCount })
   }
-
   // void: 끝나기를 기다리지 않습니다. 알림은 화면과 상관없이 뒤에서 뜹니다.
   void sendNotifications()
 }
@@ -106,11 +116,16 @@ function notifyUnreadMessages(): void {
  *   예전에는 앱을 열 때만 확인해서, 쓰는 도중에 쌓인 알림은 다음에 앱을 열어야 떴습니다.
  */
 export function useAiMessageNotifications(): void {
+  const { isLoggedIn } = useAuth()
+
   useEffect(() => {
+    // 로그인 전에는 알리지 않습니다. 같이 쓰는 기기에서 로그아웃한 뒤, 이전 사람의 메시지 내용이 브라우저 알림으로 뜨면 안 되기 때문입니다.
+    if (!isLoggedIn) return
+
     notifyUnreadMessages()
 
     // 알림 목록이 바뀌었다는 신호(lib/aiMessages.ts 의 saveAiMessages 가 보냅니다)를 듣습니다.
     window.addEventListener(AI_MESSAGES_CHANGE_EVENT, notifyUnreadMessages)
     return () => window.removeEventListener(AI_MESSAGES_CHANGE_EVENT, notifyUnreadMessages)
-  }, [])
+  }, [isLoggedIn])
 }

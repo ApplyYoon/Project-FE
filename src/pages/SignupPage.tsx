@@ -30,6 +30,7 @@ import {
 import { saveData } from '@/lib/storage'
 import { diaryAnalysisConsent, privacyConsent, serviceTerms, type TermsDocument } from '@/lib/terms'
 import { testUser } from '@/lib/testLogin'
+import { PLEDGE_PATH } from '@/lib/voicePledge'
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -388,8 +389,9 @@ export function SignupPage() {
         clearPendingGoogleSignup()
         saveData(SIGNUP_STORAGE_KEY, info)
         login(result.user, result.token)
+        // 가입하면 맨 처음에 "처음의 나에게 한마디" 를 남기러 갑니다. (건너뛰면 온보딩 질문으로)
         // replace: 뒤로 가기로 가입 화면에 돌아오지 않게 합니다.
-        navigate('/onboarding', { replace: true })
+        navigate(PLEDGE_PATH, { replace: true })
       } catch (error) {
         setSubmitError(getGoogleAuthErrorMessage(error))
         setIsSubmitting(false)
@@ -397,9 +399,9 @@ export function SignupPage() {
       return
     }
 
-    // 테스트 로그인으로 이미 로그인한 사람은 바로 온보딩으로 갑니다.
+    // 테스트 로그인으로 이미 로그인한 사람은 바로 온보딩으로 갑니다. (맨 처음은 "처음의 나에게 한마디")
     saveData(SIGNUP_STORAGE_KEY, info)
-    navigate('/onboarding')
+    navigate(PLEDGE_PATH)
   }
 
   return (

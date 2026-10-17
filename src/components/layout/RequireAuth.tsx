@@ -1,8 +1,13 @@
 import { useAuth } from '@/hooks/useAuth'
 import { isPublicPath, type LoginRedirectState } from '@/lib/authRedirect'
+import {
+  ONBOARDING_RESUME_PATH,
+  getOnboardingResumePath,
+  hasOnboardingProgress,
+  wasResumeAsked,
+} from '@/lib/onboardingProgress'
 import { hasSignupInfo } from '@/lib/signup'
 import { TEST_TOKEN } from '@/lib/testLogin'
-import { THINKING_TEST_PATH, hasThinkingTest } from '@/lib/thinkingTest'
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
@@ -16,8 +21,10 @@ interface RequireAuthProps {
  *   로그인 없이 열리는 주소     -> 로그인·회원가입·도움 연결 안내는 그대로 보여줍니다. (lib/authRedirect.ts 의 PUBLIC_PATHS)
  *   로그인 안 했다             -> /login 으로 보냅니다. 가려던 주소도 같이 넘겨서, 로그인하면 거기로 돌아가게 합니다.
  *   로그인했지만 가입을 안 마쳤다 -> /signup 으로 보냅니다. 가입을 건너뛰고 앱에 들어갈 수 없습니다. (테스트 로그인은 예외)
- *   생각 습관 테스트를 안 했다   -> /onboarding/thinking 으로 보냅니다. (가입 설문·설정은 막지 않습니다. 테스트 로그인도 보냅니다)
- *   로그인했고 가입도 마쳤다     -> 감싼 화면을 그대로 보여줍니다.
+ *   온보딩을 안 끝냈다          -> 끝나지 않은 첫 단계로 보냅니다. (다짐 → 질문 → 생각 습관 테스트 → 처음 계획)
+ *                                 로고·홈을 눌러도 하던 자리로 돌아옵니다. 테스트 로그인도 똑같습니다.
+ *                                 하다 만 사람이 다음에 들어오면 "이어하기 / 처음부터 다시" 를 먼저 고르게 합니다.
+ *   로그인했고 온보딩도 마쳤다   -> 감싼 화면을 그대로 보여줍니다.
  *
  * "막을 주소" 가 아니라 "열어 줄 주소" 를 적어 두는 방식이라, 새 페이지를 만들어도 따로 할 일이 없습니다.
  * (깜빡하고 안 적어도 막히는 쪽이 안전합니다)
@@ -31,6 +38,12 @@ export function RequireAuth({ children }: RequireAuthProps) {
   }
 
   if (!isLoggedIn) {
+    // 온보딩 주소(/onboarding…)는 기억하지 않습니다. 다시 로그인하면 아래에서 "이어하기" 를 묻거나 이어 할 자리를 다시 정하기 때문입니다.
+    // (기억하면 "로그인 화면으로" 를 눌러 나갔다가 다시 로그인했을 때 고르는 화면을 건너뛰게 됩니다)
+    if (location.pathname.startsWith('/onboarding')) {
+      return <Navigate to="/login" replace />
+    }
+
     // 주소 전체를 넘깁니다. ?date=... 같은 뒷부분(search)과 #... (hash)도 함께 돌아가야 하기 때문입니다.
     const redirectState: LoginRedirectState = {
       from: location.pathname + location.search + location.hash,
@@ -50,15 +63,21 @@ export function RequireAuth({ children }: RequireAuthProps) {
     return <Navigate to="/signup" replace />
   }
 
-  // 가입은 마쳤지만 생각 습관 테스트를 아직 안 한 사람은 테스트로 보냅니다. ("나는 어떤 생각 습관을 가졌는지" 부터 알아보게)
-  // 가입 설문(/onboarding…)은 테스트 앞뒤로 이어지는 화면이라 막지 않습니다.
+  // 온보딩(처음 다짐 → 질문 → 생각 습관 테스트 → 처음 계획)을 다 끝내야 앱의 다른 화면을 열어 줍니다.
+  // 끝나지 않았으면 끝나지 않은 첫 단계로 보냅니다. 그래서 로고나 홈을 눌러도 하던 자리로 돌아옵니다. (lib/onboardingProgress.ts)
+  // 테스트 로그인도 똑같이 거칩니다. 시연에서도 진짜 가입과 같은 흐름을 보여 주기 위해서입니다. (2026-10-17)
+  // 온보딩 화면(/onboarding…)은 그 단계들 자체라 막지 않습니다.
   // 설정(/settings…)도 막지 않습니다. 로그아웃·탈퇴는 언제나 할 수 있어야 하기 때문입니다.
   // (도움 연결 안내 /support 는 RequireAuth 로 감싸지 않아서 처음부터 막히지 않습니다)
-  // 테스트 로그인도 보냅니다. 시연과 둘러보기에서도 "나는 어떤 생각 습관을 가졌는지" 부터 보여 주기 위해서입니다.
-  const isTestFreePath =
+  const isOnboardingFreePath =
     location.pathname.startsWith('/onboarding') || location.pathname.startsWith('/settings')
-  if (!hasThinkingTest() && !isTestFreePath) {
-    return <Navigate to={THINKING_TEST_PATH} replace />
+  const resumePath = getOnboardingResumePath()
+  if (resumePath !== null && !isOnboardingFreePath) {
+    // 하다 만 게 있고 이번 접속에서 아직 안 물었으면(= 다음에 다시 들어왔으면) 이어서 할지 먼저 고르게 합니다.
+    if (hasOnboardingProgress() && !wasResumeAsked()) {
+      return <Navigate to={ONBOARDING_RESUME_PATH} replace />
+    }
+    return <Navigate to={resumePath} replace />
   }
 
   return <>{children}</>

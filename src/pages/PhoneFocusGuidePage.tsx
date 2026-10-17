@@ -53,7 +53,8 @@ export function PhoneFocusGuidePage() {
         </h1>
         <p className="mt-2 text-slate-600">
           이 앱은 다른 앱을 잠글 수 없어요. 휴대폰 기본 기능으로 공부 시간에 SNS 앱을 직접 잠가
-          보세요.
+          보세요. 아예 이 앱 하나에 화면을 고정하면 다른 앱으로 나갈 수 없어요. 고정을 푸는 방법도
+          꼭 같이 봐 두세요.
         </p>
       </div>
 
@@ -101,6 +102,23 @@ export function PhoneFocusGuidePage() {
                 </li>
               ))}
             </ol>
+
+            {/* 앱 하나에 고정한 것을 푸는 방법. 급할 때 못 풀면 안 돼서 단계 바로 아래에 따로 보여줍니다. (#250) */}
+            {method.releaseSteps && (
+              <div className="mt-4 flex flex-col gap-3 rounded-lg bg-slate-50 p-3">
+                <h3 className="text-sm font-semibold text-slate-900">고정을 푸는 방법</h3>
+                <ol className="flex flex-col gap-2">
+                  {method.releaseSteps.map((step, index) => (
+                    <li key={step} className="flex gap-3 text-sm text-slate-700">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 break-words">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </Card>
         ))}
       </div>

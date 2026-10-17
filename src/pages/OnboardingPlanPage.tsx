@@ -1,5 +1,6 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
+import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
@@ -114,20 +115,26 @@ export function OnboardingPlanPage() {
       )
     }
 
-    // 처음 세웠을 때는 "처음의 나에게 한마디"(#241)를 남기러 갑니다. 다시 세울 때는 설정으로 돌아갑니다.
-    navigate(isRedo ? exitPath : '/onboarding/voice')
+    // 처음 세웠을 때는 "준비 끝" 으로, 다시 세울 때는 설정으로 돌아갑니다.
+    // ("처음의 나에게 한마디"(#241)는 가입 직후 맨 처음에 이미 지나왔습니다)
+    navigate(exitPath)
   }
 
   return (
     <PlainLayout
       headerAction={
-        // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
-        <Link
-          to={exitPath}
-          className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
-        >
-          {isRedo ? '그만하고 설정으로' : '나중에 하기'}
-        </Link>
+        // 처음 세울 때는 온보딩의 마지막 단계라 건너뛸 수 없어서 "나중에 하기" 대신 "로그인 화면으로" 를 둡니다. 답은 남아서 다음에 이어 할 수 있습니다. (RequireAuth)
+        isRedo ? (
+          // h-10 = 40px. 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
+          <Link
+            to={exitPath}
+            className="text-brand inline-flex h-10 items-center text-sm font-medium underline"
+          >
+            그만하고 설정으로
+          </Link>
+        ) : (
+          <OnboardingExitButton />
+        )
       }
     >
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">

@@ -163,6 +163,21 @@ interface CalendarEvent {
   status?: string
   /** 'transparent' 면 "한가함" 으로 표시한 일정입니다 */
   transparency?: string
+  /** 일정에 몰래 붙여 둔 값. 우리 앱이 넣은 일정에는 private.starflowPlanId 가 있습니다 (toEventBody) */
+  extendedProperties?: { private?: Record<string, string> }
+}
+
+/**
+ * 우리 앱이 계획으로 만들어 넣은 일정인지 알려줍니다. (넣을 때 private.starflowPlanId 를 붙여 둡니다 - toEventBody)
+ * 이런 일정은 이미 앱의 계획이라서 "다른 일정" 이 아닙니다. 바쁜 시간에 넣으면 계획이 자기 자신과 겹친 것으로 보입니다. (#315)
+ *
+ *   { extendedProperties: { private: { starflowPlanId: 'plan-1' } } } -> true
+ *   { extendedProperties: { private: { 다른앱: 'x' } } }              -> false
+ *   {} (직접 만든 구글 일정)                                          -> false
+ */
+export function isAppCreatedEvent(event: Pick<CalendarEvent, 'extendedProperties'>): boolean {
+  const planId = event.extendedProperties?.private?.starflowPlanId
+  return typeof planId === 'string' && planId !== ''
 }
 
 /** 'YYYY-MM-DD' 하루의 시작(새벽 4시)과 끝(다음 날 새벽 4시)입니다. 하루는 새벽 4시에 시작합니다. (lib/date.ts) */
@@ -178,7 +193,9 @@ function getDayRange(dayKey: string): { start: Date; end: Date } {
  * 그날(새벽 4시 ~ 다음 날 새벽 4시) 내 기본 캘린더의 바쁜 시간을 시각 순서로 받아옵니다.
  *  - 하루 종일 일정(생일 등)은 빼고, 시각이 있는 일정만 봅니다.
  *  - 취소된 일정과 "한가함" 으로 표시한 일정은 뺍니다.
- *  - fields 로 시작·끝·상태만 달라고 해서, 일정 제목은 이 앱으로 오지 않습니다.
+ *  - 우리 앱이 계획으로 넣은 일정도 뺍니다. 이미 앱의 계획이라서, 넣으면 계획이 자기 자신과 "겹침" 으로 보입니다. (isAppCreatedEvent)
+ *  - fields 로 시작·끝·상태와 "앱이 만든 일정" 표시(private)만 달라고 해서, 일정 제목은 이 앱으로 오지 않습니다.
+ *    (private 에서는 starflowPlanId 만 확인하고, 나머지 값은 읽지도 저장하지도 않습니다)
  */
 export async function getBusyTimes(dayKey: string): Promise<BusyTime[]> {
   const { start, end } = getDayRange(dayKey)
@@ -187,7 +204,7 @@ export async function getBusyTimes(dayKey: string): Promise<BusyTime[]> {
     timeMax: end.toISOString(),
     singleEvents: 'true', // 반복 일정을 하루하루 풀어서 받습니다.
     orderBy: 'startTime',
-    fields: 'items(start,end,status,transparency)',
+    fields: 'items(start,end,status,transparency,extendedProperties/private)',
   })
   const response = await calendarRequest(
     `calendars/primary/events?${params}`,
@@ -199,6 +216,7 @@ export async function getBusyTimes(dayKey: string): Promise<BusyTime[]> {
   const busyTimes: BusyTime[] = []
   for (const event of body.items ?? []) {
     if (event.status === 'cancelled' || event.transparency === 'transparent') continue
+    if (isAppCreatedEvent(event)) continue
     if (!event.start?.dateTime || !event.end?.dateTime) continue
     busyTimes.push({
       start: new Date(event.start.dateTime).getTime(),

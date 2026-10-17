@@ -2,13 +2,16 @@ import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import { SUPPORT_PATH } from '@/lib/helpLines'
+import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import {
+  THINKING_TEST_PATH,
   WEAKNESS_NOTE_MAX,
   getStyleName,
   getTopHabits,
@@ -65,6 +68,9 @@ export function OnboardingThinkingPage() {
   const [answers, setAnswers] = useState<Record<string, number>>(loadDraft)
   const next = getNextStep(from)
   const total = thinkingTestItems.length
+  // 온보딩 중이면 헤더에 "로그인 화면으로" 를 둡니다. (온보딩을 마친 뒤 기록 화면에서 다시 하는 경우에는 두지 않습니다)
+  const [isOnboarding] = useState(() => getOnboardingResumePath() !== null)
+  const exitAction = isOnboarding ? <OnboardingExitButton /> : undefined
 
   function handleStart() {
     // 처음부터 다시 하므로 임시 답을 비웁니다.
@@ -124,7 +130,7 @@ export function OnboardingThinkingPage() {
   // 질문에 다 답했으면 "나의 약점" 을 고릅니다. 덜 답했는데 주소로 건너뛰었으면 아래에서 그 질문을 보여 줍니다.
   if (step === 'weakness' && firstUnanswered === -1) {
     return (
-      <PlainLayout>
+      <PlainLayout headerAction={exitAction}>
         <WeaknessStep onSubmit={handleFinish} onBack={() => setStep(String(total))} />
       </PlainLayout>
     )
@@ -133,8 +139,17 @@ export function OnboardingThinkingPage() {
   // 주소의 질문 번호. "나의 약점" 에서 넘어온 것은 마지막 질문으로 봅니다. 숫자가 아니거나 범위 밖이면 처음 화면입니다.
   const requested = step === 'weakness' ? total : Number(step)
   if (step === 'intro' || !Number.isInteger(requested) || requested < 1 || requested > total) {
+    // 답하다 만 문제가 있는데 처음 화면으로 왔으면(로고·홈을 눌렀다가 돌아온 경우 등) 그 문제부터 바로 이어 줍니다.
+    // 다 답했으면 "나의 약점" 고르기로 갑니다. 새로 시작하고 싶으면 다음에 들어올 때 "처음부터 다시" 를 고르면 됩니다. (OnboardingResumePage)
+    if (step === 'intro' && Object.keys(answers).length > 0) {
+      const params = new URLSearchParams({
+        step: firstUnanswered === -1 ? 'weakness' : String(firstUnanswered + 1),
+      })
+      if (from !== '') params.set('from', from)
+      return <Navigate to={`${THINKING_TEST_PATH}?${params.toString()}`} replace />
+    }
     return (
-      <PlainLayout>
+      <PlainLayout headerAction={exitAction}>
         <ThinkingTestIntro onStart={handleStart} />
       </PlainLayout>
     )
@@ -146,7 +161,7 @@ export function OnboardingThinkingPage() {
   const item = thinkingTestItems[questionNumber - 1]
 
   return (
-    <PlainLayout>
+    <PlainLayout headerAction={exitAction}>
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
         <div>
           <p className="text-brand text-sm font-semibold">
