@@ -245,7 +245,10 @@ function isValidMoment(at: number): boolean {
   return at >= SESSION_MIN_STARTED_AT && at <= Date.now()
 }
 
-/** 일시정지 목록. 서버는 기록의 시작 ~ 끝 밖의 일시정지를 거절해서, 그 사이로 맞춥니다. */
+/**
+ * 일시정지 목록. 서버는 기록의 시작 ~ 끝 밖의 일시정지를 거절해서, 그 사이로 맞춥니다.
+ * 이유는 대표 이유(tag, 처음 고른 것) 하나만 보냅니다. 서버 칸이 하나라서, 여러 개(tags)는 이 기기에만 있습니다. (lib/reasons.ts)
+ */
 function toPausesBody(input: SessionCreateInput): Record<string, unknown>[] {
   return (input.pauses ?? []).slice(0, MAX_PAUSES).map((pause) => {
     const startedAt = Math.min(Math.max(pause.startedAt, input.startedAt), input.endedAt)
@@ -267,6 +270,7 @@ export function toEndReportBody(report: SessionEndReport): Record<string, unknow
       .slice(0, MAX_CHECKED),
   )
   const body: Record<string, unknown> = { checked }
+  // 서버 칸은 하나라서 대표 이유(처음 고른 것)만 보냅니다. 여러 개(shortfallReasons)는 이 기기에만 있습니다. (lib/reasons.ts)
   if (report.shortfallReason !== undefined) body.shortfallReason = report.shortfallReason
   if (report.withWhat !== undefined) body.withWhat = report.withWhat
   if (report.goodReasons !== undefined)

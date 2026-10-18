@@ -123,7 +123,7 @@ export interface StudySession {
 /** 세션을 잰 방법 — normal: 타이머, offline: 폰을 내고 앱이 잰 세션(야자 등), selfReport: 끝난 뒤 사후 입력 */
 export type SessionMode = 'normal' | 'offline' | 'selfReport'
 
-/** 일시정지 이유 (1탭). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+/** 일시정지 이유 (첫 탭에 멈추고 더 고를 수 있음). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
 export type PauseTag = 'toilet' | 'snack' | 'phone' | 'mindWander' | 'stuck' | 'external' | 'other'
 
 /** 일시정지 한 번 */
@@ -132,8 +132,10 @@ export interface SessionPause {
   startedAt: number
   /** 다시 시작한 시각. 일시정지한 채로 끝냈으면 세션이 끝난 시각 */
   endedAt: number
-  /** 이유 */
+  /** 대표 이유 — 처음 고른 것. 하나만 읽는 예전 코드 · 서버(칸이 하나)는 이 값을 씁니다 */
   tag: PauseTag
+  /** 고른 이유 모두 (2026-10-18 여러 개 고르기). 예전 기록에는 없으니 lib/sessionTags.ts 의 getPauseTags 로 읽습니다 */
+  tags?: PauseTag[]
   /** '기타' 를 골랐을 때 쓴 글 (빈칸 허용) */
   note?: string
 }
@@ -151,12 +153,14 @@ export type WithWhat = 'music' | 'video' | 'none'
 /** 노는 기록의 종류 */
 export type PlayTag = 'youtube' | 'game' | 'sns' | 'webtoon' | 'rest' | 'etc'
 
-/** 종료 팝업에서 받은 것 (산출물 말고는 모두 1탭) */
+/** 종료 팝업에서 받은 것 (이유는 여러 개, 나머지는 1탭, 산출물은 글) */
 export interface SessionEndReport {
   /** 체크한 체크리스트 항목 (ChecklistItem 의 id → 체크한 시각) */
   checked: Record<string, number>
-  /** 다 못 했을 때 고른 이유 */
+  /** 다 못 했을 때 고른 대표 이유 — 처음 고른 것. 하나만 읽는 예전 코드 · 서버(칸이 하나)는 이 값을 씁니다 */
   shortfallReason?: ShortfallReason
+  /** 다 못 했을 때 고른 이유 모두 (2026-10-18 여러 개 고르기). 읽을 때는 lib/sessionTags.ts 의 getShortfallReasons */
+  shortfallReasons?: ShortfallReason[]
   /** 같이 한 것 */
   withWhat?: WithWhat
   /** 산출물 증빙 — 링크 또는 2~3줄 요약 (사진은 저장소가 정해진 뒤) */

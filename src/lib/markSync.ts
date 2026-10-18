@@ -83,6 +83,7 @@ function toMarkRequest(mark: CardDayMarkRecord, cardServerId: string): MarkToSen
       },
     }
   }
+  // 실패 원인은 대표 원인(처음 고른 것) 하나만 보냅니다. 서버 칸이 하나라서, 여러 개(causes)는 이 기기에만 있습니다.
   const body: Record<string, unknown> = { date: mark.dateKey, cause: mark.cause }
   if (mark.reason?.trim()) body.reason = mark.reason.trim().slice(0, 500)
   return { key, path: `${path}/fail`, body }

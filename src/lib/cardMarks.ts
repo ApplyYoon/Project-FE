@@ -1,5 +1,6 @@
 import type { CardDayMark } from '@/lib/cardResult'
 import { isOneOffCard } from '@/lib/cards'
+import { toReasonList } from '@/lib/reasons'
 import { loadData, saveData } from '@/lib/storage'
 import type { Card, MissReason } from '@/types'
 
@@ -8,7 +9,7 @@ import type { Card, MissReason } from '@/types'
  *
  * - 미루려면 '왜 미루는지 + 어떻게 할지' 를 **100자 이상** 쓰고 새 시각을 정합니다 (의도된 마찰).
  * - 한도: 반복 카드는 카드별 **한 달 5회**(설정으로 3회 권장 가능), 1회성 카드는 **장당 2회**, 절대 카드는 미루기 없음.
- * - 실패는 원인 태그 1탭이 필수입니다. 미루기를 다 쓰면 [실패로 기록] 만 남습니다. **자동 삭제는 없습니다.**
+ * - 실패는 원인 태그를 하나 이상 골라야 합니다(여러 개 가능, 2026-10-18). 미루기를 다 쓰면 [실패로 기록] 만 남습니다. **자동 삭제는 없습니다.**
  * 같은 규칙이 BE(Project-BE#225)에도 있습니다.
  */
 
@@ -39,8 +40,20 @@ export interface CardDayMarkRecord {
   /** 미루기: 새로 정한 날짜 · 시각 */
   newDate?: string
   newStartTime?: string
-  /** 실패: 원인 태그 */
+  /** 실패: 대표 원인 — 처음 고른 것. 서버(칸이 하나) · 하나만 읽는 예전 코드는 이 값을 씁니다 */
   cause?: CardFailCause
+  /** 실패: 고른 원인 모두 (2026-10-18 여러 개 고르기). 읽을 때는 getMarkCauses */
+  causes?: CardFailCause[]
+}
+
+/**
+ * 실패 표시에 고른 원인 모두. 예전 기록(cause 하나)도 [하나] 로 돌려줍니다. (lib/reasons.ts)
+ *
+ *   getMarkCauses({ cause: 'tired', causes: ['tired', 'phone'] }) -> ['tired', 'phone']
+ *   getMarkCauses({ cause: 'phone' })                             -> ['phone']
+ */
+export function getMarkCauses(mark: Pick<CardDayMarkRecord, 'cause' | 'causes'>): CardFailCause[] {
+  return toReasonList(mark.causes, mark.cause)
 }
 
 /** 미루기 사유의 최소 글자 수 (앞뒤 빈칸을 뺀 글자 수) */
