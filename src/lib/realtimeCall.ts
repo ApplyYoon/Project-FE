@@ -22,6 +22,7 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 //   요청  POST /realtime/session   { careLevel, maxHarshness, card }
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
+//         403 CALL_LOCKED (오늘 공부를 하나 끝내야 열리는 "확인 통화", BE #327 · lib/checkCall.ts)
 const SESSION_PATH = '/realtime/session'
 
 // BE 대신 Vercel 함수(api/voice-key.ts)에서 임시 키를 받을 때 쓰는 주소입니다. 비어 있으면 위의 BE 에서 받습니다.
@@ -157,9 +158,12 @@ async function requestCallSession(
   } catch (error) {
     // 에러 안에 키가 들어 있을 수 있어서 원문 대신 이유만 남깁니다.
     const detail = error instanceof Error ? error.message : '알 수 없는 오류'
-    // 429(오늘 통화를 다 씀) · 503(통화가 꺼져 있음)은 서버가 사람이 읽을 문장을 줍니다. 화면에 그대로 보여주게 넘깁니다.
+    // 429(오늘 통화를 다 씀) · 503(통화가 꺼져 있음) · 403 CALL_LOCKED(오늘 공부를 아직 안 끝냄)는
+    // 서버가 사람이 읽을 문장을 줍니다. 화면에 그대로 보여주게 넘깁니다.
+    const isLocked =
+      error instanceof ApiError && error.status === 403 && error.code === 'CALL_LOCKED'
     const userMessage =
-      error instanceof ApiError && (error.status === 429 || error.status === 503)
+      error instanceof ApiError && (error.status === 429 || error.status === 503 || isLocked)
         ? error.message
         : undefined
     throw new RealtimeCallError('token', `임시 키를 받지 못했어요: ${detail}`, userMessage)

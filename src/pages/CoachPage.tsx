@@ -12,6 +12,7 @@ import { ApiError, getApiErrorMessage } from '@/lib/api'
 import { finishCall, type CallLine } from '@/lib/callReview'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
+import { countsForCheckCall } from '@/lib/checkCall'
 import { MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat, type ChatReply } from '@/lib/chatApi'
 import { canSyncCheckIns, todayCheckInForCoachQuery } from '@/lib/checkInsApi'
 import {
@@ -562,6 +563,10 @@ function CoachChat() {
       // 카드로 공부했으면 그 카드로 확인 문제를 내자고 권합니다. (누를 때만 문제를 냄)
       const recapCard = cards.find((card) => card.id === recapSession.cardId)
       if (recapCard) recap.chips = [...recap.chips, quizChipForCard(recapCard)]
+      // 확인 통화로 치는 공부(타이머 10분 이상)면 코치한테 말로 설명하는 통화를 권합니다. (누를 때만, lib/checkCall.ts)
+      if (countsForCheckCall(recapSession)) {
+        recap.chips = [...recap.chips, { kind: 'checkCall', label: '📞 코치한테 3분 설명하기' }]
+      }
       add(recap)
     }
     // 오늘 첫 말이 이미 컨디션을 묻고 있으면(미션 ①), 미션 말풍선으로 같은 걸 또 묻지 않습니다.
