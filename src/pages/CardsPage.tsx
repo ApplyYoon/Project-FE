@@ -465,7 +465,7 @@ export function CardsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">카드</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">카드</h1>
 
         {/* 날짜 이동: ◀ / 날짜(주 보기면 그 주) / ▶ / 오늘로 돌아가기 */}
         <div className="mt-3 flex items-center gap-1">

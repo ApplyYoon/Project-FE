@@ -55,7 +55,7 @@ export function AccountPage() {
         >
           <span aria-hidden>‹</span> 설정
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">내 계정</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">내 계정</h1>
         <p className="mt-2 break-keep text-slate-600">내 정보를 고치고, 탈퇴할 수 있어요.</p>
       </div>
 

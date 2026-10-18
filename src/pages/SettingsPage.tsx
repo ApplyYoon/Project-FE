@@ -262,7 +262,7 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">설정</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">설정</h1>
         <p className="mt-2 text-slate-600">꼭 필요한 네 가지만 모았어요.</p>
       </div>
 

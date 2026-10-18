@@ -26,7 +26,8 @@ export function Header({ hideNav = false, action }: HeaderProps) {
   const { pathname } = useLocation()
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+    // 바탕과 같은 연회색에 살짝 비치게(backdrop-blur). 모바일은 선 없이, PC 는 아래 선으로 구분합니다.
+    <header className="sticky top-0 z-20 bg-slate-100/90 backdrop-blur sm:border-b sm:border-slate-200 sm:bg-white/90">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         {/* whitespace-nowrap: 좁은 화면에서도 앱 이름이 두 줄로 꺾이지 않게 합니다. */}
         <NavLink to="/" className="text-brand text-base font-bold whitespace-nowrap sm:text-lg">
@@ -73,8 +74,8 @@ export function Header({ hideNav = false, action }: HeaderProps) {
 /* NavLink 는 현재 주소와 일치하면 isActive 를 true 로 넘겨줍니다. */
 function navLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
-    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-    isActive ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100',
+    'flex h-10 items-center rounded-full px-4 text-[15px] font-semibold transition-colors',
+    isActive ? 'bg-brand-light text-brand' : 'text-slate-500 hover:bg-slate-100',
   )
 }
 

@@ -410,7 +410,7 @@ export function CardTimerPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">타이머</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">타이머</h1>
         <p className="mt-2 text-slate-600">
           카드를 누르면 바로 시작해요. 시계는 카드가 끝나는 시각까지 줄어들어요.
         </p>

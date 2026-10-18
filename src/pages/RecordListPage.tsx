@@ -140,7 +140,7 @@ export function RecordListPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">기록·통계</h1>
+      <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">기록·통계</h1>
 
       {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
       <AiAnalysisCard />

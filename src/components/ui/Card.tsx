@@ -10,10 +10,13 @@ interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
 export function Card({ title, children, className, ...props }: CardProps) {
   return (
     <div
-      className={cn('rounded-xl border border-slate-200 bg-white p-5 shadow-sm', className)}
+      // 연회색 바탕 위의 흰 묶음. 테두리 · 그림자 없이 둥근 모서리(rounded-3xl)로 구분합니다. (2026-10-18 모바일 UI)
+      className={cn('rounded-3xl bg-white p-5 sm:p-6', className)}
       {...props}
     >
-      {title && <h3 className="mb-3 text-base font-semibold text-slate-900">{title}</h3>}
+      {title && (
+        <h3 className="mb-3 text-[17px] font-bold tracking-tight text-slate-900">{title}</h3>
+      )}
       {children}
     </div>
   )

@@ -197,7 +197,9 @@ export function GoalNewPage() {
         <Link to="/cards" className="inline-flex h-10 items-center text-sm text-slate-500">
           ← 카드
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">목표 만들기</h1>
+        <h1 className="mt-2 text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+          목표 만들기
+        </h1>
         <p className="mt-2 text-sm text-slate-500">
           {stepIndex + 1} / {GOAL_STEPS.length} · {stepInfo.letter} {stepInfo.label}
         </p>
