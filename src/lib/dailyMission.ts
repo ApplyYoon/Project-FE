@@ -9,7 +9,7 @@
  *  → 공부 미션을 정해서 내려 주지 않고, 코치와 오늘 계획을 같이 정하는 것을 미션으로 둡니다)
  *
  * 앱 안이면 아침 · 하교 무렵 · 저녁에 "오늘의 미션" 휴대폰 알림을 예약합니다. (buildMissionAlarms → hooks/useAppBridge.ts)
- * 알림을 누르면 코치 화면(/?mission=morning 등)이 열리고 코치가 미션을 먼저 말합니다. (pages/CoachPage.tsx)
+ * 알림을 누르면 코치 화면(/coach?mission=morning 등)이 열리고 코치가 미션을 먼저 말합니다. (pages/CoachPage.tsx)
  * React 를 쓰지 않는 순수 함수와, 저장소를 읽는 함수(load…)로 나눠 두었습니다.
  */
 import type { Alarm } from '@/lib/appBridge'

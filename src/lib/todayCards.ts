@@ -7,6 +7,7 @@
  *   - 오늘을 쉰 날로 처리했으면 남은 카드가 없습니다.
  *   - 카드 시간이 끝났는데 시작도 처리도 안 했으면 '처리 안 한 카드' 입니다. (타이머에서 [미루기] / [실패로 기록])
  *   - 나머지 중 시작 시각이 지난 첫 카드가 '지금', 그 뒤 첫 카드가 '다음' 입니다. 시각이 없는 카드는 맨 뒤입니다.
+ *   - 홈의 "오늘 계획" 목록(items)은 오늘 카드 전부를 시작 시각 순서로, 카드마다 상태를 붙여 돌려줍니다. (2026-10-18)
  */
 import { getCardDayMark, isHandledOnDate, type CardDayMarkRecord } from '@/lib/cardMarks'
 import { getCardResult } from '@/lib/cardResult'
@@ -29,6 +30,21 @@ export interface TodayCardsInput {
   now: number
 }
 
+/**
+ * 오늘 계획 목록에서 카드 한 장의 상태
+ *   done      : 오늘 한 카드 (공부 기록이 있음)
+ *   skipped   : 미루기 · 실패로 처리했거나, 오늘을 쉰 날로 처리함
+ *   unhandled : 카드 시간이 끝났는데 시작도 처리도 안 함
+ *   current   : 지금 할 카드
+ *   waiting   : 아직 시간이 안 됐거나 시각이 없는 카드
+ */
+export type TodayCardStatus = 'done' | 'skipped' | 'unhandled' | 'current' | 'waiting'
+
+export interface TodayCardItem {
+  card: Card
+  status: TodayCardStatus
+}
+
 export interface TodayCardsState {
   /** 오늘 하는 카드 수 */
   total: number
@@ -40,6 +56,8 @@ export interface TodayCardsState {
   next: Card | undefined
   /** 카드 시간이 끝났는데 시작도 처리도 안 한 카드 */
   unhandled: Card[]
+  /** 오늘 카드 전부 (시작 시각 순서, 시각 없는 카드는 맨 뒤) + 카드마다 상태 */
+  items: TodayCardItem[]
 }
 
 /**
@@ -85,11 +103,21 @@ export function getTodayCardsState(input: TodayCardsInput): TodayCardsState {
   const current = waiting.find(isStarted)
   const next = waiting.find((card) => card !== current && !isStarted(card))
 
+  // 카드 한 장의 상태를 위에서 고른 목록으로 정합니다. (한 카드 → 처리 안 함 → 지금 → 남은 카드 → 그 밖은 미룸 · 실패 · 쉰 날)
+  function getStatus(card: Card): TodayCardStatus {
+    if (doneIds.has(card.id)) return 'done'
+    if (unhandled.includes(card)) return 'unhandled'
+    if (card === current) return 'current'
+    if (waiting.includes(card)) return 'waiting'
+    return 'skipped'
+  }
+
   return {
     total: todayCards.length,
     doneCount: todayCards.filter((card) => doneIds.has(card.id)).length,
     current,
     next,
     unhandled,
+    items: todayCards.map((card) => ({ card, status: getStatus(card) })),
   }
 }

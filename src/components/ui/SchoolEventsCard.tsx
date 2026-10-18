@@ -7,7 +7,6 @@ import { getApiErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
 import { formatDday } from '@/lib/exams'
-import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import {
   daysUntilKey,
   dismissReplan,
@@ -15,12 +14,12 @@ import {
   formatPeriodDates,
   getNextExamPeriod,
   getUpcomingPeriods,
-  gradeNumberOf,
   groupEventPeriods,
   loadDismissedReplans,
   shouldSuggestReplan,
 } from '@/lib/schoolEvents'
 import { refreshSchoolEvents, schoolEventsQuery } from '@/lib/schoolEventsApi'
+import { getMyGrade } from '@/lib/schoolToday'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -65,7 +64,7 @@ function SchoolEventsContent() {
   if (data.school === null) return null
 
   const todayKey = getTodayKey()
-  const grade = gradeNumberOf(loadOnboardingAnswers()?.grade)
+  const grade = getMyGrade()
   const periods = groupEventPeriods(filterForGrade(data.events, grade))
   const upcoming = getUpcomingPeriods(periods, todayKey, UPCOMING_LIMIT)
   const nextExam = getNextExamPeriod(periods, todayKey)

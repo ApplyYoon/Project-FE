@@ -12,12 +12,22 @@ import {
   markOnboardingResultSeen,
 } from '@/lib/onboardingCare'
 import { getOnboardingResumePath } from '@/lib/onboardingProgress'
-import { loadPsychTest } from '@/lib/psychTest'
+import { isPsychTestReliable, loadPsychTest } from '@/lib/psychTest'
 import { profileLinesQuery, signatureOf } from '@/lib/psychTestApi'
 import { loadAutoSettings, proposeCareLimits } from '@/lib/settingsMapping'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+
+/**
+ * 심리검사 답이 거의 다 같을 때(lib/psychTest.ts 의 isPsychTestReliable) 쓰는 성향 요약입니다.
+ * 성향을 단정하지 않습니다. 서버(BE ProfileLines.UNSURE_LINES)가 주는 문장과 같습니다.
+ */
+const UNSURE_TRAIT_LINES = [
+  '답이 거의 다 같아서 아직 성향을 말하기 어려워',
+  '시간 날 때 한 번 더 해 보면 더 잘 맞춰 볼게',
+  '공부 기록이 쌓이면 기록으로도 같이 볼게',
+]
 
 /** 결과 화면의 설정 한 줄 */
 interface SettingLine {
@@ -109,7 +119,9 @@ export function OnboardingResultPage() {
     return <Navigate to={getOnboardingResumePath() ?? '/'} replace />
   }
 
-  const traitLines = getTraitSummary(psychTest.scores)
+  // 답이 거의 다 같으면 점수로 성향을 말하지 않고, 서버 AI 도 부르지 않습니다. (서버도 이때는 같은 문장을 줍니다)
+  const isReliable = isPsychTestReliable(psychTest.answers)
+  const traitLines = isReliable ? getTraitSummary(psychTest.scores) : UNSURE_TRAIT_LINES
   // 미리 채운 값 그대로 동의했으면 검사 이유를, 바꿨으면 "내가 정했어요" 를 보여 줍니다.
   const isProposalKept =
     limits.maxCareLevel === proposal.maxCareLevel && limits.maxHarshness === proposal.maxHarshness
@@ -137,7 +149,7 @@ export function OnboardingResultPage() {
 
         <Card title="성향 요약">
           {/* 진짜 로그인이면 서버 AI 가 쓴 문장을, 받는 동안 · 못 받으면 코드가 고른 기본 문장을 보여 줍니다 */}
-          {isServerData ? (
+          {isServerData && isReliable ? (
             <Suspense
               fallback={<TraitList lines={traitLines} note="AI 가 답을 더 자세히 읽는 중이에요…" />}
             >

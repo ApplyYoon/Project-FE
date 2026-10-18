@@ -25,13 +25,13 @@ export function isServerDataMode(): boolean {
  * 설정 · 계정처럼 과목이 필요 없는 화면은 뺍니다. 서버가 멈춰도 거기서 로그아웃은 할 수 있어야 하기 때문입니다.
  *
  *   needsSubjectsPath('/cards')             -> true
- *   needsSubjectsPath('/today')             -> true   (오늘 탭)
- *   needsSubjectsPath('/')                  -> false  (코치 채팅은 과목을 쓰지 않습니다)
+ *   needsSubjectsPath('/')                  -> true   (홈)
+ *   needsSubjectsPath('/coach')             -> false  (코치 채팅은 과목을 쓰지 않습니다)
  *   needsSubjectsPath('/settings')          -> false
  */
 export function needsSubjectsPath(pathname: string): boolean {
   return (
-    pathname === '/today' ||
+    pathname === '/' ||
     pathname === '/cards' ||
     pathname === '/timer' ||
     // 기록 탭(기록 · 리포트). 하위 탭은 ?tab= 이라 경로만으로는 나눌 수 없어 둘 다 받아 둡니다.

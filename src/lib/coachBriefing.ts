@@ -532,12 +532,12 @@ export function buildFocusNameQuestion(kind: StudyFocusKind): CoachMessage {
   }
 }
 
-/** 대회 · 기타의 이름을 들은 뒤 날짜를 묻는 말. 고르면 오늘 탭의 "다가오는 일정" 에 D-day 로 뜹니다. */
+/** 대회 · 기타의 이름을 들은 뒤 날짜를 묻는 말. 고르면 홈의 "다가오는 일정" 에 D-day 로 뜹니다. */
 export const SKIP_FOCUS_DATE_LABEL = '아직 몰라'
 
 export function buildFocusDateQuestion(name: string): CoachMessage {
   return {
-    text: `'${name}' 날짜도 알려 줄래? 오늘 탭 일정에 D-day 로 띄워 줄게. (예: 11월 2일)`,
+    text: `'${name}' 날짜도 알려 줄래? 홈 일정에 D-day 로 띄워 줄게. (예: 11월 2일)`,
     chips: [
       { kind: 'pickDate', label: '📅 날짜 고르기' },
       { kind: 'say', label: SKIP_FOCUS_DATE_LABEL },
@@ -560,9 +560,7 @@ export function buildFocusReaction(
   // 이름이 있으면 이름으로("정보올림피아드 준비 중이구나!"), 없으면 종류로("수능 준비 중이구나!") 말합니다.
   const head = `${focus.name ?? describeFocus(focus)} 준비 중이구나!`
   const dateLine =
-    dDay === null
-      ? ''
-      : ` ${dDay === 0 ? '바로 오늘이네!' : `D-${dDay}, 오늘 탭 일정에 넣어 뒀어.`}`
+    dDay === null ? '' : ` ${dDay === 0 ? '바로 오늘이네!' : `D-${dDay}, 홈 일정에 넣어 뒀어.`}`
   if (!needsPlan) {
     return { text: `${head}${dateLine} 계획 짤 때 거기에 맞춰 볼게.`, chips: [] }
   }
