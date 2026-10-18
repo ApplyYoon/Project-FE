@@ -21,7 +21,7 @@ import { useSessionSync } from '@/hooks/useSessionSync'
 import { useTimerLock } from '@/hooks/useTimerLock'
 import { cn } from '@/lib/cn'
 import { needsSubjectsPath } from '@/lib/dataMode'
-import { getBackToTabLink } from '@/lib/tabMenu'
+import { COACH_PATH, getBackToTabLink, TODAY_PATH } from '@/lib/tabMenu'
 import { TIMER_PATH } from '@/lib/timerLock'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -68,20 +68,33 @@ export function Layout() {
   // (뒤로 가기 · 주소 직접 입력 · 알림 눌러 들어오기 모두 여기서 막힙니다)
   const isTimerLocked = useTimerLock()
   const isOutsideTimer = isTimerLocked && pathname !== TIMER_PATH
+  // 코치(채팅) 화면은 화면 높이를 꽉 채우고, 말풍선 목록만 스크롤되게 합니다. (입력창이 늘 아래에 보이게)
+  // h-dvh: 모바일 주소창 · 키보드에 맞춰 바뀌는 "지금 보이는 높이" 입니다. 그 밖의 화면은 내용만큼 길어집니다(min-h-screen).
+  const isCoach = pathname === COACH_PATH
 
   return (
     // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
     <div
-      className={cn('flex min-h-screen flex-col', isLoggedIn && !isTimerLocked && 'pb-14 sm:pb-0')}
+      className={cn(
+        'flex flex-col',
+        isCoach ? 'h-dvh' : 'min-h-screen',
+        isLoggedIn && !isTimerLocked && 'pb-14 sm:pb-0',
+      )}
     >
       <Header hideNav={isTimerLocked} />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
+      <main
+        className={cn(
+          'mx-auto w-full max-w-5xl flex-1 px-4 sm:px-6',
+          // min-h-0: 안의 채팅 목록이 넘칠 때 화면이 늘어나지 않고 목록 안에서 스크롤되게 합니다.
+          isCoach ? 'flex min-h-0 flex-col py-3 sm:py-4' : 'py-6 sm:py-10',
+        )}
+      >
         {/* 그날 처음이면 어느 화면이든 맨 위에 "오늘 컨디션 + 감정 태그" 한 줄을 띄웁니다. 화면을 막지 않습니다. (#387) */}
         <DailyTagBar />
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
-        {/* 홈에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되기 때문입니다. */}
-        {pathname === '/' && <IosInstallGuide />}
+        {/* 오늘 탭에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되고, 코치 화면은 채팅 자리가 좁아지기 때문입니다. */}
+        {pathname === TODAY_PATH && <IosInstallGuide />}
         {/* 분석 탭의 하위 탭 막대(기록·리포트·사용설명서)는 AnalysisPage 가 직접 그립니다. */}
         {backToTab && <BackToTabLink to={backToTab.to} label={backToTab.label} />}
 
@@ -121,9 +134,12 @@ export function Layout() {
         )}
       </main>
 
-      <footer className="border-t border-slate-200 py-6 text-center text-sm text-slate-500">
-        © 2026 Tmax IT Hope School
-      </footer>
+      {/* 코치 화면은 높이를 꽉 채우는 채팅이라 아래 글을 숨깁니다. */}
+      {!isCoach && (
+        <footer className="border-t border-slate-200 py-6 text-center text-sm text-slate-500">
+          © 2026 Tmax IT Hope School
+        </footer>
+      )}
 
       {/* 세션 중에는 하단 탭을 숨깁니다. 나가는 길은 세션 화면의 [일시정지] · [끝내기] 뿐입니다. */}
       {isLoggedIn && !isTimerLocked && <BottomTabNav />}

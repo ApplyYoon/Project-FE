@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { MyHypothesesCard } from '@/components/ui/MyHypothesesCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { SettingsLink } from '@/components/ui/SettingsLink'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
 import { loadManualItems } from '@/hooks/useManualItems'
@@ -89,7 +90,9 @@ const textLinkClass =
 const INSTANT_CARD_MINUTES = 50
 
 /**
- * 홈 화면입니다. (기획서 「4.2 홈」, #405)
+ * 오늘 탭(/today)입니다. 예전 홈 화면(기획서 「4.2 홈」, #405)이 그대로 옮겨 왔습니다.
+ * 2026-10-18 에 첫 화면("/")이 AI 코치 채팅이 되면서, 홈에 있던 것은 여기서 봅니다.
+ * (학교 시간표 · 급식 · 학사일정은 다음 PR 에서 이 화면 맨 위에 더합니다)
  *
  *   맨 위: 하루 첫 컨디션·감정 태그(Layout 의 DailyTagBar) · 오른쪽 위 설정 아이콘
  *   숲 → 지금/다음 카드와 [시작] · [지금 시작] → 오늘 한 줄 → 지금 관리 모드와 이유 → AI 가 바꾼 설정 알림
@@ -97,7 +100,7 @@ const INSTANT_CARD_MINUTES = 50
  *
  * 처음의 나 · 이번 주 목표 · 주간 팩트 · 인사이트 · 개선안(실험) 카드는 홈에서 빠지고 분석 탭에서 봅니다.
  */
-export function HomePage() {
+export function TodayPage() {
   const navigate = useNavigate()
   const todayKey = getTodayKey()
   const yesterdayKey = moveDateKey(todayKey, -1)
@@ -184,29 +187,26 @@ export function HomePage() {
             오늘도 같이 시작해 볼까?
           </h1>
         </div>
-        {/* 오른쪽 위에 설정 아이콘, 그 아래에 체크인 글자 링크를 둡니다. */}
-        <div className="flex shrink-0 flex-col items-end">
-          {/* 설정은 아래 탭에서 빠지고 여기로 옵니다. (기획서 3장, #386) 누르기 쉽게 44×44px(h-11 w-11) */}
-          <Link
-            to="/settings"
-            aria-label="설정"
-            className="-mt-2 -mr-2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
-          >
-            <SettingsIcon />
-          </Link>
-        </div>
+        {/* 설정은 아래 탭에 없어서 오른쪽 위 아이콘으로 갑니다. (기획서 3장, #386) */}
+        <SettingsLink className="-mt-2 -mr-2" />
       </section>
 
       {/* 숲과 지금 할 카드. PC 에서는 나란히, 모바일에서는 기획서 순서대로 숲 → 카드 */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
         {/* 내 숲 (#404): 가운데 전체 나무 + 둘레의 목표 나무 */}
         <ForestCard forest={forest} />
-        <NowCardsCard
-          state={todayCards}
-          todayKey={todayKey}
-          onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
-          onStartNow={handleStartNow}
-        />
+        <div className="flex flex-col gap-1">
+          <NowCardsCard
+            state={todayCards}
+            todayKey={todayKey}
+            onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
+            onStartNow={handleStartNow}
+          />
+          {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
+          <Link to="/cards" className={cn(textLinkClass, 'self-end')}>
+            카드 · 목표 모두 보기 ›
+          </Link>
+        </div>
       </section>
 
       <Card title="오늘 한 줄">
@@ -709,24 +709,5 @@ function YesterdayAiLine({ dateKey, fallbackSentence, request }: YesterdayAiLine
         <span className="break-keep">{fallbackSentence}</span>
       </p>
     </div>
-  )
-}
-
-/* 톱니바퀴 모양 설정 아이콘 (라이브러리 없이 SVG 를 직접 그립니다) */
-function SettingsIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
-    >
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   )
 }
