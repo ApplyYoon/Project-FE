@@ -14,7 +14,7 @@
  */
 import { ApiError, api } from '@/lib/api'
 import { moveDateKey } from '@/lib/date'
-import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { CLASS_NO_KEY, loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { gradeNumberOf } from '@/lib/schoolEvents'
 import { loadData, saveData } from '@/lib/storage'
 import { queryOptions } from '@tanstack/react-query'
@@ -92,6 +92,29 @@ export function loadSchoolClass(): SchoolClass | null {
 /** 학년 · 반을 이 기기에 저장합니다. */
 export function saveSchoolClass(schoolClass: SchoolClass): void {
   saveData(CLASS_STORAGE_KEY, schoolClass)
+}
+
+/**
+ * 온보딩의 학년 · 반 답을 학년 · 반으로 바꿉니다. 학년이 고1 ~ 고3 이 아니거나 반이 1 ~ 30 이 아니면 null 입니다.
+ *
+ *   schoolClassFromAnswers({ grade: '고2', classNo: '3' })  -> { grade: 2, classNo: 3 }
+ *   schoolClassFromAnswers({ grade: '고2' })                -> null  (반을 아직 안 고름)
+ *   schoolClassFromAnswers({ grade: 'N수', classNo: '3' })  -> null
+ */
+export function schoolClassFromAnswers(answers: Record<string, string>): SchoolClass | null {
+  const grade = gradeNumberOf(answers.grade)
+  // 답은 글자라서 숫자로 바꿉니다. 빈 글자('')는 0 이 되어 아래에서 걸러집니다.
+  const classNo = Number(answers[CLASS_NO_KEY])
+  if (grade === null || !isWholeNumberBetween(classNo, 1, MAX_CLASS_NO)) return null
+  return { grade, classNo }
+}
+
+/**
+ * 내 학년 (1 ~ 3). 반을 저장해 뒀으면 그 학년, 없으면 온보딩에서 고른 학년입니다. 모르면 null 입니다.
+ * 설정에서 반을 바꾸면 학년도 같이 바뀌어서 반의 학년을 먼저 봅니다. (학교 일정에서 내 학년 시험만 고를 때 씀)
+ */
+export function getMyGrade(): number | null {
+  return loadSchoolClass()?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade)
 }
 
 /** 오늘의 미션 · 미션 알림이 쓰는 하루 시간표 요약 (lib/dailyMission.ts) */

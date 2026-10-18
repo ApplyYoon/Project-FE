@@ -9,6 +9,7 @@
  *   2  20초 넘음          코치 말투 경고를 화면 전체에
  *   3  60초 넘음          세션을 일시정지하고 '폰 확인' 으로 기록
  * 관리 강도가 약하면 1단계 안내만 하고, 강하면 더 빨리 · 소리까지 냅니다.
+ * 같은 세션에서 30초 넘게 든 것이 2번 쌓이면, 3번째부터는 1단계를 건너뛰고 바로 2단계입니다. (escalateLiftStage)
  */
 import type { FocusNudge } from '@/lib/appBridge'
 import { loadData, saveData } from '@/lib/storage'
@@ -65,6 +66,51 @@ export function getLiftStage(liftedMs: number, strength: LiftStrength): LiftStag
   return 0
 }
 
+/** 같은 세션에서 "들림"(30초 넘게 든 것)이 이만큼 쌓이면, 다음에 들 때부터 1단계를 건너뛰고 바로 화면 전체 경고 */
+export const REPEAT_LIFTS_TO_ESCALATE = 2
+
+/**
+ * 들림을 반복했으면 단계를 올립니다. (2026-10-18 "폰 덮고 있는 거 안 지키면 경고")
+ * 이번 세션에 30초 넘게 든 것이 이미 2번 있으면, 3번째부터는 1단계(안내) 대신 바로 2단계(화면 전체)입니다.
+ * 세기가 '약' 이면 화면 전체 경고가 없어서 올리지 않습니다. (힘든 날 몰아붙이지 않게)
+ *
+ *   escalateLiftStage(1, 2, 'normal') -> 2   (3번째 들림: 안내를 건너뛰고 화면 전체)
+ *   escalateLiftStage(1, 1, 'normal') -> 1   (2번째까지는 그대로)
+ *   escalateLiftStage(0, 5, 'normal') -> 0   (10초 안의 시간 확인은 그대로 괜찮음)
+ *   escalateLiftStage(1, 5, 'soft')   -> 1
+ */
+export function escalateLiftStage(
+  stage: LiftStage,
+  earlierLongLifts: number,
+  strength: LiftStrength,
+): LiftStage {
+  if (stage !== 1 || LIFT_STAGE_SECONDS[strength].overlay === null) return stage
+  return earlierLongLifts >= REPEAT_LIFTS_TO_ESCALATE ? 2 : stage
+}
+
+/**
+ * 화면 전체 경고에 붙이는 횟수 한 줄. 반복한 게 아니면(들림이 2번 미만) null
+ *
+ *   getRepeatLiftText(2) -> '벌써 3번째야. 폰을 손 안 닿는 곳에 둘까?'
+ *   getRepeatLiftText(1) -> null
+ */
+export function getRepeatLiftText(earlierLongLifts: number): string | null {
+  if (earlierLongLifts < REPEAT_LIFTS_TO_ESCALATE) return null
+  return `벌써 ${earlierLongLifts + 1}번째야. 폰을 손 안 닿는 곳에 둘까?`
+}
+
+/**
+ * 다시 엎었을 때, 방금 든 것을 "들림" 한 번으로 셀지. 30초 넘게 들었어야 하고,
+ * 일시정지 중(쉬는 시간)이었거나 "공부에 필요해서 든 거야" 를 누른 것은 세지 않습니다.
+ *
+ *   isRepeatLift(45_000, false, false) -> true
+ *   isRepeatLift(12_000, false, false) -> false  (잠깐 확인)
+ *   isRepeatLift(45_000, true, false)  -> false  (쉬는 중)
+ */
+export function isRepeatLift(liftedMs: number, isPaused: boolean, isDismissed: boolean): boolean {
+  return liftedMs >= LONG_LIFT_MS && !isPaused && !isDismissed
+}
+
 /**
  * 폰을 든 채 앱 밖(홈 · 다른 앱)으로 나갔을 때 앱이 띄울 알림들. 세기마다 개수와 말투가 다릅니다.
  * 앱은 나간 시각부터 afterSec 초 뒤에 띄우고, 돌아오면 지웁니다.
@@ -103,6 +149,12 @@ export function readDndState(reply: unknown): 'on' | 'off' | 'noPermission' | 'u
     : null
 }
 
+/** 'focus.start' 의 답에서 이 폰에 엎기 센서가 없는지. 없으면 엎어도 알 수 없어서 [그냥 시작] 을 안내합니다. */
+export function isFaceDownUnavailable(reply: unknown): boolean {
+  if (typeof reply !== 'object' || reply === null) return false
+  return (reply as Record<string, unknown>).faceDown === 'unavailable'
+}
+
 /** 한 세션 동안의 폰 기록 (앱이 'focus.end' 로 답한 숫자를 정리한 것) */
 export interface PhoneLiftSummary {
   /** 5초 넘게 들고 있던 시간 합계 (밀리초) */
@@ -115,6 +167,10 @@ export interface PhoneLiftSummary {
   outsideLifts: number
   /** 앱 밖에 있던 시간 합계 (밀리초) */
   outsideMs: number
+  /** 5초 넘게 든 것 하나하나: 든 시각 · 들고 있던 시간. 집중도 점수가 일시정지와 겹친 부분을 빼는 데 씁니다. (lib/focusScore.ts) */
+  liftSpans?: { at: number; ms: number }[]
+  /** 폰을 엎어 둔 시간 합계 (밀리초). 0 이면 한 번도 안 엎은 것(센서가 없거나 [그냥 시작]). 옛 앱은 없음 */
+  faceDownMs?: number
 }
 
 /** 5초보다 짧게 든 것은 책상을 치거나 폰을 민 것으로 보고 셈에서 뺍니다. (팀 회의안) */
@@ -125,27 +181,32 @@ const LONG_LIFT_MS = 30_000
 /**
  * 'focus.end' 의 답을 정리합니다. 모양이 틀리거나 답이 없었으면(앱 밖 · 옛 앱) null.
  *
- *   readPhoneSummary({ lifts: [{ at: 1, ms: 12000, inApp: true }], outsideMs: 0 })
- *     -> { liftedMs: 12000, checks: 1, longLifts: 0, outsideLifts: 0, outsideMs: 0 }
+ *   readPhoneSummary({ lifts: [{ at: 1, ms: 12000, inApp: true }], outsideMs: 0, faceDownMs: 60000 })
+ *     -> { liftedMs: 12000, checks: 1, longLifts: 0, outsideLifts: 0, outsideMs: 0,
+ *          liftSpans: [{ at: 1, ms: 12000 }], faceDownMs: 60000 }
  */
 export function readPhoneSummary(reply: unknown): PhoneLiftSummary | null {
   if (typeof reply !== 'object' || reply === null) return null
-  const { lifts, outsideMs } = reply as Record<string, unknown>
+  const { lifts, outsideMs, faceDownMs } = reply as Record<string, unknown>
   // lifts · outsideMs 가 없으면 v1.3 전의 옛 앱입니다.
   if (!Array.isArray(lifts) || typeof outsideMs !== 'number') return null
 
+  const liftSpans: { at: number; ms: number }[] = []
   const summary: PhoneLiftSummary = {
     liftedMs: 0,
     checks: 0,
     longLifts: 0,
     outsideLifts: 0,
     outsideMs: Math.max(0, outsideMs),
+    liftSpans,
   }
+  if (typeof faceDownMs === 'number') summary.faceDownMs = Math.max(0, faceDownMs)
   for (const lift of lifts) {
     if (typeof lift !== 'object' || lift === null) continue
-    const { ms, inApp } = lift as Record<string, unknown>
+    const { at, ms, inApp } = lift as Record<string, unknown>
     if (typeof ms !== 'number' || ms < IGNORE_UNDER_MS) continue
     summary.liftedMs += ms
+    if (typeof at === 'number') liftSpans.push({ at, ms })
     if (ms >= LONG_LIFT_MS) summary.longLifts += 1
     else summary.checks += 1
     if (inApp === false) summary.outsideLifts += 1
@@ -154,7 +215,7 @@ export function readPhoneSummary(reply: unknown): PhoneLiftSummary | null {
 }
 
 /** 밀리초 → '2분 10초' · '40초' */
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000)
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
