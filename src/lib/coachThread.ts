@@ -17,6 +17,7 @@ import type { CoachChip } from '@/lib/coachBriefing'
 import { planLineForAi, toCoachPlan, type CoachPlan } from '@/lib/coachPlan'
 import { toDayKey } from '@/lib/date'
 import { loadData, saveData } from '@/lib/storage'
+import { quizLineForAi, toCoachQuiz, type CoachQuiz } from '@/lib/studyQuiz'
 
 /** 대화방의 말풍선 하나 */
 export interface ThreadBubble {
@@ -31,6 +32,8 @@ export interface ThreadBubble {
   isDemo?: boolean
   /** 코치가 짜 준 계획 (계획 말풍선, lib/coachPlan.ts). 고치면 새 말풍선에 새 계획이 붙습니다. */
   plan?: CoachPlan
+  /** 코치가 낸 확인 문제 (문제 말풍선, lib/studyQuiz.ts). 푸는 동안 이 말풍선 안에서 바뀝니다. */
+  quiz?: CoachQuiz
 }
 
 /** 이 기기에 남기는 대화방 */
@@ -71,6 +74,8 @@ const CHIP_KINDS = [
   'startTitled',
   'dayPlan',
   'longPlan',
+  'quiz',
+  'quizReview',
 ]
 
 /** 빈 대화방 */
@@ -96,6 +101,12 @@ function isChip(value: unknown): value is CoachChip {
     return typeof chip.condition === 'number' && Array.isArray(chip.emotions)
   if (chip.kind === 'startTitled')
     return typeof chip.title === 'string' && typeof chip.minutes === 'number'
+  if (chip.kind === 'quiz') {
+    // 주제 · 카드 번호 · 체크리스트는 없어도 됩니다. (없으면 주제를 고르는 칸이 열림)
+    const isOptionalText = (field: unknown) => field === undefined || typeof field === 'string'
+    const isOptionalList = chip.checklist === undefined || Array.isArray(chip.checklist)
+    return isOptionalText(chip.topic) && isOptionalText(chip.cardId) && isOptionalList
+  }
   return true
 }
 
@@ -111,6 +122,8 @@ function toBubble(value: unknown): ThreadBubble | null {
   if (item.isDemo === true) bubble.isDemo = true
   const plan = toCoachPlan(item.plan)
   if (plan) bubble.plan = plan
+  const quiz = toCoachQuiz(item.quiz)
+  if (quiz) bubble.quiz = quiz
   return bubble
 }
 
@@ -145,11 +158,14 @@ export function nextBubbleId(bubbles: ThreadBubble[]): number {
 export function sessionLines(thread: CoachThread): CallLine[] {
   return thread.bubbles
     .filter((bubble) => bubble.id >= thread.sessionFrom)
-    .map(({ speaker, text, plan }) => ({
-      speaker,
-      // 계획 말풍선이면 계획 한 줄을 붙여서, AI 가 어떤 계획 이야기인지 알게 합니다. (서버 한도 500자)
-      text: plan ? `${text}\n${planLineForAi(plan)}`.slice(0, MAX_CHAT_TEXT_LENGTH) : text,
-    }))
+    .map(({ speaker, text, plan, quiz }) => {
+      // 계획 · 문제 말풍선이면 계획 한 줄 · 결과 한 줄을 붙여서, AI 가 무슨 이야기인지 알게 합니다. (서버 한도 500자)
+      const extra = plan ? planLineForAi(plan) : quiz ? quizLineForAi(quiz) : null
+      return {
+        speaker,
+        text: extra ? `${text}\n${extra}`.slice(0, MAX_CHAT_TEXT_LENGTH) : text,
+      }
+    })
 }
 
 /**

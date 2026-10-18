@@ -41,6 +41,8 @@ import type { Card, CheckIn, EmotionTag, StudySession } from '@/types'
  *   pickDate     — 대화 아래에 작은 날짜 고르기 칸을 엽니다 (대회 날짜 → 내 일정, lib/myEvents.ts)
  *   dayPlan      — 코치가 오늘 계획을 짜서 계획 말풍선으로 보여 줍니다 (light 면 가볍게, lib/coachPlan.ts)
  *   longPlan     — 시험 · 대회 날까지의 긴 계획을 짜는 칸(목표 · 날짜 · 하루 시간 · 사진)을 엽니다
+ *   quiz         — 확인 문제를 냅니다. topic 이 있으면 바로, 없으면 주제를 고르는 칸을 엽니다 (lib/studyQuiz.ts)
+ *   quizReview   — 어제 틀린 문제를 다시 냅니다 (서버를 부르지 않음)
  * 행동 칩(say · checkIn 이 아닌 것)은 누를 때만 실행합니다. 자동으로 하지 않습니다.
  */
 export type CoachChip =
@@ -60,6 +62,10 @@ export type CoachChip =
   | { kind: 'dayPlan'; label: string; light?: boolean }
   /** 시험 · 대회 날까지의 긴 계획(최대 30일)을 짜는 칸을 엽니다. */
   | { kind: 'longPlan'; label: string }
+  /** 확인 문제 (2026-10-18 "제대로 공부했나 문제를 내 보기도"). 카드로 내면 그 카드의 제목 · 체크리스트 */
+  | { kind: 'quiz'; label: string; topic?: string; cardId?: string; checklist?: string[] }
+  /** 어제 틀린 문제 다시 풀기 */
+  | { kind: 'quizReview'; label: string }
 
 /**
  * 계획 칩. 코치가 먼저 계획을 짜 주고, 학생이 고칠 곳을 말하며 핑퐁합니다. (lib/coachPlan.ts)
@@ -72,6 +78,25 @@ export const LIGHT_PLAN_CHIP: CoachChip = {
   light: true,
 }
 export const LONG_PLAN_CHIP: CoachChip = { kind: 'longPlan', label: '📅 시험·대회 계획 짜기' }
+/** 확인 문제 칩. 누르면 주제를 고르는 칸(오늘 카드 · 직접 적기 · 사진)이 열립니다. */
+export const QUIZ_CHIP: CoachChip = { kind: 'quiz', label: '📝 문제 내 줘' }
+/** 어제 틀린 문제를 다시 푸는 칩 */
+export const QUIZ_REVIEW_CHIP: CoachChip = { kind: 'quizReview', label: '📝 틀린 문제 다시' }
+
+/**
+ * 공부를 끝낸 카드로 확인 문제를 내는 칩. 카드의 제목 · 체크리스트로 3문제를 냅니다.
+ *   quizChipForCard({ id: 'c1', title: '미적분 3단원', checklist: [{ text: '예제 10문제' }] })
+ *   -> { kind: 'quiz', label: '📝 방금 공부한 거 3문제', topic: '미적분 3단원', cardId: 'c1', checklist: ['예제 10문제'] }
+ */
+export function quizChipForCard(card: Pick<Card, 'id' | 'title' | 'checklist'>): CoachChip {
+  return {
+    kind: 'quiz',
+    label: '📝 방금 공부한 거 3문제',
+    topic: card.title,
+    cardId: card.id,
+    checklist: card.checklist.map((item) => item.text).filter((text) => text.trim() !== ''),
+  }
+}
 
 /**
  * 시험이 이만큼(일) 안으로 다가오면 "📅 시험·대회 계획 짜기" 칩을 보여 줍니다.
@@ -105,6 +130,8 @@ export interface BriefingInput {
   cards: TodayCardsState
   /** 오늘 체크인. 아직 안 했으면 undefined */
   checkIn: CheckIn | undefined
+  /** 어제 확인 문제에서 틀린 문제 수 (lib/studyQuiz.ts). 없으면 0 */
+  yesterdayWrongCount?: number
 }
 
 /** 피곤해서 목표를 줄여 잡을 때의 길이 (분) */
@@ -178,11 +205,16 @@ export function buildMorningBriefing(input: BriefingInput): CoachMessage {
     )
   }
 
+  // 어제 확인 문제에서 틀린 게 있으면 다시 풀자고 합니다. (칩은 아래에서 맨 뒤에 붙임)
+  const wrongCount = input.yesterdayWrongCount ?? 0
+  if (wrongCount > 0) lines.push(`어제 틀린 문제가 ${wrongCount}개 있어. 한 번 더 풀어 볼까?`)
+  const reviewChips = wrongCount > 0 ? [QUIZ_REVIEW_CHIP] : []
+
   const card = input.cards.current ?? input.cards.next
   // 오늘 컨디션을 아직 모르면 그것부터 묻습니다. 칩을 누르면 그날의 체크인이 되고, 그다음은 AI 와 이야기합니다.
   if (input.checkIn === undefined) {
     lines.push('먼저, 오늘 컨디션은 어때? 하나만 골라 줘.')
-    return { text: lines.join('\n'), chips: CONDITION_CHIPS }
+    return { text: lines.join('\n'), chips: [...CONDITION_CHIPS, ...reviewChips] }
   }
   const isTired = isTiredToday(input.checkIn)
   if (isTired) {
@@ -219,7 +251,7 @@ export function buildMorningBriefing(input: BriefingInput): CoachMessage {
   if (exam && exam.dDay >= 1 && exam.dDay <= LONG_PLAN_CHIP_EXAM_DAYS && !hasLongChip) {
     chips = [...chips, { kind: 'longPlan', label: `📅 ${shorten(exam.name, 8)} 계획 짜기` }]
   }
-  return { text: lines.join('\n'), chips }
+  return { text: lines.join('\n'), chips: [...chips, ...reviewChips] }
 }
 
 /**
@@ -240,16 +272,21 @@ export function negotiationChipsFor(studentText: string): CoachChip[] {
 const PLAN_TALK_WORDS = ['계획', '플래너', '스케줄', '뭐 하지', '뭐하지', '뭐부터']
 /** 시험 · 대회 이야기인지 볼 낱말 */
 const EXAM_TALK_WORDS = ['시험', '중간', '기말', '모의', '대회', '자격증', '수능']
+/** 확인 문제 이야기인지 볼 낱말 ("다 했어" · "배웠어" 처럼 공부를 끝낸 말도 문제로 확인하자고 권합니다) */
+const QUIZ_TALK_WORDS = ['문제 내', '문제 좀', '퀴즈', '확인해', '배웠어', '공부했어', '외웠어']
 
 /**
  * AI 가 칩을 안 줬을 때 코드가 붙이는 칩. 핑계면 가볍게 고치기, 계획 이야기면 계획 칩, 시험 이야기면 긴 계획 칩입니다.
  *
  *   codeChipsFor('오늘 뭐부터 하지') -> [▷ 오늘 계획 짜 줘, 📅 시험·대회 계획 짜기]
  *   codeChipsFor('다음 주 중간고사야') -> [📅 시험·대회 계획 짜기]
+ *   codeChipsFor('오늘 수열 배웠어')   -> [📝 문제 내 줘]
  */
 export function codeChipsFor(studentText: string): CoachChip[] {
   const negotiation = negotiationChipsFor(studentText)
   if (negotiation.length > 0) return negotiation
+  // "중간고사 문제 내 줘" 처럼 문제를 부탁하면 시험 이야기보다 문제가 먼저입니다.
+  if (QUIZ_TALK_WORDS.some((word) => studentText.includes(word))) return [QUIZ_CHIP]
   if (PLAN_TALK_WORDS.some((word) => studentText.includes(word))) return [PLAN_CHIP, LONG_PLAN_CHIP]
   if (EXAM_TALK_WORDS.some((word) => studentText.includes(word))) return [LONG_PLAN_CHIP]
   return []
