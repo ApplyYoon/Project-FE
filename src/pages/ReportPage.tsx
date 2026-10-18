@@ -80,7 +80,7 @@ export function ReportPage() {
       <div>
         {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
         <Link
-          to="/analysis"
+          to="/records"
           className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
         >
           ‹ 기록
@@ -101,7 +101,7 @@ interface WeeklyReportProps {
  * 칸 5개를 이 순서로 고정합니다: ① 예측 후 공개 → ② 숫자 3개 → ③ 인사이트 1개 → ④ 지난 실험 결과 → ⑤ 다음 실험 제안
  */
 function WeeklyReport({ sessions }: WeeklyReportProps) {
-  // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ... 주소에 둡니다. (/analysis?tab=report&weeksAgo=1)
+  // 0 = 이번 주, 1 = 지난 주, 2 = 지지난 주 ... 주소에 둡니다. (/records?tab=report&weeksAgo=1)
   // replace: ‹ › 를 여러 번 눌러도 뒤로 가기 한 번이면 리포트 화면을 떠납니다.
   const [weeksAgoParam, setWeeksAgoParam] = useQueryParam('weeksAgo', '0', { replace: true })
   // 주소의 값이 0 이상의 정수가 아니면 이번 주(0)로 봅니다.

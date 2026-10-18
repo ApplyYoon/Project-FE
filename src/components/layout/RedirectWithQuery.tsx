@@ -12,7 +12,7 @@ interface RedirectWithQueryProps {
  * 저장해 둔 주소나 예전 알림을 눌러도, 보던 날짜·보기가 그대로 열리게 하려는 것입니다.
  *
  *   <RedirectWithQuery to="/cards" />                    /planner?date=2026-10-11 → /cards?date=2026-10-11
- *   <RedirectWithQuery to="/analysis" tab="report" />    /report?view=monthly → /analysis?view=monthly&tab=report
+ *   <RedirectWithQuery to="/records" tab="report" />    /report?view=monthly → /records?view=monthly&tab=report
  */
 export function RedirectWithQuery({ to, tab }: RedirectWithQueryProps) {
   const location = useLocation()

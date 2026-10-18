@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
+import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsServerData } from '@/hooks/useIsServerData'
@@ -23,13 +24,10 @@ import { getApiErrorMessage } from '@/lib/api'
 import { isInApp } from '@/lib/appBridge'
 import { deleteAllServerCards } from '@/lib/cardsApi'
 import { canSyncCheckIns, deleteServerCheckIns } from '@/lib/checkInsApi'
-import {
-  CALL_TIME_STORAGE_KEY,
-  isCallTimeInQuietHours,
-  isIosWithoutInstall,
-  parseCallTime,
-} from '@/lib/callReminder'
+import { CALL_TIME_STORAGE_KEY, isCallTimeInQuietHours, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
+import { getCoachStrength, STRENGTH_PRESETS, type StrengthPreset } from '@/lib/coachStrength'
+import { isMissionAlertsOn, setMissionAlertsOn } from '@/lib/dailyMission'
 import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
@@ -51,7 +49,6 @@ import {
   getNotificationPermission,
   isNotificationSupported,
   requestNotificationPermission,
-  showSystemNotification,
   toQuietHours,
 } from '@/lib/notifications'
 import {
@@ -61,23 +58,8 @@ import {
   turnOnWebPush,
   type WebPushStatus,
 } from '@/lib/webPush'
+import { loadSchoolClass, saveSchoolClass, type SchoolClass } from '@/lib/schoolToday'
 import { loadSignupProfile } from '@/lib/signup'
-import {
-  AUTO_SETTING_ROWS,
-  SOURCE_LABELS,
-  getOptionLabel,
-  type AutoSettingRow,
-} from '@/lib/autoSettingOptions'
-import {
-  canRevert,
-  loadAutoSettings,
-  revertSetting,
-  saveAutoSettings,
-  setByUser,
-  type AutoSettingKey,
-  type AutoSettingValues,
-  type StoredSetting,
-} from '@/lib/settingsMapping'
 import { deleteServerSessions } from '@/lib/sessionsApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
@@ -87,7 +69,7 @@ const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: 
   all: {
     question: '모든 기록을 지울까요?',
     detail:
-      '공부 계획, 공부 기록, 진행 중인 타이머, 체크인, 시험, 일기, AI 메시지가 전부 사라져요. 서버에 저장된 체크인 · 카드 · 공부 기록도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
+      '공부 카드, 공부 기록, 진행 중인 타이머, 체크인, 코치와의 대화, AI 메시지가 전부 사라져요. 서버에 저장된 체크인 · 카드 · 공부 기록도 지워요. 과목 · 루틴 · 설정과 로그인 정보는 그대로 남아요.',
     done: '모든 기록을 지웠어요.',
   },
 }
@@ -101,6 +83,15 @@ interface DeleteMessage {
 // 관리 강도 한도를 이 단계 이상으로 "올릴" 때는 바로 바꾸지 않고 확인창으로 한 번 더 묻습니다. (4 = 강제적 채찍)
 const CONFIRM_CARE_LEVEL = 4
 
+/**
+ * 설정 화면(/settings). 코치 화면 머리의 톱니로 들어옵니다. (2026-10-18 "설정은 잡다한 기록이 너무 많아" → 네 묶음만)
+ *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내 계정 관리(정보 고치기 · 탈퇴) · 로그아웃
+ *   ② 코치 세기 — 약 · 보통 · 강 하나로 고름 (관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 한꺼번에, lib/coachStrength.ts)
+ *                하나씩 정하던 예전 칸은 "자세히" 안에 접어 둡니다.
+ *   ③ 알림     — 오늘의 미션 알림 · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
+ *   ④ 내 데이터 — 모든 기록 지우기 하나
+ * 시연용 가상 데이터 칸은 주소 끝에 ?demo=on 을 붙였을 때만 보입니다.
+ */
 export function SettingsPage() {
   const navigate = useNavigate()
   const { user, token, logout } = useAuth()
@@ -155,6 +146,47 @@ export function SettingsPage() {
     setLimits(setMaxCareLevel(confirmCareLevel))
     setConfirmCareLevel(null)
   }
+
+  // 코치 세기 (약 · 보통 · 강). 저장된 네 칸이 어느 묶음과 같은지로 고른 모양을 정합니다. (lib/coachStrength.ts)
+  const { strength, isExact: isStrengthExact } = getCoachStrength(limits)
+  const strengthPreset = STRENGTH_PRESETS.find((preset) => preset.strength === strength)
+  // "강" 처럼 센 단계로 올릴 때 확인창으로 묻는 묶음. null 이면 확인창이 닫혀 있습니다.
+  const [confirmStrength, setConfirmStrength] = useState<StrengthPreset | null>(null)
+
+  /** 세기 묶음의 네 칸을 한꺼번에 바꿉니다. 올리는 값은 내일부터, 낮추는 값은 바로 적용됩니다. (careLimits 가 정함) */
+  function applyStrength(preset: StrengthPreset) {
+    setMaxCareLevel(preset.maxCareLevel)
+    setMaxHarshness(preset.maxHarshness)
+    setAllowFocusMode(preset.allowFocusMode)
+    setLimits(setAllowOffHoursCall(preset.allowOffHoursCall))
+  }
+
+  function handlePickStrength(preset: StrengthPreset) {
+    // 센 단계(4 강제적 채찍)로 올릴 때만 한 번 더 묻습니다.
+    if (preset.maxCareLevel >= CONFIRM_CARE_LEVEL && preset.maxCareLevel > limits.maxCareLevel) {
+      setConfirmStrength(preset)
+      return
+    }
+    applyStrength(preset)
+  }
+
+  // 학년 · 반 (오늘 탭과 같은 저장소). 저장하면 "저장했어요" 를 잠깐 보여 줍니다.
+  const [schoolClass, setSchoolClass] = useState<SchoolClass | null>(loadSchoolClass)
+  const [isClassSaved, setIsClassSaved] = useState(false)
+
+  function handleSaveClass(next: SchoolClass) {
+    saveSchoolClass(next)
+    setSchoolClass(next)
+    setIsClassSaved(true)
+  }
+
+  // 오늘의 미션 알림 켜기 · 끄기 (lib/dailyMission.ts)
+  const [isMissionAlertOn, setIsMissionAlertOn] = useState(isMissionAlertsOn)
+
+  function handleToggleMissionAlerts(isOn: boolean) {
+    setMissionAlertsOn(isOn)
+    setIsMissionAlertOn(isOn)
+  }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
 
@@ -169,8 +201,6 @@ export function SettingsPage() {
     const saved = loadData<unknown>(CALL_TIME_STORAGE_KEY, '')
     return typeof saved === 'string' && parseCallTime(saved) !== null ? saved : ''
   })
-  // 아이폰인데 홈 화면에 추가하지 않았는지. 이 경우에만 안내를 보여줍니다.
-  const [showIosGuide] = useState(isIosWithoutInstall)
 
   function handleChangeCallTime(nextTime: string) {
     setCallTime(nextTime)
@@ -185,20 +215,6 @@ export function SettingsPage() {
   async function handleRequestNotification() {
     const permission = await requestNotificationPermission()
     setNotificationPermission(permission)
-  }
-
-  // "알림 한 번 보내 보기" 의 결과. 아직 안 눌렀으면 null, 떴으면 true, 못 띄웠으면 false 입니다.
-  const [isTestNotificationShown, setIsTestNotificationShown] = useState<boolean | null>(null)
-
-  /** 알림이 이 기기에서 정말 뜨는지 한 번 보내 봅니다. 눌러서 바로 확인할 수 있게 둔 버튼입니다. */
-  async function handleSendTestNotification() {
-    const isShown = await showSystemNotification({
-      title: 'STARFLOW 알림',
-      body: '알림이 잘 와요. 새 소식이 생기면 이렇게 알려줄게요.',
-      tag: 'test-notification',
-      url: '/settings',
-    })
-    setIsTestNotificationShown(isShown)
   }
 
   function handleChangeMessageSettings(next: MessageSettings) {
@@ -243,24 +259,18 @@ export function SettingsPage() {
     setPendingKind(null)
   }
 
-  // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스. h-10 으로 누르는 높이를 40px 로 둡니다.
-  const secondaryLinkClass =
-    'mt-3 inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50'
-
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">설정</h1>
-        <p className="mt-2 text-slate-600">
-          AI 가 나를 얼마나 세게 챙길지 내가 정해요. 정한 한도는 절대 넘지 않아요.
-        </p>
+        <p className="mt-2 text-slate-600">꼭 필요한 네 가지만 모았어요.</p>
       </div>
 
-      {/* 계정: 지금 누구로 로그인했는지 보여주고, 여기서 내 계정 화면으로 가거나 로그아웃합니다. */}
-      <Card>
-        {/* 모바일은 프로필 아래에 버튼을 가득 채우고, PC(sm 이상)는 오른쪽에 나란히 둡니다. */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+      {/* PC(lg)에서는 두 칸으로 나눕니다. 모바일은 한 줄로 쌓습니다. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        {/* ① 계정: 누구로 로그인했는지 · 학년 반 · 내 계정 관리 · 로그아웃 */}
+        <Card title="계정">
+          <div className="flex min-w-0 items-center gap-3">
             {/* 프로필 사진 대신 이름의 첫 글자를 동그라미에 넣습니다. 꾸밈이라 스크린리더는 읽지 않습니다. */}
             <div
               aria-hidden
@@ -286,70 +296,118 @@ export function SettingsPage() {
               )}
             </div>
           </div>
-          {/* 내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
-          <Link
-            to="/settings/account"
-            className="inline-flex h-10 w-full shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 sm:w-auto"
-          >
-            내 계정 관리
-          </Link>
-          <Button
-            variant="secondary"
-            className="w-full shrink-0 sm:w-auto"
-            onClick={() => setIsLogoutOpen(true)}
-          >
-            로그아웃
-          </Button>
-        </div>
-      </Card>
 
-      {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 왼쪽은 관리 강도 한도, 오른쪽은 내 데이터 등 그 밖의 설정입니다. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-        <div className="flex flex-col gap-6">
-          {/* 한도 · 수위는 AI 가 바꾸지 않고 나만 바꿉니다. 낮추면 즉시, 높이면 다음 날부터예요. (「4.8 설정」, #390) */}
-          <Card title="관리 강도 최대 한도">
-            <p className="text-sm text-slate-500">
-              낮추면 바로, 높이면 내일부터 적용돼요. AI 는 이 한도를 바꾸지 않아요.
+          {/* 학년 · 반은 오늘 탭의 시간표 칸과 같은 저장소(study-school-class)를 씁니다. 서버에는 저장하지 않습니다. */}
+          <SchoolClassPicker
+            key={schoolClass ? `${schoolClass.grade}-${schoolClass.classNo}` : 'none'}
+            initial={schoolClass}
+            onSave={handleSaveClass}
+            description={
+              schoolClass
+                ? `지금 ${schoolClass.grade}학년 ${schoolClass.classNo}반이에요. 오늘 탭 시간표와 코치가 이 반 기준으로 말해요.`
+                : '학년 · 반을 알려 주면 오늘 탭에 시간표가 나오고, 코치가 오늘 배운 과목으로 말을 걸어요.'
+            }
+            saveLabel="반 저장"
+            className="mt-5"
+          />
+          {isClassSaved && (
+            <p role="status" className="mt-2 text-sm text-slate-600">
+              저장했어요.
             </p>
+          )}
 
-            {/* 올려 둔 값이 있으면 그 값을 골라 둔 것으로 보여 줍니다. 지금 값을 다시 고르면 예약이 취소돼요. */}
-            <CareLevelPicker
-              value={limits.pendingMaxCareLevel ?? limits.maxCareLevel}
-              onChange={handleChangeCareLevel}
-              className="mt-4"
-            />
-            {limits.pendingMaxCareLevel !== null && (
-              <PendingNotice
-                now={`${limits.maxCareLevel} ${careLevelInfos[limits.maxCareLevel].name}`}
-                next={`${limits.pendingMaxCareLevel} ${careLevelInfos[limits.pendingMaxCareLevel].name}`}
-              />
-            )}
-          </Card>
+          {/* 내 정보 고치기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <Link
+              to="/settings/account"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 sm:flex-1"
+            >
+              내 계정 관리 (정보 고치기 · 탈퇴)
+            </Link>
+            <Button
+              variant="secondary"
+              className="h-11 w-full sm:flex-1"
+              onClick={() => setIsLogoutOpen(true)}
+            >
+              로그아웃
+            </Button>
+          </div>
+        </Card>
 
-          <Card title="독설 허용 수위">
-            <p className="text-sm text-slate-500">
-              지적은 행동에만 해요. 외모·성적·능력 비하와 남과 비교는 절대 안 해요. 낮추면 바로,
-              높이면 내일부터 적용돼요.
+        {/* ② 코치 세기: 관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 약 · 보통 · 강 하나로 (lib/coachStrength.ts) */}
+        <Card title="코치 세기">
+          <p className="text-sm break-keep text-slate-500">
+            AI 코치가 나를 얼마나 세게 챙길지 하나만 골라요. 올리면 내일부터, 낮추면 바로 적용돼요.
+            AI 는 이 한도를 넘지 않아요.
+          </p>
+          <div role="radiogroup" aria-label="코치 세기" className="mt-4 grid grid-cols-3 gap-2">
+            {STRENGTH_PRESETS.map((preset) => (
+              <button
+                key={preset.strength}
+                type="button"
+                role="radio"
+                aria-checked={strength === preset.strength}
+                onClick={() => handlePickStrength(preset)}
+                className={cn(
+                  'h-12 cursor-pointer rounded-xl border text-base font-semibold transition-colors',
+                  strength === preset.strength
+                    ? 'border-brand bg-brand text-white'
+                    : 'hover:border-brand border-slate-200 bg-white text-slate-700',
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <p role="status" className="mt-3 text-sm break-keep text-slate-600">
+            {strengthPreset?.description}
+            {!isStrengthExact && ' (몇 칸은 "자세히" 에서 따로 정한 값이에요)'}
+          </p>
+          {(limits.pendingMaxCareLevel !== null || limits.pendingMaxHarshness !== null) && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <strong>내일부터 적용</strong> · 올린 값은 내일부터 바뀌어요. 지금 값을 다시 고르면
+              취소돼요.
             </p>
+          )}
 
-            <HarshnessPicker
-              value={limits.pendingMaxHarshness ?? limits.maxHarshness}
-              onChange={(value) => setLimits(setMaxHarshness(value))}
-              className="mt-4"
-            />
-            {limits.pendingMaxHarshness !== null && (
-              <PendingNotice
-                now={`${limits.maxHarshness} / 5`}
-                next={`${limits.pendingMaxHarshness} / 5`}
-              />
-            )}
-          </Card>
-
-          <AutoSettingsSection />
-
-          <Card title="잠금과 독촉">
-            <div className="flex flex-col divide-y divide-slate-100">
-              <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+          {/* 예전처럼 하나씩 정하고 싶은 사람을 위해 접어 둡니다. 저장 값은 위의 세기와 같습니다. */}
+          <details className="mt-4 rounded-xl bg-slate-50 px-4">
+            <summary className="flex h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
+              자세히 (하나씩 정하기)
+            </summary>
+            <div className="flex flex-col gap-5 pb-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">관리 강도 최대 한도</p>
+                <CareLevelPicker
+                  value={limits.pendingMaxCareLevel ?? limits.maxCareLevel}
+                  onChange={handleChangeCareLevel}
+                  className="mt-2"
+                />
+                {limits.pendingMaxCareLevel !== null && (
+                  <PendingNotice
+                    now={`${limits.maxCareLevel} ${careLevelInfos[limits.maxCareLevel].name}`}
+                    next={`${limits.pendingMaxCareLevel} ${careLevelInfos[limits.pendingMaxCareLevel].name}`}
+                  />
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">독설 허용 수위</p>
+                <p className="text-sm text-slate-500">
+                  지적은 행동에만 해요. 외모·성적·능력 비하와 남과 비교는 절대 안 해요.
+                </p>
+                <HarshnessPicker
+                  value={limits.pendingMaxHarshness ?? limits.maxHarshness}
+                  onChange={(value) => setLimits(setMaxHarshness(value))}
+                  className="mt-2"
+                />
+                {limits.pendingMaxHarshness !== null && (
+                  <PendingNotice
+                    now={`${limits.maxHarshness} / 5`}
+                    next={`${limits.pendingMaxHarshness} / 5`}
+                  />
+                )}
+              </div>
+              <label className="flex cursor-pointer items-center justify-between gap-3">
                 <span className="flex flex-col">
                   <span className="text-sm font-semibold text-slate-900">집중 모드 잠금 허용</span>
                   <span className="text-sm text-slate-500">풀려면 10초 기다리고 이유를 적어요</span>
@@ -364,8 +422,7 @@ export function SettingsPage() {
                   />
                 </span>
               </label>
-
-              <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+              <label className="flex cursor-pointer items-center justify-between gap-3">
                 <span className="flex flex-col">
                   <span className="text-sm font-semibold text-slate-900">
                     정해진 시간 외 독촉 전화
@@ -383,158 +440,132 @@ export function SettingsPage() {
                 </span>
               </label>
             </div>
-          </Card>
-        </div>
+          </details>
+        </Card>
 
-        <div className="flex flex-col gap-6">
-          <Card title="전화와 메시지">
-            <div className="flex flex-col gap-5">
-              <SettingsFromTextSection
-                current={{ callTime, messageSettings }}
-                onApply={handleApplyTalkedSettings}
-              />
-
-              <div className="flex flex-col gap-2">
-                <Input
-                  id="call-time"
-                  type="time"
-                  label="전화 받을 시간"
-                  value={callTime}
-                  onChange={(event) => handleChangeCallTime(event.target.value)}
-                  className="h-12 text-base"
+        {/* ③ 알림: 오늘의 미션 알림 · 전화 받을 시간 · 하루 메시지 횟수와 연락 금지 시간 */}
+        <Card title="알림">
+          <div className="flex flex-col gap-5">
+            <label className="flex cursor-pointer items-center justify-between gap-3">
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold text-slate-900">오늘의 미션 알림</span>
+                <span className="text-sm break-keep text-slate-500">
+                  아침 · 하교 무렵 · 저녁에 코치가 미션을 알려 줘요. (휴대폰 앱에서)
+                </span>
+              </span>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={isMissionAlertOn}
+                  onChange={(event) => handleToggleMissionAlerts(event.target.checked)}
+                  aria-label="오늘의 미션 알림"
+                  className="accent-brand h-5 w-5 cursor-pointer"
                 />
-                <p className="text-sm break-keep text-slate-500">
-                  {callTime === ''
-                    ? '시간을 고르면 매일 그 시간에 AI 선생님이 전화를 걸어요.'
-                    : `매일 ${callTime} 에 전화가 와요.`}{' '}
-                  앱이 열려 있을 때만 울려요. 알림은 아래 &quot;알림&quot;에서 켤 수 있어요.
-                </p>
-                {/* 칸은 항상 두고 글자만 바꿉니다. (화면 읽기 프로그램이 바뀐 안내를 읽게 하려는 것입니다) */}
-                <p role="status" className="text-sm break-keep text-red-700">
-                  {isCallTimeInQuietHours(callTime, toQuietHours(messageSettings))
-                    ? `이 시간은 연락 금지 시간(${messageSettings.quietStart} ~ ${messageSettings.quietEnd})이라 전화가 울리지 않아요. 전화 시간이나 연락 금지 시간을 바꿔 주세요.`
-                    : ''}
-                </p>
-                {showIosGuide && (
-                  <p className="rounded-lg bg-slate-50 p-3 text-sm break-keep text-slate-600">
-                    아이폰은 Safari 의 공유 버튼 → &apos;홈 화면에 추가&apos;로 설치한 뒤에만 알림을
-                    받을 수 있어요.
-                  </p>
-                )}
-                {/* 정해 둔 시간을 기다리지 않고 바로 전화 화면을 열어 봅니다. (수신 화면 → "받기" → 통화) */}
-                <div>
-                  <Link to="/call" className={secondaryLinkClass}>
-                    지금 전화 받아 보기
-                  </Link>
-                </div>
-              </div>
+              </span>
+            </label>
 
-              <MessageSettingsFields
-                value={messageSettings}
-                onChange={handleChangeMessageSettings}
+            <div className="flex flex-col gap-2">
+              <Input
+                id="call-time"
+                type="time"
+                label="AI 코치 전화 받을 시간"
+                value={callTime}
+                onChange={(event) => handleChangeCallTime(event.target.value)}
+                className="h-12 text-base"
               />
+              <p className="text-sm break-keep text-slate-500">
+                {callTime === ''
+                  ? '시간을 고르면 매일 그 시간에 AI 코치가 전화를 걸어요.'
+                  : `매일 ${callTime} 에 전화가 와요.`}
+              </p>
+              {/* 칸은 항상 두고 글자만 바꿉니다. (화면 읽기 프로그램이 바뀐 안내를 읽게 하려는 것입니다) */}
+              <p role="status" className="text-sm break-keep text-red-700">
+                {isCallTimeInQuietHours(callTime, toQuietHours(messageSettings))
+                  ? `이 시간은 연락 금지 시간(${messageSettings.quietStart} ~ ${messageSettings.quietEnd})이라 전화가 울리지 않아요. 전화 시간이나 연락 금지 시간을 바꿔 주세요.`
+                  : ''}
+              </p>
             </div>
-          </Card>
 
-          <Card title="알림">
-            <div className="flex flex-col gap-4">
-              {isNotificationSupported() ? (
-                <>
-                  <p className="text-sm text-slate-500">
-                    {notificationPermission === 'granted' &&
-                      '알림이 켜져 있어요. 새 메시지나 전화가 오면 브라우저 알림으로도 알려줄게요.'}
-                    {notificationPermission === 'denied' &&
-                      '브라우저 알림이 거부되어 있어요. 알림은 종 아이콘의 알림 화면에 그대로 쌓이고, 브라우저 알림만 안 떠요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
-                    {notificationPermission === 'default' &&
-                      '알림을 켜면 앱을 안 보고 있어도 새 메시지나 전화를 브라우저 알림으로 알려줘요.'}
-                  </p>
-                  {notificationPermission === 'default' && (
-                    <Button className="h-11 w-full sm:w-auto" onClick={handleRequestNotification}>
-                      알림 켜기
-                    </Button>
-                  )}
-                  {/* 알림을 켠 사람은 이 기기에서 정말 뜨는지 눌러서 확인할 수 있습니다. */}
-                  {notificationPermission === 'granted' && (
+            <MessageSettingsFields value={messageSettings} onChange={handleChangeMessageSettings} />
+
+            {/* AI 에게 말로 부탁해서 바꾸기 ("밤 10시 이후엔 연락하지 마" 등) */}
+            <SettingsFromTextSection
+              current={{ callTime, messageSettings }}
+              onApply={handleApplyTalkedSettings}
+            />
+
+            {/* 휴대폰 앱 안에서는 앱의 알림을 씁니다. 웹(브라우저)에서만 브라우저 알림 켜기를 보여 줍니다. */}
+            {isInApp() ? (
+              <p className="text-sm break-keep text-slate-500">
+                앱에서는 휴대폰 알림을 써요. 앱을 닫아 둬도 미션 · 카드 시작 · 전화 알림이 와요.
+              </p>
+            ) : (
+              <details className="rounded-xl bg-slate-50 px-4">
+                <summary className="flex h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
+                  브라우저 알림
+                </summary>
+                <div className="flex flex-col gap-4 pb-4">
+                  {isNotificationSupported() ? (
                     <>
-                      <Button
-                        variant="secondary"
-                        className="h-11 w-full sm:w-auto"
-                        onClick={handleSendTestNotification}
-                      >
-                        알림 한 번 보내 보기
-                      </Button>
-                      {/* role="status": 화면을 읽어 주는 프로그램이 결과를 읽어 줍니다. */}
-                      {isTestNotificationShown !== null && (
-                        <p role="status" className="text-sm break-keep text-slate-600">
-                          {isTestNotificationShown
-                            ? '알림을 보냈어요. 안 보이면 휴대폰의 알림 설정(방해 금지 모드 등)을 확인해 주세요.'
-                            : '이 브라우저에서는 알림을 띄우지 못했어요. 휴대폰이라면 홈 화면에 추가한 앱으로 열어 주세요.'}
-                        </p>
+                      <p className="text-sm break-keep text-slate-500">
+                        {notificationPermission === 'granted' && '브라우저 알림이 켜져 있어요.'}
+                        {notificationPermission === 'denied' &&
+                          '브라우저 알림이 거부되어 있어요. 켜려면 브라우저 주소창 옆 설정에서 알림을 허용해 주세요.'}
+                        {notificationPermission === 'default' &&
+                          '켜면 앱을 안 보고 있어도 새 메시지나 전화를 알려줘요.'}
+                      </p>
+                      {notificationPermission === 'default' && (
+                        <Button
+                          className="h-11 w-full sm:w-auto"
+                          onClick={handleRequestNotification}
+                        >
+                          알림 켜기
+                        </Button>
                       )}
                     </>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      이 브라우저는 브라우저 알림을 지원하지 않아요.
+                    </p>
                   )}
-                </>
-              ) : (
-                <p className="text-sm text-slate-500">
-                  이 브라우저는 브라우저 알림을 지원하지 않아요. 알림은 종 아이콘의 알림 화면에
-                  그대로 쌓여요.
-                </p>
-              )}
-              {/* 휴대폰 앱 안에서는 앱의 알림을 쓰므로 웹 푸시 켜기를 숨깁니다. (lib/appBridge.ts) */}
-              {isInApp() ? (
-                <p className="border-t border-slate-100 pt-4 text-sm break-keep text-slate-500">
-                  앱에서는 휴대폰 앱의 알림을 써요. 앱을 닫아 둬도 카드 시작 · 전화 알림이 와요.
-                </p>
-              ) : (
-                <WebPushSection />
-              )}
-            </div>
-          </Card>
+                  <WebPushSection />
+                </div>
+              </details>
+            )}
+          </div>
+        </Card>
 
-          <Card title="내 데이터 관리">
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-slate-500">지우면 되돌릴 수 없어요.</p>
+        {/* ④ 내 데이터: 모든 기록 지우기 하나만 */}
+        <Card title="내 데이터">
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-slate-500">
+              이 기기와 서버의 공부 기록 · 체크인 · 코치와의 대화를 모두 지워요. 지우면 되돌릴 수
+              없어요.
+            </p>
+            <Button
+              variant="danger"
+              className="h-11 w-full sm:w-auto"
+              onClick={() => setPendingKind('all')}
+            >
+              모든 기록 지우기
+            </Button>
+            {/* role="status": 지운 결과가 바뀌면 스크린리더가 읽어 줍니다. */}
+            {message && (
+              <p
+                role="status"
+                className={cn(
+                  'text-sm font-medium',
+                  message.isSuccess ? 'text-slate-900' : 'text-red-600',
+                )}
+              >
+                {message.text}
+              </p>
+            )}
+          </div>
+        </Card>
 
-              {/* 모바일은 세로로 쌓고, sm 부터 가로로 나란히. 누르는 곳은 최소 40px(h-11 = 44px) */}
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button
-                  variant="danger"
-                  className="h-11 w-full sm:flex-1"
-                  onClick={() => setPendingKind('all')}
-                >
-                  모든 기록 지우기
-                </Button>
-              </div>
-
-              {/* role="status": 지운 결과가 바뀌면 스크린리더가 읽어 줍니다. */}
-              {message && (
-                <p
-                  role="status"
-                  className={cn(
-                    'text-sm font-medium',
-                    message.isSuccess ? 'text-slate-900' : 'text-red-600',
-                  )}
-                >
-                  {message.text}
-                </p>
-              )}
-              {/* 서버에 저장된 체크인을 못 지웠을 때만 보입니다. */}
-              {deleteServer.isError && (
-                <Button
-                  variant="secondary"
-                  className="h-11 w-full sm:w-auto"
-                  disabled={deleteServer.isPending}
-                  onClick={() => deleteServerCheckInsWithMessage(deleteTexts.all.done)}
-                >
-                  서버의 체크인 다시 지우기
-                </Button>
-              )}
-            </div>
-          </Card>
-
-          {/* 발표 시연용 가상 데이터 (#418). 주소 끝에 ?demo=on 을 붙였거나 이미 넣었을 때만 보입니다 */}
-          <DemoDataSection />
-        </div>
+        {/* 발표 시연용 가상 데이터 (#418). 주소 끝에 ?demo=on 을 붙였을 때만 보입니다 */}
+        <DemoDataSection />
       </div>
 
       {/* 관리 강도 한도를 센 단계로 올리기 전에 한 번 더 물어봅니다. (올린 값은 내일부터 적용됩니다) */}
@@ -574,6 +605,46 @@ export function SettingsPage() {
         )}
       </Modal>
 
+      {/* 코치 세기를 "강" 으로 올리기 전에 한 번 더 물어봅니다. (올린 값은 내일부터 적용됩니다) */}
+      <Modal
+        isOpen={confirmStrength !== null}
+        onClose={() => setConfirmStrength(null)}
+        title="정말 올릴까요?"
+      >
+        {confirmStrength !== null && (
+          <>
+            <p className="font-medium text-slate-900">
+              코치 세기를 &apos;{confirmStrength.label}&apos; 으로 올릴까요?
+            </p>
+            <p className="mt-2 text-sm text-slate-600">{confirmStrength.description}</p>
+            <p className="mt-2 text-sm text-slate-600">
+              올린 한도는 내일부터 적용돼요. 힘들면 언제든 다시 낮출 수 있고, 낮추는 건 바로
+              적용돼요.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Button
+                variant="secondary"
+                size="lg"
+                className="flex-1"
+                onClick={() => setConfirmStrength(null)}
+              >
+                취소
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1"
+                onClick={() => {
+                  applyStrength(confirmStrength)
+                  setConfirmStrength(null)
+                }}
+              >
+                올리기
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
       {/* 지우기 전에 한 번 더 물어봅니다. 확인 버튼은 위험한 일이라는 걸 알리려고 빨간색입니다. */}
       {/* 로그아웃하기 전에 한 번 확인합니다. 잘못 눌러서 나가는 일을 막습니다. */}
       <Modal isOpen={isLogoutOpen} onClose={() => setIsLogoutOpen(false)} title="로그아웃할까요?">
@@ -581,8 +652,7 @@ export function SettingsPage() {
           이 기기에 저장된 계획과 기록은 지워지지 않아요. 다시 로그인하면 이어서 볼 수 있어요.
         </p>
         <p className="mt-2 text-sm break-keep text-slate-500">
-          다른 사람과 같이 쓰는 기기라면, 아래 &quot;내 데이터 관리&quot; 에서 기록을 먼저 지워
-          주세요.
+          다른 사람과 같이 쓰는 기기라면, 아래 &quot;내 데이터&quot; 에서 기록을 먼저 지워 주세요.
         </p>
         <div className="mt-5 flex gap-3">
           <Button
@@ -785,114 +855,6 @@ function PendingNotice({ now, next }: PendingNoticeProps) {
   )
 }
 
-/**
- * AI 가 성향으로 맞춘 설정들 (#390, 최종 기획서 「4.8 설정」)
- * - 줄마다 근거 배지(검사 기준 / 최근 데이터 기준 / 내가 정함 / 기본값)와 이유 한 줄
- * - 내가 바꾼 설정은 🔒 잠금. AI 는 다시 바꾸지 않습니다.
- * - AI 가 바꾼 설정에는 [되돌리기] — 바꾸기 전 값으로 돌아가고 잠깁니다.
- */
-function AutoSettingsSection() {
-  const [settings, setSettings] = useState(loadAutoSettings)
-
-  function handlePick<K extends AutoSettingKey>(key: K, value: AutoSettingValues[K]) {
-    if (settings[key].value === value) return
-    const next = setByUser(settings, key, value)
-    setSettings(next)
-    saveAutoSettings(next)
-  }
-
-  function handleRevert(key: AutoSettingKey) {
-    const next = revertSetting(settings, key)
-    setSettings(next)
-    saveAutoSettings(next)
-  }
-
-  return (
-    <Card title="AI 가 맞춘 설정">
-      <p className="text-sm text-slate-500">
-        처음 2주는 검사로, 그 뒤에는 최근 기록으로 AI 가 맞춰요. 내가 바꾼 설정은 🔒 잠겨서 AI 가
-        다시 바꾸지 않아요.
-      </p>
-      <ul className="mt-2 flex flex-col divide-y divide-slate-100">
-        {AUTO_SETTING_ROWS.map((settingRow) => (
-          <AutoSettingItem
-            key={settingRow.key}
-            settingRow={settingRow}
-            setting={settings[settingRow.key] as StoredSetting}
-            onPick={(value) => handlePick(settingRow.key, value)}
-            onRevert={() => handleRevert(settingRow.key)}
-          />
-        ))}
-      </ul>
-    </Card>
-  )
-}
-
-interface AutoSettingItemProps {
-  settingRow: AutoSettingRow
-  setting: StoredSetting
-  onPick: (value: AutoSettingValues[AutoSettingKey]) => void
-  onRevert: () => void
-}
-
-/** "AI 가 맞춘 설정" 의 한 줄 */
-function AutoSettingItem({ settingRow, setting, onPick, onRevert }: AutoSettingItemProps) {
-  const isAiChanged = canRevert(setting)
-  return (
-    <li className="flex flex-col gap-2 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-slate-900">{settingRow.title}</span>
-        {/* 근거 배지. 색만으로 구분하지 않게 글자로 씁니다. */}
-        <span
-          className={cn(
-            'rounded px-1.5 py-0.5 text-xs font-medium',
-            setting.source === 'user' && 'bg-slate-800 text-white',
-            (setting.source === 'test' || setting.source === 'data') && 'bg-brand-light text-brand',
-            setting.source === 'default' && 'bg-slate-100 text-slate-600',
-          )}
-        >
-          {setting.locked && <span aria-hidden>🔒 </span>}
-          {SOURCE_LABELS[setting.source]}
-          {setting.locked && <span className="sr-only"> · 잠김</span>}
-        </span>
-      </div>
-      <p className="text-sm break-keep text-slate-500">{setting.reason}</p>
-      {/* 고르기. 좁은 화면에서는 칸이 같은 폭으로 나뉩니다. */}
-      <div
-        role="group"
-        aria-label={settingRow.title}
-        className={cn(
-          'grid gap-1 rounded-lg bg-slate-100 p-1',
-          settingRow.options.length === 3 ? 'grid-cols-3' : 'grid-cols-2',
-        )}
-      >
-        {settingRow.options.map((option) => {
-          const isSelected = option.value === setting.value
-          return (
-            <button
-              key={String(option.value)}
-              type="button"
-              aria-pressed={isSelected}
-              onClick={() => onPick(option.value)}
-              className={cn(
-                'h-10 cursor-pointer rounded-md px-2 text-sm font-medium break-keep transition-colors',
-                isSelected ? 'text-brand bg-white shadow-sm' : 'text-slate-600 hover:bg-slate-200',
-              )}
-            >
-              {option.label}
-            </button>
-          )
-        })}
-      </div>
-      {isAiChanged && (
-        <Button variant="ghost" className="self-start" onClick={onRevert}>
-          되돌리기 · 바꾸기 전: {getOptionLabel(settingRow, setting.before)}
-        </Button>
-      )}
-    </li>
-  )
-}
-
 const webPushMessages: Record<WebPushStatus, string> = {
   unsupported: '이 브라우저에서는 앱을 닫았을 때 오는 알림을 쓸 수 없어요.',
   'needs-install':
@@ -990,7 +952,8 @@ function WebPushSection() {
 function DemoDataSection() {
   const [demoParam] = useQueryParam('demo', 'off')
   const [isSeeded] = useState(isDemoSeeded)
-  if (demoParam !== 'on' && !isSeeded && !import.meta.env.DEV) return null
+  // 발표 화면에 잡다한 칸이 보이지 않게, 주소 끝에 ?demo=on 을 붙였을 때만 보입니다. (지울 때도 ?demo=on 으로)
+  if (demoParam !== 'on') return null
 
   function handleAdd() {
     addDemoData()

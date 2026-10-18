@@ -127,7 +127,7 @@ export function CallResultPage() {
         <Button
           variant="secondary"
           className="w-full sm:w-auto"
-          onClick={() => navigate('/analysis')}
+          onClick={() => navigate('/records')}
         >
           내 기록 보기
         </Button>
