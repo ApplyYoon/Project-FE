@@ -510,12 +510,10 @@ export interface Exam {
   goalPrediction?: string
 }
 
-/** 아침형 / 밤형 (#89 자기 인식) */
-export type Chronotype = 'morning' | 'night'
-
 /**
  * 온보딩 설문 답 (#58, #88, #89 → 최종 기획서 「4.1」)
- * 처음 온보딩은 학년과 자기 인식 4문항만 묻고, 취침 · 기상 시각은 관리 설정 화면이 같은 칸에 저장합니다.
+ * 처음 온보딩은 학년만 묻고, 취침 · 기상 시각은 관리 설정 화면이 같은 칸에 저장합니다.
+ * (자기 인식 4문항은 주관적인 짐작이라 2026-10-18 에 지웠습니다. 옛 답이 저장돼 있어도 읽지 않습니다)
  * (예전 "내 정보 더 알려주기" 의 질문은 #417 에서 지웠습니다. 시험 이름 · 날짜 · 공부 이유는 옛 답이 있으면 다짐 녹음 화면이 읽습니다)
  */
 export interface OnboardingAnswers {
@@ -525,14 +523,6 @@ export interface OnboardingAnswers {
   wakeUpTime?: string
   /** 평소 취침 시각 ('HH:MM'). 관리 설정의 수면 보호 */
   sleepTime?: string
-  /** 아침형 / 밤형 */
-  chronotype?: Chronotype
-  /** 한 번에 집중 가능한 시간(분) */
-  maxFocusMinutes?: number
-  /** 가장 큰 방해 요소 */
-  biggestDistraction?: string
-  /** 하루 공부 가능 시간(분) */
-  dailyAvailableMinutes: number
   /** (옛 답) 목표로 하는 시험 이름 (예: '수능') */
   targetExam?: string
   /** (옛 답) 목표 시험 날짜 */

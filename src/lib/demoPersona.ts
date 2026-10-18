@@ -39,7 +39,7 @@ import type {
  * 저장소를 쓰지 않고 값만 만듭니다. 넣고 빼는 것은 lib/demoData.ts 가 합니다.
  *
  * ■ 어떤 사람인가 (발표 대본과 맞춘 줄거리)
- *   - 고2. 스스로 "밤형" 이라고 믿는다. (온보딩 4문항의 가설)
+ *   - 고2.
  *   - 목표 2개: '11월 학평 수학 3등급'(점수형, 처음엔 2등급이었다가 고침) · '기말 전 영단어장 1회독'(완주형, 300쪽)
  *   - 학원: 월·수·금 18:00 ~ 21:30 (고정 일정)
  *   - 하루 카드: 평일 3~4장, 주말 2~3장
@@ -915,10 +915,6 @@ export function buildDemoOnboarding(startKey: string, todayKey: string): Record<
     'onboarding-intro-seen': true,
     'onboarding-answers': {
       grade: '고2',
-      chronotype: 'night',
-      maxFocusMinutes: 'unknown',
-      biggestDistraction: '폰·SNS',
-      dailyAvailableMinutes: 'unknown',
       sleepTime: '00:30',
       wakeUpTime: '06:20',
       targetExam: '11월 학평',
@@ -929,14 +925,6 @@ export function buildDemoOnboarding(startKey: string, todayKey: string): Record<
       answers: DEMO_PSYCH_ANSWERS,
       scores: scorePsychTest(DEMO_PSYCH_ANSWERS),
       takenAt: doneAt,
-    },
-    // "나는 밤형" 이라고 믿는다 (데이터로 보면 틀림) · "폰이 가장 큰 방해" (데이터로 보면 맞음)
-    'my-hypotheses': {
-      chronotype: 'night',
-      maxFocusMinutes: null,
-      biggestDistraction: '폰·SNS',
-      dailyAvailableMinutes: null,
-      savedAt: doneAt,
     },
     'onboarding-care-consent': doneAt,
     'onboarding-result-seen': true,
