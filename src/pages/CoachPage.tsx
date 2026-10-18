@@ -430,6 +430,10 @@ function CoachChat() {
       sendText(chip.label)
       return
     }
+    if (chip.kind === 'photoCards') {
+      navigate('/cards/photo')
+      return
+    }
     if (chip.kind === 'startCard') {
       navigate(`/timer?card=${encodeURIComponent(chip.cardId)}`)
       return

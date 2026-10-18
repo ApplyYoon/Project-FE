@@ -417,9 +417,16 @@ function CardTimeline({
 
       <Link
         to={`/cards/new?date=${dateKey}`}
-        className="bg-brand hover:bg-brand-dark mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg px-4 text-sm font-medium text-white"
+        className="bg-brand hover:bg-brand-dark mt-4 inline-flex h-12 w-full items-center justify-center rounded-2xl px-5 text-[15px] font-semibold text-white active:scale-[0.98]"
       >
         + 카드 만들기
+      </Link>
+      {/* 시험 범위표 · 학습지를 찍으면 AI 가 카드 여러 장을 나눠 줍니다. (pages/CardsFromPhotoPage.tsx) */}
+      <Link
+        to="/cards/photo"
+        className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-2xl bg-slate-100 px-5 text-[15px] font-semibold text-slate-900 hover:bg-slate-200 active:scale-[0.98]"
+      >
+        📸 사진으로 만들기
       </Link>
     </Card>
   )
