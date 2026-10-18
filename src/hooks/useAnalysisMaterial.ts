@@ -7,9 +7,7 @@ import { loadAllSessions } from '@/lib/dailyRecords'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { loadExperiments } from '@/lib/experiments'
 import { loadFixedBlocks } from '@/lib/fixedBlocks'
-import { checkHypotheses } from '@/lib/hypothesisCheck'
 import { loadCheckInsByDate } from '@/lib/insightEvidence'
-import { loadMyHypotheses } from '@/lib/myHypotheses'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { loadPredictions } from '@/lib/weeklyPrediction'
 
@@ -28,7 +26,6 @@ export function useAnalysisMaterial(): AnalysisMaterial {
     marks: loadCardMarks(),
     fixedBlocks: loadFixedBlocks(),
     checkIns: loadCheckInsByDate(),
-    hypotheses: loadMyHypotheses(),
     predictions: loadPredictions(),
     experiments: loadExperiments(),
     // 판정에 쓰는 '지금'. 화면을 열 때 한 번 정합니다.
@@ -51,14 +48,6 @@ export function useAnalysisMaterial(): AnalysisMaterial {
     judgedDays,
     fixedBlocks: stored.fixedBlocks,
     checkIns: stored.checkIns,
-    hypothesisChecks: stored.hypotheses
-      ? checkHypotheses(stored.hypotheses, {
-          cards,
-          sessions: stored.sessions,
-          judgedDays,
-          todayKey,
-        })
-      : [],
     predictions: stored.predictions,
     experiments: stored.experiments,
     todayKey,

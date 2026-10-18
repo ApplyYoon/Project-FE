@@ -2,7 +2,6 @@ import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
-import { MyHypothesesCard } from '@/components/ui/MyHypothesesCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -11,7 +10,6 @@ import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
-import { buildJudgedCardDays } from '@/lib/cardDays'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { getCareLimits } from '@/lib/careLimits'
@@ -24,10 +22,8 @@ import { getDaySummary } from '@/lib/daySummary'
 import { formatDday, getDaysUntil } from '@/lib/exams'
 import type { ForestState, ForestTree } from '@/lib/forest'
 import { loadForestState } from '@/lib/forestData'
-import { FIRST_CHECK_DAYS, checkHypotheses, getHypothesisDay } from '@/lib/hypothesisCheck'
-import { loadMyHypotheses } from '@/lib/myHypotheses'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
-import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
+import { loadRestDays } from '@/lib/restDays'
 import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
 import {
   loadSchoolClass,
@@ -146,11 +142,6 @@ export function TodayPage() {
   // AI 가 바꾼 설정 기록 (#385). [되돌리기] · [확인] 을 누르면 줄어듭니다. (lib/settingChanges.ts)
   const [settingChanges, setSettingChanges] = useState(loadSettingChanges)
 
-  // 내 가설을 적은 지 3일째 · 7일째에만 기록과 비교한 첫 확인을 보여 줍니다. (기획서 4.6, lib/hypothesisCheck.ts)
-  const [hypotheses] = useState(loadMyHypotheses)
-  const hypothesisDay = hypotheses ? getHypothesisDay(hypotheses, todayKey) : 0
-  const showHypotheses = hypotheses !== undefined && FIRST_CHECK_DAYS.includes(hypothesisDay)
-
   // 오늘 한 줄의 재료 (어제 기록). 옛 계획도 함께 봅니다. (lib/dailyCoach.ts)
   const { allPlans } = usePlans()
   const recordDates = [
@@ -268,25 +259,6 @@ export function TodayPage() {
           changes={settingChanges}
           onRevert={handleRevertSetting}
           onDismiss={handleDismissSettings}
-        />
-      )}
-
-      {showHypotheses && hypotheses && (
-        <MyHypothesesCard
-          checks={checkHypotheses(hypotheses, {
-            cards,
-            sessions: allSessions,
-            judgedDays: buildJudgedCardDays(
-              cards,
-              allSessions,
-              toDayKey(hypotheses.savedAt),
-              todayKey,
-              now,
-              (cardId, dateKey) => getCardDayMarkInfo(cardId, dateKey, restDays, marks),
-            ),
-            todayKey,
-          })}
-          day={hypothesisDay}
         />
       )}
     </div>

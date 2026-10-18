@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router-dom'
 const ONBOARDING_ITEMS = [
   '학년 하나 고르기',
   '나에 대한 문장 35개에 1 ~ 7 로 답하기',
-  '내가 생각하는 나 4문항 (모르면 "잘 모르겠음")',
   '관리 세기 확인하기 (검사 결과로 미리 채워 둬요)',
 ]
 

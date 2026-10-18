@@ -3,7 +3,6 @@ import { RedirectWithQuery } from '@/components/layout/RedirectWithQuery'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import {
   ONBOARDING_CARE_PATH,
-  ONBOARDING_HYPOTHESES_PATH,
   ONBOARDING_INTRO_PATH,
   ONBOARDING_RESULT_PATH,
   ONBOARDING_RESUME_PATH,
@@ -219,19 +218,9 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
-  // 자기 인식 4문항 = 내 가설 (OnboardingPage 의 hypotheses 묶음). 심리검사 다음에 나옵니다.
-  {
-    path: ONBOARDING_HYPOTHESES_PATH,
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <OnboardingPage mode="hypotheses" />
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
-  // 관리 설정 동의 → 결과 (#389). 4문항 다음에 나옵니다.
+  // 자기 인식 4문항(내 가설)은 2026-10-18 에 지웠습니다. 옛 주소로 오면 RequireAuth 가 남은 온보딩 단계로 보냅니다.
+  { path: '/onboarding/hypotheses', element: <Navigate to="/" replace /> },
+  // 관리 설정 동의 → 결과 (#389). 심리검사 다음에 나옵니다.
   {
     path: ONBOARDING_CARE_PATH,
     errorElement: <ErrorPage />,

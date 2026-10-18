@@ -5,7 +5,6 @@ import { formatMinutes } from '@/lib/dailyRecords'
 import { moveDateKey, toDayKey } from '@/lib/date'
 import { EXPERIMENT_STATUS_LABELS, type Experiment } from '@/lib/experiments'
 import { getFixedBlocksOnDate } from '@/lib/fixedBlocks'
-import type { HypothesisCheck } from '@/lib/hypothesisCheck'
 import type { JudgedCardDay } from '@/lib/relapseSignal'
 import { getWeekday, getWeekdayName } from '@/lib/routines'
 import { getSessionCardId } from '@/lib/sessionRecords'
@@ -18,7 +17,7 @@ import type { Card, CheckIn, FixedBlock, StudySession } from '@/types'
 /**
  * AI 자기 분석의 재료 (#419 표 14번, 최종 기획서 「2 자기분석의 목표」 · 「4.6 분석」)
  *
- * 최근 28일 기록(카드 하루치 · 공부 세션 · 실패 표시 · 체크인 · 내 가설 · 주간 예측 · 실험)을
+ * 최근 28일 기록(카드 하루치 · 공부 세션 · 실패 표시 · 체크인 · 주간 예측 · 실험)을
  * **숫자 몇 줄**(AnalysisFact)로 묶습니다. 서버의 AI(BE `POST /ai/analysis`)는 이 숫자만 읽고 말로 풀어 줍니다.
  * 숫자는 여기(코드)가 계산하고, AI 는 계산하지 않습니다. AI 가 못 쓰면 buildCodeAnalysis 의 기본 문장이 나옵니다.
  *
@@ -99,8 +98,6 @@ export interface AnalysisInput {
   fixedBlocks: FixedBlock[]
   /** 날짜 → 체크인 */
   checkIns: Record<string, CheckIn>
-  /** 내 가설 확인 결과 (lib/hypothesisCheck.ts 의 checkHypotheses). 가설이 없으면 빈 목록 */
-  hypothesisChecks: HypothesisCheck[]
   predictions: WeeklyPrediction[]
   experiments: Experiment[]
   todayKey: string
@@ -166,18 +163,6 @@ function countTop(items: string[]): [string, number][] {
 }
 
 /**
- * 가설 확인 문장에서 되묻는 문장("~였지?")을 뺍니다. 예상값은 따로 보냅니다.
- *
- *   dropQuestion('한 번에 평균 23분 이어서 했어. 예상은 50분이었지?') -> '한 번에 평균 23분 이어서 했어.'
- */
-function dropQuestion(message: string): string {
-  return message
-    .split(/(?<=[.?])\s+/)
-    .filter((sentence) => !sentence.endsWith('?'))
-    .join(' ')
-}
-
-/**
  * 카드에 미리 적은 "예상 실패 원인" 글이 실제 원인과 같은 뜻인지 볼 때 쓰는 낱말입니다.
  * 예상 원인은 학생이 자유롭게 쓴 글이라 낱말로만 대충 맞춰 봅니다.
  */
@@ -198,7 +183,7 @@ const CAUSE_WORDS: Partial<Record<CardFailCause, string[]>> = {
  *
  *   (가상 사용자 28일) buildAnalysisFacts(input).facts
  *     -> [ { key: 'slotRate', group: 'tendency', label: '시간대별 실행률', value: '아침 95% · 저녁 80% · 밤 63%', basis: '카드 70번' },
- *          { key: 'hypothesisChronotype', group: 'distortion', label: '아침형 / 밤형 가설', value: '생각: 밤형 · 기록: 아침 카드 실행률 95% · 밤 카드 63%.', … },
+ *          { key: 'conditionRate', group: 'tendency', label: '컨디션별 실행률', value: '컨디션 4~5인 날 92% · 1~2인 날 55%', … },
  *          … ]
  */
 export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
@@ -321,19 +306,8 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
     })
   }
 
-  // ■ 생각과 실제 — 내가 적은 가설 · 예측과 실제 기록
-
-  // 내 가설 4개 (lib/hypothesisCheck.ts 가 이미 비교한 문장). 기록과 비교할 수 있는 것만
-  for (const check of input.hypothesisChecks) {
-    if (check.message === null || check.isMatch === null) continue
-    add({
-      key: `hypothesis${check.key.charAt(0).toUpperCase()}${check.key.slice(1)}`,
-      group: 'distortion',
-      label: toSafeText(`${check.title} 가설`, 30),
-      value: toSafeText(`생각: ${check.guess} · 기록: ${dropQuestion(check.message)}`, 80),
-      basis: `${check.sampleDays}일 · ${check.isMatch ? '예상과 비슷' : '예상과 다름'}`,
-    })
-  }
+  // ■ 생각과 실제 — 내가 맞혀 본 예측과 실제 기록
+  // (온보딩의 "내 가설" 4문항은 주관적인 짐작이라 2026-10-18 에 지웠습니다. 예측과 실제만 봅니다)
 
   // 주간 리포트에서 먼저 맞혀 본 값과 실제 값 (예측 후 공개, 「8.2」)
   const recentPredictions = input.predictions.filter((item) => item.weekStart >= fromKey)
