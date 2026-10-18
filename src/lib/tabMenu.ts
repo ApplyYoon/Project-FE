@@ -1,11 +1,13 @@
 /**
- * 아래 탭(홈·코치·타이머·기록) 하나에 어떤 주소들이 묶이는지 한 곳에 모아 둔 파일입니다. (#386, 2026-10-18 4탭)
+ * 아래 탭(홈·채팅·타이머·기록) 하나에 어떤 주소들이 묶이는지 한 곳에 모아 둔 파일입니다. (#386, 2026-10-18 4탭)
  *
  * 탭에는 화면이 다 들어갈 자리가 없어서, 탭에 없는 화면은 가까운 탭 아래에 묶습니다.
  * 이 주소들에 있을 때는 그 탭이 선택된 모양이어야 합니다.
  *
  *   홈 탭:   / (첫 화면) + 카드 · 목표 화면(/cards… · /goals…). 2026-10-18 에 '오늘'(/today) 에서 이름 · 주소를 바꿨습니다.
- *   코치 탭: /coach (AI 코치 채팅. 예전 상담 탭 /counsel 을 합침). 2026-10-18 에 '/' 에서 옮겼습니다.
+ *   채팅 탭: /chat (대화방 목록) + 방 3개 /chat/plan · /chat/counsel · /chat/tutor (lib/chatRooms.ts, #582)
+ *            2026-10-18 저녁에 '코치' 탭(/coach) 하나를 대화방 3개로 나누며 이름 · 주소를 바꿨습니다.
+ *            예전 /coach · /counsel 은 계획 이야기(?plan=)면 계획 방, 그 밖은 상담 방으로 넘깁니다. (router.tsx)
  *   기록 탭: /records (하위 탭: 기록 · 리포트). 2026-10-18 에 '분석' 에서 이름을 바꾸며 주소도 맞췄습니다.
  *   (사용설명서 · 가설·실험 하위 탭은 시연 범위 밖이라 2026-10-18 에 지웠습니다)
  */
@@ -13,8 +15,10 @@
 /** 홈 탭(첫 화면)의 주소 */
 export const HOME_PATH = '/'
 
-/** 코치 탭(AI 코치 채팅)의 주소 */
-export const COACH_PATH = '/coach'
+/** 채팅 탭(대화방 목록)의 주소 */
+export const CHAT_PATH = '/chat'
+
+// 대화방 하나하나의 주소(상담 방 COACH_PATH · 계획 방 PLAN_CHAT_PATH)는 방 목록과 같이 lib/chatRooms.ts 에 있습니다.
 
 /** 기록 탭의 주소 */
 export const RECORDS_PATH = '/records'
@@ -87,7 +91,7 @@ export function isRecordsPath(pathname: string): boolean {
  *   isHomePath('/')                  -> true
  *   isHomePath('/cards/new')         -> true
  *   isHomePath('/goals/abc')         -> true
- *   isHomePath('/coach')             -> false
+ *   isHomePath('/chat/counsel')      -> false
  */
 export function isHomePath(pathname: string): boolean {
   return pathname === HOME_PATH || homeCardPaths.some((path) => isUnder(pathname, path))

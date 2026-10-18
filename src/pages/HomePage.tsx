@@ -35,7 +35,7 @@ import {
   revertSettingChange,
 } from '@/lib/settingChanges'
 import type { SettingChange } from '@/lib/settingsMapping'
-import { COACH_PATH } from '@/lib/tabMenu'
+import { COACH_PATH, PLAN_CHAT_PATH } from '@/lib/chatRooms'
 import {
   getTodayCardsState,
   type TodayCardItem,
@@ -161,7 +161,7 @@ function HomeView() {
         state={todayCards}
         onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
         // ?plan=today: 코치 화면이 열리자마자 오늘 계획을 짜 줍니다. (계획 핑퐁)
-        onPlanWithCoach={() => navigate(`${COACH_PATH}?plan=today`)}
+        onPlanWithCoach={() => navigate(`${PLAN_CHAT_PATH}?plan=today`)}
         onPhoto={() => navigate('/cards/photo')}
       />
 

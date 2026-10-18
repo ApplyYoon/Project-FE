@@ -3,10 +3,15 @@
  * 채팅은 "글로 하는 통화" 입니다. 통화와 같은 대본으로 AI 코치와 이야기합니다.
  *
  * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "상담 채팅") 전부 로그인이 필요합니다.
- *   열기      POST /chats?grade=2&classNo=1   { careLevel, maxHarshness, card }   (학년 · 반은 있으면 — 오늘 시간표를 대본에)
- *                                         -> 200 { chatId, reply, showHelp, helpLines, quickReplies?, action? }
- *   말 보내기  POST /chats/{chatId}/messages { lines: [{ speaker: 'ai' | 'me', text }] }  (이 서버 세션의 대화 전체)
+ *   열기      POST /chats?grade=2&classNo=1   { careLevel, maxHarshness, card, room?, about? }   (학년 · 반은 있으면 — 오늘 시간표를 대본에)
+ *                                         -> 200 { chatId, reply, showHelp, helpLines, quickReplies?, action?, tags? }
+ *   말 보내기  POST /chats/{chatId}/messages { lines: [{ speaker: 'ai' | 'me', text }], image? }  (이 서버 세션의 대화 전체)
  *                                         -> 200 (위와 같은 모양)
+ *   room  · about · image · tags 는 대화방 3개(BE #330, 2026-10-18)부터입니다.
+ *     room  — 어느 방인지: COACH(기본, 💬 상담) · PLANNER(📅 계획) · TUTOR(📚 과목 쌤). lib/chatRooms.ts
+ *     about — 무엇에 대한 대화인지: 종류 + 이 기기에서 만든 사실 줄 1~8개. 서버가 첫 말을 그 주제로 꺼냅니다.
+ *     image — 이번 말에 붙인 사진 한 장(줄인 data URL). 그 한 번의 답에만 쓰고 서버 · 이 기기 어디에도 저장하지 않습니다.
+ *     tags  — 후기 · 못 한 카드 대화에서 AI 가 학생 말로 짐작한 이유 값 (0~3개). 화면은 "맞아?" 로 확인만 받습니다.
  *   정리하기  POST /calls/{chatId}/finish (lib/callReview.ts 의 finishCall). 코치 탭은 날이 바뀌면 지난 세션을 조용히 정리합니다.
  *             정리한 요약은 서버 대본의 [지난 통화] 로 들어가서, 다음 날 AI 가 "어제 약속 지켰어?" 처럼 이어서 물어봅니다.
  *   실패      400 대화 모양이 틀림 · 409 이미 끝났거나 서버가 대본을 잊음 · 429 오늘 AI 사용량을 다 씀 · 503 AI 가 꺼져 있음
@@ -24,6 +29,7 @@
 import { api, ApiError } from '@/lib/api'
 import { loadCallCard } from '@/lib/callCard'
 import type { CallLine } from '@/lib/callReview'
+import type { ChatAbout, ServerChatRoom } from '@/lib/chatRooms'
 import { loadSchoolClass } from '@/lib/schoolToday'
 import { getCallTone } from '@/lib/todayCare'
 
@@ -68,6 +74,8 @@ export interface ChatReply {
   quickReplies: string[]
   /** AI 가 제안한 행동. 없으면 null */
   action: ChatAction | null
+  /** AI 가 학생 말로 짐작한 이유 값 (후기 · 못 한 카드 대화에서만, 3개까지). 없으면 빈 목록 */
+  tags: string[]
 }
 
 const ACTION_TYPES: ChatAction['type'][] = [
@@ -90,6 +98,13 @@ function readQuickReplies(value: unknown): string[] {
     .slice(0, 3)
 }
 
+/** 서버가 준 이유 값을 확인합니다. 글자만, 겹치지 않게, 3개까지 (어떤 값인지는 화면이 다시 확인합니다) */
+function readTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const tags = value.filter((item): item is string => typeof item === 'string' && item !== '')
+  return [...new Set(tags)].slice(0, 3)
+}
+
 /** 서버가 준 행동을 확인합니다. 모양이 틀리면 null */
 function readAction(value: unknown): ChatAction | null {
   if (typeof value !== 'object' || value === null) return null
@@ -109,7 +124,7 @@ function readAction(value: unknown): ChatAction | null {
 }
 
 /** 서버가 준 값이 약속한 모양이 맞는지 확인합니다. (서버 응답도 그대로 믿지 않고 확인합니다) 빠른 답 · 행동은 따로 읽습니다. */
-function isChatReply(value: unknown): value is Omit<ChatReply, 'quickReplies' | 'action'> {
+function isChatReply(value: unknown): value is Omit<ChatReply, 'quickReplies' | 'action' | 'tags'> {
   if (typeof value !== 'object' || value === null) return false
   const reply = value as Record<string, unknown>
   return (
@@ -143,14 +158,24 @@ async function postChat(path: string, body: unknown): Promise<ChatReply> {
     helpLines: result.helpLines,
     quickReplies: readQuickReplies(record.quickReplies),
     action: readAction(record.action),
+    tags: readTags(record.tags),
   }
+}
+
+/** 채팅을 열 때 고를 것 (대화방 3개, BE #330). 안 주면 코치 방 · 주제 없음 */
+export interface StartChatOptions {
+  room?: ServerChatRoom
+  about?: ChatAbout | null
 }
 
 /**
  * 채팅을 엽니다. AI 코치의 첫 인사가 돌아옵니다. 요청은 통화를 걸 때와 같습니다.
  * 이 기기에 학년 · 반이 있으면 같이 보내서, 서버가 오늘 시간표를 대본에 넣게 합니다. (BE #307)
+ * room · about 을 주면 그 방 · 그 주제로 엽니다. (BE #330)
+ *
+ *   startChat({ room: 'TUTOR', about: { kind: 'QUIZ_WRONG', lines: ['문제: … / 학생 답: 1 / 정답: 0'] } })
  */
-export function startChat(): Promise<ChatReply> {
+export function startChat(options: StartChatOptions = {}): Promise<ChatReply> {
   const tone = getCallTone()
   const schoolClass = loadSchoolClass()
   const query = schoolClass ? `?grade=${schoolClass.grade}&classNo=${schoolClass.classNo}` : ''
@@ -159,10 +184,22 @@ export function startChat(): Promise<ChatReply> {
     maxHarshness: tone.maxHarshness,
     card: loadCallCard(),
     // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
+    ...(options.room ? { room: options.room } : {}),
+    ...(options.about ? { about: options.about } : {}),
   })
 }
 
-/** 학생의 말을 보냅니다. lines 는 이 서버 세션의 대화 전체이고, 맨 끝이 방금 학생이 쓴 말입니다. */
-export function sendChatMessage(chatId: string, lines: CallLine[]): Promise<ChatReply> {
-  return postChat(`/chats/${encodeURIComponent(chatId)}/messages`, { lines })
+/**
+ * 학생의 말을 보냅니다. lines 는 이 서버 세션의 대화 전체이고, 맨 끝이 방금 학생이 쓴 말입니다.
+ * image 를 주면 그 말에 붙인 사진으로 같이 보냅니다. (그 한 번만. 다음 말에는 다시 보내지 않습니다)
+ */
+export function sendChatMessage(
+  chatId: string,
+  lines: CallLine[],
+  image: string | null = null,
+): Promise<ChatReply> {
+  return postChat(`/chats/${encodeURIComponent(chatId)}/messages`, {
+    lines,
+    ...(image ? { image } : {}),
+  })
 }

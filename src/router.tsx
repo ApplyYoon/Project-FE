@@ -1,4 +1,5 @@
 import { Layout } from '@/components/layout/Layout'
+import { OldCoachRedirect } from '@/components/layout/OldCoachRedirect'
 import { RedirectWithQuery } from '@/components/layout/RedirectWithQuery'
 import { RequireAuth } from '@/components/layout/RequireAuth'
 import {
@@ -9,7 +10,7 @@ import {
 } from '@/lib/onboardingProgress'
 import { CONSENT_PATH } from '@/lib/consentApi'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
-import { COACH_PATH, RECORDS_PATH } from '@/lib/tabMenu'
+import { RECORDS_PATH } from '@/lib/tabMenu'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { ErrorPage } from '@/pages/ErrorPage'
@@ -32,7 +33,12 @@ const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
 )
 const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m.CallPage })))
-const CoachPage = lazy(() => import('@/pages/CoachPage').then((m) => ({ default: m.CoachPage })))
+const ChatListPage = lazy(() =>
+  import('@/pages/ChatListPage').then((m) => ({ default: m.ChatListPage })),
+)
+const ChatRoomPage = lazy(() =>
+  import('@/pages/ChatRoomPage').then((m) => ({ default: m.ChatRoomPage })),
+)
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
@@ -100,17 +106,20 @@ export const router = createBrowserRouter([
     path: '/',
     errorElement: <ErrorPage />,
     // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다.
-    // 그날 컨디션(체크인)은 화면을 막지 않고 코치가 채팅에서 칩으로 묻습니다. (2026-10-18, pages/CoachPage.tsx)
+    // 그날 컨디션(체크인)은 화면을 막지 않고 코치가 채팅에서 칩으로 묻습니다. (2026-10-18, pages/ChatRoomPage.tsx 의 상담 방)
     element: (
       <RequireAuth>
         <Layout />
       </RequireAuth>
     ),
     children: [
-      // 첫 화면은 홈입니다. 오늘의 미션 · 오늘 계획 · 시간표 · 급식 · 일정을 한눈에 봅니다. (2026-10-18 홈 · 코치 · 타이머 · 기록)
+      // 첫 화면은 홈입니다. 오늘의 미션 · 오늘 계획 · 시간표 · 급식 · 일정을 한눈에 봅니다. (2026-10-18 홈 · 채팅 · 타이머 · 기록)
       { index: true, element: <HomePage /> },
-      // 코치 탭: AI 코치 채팅. 2026-10-18 에 첫 화면("/")에서 두 번째 탭으로 옮겼습니다.
-      { path: 'coach', element: <CoachPage /> },
+      // 채팅 탭: 대화방 목록(📞 매일 통화 · 📅 계획 · 💬 상담 · 📚 과목 쌤)과 방 하나. (2026-10-18 저녁, lib/chatRooms.ts · #582)
+      { path: 'chat', element: <ChatListPage /> },
+      { path: 'chat/:room', element: <ChatRoomPage /> },
+      // 예전 코치 탭 주소. 계획 이야기(?plan=)면 계획 방, 그 밖은 상담 방으로 넘깁니다.
+      { path: 'coach', element: <OldCoachRedirect /> },
       // 홈의 옛 주소(/today, 2026-10-18 '오늘' 탭). 주소 뒤의 값(?a=b)은 그대로 가져갑니다.
       { path: 'today', element: <RedirectWithQuery to="/" /> },
       // 앱 소개 페이지(/about)는 #417 에서 지웠습니다. (앱 소개는 온보딩 첫 화면이 합니다)
@@ -130,9 +139,9 @@ export const router = createBrowserRouter([
       { path: 'goals/:goalId', element: <GoalDetailPage /> },
       // 카드 타이머 (최종 기획서 「4.4 타이머」, #395). 옛 계획 타이머(?plan=)는 #417 에서 지웠습니다.
       { path: 'timer', element: <CardTimerPage /> },
-      // 상담 탭(/counsel) · 상담 채팅(/counsel/chat)은 2026-10-18 에 AI 코치로 합쳤습니다. 옛 주소는 코치로 보냅니다.
-      { path: 'counsel', element: <RedirectWithQuery to={COACH_PATH} /> },
-      { path: 'counsel/chat', element: <RedirectWithQuery to={COACH_PATH} /> },
+      // 상담 탭(/counsel) · 상담 채팅(/counsel/chat)은 2026-10-18 에 AI 코치로 합쳤습니다. 옛 주소는 채팅의 상담 방으로 보냅니다.
+      { path: 'counsel', element: <OldCoachRedirect /> },
+      { path: 'counsel/chat', element: <OldCoachRedirect /> },
       // 기록 탭(예전 '분석'). [기록] · [리포트] 는 이 화면 안의 하위 탭입니다. (?tab=)
       { path: 'records', element: <RecordsPage /> },
       // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)

@@ -1,3 +1,4 @@
+import { CHAT_ROOMS, threadStorageKey } from '@/lib/chatRooms'
 import { removeData } from '@/lib/storage'
 
 /**
@@ -86,8 +87,12 @@ const RECORD_KEYS = [
   'ai-message-sent-today',
   // 주간 리포트에서 먼저 맞혀 본 답과 예측 정확도 (#409)
   'predictions',
-  // AI 코치와의 대화방 (이 기기에만 남김, 2026-10-18 lib/coachThread.ts)
-  'coach-thread',
+  // AI 와의 대화방 (이 기기에만 남김, 2026-10-18 lib/coachThread.ts). 방마다 하나씩 ('coach-thread' 는 상담 방)
+  ...CHAT_ROOMS.map((room) => threadStorageKey(room.id)),
+  // 대화방 목록의 "새 말" 점 · [이야기하기] 로 맡겨 둔 요청 · 다른 방에서 넘긴 계획 칩 (lib/chatRooms.ts)
+  'chat-last-seen',
+  'chat-talk-request',
+  'chat-plan-handoff',
   // 공부 중 폰을 든 기록 (세션별, lib/liftAlerts.ts)
   'phone-lifts',
   // 세션별 집중도 점수와, 진행 중인 세션에서 화면을 떠난 기록 (lib/focusScore.ts)
