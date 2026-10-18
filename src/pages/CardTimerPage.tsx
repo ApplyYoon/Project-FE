@@ -10,12 +10,13 @@ import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
 import { useCardSession } from '@/hooks/useCardSession'
 import { useCards } from '@/hooks/useCards'
 import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
-import { usePhoneLift } from '@/hooks/usePhoneLift'
+import { cancelPhoneFocusEarly, startPhoneFocusEarly, usePhoneLift } from '@/hooks/usePhoneLift'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { playAlarm } from '@/lib/alarm'
 import {
   formatPhoneSummary,
   getLiftStrength,
+  isFaceDownUnavailable,
   savePhoneSummary,
   type LiftStrength,
   type PhoneLiftSummary,
@@ -74,7 +75,7 @@ import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
 import { showSystemNotification } from '@/lib/notifications'
-import { isInApp } from '@/lib/appBridge'
+import { isInApp, onAppMessage, sendToApp } from '@/lib/appBridge'
 import { getSessionCardId } from '@/lib/sessionRecords'
 import {
   countChecklistComplete,
@@ -136,11 +137,11 @@ export function CardTimerPage() {
     }
   }, [endedRecordId, endedPhone])
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
-  // 카드를 시작하기 전에 거치는 화면 — 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
+  // 카드를 시작하기 전에 거치는 화면 — 카운트다운이 켜져 있으면 5초 카운트다운(#399) → (앱 안이면) 폰 엎기 → 세션
   // (4단계의 다짐 듣기는 다짐 녹음과 함께 2026-10-18 에 지웠습니다)
   const [startFlow, setStartFlow] = useState<{
     card: CardModel
-    step: 'countdown'
+    step: 'countdown' | 'flip'
   } | null>(null)
   const [pageSettings] = useState(loadAutoSettings)
 
@@ -315,9 +316,13 @@ export function CardTimerPage() {
     saveStage4Absolute({ cardId, dateKey })
   }, [stage4AbsoluteKey])
 
-  /** 시작 전에 처음 거칠 화면. 없으면 null (바로 시작) */
-  function firstStartStep(): 'countdown' | null {
-    return isCountdownToday ? 'countdown' : null
+  /**
+   * 시작 전에 처음 거칠 화면. 없으면 null (바로 시작)
+   * 카운트다운이 켜져 있으면 카운트다운, 아니면 앱 안에서는 폰 엎기 화면입니다. (웹은 엎은 걸 알 수 없어서 바로 시작)
+   */
+  function firstStartStep(): 'countdown' | 'flip' | null {
+    if (isCountdownToday) return 'countdown'
+    return isInApp() ? 'flip' : null
   }
   const paramStep = paramCard ? firstStartStep() : null
   const paramFlow = paramCard && paramStep ? { card: paramCard, step: paramStep } : null
@@ -367,7 +372,9 @@ export function CardTimerPage() {
   function handleStartNow(minutes: number) {
     const card = createInstantCardNow(todayKey, minutes)
     addCard(card)
-    session.start(card, todayKey)
+    // 앱 안이면 [지금 시작] 도 폰을 엎는 순간 시작합니다.
+    if (isInApp()) setStartFlow({ card, step: 'flip' })
+    else session.start(card, todayKey)
   }
 
   if (active) {
@@ -394,6 +401,27 @@ export function CardTimerPage() {
       <CountdownView
         card={shownFlow.card}
         onDone={() => {
+          // 앱 안이면 카운트다운 다음에 폰 엎기 화면, 웹이면 바로 시작합니다.
+          if (isInApp()) setStartFlow({ card: shownFlow.card, step: 'flip' })
+          else {
+            session.start(shownFlow.card, todayKey)
+            setStartFlow(null)
+          }
+          setCardParam('')
+        }}
+        onCancel={() => {
+          setStartFlow(null)
+          setCardParam('')
+        }}
+      />
+    )
+  }
+  if (shownFlow?.step === 'flip') {
+    return (
+      <PhoneFlipView
+        card={shownFlow.card}
+        liftStrength={liftStrength}
+        onStart={() => {
           session.start(shownFlow.card, todayKey)
           setStartFlow(null)
           setCardParam('')
@@ -1519,6 +1547,115 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
         </div>
         <p className="text-xs text-slate-500">0 이 되면 바로 시작해요.</p>
       </Card>
+    </div>
+  )
+}
+
+// 폰 엎기 화면에서 이만큼 기다려도 안 엎으면 진동하고 "아직 안 엎었어!" 를 보여 줍니다.
+const FLIP_HINT_MS = 10_000
+
+interface PhoneFlipViewProps {
+  card: CardModel
+  /** 폰 들림 경고 세기. 센서를 켤 때 같이 보내는 알림 문구 · 방해 금지가 이것으로 정해집니다. */
+  liftStrength: LiftStrength
+  /** 폰을 엎었거나 [그냥 시작] 을 눌렀을 때 */
+  onStart: () => void
+  onCancel: () => void
+}
+
+/**
+ * 폰 엎기 화면 (앱 안에서만, 2026-10-18) — "폰을 화면이 바닥을 보게 엎어 줘"
+ * 앱의 센서를 먼저 켜 두고, 엎는 순간(앱이 'focus.down' 을 보냄) 진동 한 번과 함께 세션을 시작합니다.
+ * 이때 켠 센서는 세션이 그대로 이어받습니다. (hooks/usePhoneLift.ts 의 startPhoneFocusEarly)
+ * 10초 안에 안 엎으면 진동하고 "아직 안 엎었어!" 를 보여 줍니다.
+ * 센서가 없는 폰도 있어서 [그냥 시작] 은 처음부터 늘 보입니다.
+ */
+function PhoneFlipView({ card, liftStrength, onStart, onCancel }: PhoneFlipViewProps) {
+  const [isLate, setIsLate] = useState(false)
+  // 이 폰에 엎기 센서가 없으면 true (앱의 'focus.start' 답으로 앎)
+  const [hasNoSensor, setHasNoSensor] = useState(false)
+  // 세션을 시작했는지. 시작했으면 이 화면이 닫혀도 센서를 끄지 않습니다. (세션이 이어받음)
+  const hasStarted = useRef(false)
+  // 부모가 다시 그려져서 onStart 가 새 함수가 되어도 센서를 다시 켜지 않게, 최신 함수를 ref 에 둡니다.
+  const onStartRef = useRef(onStart)
+  useEffect(() => {
+    onStartRef.current = onStart
+  })
+
+  useEffect(() => {
+    void startPhoneFocusEarly(liftStrength).then((reply) => {
+      if (isFaceDownUnavailable(reply)) setHasNoSensor(true)
+    })
+    // 엎은 순간 시작합니다. (처음 엎으면 liftedMs 0 으로 옴. 들었다가 다시 엎은 것도 엎은 것으로 봅니다)
+    const stopListening = onAppMessage((message) => {
+      if (message.type !== 'focus.down' || hasStarted.current) return
+      hasStarted.current = true
+      sendToApp('haptics', { kind: 'success' })
+      onStartRef.current()
+    })
+    const hintId = setTimeout(() => {
+      setIsLate(true)
+      sendToApp('haptics', { kind: 'warning' })
+    }, FLIP_HINT_MS)
+    return () => {
+      stopListening()
+      clearTimeout(hintId)
+      // 엎지 않고 이 화면을 떠났으면([취소] · 다른 탭으로 이동) 켜 둔 센서를 끕니다.
+      if (!hasStarted.current) cancelPhoneFocusEarly()
+    }
+  }, [liftStrength])
+
+  function handleJustStart() {
+    hasStarted.current = true
+    onStart()
+  }
+
+  return (
+    // 화면 전체를 덮습니다. (아래 탭 막대도 가림) 휴대폰 위 · 아래 안전 영역만큼 띄웁니다.
+    <div className="fixed inset-0 z-50 flex flex-col bg-slate-100 px-4 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-5 text-center">
+        <p className="max-w-full truncate text-sm font-medium text-slate-500">{card.title}</p>
+        <span
+          className="flex size-28 items-center justify-center rounded-3xl bg-white text-7xl shadow-sm"
+          aria-hidden
+        >
+          📱
+        </span>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight break-keep sm:text-3xl">
+          폰을 화면이 바닥을 보게 엎어 줘 📱
+        </h1>
+        <p className="break-keep text-slate-600">
+          엎는 순간 타이머가 시작돼요. 공부하다 폰을 들면 코치가 알려 줘요.
+        </p>
+        {hasNoSensor ? (
+          <p className="rounded-2xl bg-white px-4 py-3 text-sm break-keep text-slate-700">
+            이 폰은 엎었는지 알 수 없어요. 아래 [그냥 시작] 을 눌러 줘.
+          </p>
+        ) : (
+          isLate && (
+            <p
+              role="status"
+              className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold break-keep text-amber-800"
+            >
+              아직 안 엎었어! 화면이 바닥을 보게 평평하게 내려놔 줘.
+            </p>
+          )
+        )}
+      </div>
+      <div className="mx-auto flex w-full max-w-xl flex-col gap-2">
+        {/* 바탕이 회색이라 버튼은 흰색으로 둡니다. */}
+        <Button
+          size="lg"
+          variant="secondary"
+          className="w-full bg-white hover:bg-slate-50"
+          onClick={handleJustStart}
+        >
+          그냥 시작
+        </Button>
+        <Button variant="ghost" className="w-full" onClick={onCancel}>
+          취소
+        </Button>
+      </div>
     </div>
   )
 }

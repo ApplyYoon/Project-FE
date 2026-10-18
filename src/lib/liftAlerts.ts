@@ -103,6 +103,12 @@ export function readDndState(reply: unknown): 'on' | 'off' | 'noPermission' | 'u
     : null
 }
 
+/** 'focus.start' 의 답에서 이 폰에 엎기 센서가 없는지. 없으면 엎어도 알 수 없어서 [그냥 시작] 을 안내합니다. */
+export function isFaceDownUnavailable(reply: unknown): boolean {
+  if (typeof reply !== 'object' || reply === null) return false
+  return (reply as Record<string, unknown>).faceDown === 'unavailable'
+}
+
 /** 한 세션 동안의 폰 기록 (앱이 'focus.end' 로 답한 숫자를 정리한 것) */
 export interface PhoneLiftSummary {
   /** 5초 넘게 들고 있던 시간 합계 (밀리초) */
