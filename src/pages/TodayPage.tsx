@@ -22,6 +22,7 @@ import { getDaySummary } from '@/lib/daySummary'
 import { formatDday, getDaysUntil } from '@/lib/exams'
 import type { ForestState, ForestTree } from '@/lib/forest'
 import { loadForestState } from '@/lib/forestData'
+import { getUpcomingMyEvents } from '@/lib/myEvents'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { loadRestDays } from '@/lib/restDays'
 import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
@@ -762,15 +763,28 @@ function SchoolTodayView({
   const { data } = useSuspenseQuery(schoolTodayQuery(schoolClass, isServerData, todayKey))
   // 반을 바꾸는 칸을 열었는지
   const [isEditingClass, setIsEditingClass] = useState(false)
+  // 내 일정(대회 등, 코치 채팅에서 날짜를 알려 주면 생김 · lib/myEvents.ts)도 학교 일정과 같은 목록에 보여 줍니다.
+  const [myEvents] = useState(() => getUpcomingMyEvents(todayKey, 60))
+  const myRows: UpcomingRow[] = myEvents.map((event) => ({
+    key: `mine-${event.name}`,
+    name: event.name,
+    start: event.date,
+    end: event.date,
+    kind: 'mine',
+    dDay: event.dDay,
+  }))
 
   if (data.school === null) {
     return (
-      <section className={sectionCardClass}>
-        <h2 className="text-[17px] font-bold text-slate-900">오늘 학교</h2>
-        <p className="mt-1 text-[15px] break-keep text-slate-500">
-          가입할 때 학교를 고르면 시간표 · 급식 · 학교 일정이 여기에 떠요.
-        </p>
-      </section>
+      <div className="flex flex-col gap-4">
+        <section className={sectionCardClass}>
+          <h2 className="text-[17px] font-bold text-slate-900">오늘 학교</h2>
+          <p className="mt-1 text-[15px] break-keep text-slate-500">
+            가입할 때 학교를 고르면 시간표 · 급식 · 학교 일정이 여기에 떠요.
+          </p>
+        </section>
+        {myRows.length > 0 && <UpcomingSection rows={myRows} />}
+      </div>
     )
   }
 
@@ -782,7 +796,21 @@ function SchoolTodayView({
       data.events.map((event) => ({ ...event, content: null })),
       schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
     ),
-  ).slice(0, 4)
+  )
+  // 학교 일정과 내 일정을 남은 날 순서로 합쳐 5개까지 보여 줍니다.
+  const rows: UpcomingRow[] = [
+    ...periods.map((period): UpcomingRow => ({
+      key: `school-${period.start}-${period.name}`,
+      name: period.name,
+      start: period.start,
+      end: period.end,
+      kind: period.exam ? 'exam' : 'school',
+      dDay: countDays(todayKey, period.start) - 1,
+    })),
+    ...myRows,
+  ]
+    .sort((a, b) => a.dDay - b.dDay)
+    .slice(0, 5)
 
   return (
     <div className="flex flex-col gap-4">
@@ -866,46 +894,59 @@ function SchoolTodayView({
         )}
       </section>
 
-      <section className={sectionCardClass}>
-        <h2 className="text-[17px] font-bold text-slate-900">다가오는 학교 일정</h2>
-        {periods.length === 0 ? (
-          <p className="mt-2 text-[15px] text-slate-500">30일 안에 학교 일정이 없어요.</p>
-        ) : (
-          <ul className="mt-2 flex flex-col gap-1">
-            {periods.map((period) => {
-              const dDay = countDays(todayKey, period.start) - 1
-              return (
-                <li
-                  key={`${period.start}-${period.name}`}
-                  className="flex min-h-14 items-center gap-3"
-                >
-                  <span aria-hidden className={rowIconClass}>
-                    {period.exam ? '📝' : '📅'}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold text-slate-900">
-                      {period.name}
-                    </span>
-                    <span className="block text-sm text-slate-500">
-                      {formatMonthDay(period.start)}
-                      {period.end !== period.start && ` ~ ${formatMonthDay(period.end)}`}
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      'shrink-0 text-base font-bold',
-                      period.exam ? 'text-brand' : 'text-slate-700',
-                    )}
-                  >
-                    {dDay === 0 ? '오늘' : `D-${dDay}`}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+      <UpcomingSection rows={rows} />
     </div>
+  )
+}
+
+/** "다가오는 일정" 한 줄: 학교 일정(시험 · 행사) 또는 내 일정 */
+interface UpcomingRow {
+  key: string
+  name: string
+  start: string
+  end: string
+  kind: 'exam' | 'school' | 'mine'
+  /** 오늘부터 며칠 남았는지 (오늘이면 0) */
+  dDay: number
+}
+
+/** 다가오는 일정 목록. 시험 · 내 일정은 D-day 를 brand 색으로 강조합니다. */
+function UpcomingSection({ rows }: { rows: UpcomingRow[] }) {
+  return (
+    <section className={sectionCardClass}>
+      <h2 className="text-[17px] font-bold text-slate-900">다가오는 일정</h2>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-[15px] text-slate-500">30일 안에 일정이 없어요.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1">
+          {rows.map((row) => (
+            <li key={row.key} className="flex min-h-14 items-center gap-3">
+              <span aria-hidden className={rowIconClass}>
+                {row.kind === 'exam' ? '📝' : row.kind === 'mine' ? '⭐' : '📅'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-semibold text-slate-900">
+                  {row.name}
+                </span>
+                <span className="block text-sm text-slate-500">
+                  {formatMonthDay(row.start)}
+                  {row.end !== row.start && ` ~ ${formatMonthDay(row.end)}`}
+                  {row.kind === 'mine' && ' · 내 일정'}
+                </span>
+              </span>
+              <span
+                className={cn(
+                  'shrink-0 text-base font-bold',
+                  row.kind === 'school' ? 'text-slate-700' : 'text-brand',
+                )}
+              >
+                {row.dDay === 0 ? '오늘' : `D-${row.dDay}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 

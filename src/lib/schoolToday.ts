@@ -102,13 +102,15 @@ export interface SchoolDay {
   subjects: string[]
   /** 마지막 교시. 시간표를 모르면 null */
   lastPeriod: number | null
+  /** 다가오는 시험 (가까운 순서, 5개까지). 오늘의 미션이 "시험 범위 ○○" 미션 · AI 미션 재료로 씁니다. */
+  exams: { name: string; dDay: number; grades: number[] }[]
 }
 
 // 저장소에 넣는 이름입니다. (실제 키는 'study-school-day')
 const SCHOOL_DAY_STORAGE_KEY = 'school-day'
 
 /**
- * 받아 온 오늘 학교 정보에서 과목 · 마지막 교시만 이 기기에 적어 둡니다.
+ * 받아 온 오늘 학교 정보에서 과목 · 마지막 교시 · 다가오는 시험만 이 기기에 적어 둡니다.
  * 미션 알림은 화면 밖(hooks/useAppBridge.ts 의 10초 확인)에서 만들어서, 쿼리 대신 저장소에서 읽습니다.
  */
 function saveSchoolDay(today: SchoolToday): void {
@@ -120,7 +122,23 @@ function saveSchoolDay(today: SchoolToday): void {
     (last, period) => (last === null || period.period > last ? period.period : last),
     null,
   )
-  saveData(SCHOOL_DAY_STORAGE_KEY, { date: today.date, subjects, lastPeriod })
+  const exams = today.events
+    .filter((event) => event.exam && event.dDay >= 0)
+    .sort((a, b) => a.dDay - b.dDay)
+    .slice(0, 5)
+    .map((event) => ({ name: event.name, dDay: event.dDay, grades: event.grades }))
+  saveData(SCHOOL_DAY_STORAGE_KEY, { date: today.date, subjects, lastPeriod, exams })
+}
+
+/** 저장해 둔 시험 하나를 확인합니다. (예전에 저장한 값에는 exams 가 없어서 빈 목록이 됩니다) */
+function toSavedExam(value: unknown): SchoolDay['exams'][number] | null {
+  if (typeof value !== 'object' || value === null) return null
+  const record = value as Record<string, unknown>
+  if (typeof record.name !== 'string' || typeof record.dDay !== 'number') return null
+  const grades = Array.isArray(record.grades)
+    ? record.grades.filter((grade): grade is number => typeof grade === 'number')
+    : []
+  return { name: record.name, dDay: record.dDay, grades }
 }
 
 /** 적어 둔 하루 시간표 요약. 다른 날 것이거나 없으면 null */
@@ -130,7 +148,12 @@ export function loadSchoolDay(dateKey: string): SchoolDay | null {
   const record = saved as Record<string, unknown>
   if (record.date !== dateKey || !isStringArray(record.subjects)) return null
   const lastPeriod = typeof record.lastPeriod === 'number' ? record.lastPeriod : null
-  return { date: dateKey, subjects: record.subjects, lastPeriod }
+  const exams = Array.isArray(record.exams)
+    ? record.exams
+        .map(toSavedExam)
+        .filter((exam): exam is SchoolDay['exams'][number] => exam !== null)
+    : []
+  return { date: dateKey, subjects: record.subjects, lastPeriod, exams }
 }
 
 /** 반을 고르는 칸에 처음 넣어 둘 학년. 온보딩에서 고른 학년(고1~고3)이 있으면 그 값, 없으면 2학년입니다. */

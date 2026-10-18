@@ -13,7 +13,13 @@ import { loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat, type ChatReply } from '@/lib/chatApi'
 import { canSyncCheckIns, todayCheckInForCoachQuery } from '@/lib/checkInsApi'
+import { aiMissionsQuery } from '@/lib/aiMissionsApi'
 import {
+  SKIP_FOCUS_NAME_LABEL,
+  buildFocusDateQuestion,
+  buildFocusNameQuestion,
+  buildFocusQuestion,
+  buildFocusReaction,
   buildMissionBriefing,
   buildMissionProgress,
   buildMorningBriefing,
@@ -42,6 +48,7 @@ import { runDailyCareStage } from '@/lib/dailyCareRun'
 import {
   countDoneMissions,
   isMissionSlot,
+  loadAiMissionsInput,
   loadDailyMissions,
   nextMission,
   type Mission,
@@ -51,14 +58,22 @@ import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey, toDayKey } from '@/lib/date'
 import { replyDemo } from '@/lib/demoCoach'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
+import { getUpcomingMyEvents, saveMyEvent } from '@/lib/myEvents'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quickCheckIn'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
 import { loadSchoolClass, schoolTodayOrNullQuery } from '@/lib/schoolToday'
 import { loadData, saveData } from '@/lib/storage'
+import {
+  cleanFocusName,
+  focusLabelOf,
+  loadStudyFocus,
+  needsFocusName,
+  saveStudyFocus,
+} from '@/lib/studyFocus'
 import { getTodayCardsState } from '@/lib/todayCards'
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -238,8 +253,29 @@ function CoachChat() {
   )
   // 다른 기기에서 이미 오늘 컨디션을 알려 줬으면 이 기기에 옮겨 적습니다. (그러면 코치가 다시 묻지 않음)
   useSuspenseQuery(todayCheckInForCoachQuery(todayKey, canSyncCheckIns(token)))
-  // 오늘의 미션 (체크인 · 공부 기록 · 시간표로 끝났는지 봄). 컨디션 칩을 누르면 다시 계산합니다.
+  // 오늘의 미션 (체크인 · 공부 기록 · 시간표 · 준비하는 것으로 정함). 컨디션 · 준비하는 것 칩을 누르면 다시 계산합니다.
   const [missions, setMissions] = useState<Mission[]>(() => loadDailyMissions(todayKey))
+  // AI 가 짜는 오늘의 미션: 진짜 로그인이고 오늘 컨디션을 들은 뒤에 하루 한 번 서버에 묻습니다. (lib/aiMissionsApi.ts)
+  // AI 답을 기다리느라 대화방이 멈추면 안 돼서 useSuspenseQuery 가 아니라 useQuery 로 받고, 받으면 미션을 다시 계산합니다.
+  // (받은 미션은 저장소에 남아서 loadDailyMissions · 미션 알림이 같이 씁니다. 못 받으면 규칙 미션 그대로)
+  const hasCheckedInToday = missions.some((mission) => mission.kind === 'checkIn' && mission.done)
+  const { data: aiMissions } = useQuery({
+    ...aiMissionsQuery(todayKey, loadAiMissionsInput(todayKey)),
+    enabled: isServerData && hasCheckedInToday,
+  })
+  // AI 미션이 새로 오면 미션을 다시 계산합니다. useEffect 대신 "그리는 중에 바뀐 것을 알아채는" 방법을 씁니다.
+  // (React 문서의 '이전 렌더링의 정보 저장하기' — effect 로 하면 화면을 한 번 더 그리게 돼서)
+  const [seenAiMissions, setSeenAiMissions] = useState(aiMissions)
+  if (aiMissions !== seenAiMissions) {
+    setSeenAiMissions(aiMissions)
+    setMissions(loadDailyMissions(todayKey))
+  }
+  // "내가 준비하는 것" 을 묻는 중 어디까지 왔는지 (대회 · 기타일 때만 이름 → 날짜를 더 묻습니다)
+  //   name: 학생이 쓴 다음 한 줄을 이름으로 저장 · date: 날짜를 고르거나 [아직 몰라] 를 기다림
+  const [focusStep, setFocusStep] = useState<'name' | 'date' | null>(null)
+  // 날짜 고르기 칸을 열었는지 ([📅 날짜 고르기] 칩)
+  const [isPickingDate, setIsPickingDate] = useState(false)
+  const [pickedDate, setPickedDate] = useState('')
   const { cards, addCard } = useCards()
   const [allSessions] = useState(loadAllSessions)
   const [marks] = useState(loadCardMarks)
@@ -385,11 +421,62 @@ function CoachChat() {
     if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
   }, [bubbles, talk.isPending])
 
+  /**
+   * 준비하는 것을 다 정했을 때 코치의 한 줄 반응 (테스트 로그인에서 씀). 바뀐 공부 미션과, 날짜를 받았으면 D-day 를 말합니다.
+   * 진짜 로그인은 그 말을 AI 에게 보내서 AI 가 반응합니다.
+   */
+  function focusReactionNow(): CoachMessage | null {
+    const focus = loadStudyFocus()
+    if (focus === null) return null
+    const updated = loadDailyMissions(todayKey)
+    setMissions(updated)
+    const myEvent = focus.name
+      ? getUpcomingMyEvents(todayKey, 365).find((event) => event.name === focus.name)
+      : undefined
+    return buildFocusReaction(
+      focus,
+      updated.find((mission) => mission.kind === 'study'),
+      myEvent?.dDay ?? null,
+    )
+  }
+
   /** 학생의 말을 보냅니다. 진짜 로그인은 서버 AI, 테스트 로그인은 시연용 정해진 답이 답합니다. */
   function sendText(raw: string) {
     const text = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
     if (text === '' || talk.isPending) return
+    let focusReaction: CoachMessage | null = null
+    if (focusStep === 'name') {
+      // 대회 · 기타를 고른 뒤 쓴 첫 말은 그 이름으로 저장합니다. ([이름은 나중에] 를 누르면 이름 없이 둡니다)
+      const focus = loadStudyFocus()
+      const name = focus === null || text === SKIP_FOCUS_NAME_LABEL ? null : cleanFocusName(text)
+      if (focus) saveStudyFocus({ ...focus, name })
+      setMissions(loadDailyMissions(todayKey))
+      if (name) {
+        // 이름을 받았으면 날짜를 한 번 더 묻습니다. (코드가 묻고, 날짜를 고르면 그때 반응 · AI)
+        setFocusStep('date')
+        const question = buildFocusDateQuestion(name)
+        const withAnswer = withBubble(thread, { speaker: 'me', text })
+        setThread(
+          withBubble(withAnswer, { speaker: 'ai', text: question.text, chips: question.chips }),
+        )
+        return
+      }
+      setFocusStep(null)
+      focusReaction = focusReactionNow()
+    } else if (focusStep === 'date') {
+      // 날짜를 골랐거나(그 날짜 글이 옴) [아직 몰라] 를 눌렀습니다. 날짜는 고를 때 이미 저장했습니다.
+      setFocusStep(null)
+      setIsPickingDate(false)
+      focusReaction = focusReactionNow()
+    }
     let next = withBubble(thread, { speaker: 'me', text })
+    if (!isServerData && focusReaction) {
+      // 테스트 로그인: 준비하는 것에 대한 답이면 코드가 바뀐 미션으로 반응합니다.
+      setThread(
+        withBubble(next, { speaker: 'ai', text: focusReaction.text, chips: focusReaction.chips }),
+      )
+      return
+    }
     if (!isServerData) {
       const reply = replyDemo(text, { school, card: nowCard })
       next = withBubble(next, { speaker: 'ai', text: reply.text, chips: reply.chips, isDemo: true })
@@ -427,7 +514,46 @@ function CoachChat() {
       const checkIn = saveQuickCheckIn(chip.condition, chip.emotions)
       if (sendCheckIn.canSync) sendCheckIn.mutate(checkIn, { onSuccess: saveLocalCheckIn })
       setMissions(loadDailyMissions(todayKey))
+      // 준비하는 것을 아직 모르면 AI 에 보내기 전에 한 번 묻습니다. (코드가 묻고, 고르면 그때 AI 와 이어 감)
+      if (loadStudyFocus() === null) {
+        const question = buildFocusQuestion()
+        const withAnswer = withBubble(thread, { speaker: 'me', text: chip.label })
+        setThread(
+          withBubble(withAnswer, { speaker: 'ai', text: question.text, chips: question.chips }),
+        )
+        return
+      }
       sendText(chip.label)
+      return
+    }
+    if (chip.kind === 'focus') {
+      saveStudyFocus({ kind: chip.focus, name: null })
+      setMissions(loadDailyMissions(todayKey))
+      // 대회 · 기타는 이름 한 줄(그다음 날짜)을 더 묻습니다. 내신 · 수능은 바로 미션을 바꿉니다.
+      if (needsFocusName(chip.focus)) {
+        setFocusStep('name')
+        const question = buildFocusNameQuestion(chip.focus)
+        const withAnswer = withBubble(thread, { speaker: 'me', text: chip.label })
+        setThread(
+          withBubble(withAnswer, { speaker: 'ai', text: question.text, chips: question.chips }),
+        )
+        return
+      }
+      if (isServerData) {
+        sendText(chip.label)
+        return
+      }
+      const reaction = focusReactionNow()
+      const withAnswer = withBubble(thread, { speaker: 'me', text: chip.label })
+      setThread(
+        reaction
+          ? withBubble(withAnswer, { speaker: 'ai', text: reaction.text, chips: reaction.chips })
+          : withAnswer,
+      )
+      return
+    }
+    if (chip.kind === 'pickDate') {
+      setIsPickingDate(true)
       return
     }
     if (chip.kind === 'photoCards') {
@@ -457,6 +583,21 @@ function CoachChat() {
       return
     }
     navigate(`/cards/new?date=${todayKey}`)
+  }
+
+  /** 날짜 고르기 칸에서 [넣기] 를 누르면: 내 일정으로 저장하고, 그 날짜를 내 말로 보냅니다. */
+  function handlePickDate(event: FormEvent) {
+    event.preventDefault()
+    if (pickedDate === '' || pickedDate < todayKey) return
+    const focus = loadStudyFocus()
+    saveMyEvent({
+      name: focus?.name ?? focusLabelOf(focus?.kind ?? 'OTHER'),
+      date: pickedDate,
+      kind: 'focus',
+    })
+    const [, month, day] = pickedDate.split('-').map(Number)
+    setPickedDate('')
+    sendText(`📅 ${month}월 ${day}일`)
   }
 
   /** 미션 줄을 누르면 코치가 오늘의 미션을 보여 주고 다음 미션을 권합니다. */
@@ -516,6 +657,33 @@ function CoachChat() {
           )}
         </ul>
       </div>
+
+      {/* 대회 · 기타 날짜 고르기 칸. 고르면 내 일정(오늘 탭 "다가오는 일정")에 D-day 로 뜹니다. */}
+      {isPickingDate && focusStep === 'date' && (
+        <form
+          onSubmit={handlePickDate}
+          className="flex shrink-0 flex-wrap items-center gap-2 rounded-3xl bg-white p-3"
+        >
+          <label htmlFor="focus-date" className="text-sm font-semibold text-slate-700">
+            📅 날짜
+          </label>
+          <input
+            id="focus-date"
+            type="date"
+            min={todayKey}
+            value={pickedDate}
+            onChange={(event) => setPickedDate(event.target.value)}
+            className="focus:ring-brand/30 h-11 min-w-0 flex-1 rounded-2xl bg-slate-100 px-3 text-base focus:ring-2 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={pickedDate === ''}
+            className="bg-brand h-11 shrink-0 cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            넣기
+          </button>
+        </form>
+      )}
 
       {/* 위기 표현이 감지됐을 때 상담 전화 한 줄. 대화는 막지 않습니다. (누르면 바로 전화가 걸립니다) */}
       {thread.isHelpShown && (
@@ -624,7 +792,10 @@ function MissionBar({ missions, onOpen }: MissionBarProps) {
         {done}/{missions.length}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-xs font-medium text-slate-500">오늘의 미션</span>
+        <span className="block text-xs font-medium text-slate-500">
+          오늘의 미션
+          {next?.isAi && <span className="text-brand ml-1">· AI 추천</span>}
+        </span>
         <span className="block truncate text-[15px] font-semibold text-slate-900">
           {next ? next.title : '오늘 미션 다 끝냈어요 👏'}
         </span>
@@ -654,6 +825,7 @@ function ChipRow({ chips, onPick }: ChipRowProps) {
             chipClass,
             chip.kind !== 'say' &&
               chip.kind !== 'checkIn' &&
+              chip.kind !== 'focus' &&
               'bg-brand-light text-brand border-transparent',
           )}
         >

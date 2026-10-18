@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
+import { ChipButton } from '@/components/ui/ChipButton'
 import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPickers'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -26,6 +27,15 @@ import { deleteAllServerCards } from '@/lib/cardsApi'
 import { canSyncCheckIns, deleteServerCheckIns } from '@/lib/checkInsApi'
 import { CALL_TIME_STORAGE_KEY, isCallTimeInQuietHours, parseCallTime } from '@/lib/callReminder'
 import { cn } from '@/lib/cn'
+import {
+  FOCUS_NAME_MAX,
+  STUDY_FOCUS_OPTIONS,
+  cleanFocusName,
+  loadStudyFocus,
+  needsFocusName,
+  saveStudyFocus,
+  type StudyFocusKind,
+} from '@/lib/studyFocus'
 import { getCoachStrength, STRENGTH_PRESETS, type StrengthPreset } from '@/lib/coachStrength'
 import { isMissionAlertsOn, setMissionAlertsOn } from '@/lib/dailyMission'
 import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
@@ -85,7 +95,7 @@ const CONFIRM_CARE_LEVEL = 4
 
 /**
  * 설정 화면(/settings). 코치 화면 머리의 톱니로 들어옵니다. (2026-10-18 "설정은 잡다한 기록이 너무 많아" → 네 묶음만)
- *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내 계정 관리(정보 고치기 · 탈퇴) · 로그아웃
+ *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내가 준비하는 것 · 내 계정 관리(정보 고치기 · 탈퇴) · 로그아웃
  *   ② 코치 세기 — 약 · 보통 · 강 하나로 고름 (관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 한꺼번에, lib/coachStrength.ts)
  *                하나씩 정하던 예전 칸은 "자세히" 안에 접어 둡니다.
  *   ③ 알림     — 오늘의 미션 알림 · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
@@ -315,6 +325,9 @@ export function SettingsPage() {
               저장했어요.
             </p>
           )}
+
+          {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 오늘의 미션이 이걸 보고 공부 미션을 정해요. */}
+          <StudyFocusField className="mt-5" />
 
           {/* 내 정보 고치기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -984,5 +997,72 @@ function DemoDataSection() {
         )}
       </div>
     </Card>
+  )
+}
+
+/**
+ * 설정 › 계정의 "내가 준비하는 것" (내신 · 수능 · 대회·자격증 · 기타 + 이름). 이 화면에서만 써서 여기에 둡니다.
+ * 코치가 대화에서 묻는 것과 같은 저장소(lib/studyFocus.ts)라, 여기서 바꾸면 오늘의 미션도 같이 바뀝니다.
+ */
+function StudyFocusField({ className }: { className?: string }) {
+  const [focus, setFocus] = useState(loadStudyFocus)
+  const [name, setName] = useState(focus?.name ?? '')
+  const [isSaved, setIsSaved] = useState(false)
+
+  function handleChoose(kind: StudyFocusKind) {
+    // 대회 · 기타는 적어 둔 이름을 같이 남기고, 내신 · 수능은 이름 없이 저장합니다.
+    const next = { kind, name: needsFocusName(kind) ? cleanFocusName(name) : null }
+    saveStudyFocus(next)
+    setFocus(next)
+    setIsSaved(true)
+  }
+
+  function handleSaveName(event: FormEvent) {
+    event.preventDefault()
+    if (focus === null) return
+    const next = { ...focus, name: cleanFocusName(name) }
+    saveStudyFocus(next)
+    setFocus(next)
+    setIsSaved(true)
+  }
+
+  return (
+    <div className={className}>
+      <p className="text-sm font-semibold text-slate-900">내가 준비하는 것</p>
+      <p className="mt-1 text-sm break-keep text-slate-500">
+        오늘의 미션이 이걸 보고 공부 미션을 정해요.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {STUDY_FOCUS_OPTIONS.map((option) => (
+          <ChipButton
+            key={option.kind}
+            selected={focus?.kind === option.kind}
+            onClick={() => handleChoose(option.kind)}
+          >
+            {`${option.emoji} ${option.label}`}
+          </ChipButton>
+        ))}
+      </div>
+      {focus && needsFocusName(focus.kind) && (
+        <form onSubmit={handleSaveName} className="mt-3 flex items-end gap-2">
+          <Input
+            label="이름"
+            value={name}
+            maxLength={FOCUS_NAME_MAX}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={focus.kind === 'CONTEST' ? '예: 정보올림피아드' : '예: 코딩 공부'}
+            className="min-w-0 flex-1"
+          />
+          <Button type="submit" variant="secondary" className="shrink-0">
+            이름 저장
+          </Button>
+        </form>
+      )}
+      {isSaved && (
+        <p role="status" className="mt-2 text-sm text-slate-600">
+          저장했어요. 오늘의 미션에 반영돼요.
+        </p>
+      )}
+    </div>
   )
 }
