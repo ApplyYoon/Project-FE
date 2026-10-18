@@ -2,7 +2,7 @@ import { TIMER_LOCK_EVENT, isTimerLocked } from '@/lib/timerLock'
 import { useEffect, useState } from 'react'
 
 /**
- * 지금 타이머 잠금(공부 세션 · 놀기 진행 중)인지 알려 줍니다. (#396)
+ * 지금 타이머 잠금(공부 세션 진행 중)인지 알려 줍니다. (#396)
  * 같은 창에서 세션을 시작·끝내면(이벤트), 다른 탭에서 바꾸면(storage), 앱으로 돌아오면(visibilitychange) 다시 읽습니다.
  *
  *   const isLocked = useTimerLock()

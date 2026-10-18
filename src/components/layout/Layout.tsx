@@ -71,7 +71,7 @@ export function Layout() {
   const backToTab = getBackToTabLink(pathname)
   // 과목이 필요한 화면인지. 그렇다면 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만)
   const needsSubjects = needsSubjectsPath(pathname)
-  // 타이머 잠금(#396): 공부 세션 · 놀기 중이면 탭을 숨기고, 다른 주소로 가도 타이머로 돌려보냅니다.
+  // 타이머 잠금(#396): 공부 세션 중이면 탭을 숨기고, 다른 주소로 가도 타이머로 돌려보냅니다.
   // (뒤로 가기 · 주소 직접 입력 · 알림 눌러 들어오기 모두 여기서 막힙니다)
   const isTimerLocked = useTimerLock()
   const isOutsideTimer = isTimerLocked && pathname !== TIMER_PATH
