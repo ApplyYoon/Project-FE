@@ -3,10 +3,12 @@
  * 테스트 로그인은 서버(진짜 AI)를 쓸 수 없어서, 학생이 쓴 말의 낱말을 보고 미리 써 둔 답을 고릅니다.
  * 화면은 이 답 아래에 꼭 "시연용 정해진 답" 이라고 붙입니다. (AI 인 척하지 않기 위해서)
  *
- *   replyDemo('오늘 너무 피곤해', 재료) -> { text: '피곤한 날엔 목표를 줄이자. …', chips: [▷ 10분으로 줄여서 시작, …], showHelp: false }
+ *   replyDemo('오늘 너무 피곤해', 재료) -> { text: '피곤한 날엔 계획을 가볍게 고치자. …', chips: [▷ 오늘 계획 가볍게 고치기, …], showHelp: false }
  */
 import {
+  LONG_PLAN_CHIP,
   negotiationChipsFor,
+  PLAN_CHIP,
   SMALL_START_MINUTES,
   type CoachChip,
   type CoachMessage,
@@ -61,19 +63,26 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
     }
   }
 
-  // 핑계 협상: 목표를 줄여서라도 시작하게 합니다.
+  // 핑계 협상: 코치가 오늘 계획을 가볍게 다시 짜고, 학생이 보고 같이 고칩니다. (계획 핑퐁)
   const negotiation = negotiationChipsFor(text)
   if (hasAny(text, ['피곤', '졸려', '힘들'])) {
     return {
-      text: `피곤한 날엔 목표를 줄이자. 다 하려고 하지 말고 ${SMALL_START_MINUTES}분만, 문제 3개만 풀어 보는 거 어때? 시작만 하면 반은 한 거야.`,
+      text: '피곤한 날엔 계획을 가볍게 고치자. 내가 줄여서 다시 짜 볼 테니, 보고 더 고칠 곳 말해 줘.',
       chips: negotiation,
       showHelp: false,
     }
   }
   if (hasAny(text, ['시간 없', '시간이 없', '바빠'])) {
     return {
-      text: `바쁜 날일수록 딱 ${SMALL_START_MINUTES}분만 하자. 오늘 수업에서 제일 헷갈렸던 개념 하나만 다시 보는 거야.`,
+      text: '바쁜 날이면 오늘 계획을 짧게 고쳐 보자. 제일 중요한 것 하나만 남겨도 돼.',
       chips: negotiation,
+      showHelp: false,
+    }
+  }
+  if (hasAny(text, ['계획', '뭐 하지', '뭐하지', '뭐부터'])) {
+    return {
+      text: '좋아, 내가 먼저 오늘 계획을 짜 볼게. 시험 · 대회 날까지 길게 짤 수도 있어.',
+      chips: [PLAN_CHIP, LONG_PLAN_CHIP],
       showHelp: false,
     }
   }
@@ -107,9 +116,9 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
     const exam = context.school?.events.find((event) => event.exam)
     return {
       text: exam
-        ? `${exam.name}까지 D-${exam.dDay}. 오늘 할 범위를 카드로 만들어 두면 매일 내가 챙겨 줄게.`
-        : '아직 30일 안에 시험은 없어. 지금 쌓아 두면 시험 때 편해져.',
-      chips: [{ kind: 'newCard', label: '카드 만들기' }, startChip(context.card)],
+        ? `${exam.name}까지 D-${exam.dDay}. 시험 날까지 계획을 같이 짜 볼까? 범위표나 교과서 사진을 넣어도 돼.`
+        : '아직 30일 안에 학교 시험은 없어. 대회나 자격증이면 날짜를 알려 줘, 그날까지 계획을 짜 줄게.',
+      chips: [LONG_PLAN_CHIP, startChip(context.card)],
       showHelp: false,
     }
   }
@@ -147,8 +156,8 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
     }
   }
   return {
-    text: '그렇구나. 그럼 오늘 할 공부 하나만 정해 볼까? 제일 작은 것부터.',
-    chips: [startChip(context.card), { kind: 'say', label: '오늘은 쉴래' }],
+    text: '그렇구나. 그럼 오늘 할 공부를 같이 정해 볼까? 내가 먼저 짜 볼게.',
+    chips: [PLAN_CHIP, startChip(context.card), { kind: 'say', label: '오늘은 쉴래' }],
     showHelp: false,
   }
 }

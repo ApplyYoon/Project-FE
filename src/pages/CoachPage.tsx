@@ -25,13 +25,39 @@ import {
   buildMorningBriefing,
   buildSessionRecap,
   chipsFromServer,
+  codeChipsFor,
   findRecapSession,
   loadPhoneLift,
-  negotiationChipsFor,
+  PLAN_CHIP,
   type CoachChip,
   type CoachMessage,
 } from '@/lib/coachBriefing'
 import { loadFocusScore } from '@/lib/focusScore'
+import {
+  DAILY_MINUTES_OPTIONS,
+  DEFAULT_DAILY_MINUTES,
+  LIGHTER_REQUEST,
+  MAX_LONG_PLAN_DAYS,
+  MAX_PLAN_TEXT_LENGTH,
+  groupPlanByDate,
+  makeDemoDayPlan,
+  makeDemoLongPlan,
+  parseLongPlanText,
+  planFromCards,
+  planReviseLabels,
+  planToCards,
+  requestDayPlan,
+  requestLongPlan,
+  reviseDayPlan,
+  reviseDemoPlan,
+  reviseLongPlan,
+  summarizePlan,
+  withDemoFallback,
+  type CoachPlan,
+  type LongPlanInput,
+  type PlanReply,
+  type PlanStatus,
+} from '@/lib/coachPlan'
 import {
   dayLabel,
   hasStudentLine,
@@ -55,17 +81,19 @@ import {
 } from '@/lib/dailyMission'
 import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { isServerDataToken } from '@/lib/dataMode'
-import { getTodayKey, toDayKey } from '@/lib/date'
+import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { replyDemo } from '@/lib/demoCoach'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { getUpcomingMyEvents, saveMyEvent } from '@/lib/myEvents'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { shrinkPhoto } from '@/lib/photoCards'
 import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quickCheckIn'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
-import { loadSchoolClass, schoolTodayOrNullQuery } from '@/lib/schoolToday'
+import { loadSchoolClass, schoolTodayOrNullQuery, type SchoolToday } from '@/lib/schoolToday'
 import { loadData, saveData } from '@/lib/storage'
 import {
+  FOCUS_NAME_MAX,
   cleanFocusName,
   focusLabelOf,
   loadStudyFocus,
@@ -74,7 +102,7 @@ import {
 } from '@/lib/studyFocus'
 import { getTodayCardsState } from '@/lib/todayCards'
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
-import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 // 코치가 결과를 먼저 물어본 마지막 공부 기록 번호. 같은 기록을 두 번 묻지 않으려고 저장합니다. (대화 내용이 아니라 번호만)
@@ -129,9 +157,12 @@ function getChatErrorMessage(error: unknown): string {
  *      - 진짜 로그인: 그때 서버 채팅을 엽니다. 서버 세션은 하루 단위이고, 날이 바뀌면 지난 세션을 조용히 정리해서
  *        요약을 남깁니다. 다음 날 AI 는 그 요약(서버 대본의 [지난 통화])으로 지난 약속을 먼저 물어봅니다.
  *      - 테스트 로그인: 서버를 못 써서 시연용 정해진 답(lib/demoCoach.ts)을 쓰고 "시연용 정해진 답" 이라고 붙입니다.
- *   4. AI 가 고른 빠른 답 · 행동이 오면 칩으로 보여 주고, 없으면 핑계 협상 칩([▷ 10분으로 줄여서 시작])을 코드가 붙입니다.
- *      행동 칩(시작 · 카드 만들기)은 누를 때만 실행합니다.
- *   5. 위기 표현이 나오면 상담 전화 한 줄을 보여 줍니다. 대화는 막지 않습니다.
+ *   4. AI 가 고른 빠른 답 · 행동이 오면 칩으로 보여 주고, 없으면 코드가 칩을 붙입니다. (핑계 · 계획 · 시험 이야기)
+ *      행동 칩(시작 · 카드 만들기 · 계획 짜기)은 누를 때만 실행합니다.
+ *   5. 계획 핑퐁 (2026-10-18, lib/coachPlan.ts): 코치가 오늘 계획 · 시험 날까지의 긴 계획(최대 30일)을 먼저 짜서
+ *      계획 말풍선으로 보여 주고, 학생이 [줄여 줘] · [주말은 빼 줘] · 자유로운 한 줄로 고칩니다.
+ *      [이대로 할게] 를 눌러야 카드로 저장합니다. 긴 계획은 교과서 · 시험 범위 사진도 넣을 수 있습니다. (사진은 저장 안 함)
+ *   6. 위기 표현이 나오면 상담 전화 한 줄을 보여 줍니다. 대화는 막지 않습니다.
  *
  * 모바일에서는 화면 높이를 꽉 채웁니다. 말풍선 목록만 스크롤되고, 입력창은 아래(하단 탭 위)에 붙어 있습니다.
  * ⚠️ 대화는 서버에 저장하지 않고 이 기기에만 남깁니다(최근 14일 · 300개). console.log 로 찍지 않습니다.
@@ -236,6 +267,79 @@ function withBubble(thread: CoachThread, bubble: Omit<ThreadBubble, 'id' | 'at'>
   return { ...thread, bubbles: [...thread.bubbles, added] }
 }
 
+// ---- 계획 말풍선 (lib/coachPlan.ts, 2026-10-18 계획 핑퐁) ----
+
+/**
+ * 계획을 짜거나 고쳐 달라는 요청 하나
+ *   day    — 오늘 계획 (light 면 가볍게)
+ *   long   — 시험 · 대회 날까지의 긴 계획 (notice 가 있으면 코치의 답 앞에 붙임)
+ *   revise — 열려 있는 계획(bubbleId 의 말풍선)을 학생의 요청대로 고치기
+ */
+type PlanRequest =
+  | { type: 'day'; light: boolean }
+  | { type: 'long'; input: LongPlanInput; notice: string | null }
+  | { type: 'revise'; bubbleId: number; plan: CoachPlan; request: string }
+
+/** 긴 계획 칸에 적는 것 */
+interface LongPlanForm {
+  goal: string
+  /** 'YYYY-MM-DD'. 아직 안 골랐으면 '' */
+  endDate: string
+  dailyMinutes: number
+  /** 줄인 사진(data URL). 이 화면의 기억에만 두고 어디에도 저장하지 않습니다. */
+  photo: string | null
+}
+
+/** 위기 표현이 감지돼서 계획 대신 하는 말 (아래에 상담 전화 한 줄이 같이 보임) */
+const PLAN_HELP_REPLY = '계획은 잠깐 미뤄 두자. 마음이 힘들면 아래 번호로 언제든 이야기해도 돼.'
+
+/** 계획 말풍선마다 pickStatus 가 돌려준 상태로 바꿉니다. (null 이면 그대로) */
+function withPlanStatus(
+  thread: CoachThread,
+  pickStatus: (bubble: ThreadBubble) => PlanStatus | null,
+): CoachThread {
+  const bubbles = thread.bubbles.map((bubble) => {
+    if (!bubble.plan) return bubble
+    const status = pickStatus(bubble)
+    return status ? { ...bubble, plan: { ...bubble.plan, status } } : bubble
+  })
+  return { ...thread, bubbles }
+}
+
+/** 계획을 짜거나 고친 결과를 대화방 끝에 붙입니다. */
+function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanRequest): CoachThread {
+  if (result.showHelp) {
+    return withBubble({ ...thread, isHelpShown: true }, { speaker: 'ai', text: PLAN_HELP_REPLY })
+  }
+  if (result.plan) {
+    // 새 계획이 나오면 열려 있던 계획은 끝납니다. 고친 계획이면 그 전 것은 '고치기 전', 나머지는 '닫음'
+    const closed = withPlanStatus(thread, (bubble) => {
+      if (bubble.plan?.status !== 'open') return null
+      return request.type === 'revise' && bubble.id === request.bubbleId ? 'replaced' : 'closed'
+    })
+    return withBubble(closed, { speaker: 'ai', text: result.reply, plan: result.plan })
+  }
+  // 새 계획이 없으면 코치의 한 줄만 붙입니다. "다 빼 줘" 로 계획이 비었으면 그 계획은 닫습니다.
+  const next =
+    result.cleared && request.type === 'revise'
+      ? withPlanStatus(thread, (bubble) => (bubble.id === request.bubbleId ? 'closed' : null))
+      : thread
+  return withBubble(next, {
+    speaker: 'ai',
+    text: result.reply,
+    ...(result.isDemo ? { isDemo: true } : {}),
+  })
+}
+
+/** 오늘 시간표의 과목 (겹치지 않게). AI 가 오늘 계획의 카드 글을 쓸 때 참고합니다. */
+function todaySubjectsOf(school: SchoolToday | null): string[] {
+  const subjects: string[] = []
+  for (const period of school?.timetable ?? []) {
+    if (!subjects.includes(period.subject)) subjects.push(period.subject)
+  }
+  return subjects
+}
+
 function CoachChat() {
   const navigate = useNavigate()
   const { token, user } = useAuth()
@@ -261,7 +365,7 @@ function CoachChat() {
   // 날짜 고르기 칸을 열었는지 ([📅 날짜 고르기] 칩)
   const [isPickingDate, setIsPickingDate] = useState(false)
   const [pickedDate, setPickedDate] = useState('')
-  const { cards, addCard } = useCards()
+  const { cards, addCard, deleteCard } = useCards()
   const [allSessions] = useState(loadAllSessions)
   const [marks] = useState(loadCardMarks)
   const [restDays] = useState(loadRestDays)
@@ -274,6 +378,20 @@ function CoachChat() {
     now,
   })
   const nowCard = todayCards.current ?? todayCards.next
+  // 오늘 계획을 고칠 때 바꿀 수 있는 카드: 오늘 하루짜리이고 아직 시작 · 처리하지 않은 카드 (반복 카드는 건드리지 않음)
+  const editableTodayCards = todayCards.items
+    .filter((item) => item.status === 'waiting' || item.status === 'current')
+    .map((item) => item.card)
+    .filter((card) => card.date === todayKey && !(card.repeatDays && card.repeatDays.length > 0))
+  const todaySubjects = todaySubjectsOf(school)
+  // 홈의 [코치와 계획 짜기] 로 들어오면 ?plan=today 로 옵니다. 코치가 바로 오늘 계획을 짜 줍니다.
+  const [planParam, setPlanParam] = useQueryParam('plan', '')
+  // 긴 계획 칸 (목표 · 날짜 · 하루 시간 · 사진). null 이면 닫혀 있습니다.
+  const [longForm, setLongForm] = useState<LongPlanForm | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  // [🕖 시간 바꿔 줘] 를 눌러 시각 고르기 칸을 열었는지
+  const [isPickingTime, setIsPickingTime] = useState(false)
+  const [pickedTime, setPickedTime] = useState('')
 
   // 처음 그릴 때 한 번만 정합니다:
   //   이 기기의 대화방을 꺼내고 → 날이 바뀌었으면 지난 서버 세션을 정리할 준비 + 오늘의 첫 말(브리핑)
@@ -388,10 +506,10 @@ function CoachChat() {
       return { openId, reply }
     },
     onSuccess: ({ openId, reply }, variables) => {
-      // AI 가 고른 빠른 답 · 행동이 있으면 그 칩을, 없으면 핑계 협상 칩을 코드가 붙입니다.
+      // AI 가 고른 빠른 답 · 행동이 있으면 그 칩을, 없으면 코드가 칩을 붙입니다. (핑계 협상 · 계획 · 시험)
       const studentText = variables.lines[variables.lines.length - 1]?.text ?? ''
       const serverChips = chipsFromServer(reply, nowCard)
-      const chips = serverChips.length > 0 ? serverChips : negotiationChipsFor(studentText)
+      const chips = serverChips.length > 0 ? serverChips : codeChipsFor(studentText)
       setThread((current) => ({
         ...withBubble(current, { speaker: 'ai', text: reply.reply, chips }),
         chatId: openId,
@@ -401,14 +519,103 @@ function CoachChat() {
     },
   })
 
+  // 계획을 짜거나 고칩니다. (lib/coachPlan.ts)
+  //   진짜 로그인: 서버 AI. 서버가 아직 준비 안 됐으면(404 · 503 · 429) 시연용 예시로 대신합니다.
+  //   테스트 로그인: 시연용 예시
+  const planTalk = useMutation({
+    mutationFn: async (request: PlanRequest): Promise<PlanReply> => {
+      const focus = loadStudyFocus()
+      if (request.type === 'revise') {
+        // 시연용 계획은 서버가 고칠 수 없어서 시연용으로 고칩니다.
+        if (!isServerData || request.plan.isDemo) {
+          return reviseDemoPlan(request.plan, request.request)
+        }
+        return withDemoFallback(
+          () =>
+            request.plan.kind === 'day'
+              ? reviseDayPlan(request.plan, request.request, { focus, subjects: todaySubjects })
+              : reviseLongPlan(request.plan, request.request),
+          () => reviseDemoPlan(request.plan, request.request),
+        )
+      }
+      if (request.type === 'long') {
+        const demo = () =>
+          makeDemoLongPlan({
+            todayKey,
+            goal: request.input.goal,
+            endDate: request.input.endDate,
+            dailyMinutes: request.input.dailyMinutes,
+            hasPhoto: request.input.image !== null,
+            isEventDate: request.input.isEventDate,
+          })
+        const result = isServerData
+          ? await withDemoFallback(() => requestLongPlan(request.input), demo)
+          : demo()
+        return request.notice ? { ...result, reply: `${request.notice}\n${result.reply}` } : result
+      }
+      // 오늘 계획: 오늘 카드가 이미 있으면 새로 짜지 않고 그 카드들을 같이 고칩니다.
+      if (editableTodayCards.length > 0) {
+        const current = planFromCards(editableTodayCards)
+        if (!request.light) {
+          return {
+            showHelp: false,
+            reply: '지금 오늘 계획이야. 고칠 곳을 말해 줘. (예: 영어는 빼 줘, 8시부터)',
+            plan: current,
+            cleared: false,
+            isDemo: false,
+          }
+        }
+        if (!isServerData) return reviseDemoPlan(current, LIGHTER_REQUEST)
+        return withDemoFallback(
+          () => reviseDayPlan(current, LIGHTER_REQUEST, { focus, subjects: todaySubjects }),
+          () => reviseDemoPlan(current, LIGHTER_REQUEST),
+        )
+      }
+      const demo = () =>
+        makeDemoDayPlan({
+          todayKey,
+          now: Date.now(),
+          subjects: todaySubjects,
+          light: request.light,
+        })
+      if (!isServerData) return demo()
+      // 가볍게 짜 달라면 컨디션을 2 로 보냅니다. (서버가 총량을 줄임) 아니면 오늘 체크인의 컨디션
+      const condition = request.light ? 2 : (loadLocalCheckIn(todayKey)?.condition ?? null)
+      return withDemoFallback(
+        () => requestDayPlan({ date: todayKey, focus, subjects: todaySubjects, condition }),
+        demo,
+      )
+    },
+    onSuccess: (result, request) => {
+      setThread((current) => applyPlanReply(current, result, request))
+    },
+  })
+  // AI 의 답이나 계획을 기다리는 중인지 (그동안은 새 말 · 칩을 막습니다)
+  const isBusy = talk.isPending || planTalk.isPending
+
   const bubbles = thread.bubbles
   const lastBubble = bubbles[bubbles.length - 1]
+  // 지금 고치는 중인 계획 말풍선. 있으면 학생이 쓰는 말은 이 계획을 고치는 요청이 됩니다.
+  const openPlanBubble = bubbles.findLast((bubble) => bubble.plan?.status === 'open')
 
   // 새 말풍선이 생기면 맨 아래로 내립니다.
   useEffect(() => {
     const list = listRef.current
     if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
-  }, [bubbles, talk.isPending])
+  }, [bubbles, isBusy])
+
+  // 홈에서 ?plan=today 로 들어왔으면 오늘 계획을 한 번 짜 줍니다. (주소의 값은 지워서 새로고침해도 또 짜지 않게)
+  // 개발 모드(StrictMode)는 effect 를 두 번 돌려서, 한 번만 짜려고 ref 로 표시해 둡니다.
+  const mutatePlan = planTalk.mutate
+  const hasPlanParam = planParam === 'today'
+  const autoPlanStarted = useRef(false)
+  useEffect(() => {
+    if (!hasPlanParam || autoPlanStarted.current) return
+    autoPlanStarted.current = true
+    setPlanParam('')
+    setThread((current) => withBubble(current, { speaker: 'me', text: PLAN_CHIP.label }))
+    mutatePlan({ type: 'day', light: false })
+  }, [hasPlanParam, setPlanParam, mutatePlan])
 
   /**
    * 준비하는 것을 다 정했을 때 코치의 한 줄 반응 (테스트 로그인에서 씀). 날짜를 받았으면 D-day 를 말하고,
@@ -427,7 +634,50 @@ function CoachChat() {
   /** 학생의 말을 보냅니다. 진짜 로그인은 서버 AI, 테스트 로그인은 시연용 정해진 답이 답합니다. */
   function sendText(raw: string) {
     const text = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
-    if (text === '' || talk.isPending) return
+    if (text === '' || isBusy) return
+    if (focusStep === null) {
+      // 계획 말풍선이 열려 있으면 학생이 쓴 말은 그 계획을 고치는 요청입니다. (계획 핑퐁)
+      if (openPlanBubble?.plan) {
+        revisePlan(openPlanBubble, text)
+        return
+      }
+      // "11월 2일 중간고사 미적분 계획 짜 줘" 처럼 긴 계획을 부탁하면 바로 짜 줍니다.
+      // 날짜를 못 알아들었으면 긴 계획 칸을 열어 날짜를 고르게 합니다.
+      const longRequest = parseLongPlanText(text, todayKey)
+      if (longRequest) {
+        const goal = longRequest.goal || suggestedGoal()
+        let notice: string | null = null
+        if (longRequest.farEventDate && goal !== '') {
+          // 30일보다 먼 날은 계획을 30일치만 짜고, 그 날은 지금 홈 일정에 D-day 로 넣어 둡니다.
+          saveMyEvent({
+            name: goal.slice(0, FOCUS_NAME_MAX),
+            date: longRequest.farEventDate,
+            kind: 'focus',
+          })
+          notice = `${MAX_LONG_PLAN_DAYS}일보다 먼 날이라 우선 ${MAX_LONG_PLAN_DAYS}일치만 짰어. D-day 는 홈 일정에 넣어 뒀어.`
+        }
+        if (longRequest.endDate && goal !== '') {
+          startPlan(
+            {
+              type: 'long',
+              input: {
+                goal,
+                endDate: longRequest.endDate,
+                dailyMinutes: DEFAULT_DAILY_MINUTES,
+                image: null,
+                focus: loadStudyFocus(),
+                isEventDate: longRequest.isEventDate,
+              },
+              notice,
+            },
+            text,
+          )
+        } else {
+          openLongForm(goal, text, longRequest.endDate)
+        }
+        return
+      }
+    }
     let focusReaction: CoachMessage | null = null
     if (focusStep === 'name') {
       // 대회 · 기타를 고른 뒤 쓴 첫 말은 그 이름으로 저장합니다. ([이름은 나중에] 를 누르면 이름 없이 둡니다)
@@ -478,6 +728,203 @@ function CoachChat() {
     }
     setThread(next)
     talk.mutate({ id: next.chatId, lines: sessionLines(next) })
+  }
+
+  // ---- 계획 말풍선 ----
+
+  /** 계획을 짜거나 고쳐 달라고 합니다. myText 가 있으면 그 말을 내 말풍선으로 먼저 붙입니다. */
+  function startPlan(request: PlanRequest, myText: string | null) {
+    if (isBusy) return
+    setIsPickingTime(false)
+    if (myText) setThread((current) => withBubble(current, { speaker: 'me', text: myText }))
+    planTalk.mutate(request)
+  }
+
+  /** 열려 있는 계획을 학생의 요청(한 줄)대로 고쳐 달라고 합니다. */
+  function revisePlan(bubble: ThreadBubble, request: string) {
+    if (!bubble.plan) return
+    startPlan(
+      {
+        type: 'revise',
+        bubbleId: bubble.id,
+        plan: bubble.plan,
+        request: request.slice(0, MAX_PLAN_TEXT_LENGTH),
+      },
+      request,
+    )
+  }
+
+  /** 긴 계획의 목표 한 줄로 먼저 채워 둘 것: 준비하는 것의 이름 → 가장 가까운 내 일정 → 학교 시험 → 종류 */
+  function suggestedGoal(): string {
+    const focus = loadStudyFocus()
+    if (focus?.name) return focus.name
+    const myEvent = getUpcomingMyEvents(todayKey, MAX_LONG_PLAN_DAYS).find(
+      (event) => event.dDay >= 1,
+    )
+    if (myEvent) return myEvent.name
+    const exam = (school?.events ?? []).find((event) => event.exam && event.dDay >= 1)
+    if (exam) return exam.name
+    return focus ? `${focusLabelOf(focus.kind)} 준비` : ''
+  }
+
+  /**
+   * 긴 계획의 날짜로 먼저 채워 둘 것: 30일 안의 내 일정 → 학교 시험 중 목표 이름과 맞는 것. 없으면 ''
+   * 목표가 비었으면 가장 가까운 것을 씁니다. ('기말' 인데 중간고사 날짜를 채우지 않게 이름을 봅니다)
+   */
+  function suggestedEndDate(goal: string): string {
+    const matches = (name: string) => goal === '' || name.includes(goal) || goal.includes(name)
+    const myEvent = getUpcomingMyEvents(todayKey, MAX_LONG_PLAN_DAYS).find(
+      (event) => event.dDay >= 1 && matches(event.name),
+    )
+    if (myEvent) return myEvent.date
+    const exam = (school?.events ?? []).find(
+      (event) =>
+        event.exam && event.dDay >= 1 && event.dDay <= MAX_LONG_PLAN_DAYS && matches(event.name),
+    )
+    return exam?.date ?? ''
+  }
+
+  /**
+   * 긴 계획 칸을 엽니다. 코치가 무엇을 적으면 되는지 한 줄로 알려 줍니다.
+   * endDate 를 주면(채팅에서 날짜를 알아들음) 그 날로, 아니면 가까운 일정 · 시험 날로 미리 채웁니다.
+   */
+  function openLongForm(goal: string, myText: string, endDate: string | null = null) {
+    setPhotoError(null)
+    setLongForm({
+      goal,
+      endDate: endDate ?? suggestedEndDate(goal),
+      dailyMinutes: DEFAULT_DAILY_MINUTES,
+      photo: null,
+    })
+    const withAnswer = withBubble(thread, { speaker: 'me', text: myText })
+    setThread(
+      withBubble(withAnswer, {
+        speaker: 'ai',
+        text: '좋아! 뭘 준비하는지 · 언제까지인지 아래에 알려 줘. 시험 범위표나 교과서 사진을 넣으면 그 범위로 짜 줄게.',
+      }),
+    )
+  }
+
+  /** 긴 계획 칸에서 사진을 고르면 줄여서 이 화면의 기억에만 둡니다. (저장하지 않음) */
+  async function handleLongPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // 같은 사진을 다시 골라도 다시 읽게 비워 둡니다.
+    event.target.value = ''
+    if (!file) return
+    setPhotoError(null)
+    try {
+      const photo = await shrinkPhoto(file)
+      setLongForm((current) => (current ? { ...current, photo } : current))
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : '사진을 읽지 못했어요.')
+    }
+  }
+
+  // 긴 계획 칸의 날짜는 내일부터 30일 뒤까지 고를 수 있습니다. (서버도 같은 범위)
+  const longMinDate = moveDateKey(todayKey, 1)
+  const longMaxDate = moveDateKey(todayKey, MAX_LONG_PLAN_DAYS)
+  const isLongFormReady =
+    longForm !== null &&
+    longForm.goal.trim() !== '' &&
+    longForm.endDate >= longMinDate &&
+    longForm.endDate <= longMaxDate
+
+  /** 긴 계획 칸에서 [계획 짜 줘] 를 누르면: 적은 것을 내 말풍선으로 붙이고 긴 계획을 짜 달라고 합니다. */
+  function handleLongSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!longForm || !isLongFormReady) return
+    const goal = longForm.goal.trim().slice(0, MAX_PLAN_TEXT_LENGTH)
+    const [, month, day] = longForm.endDate.split('-').map(Number)
+    const photoText = longForm.photo ? ' · 📎 사진 1장' : ''
+    const myText = `📅 ${month}월 ${day}일까지 · ${goal} · 하루 ${longForm.dailyMinutes}분${photoText}`
+    startPlan(
+      {
+        type: 'long',
+        input: {
+          goal,
+          endDate: longForm.endDate,
+          dailyMinutes: longForm.dailyMinutes,
+          image: longForm.photo,
+          focus: loadStudyFocus(),
+          // 칸에서 고른 날은 시험 · 대회 날이라 저장할 때 홈 일정에 넣습니다.
+          isEventDate: true,
+        },
+        notice: null,
+      },
+      myText,
+    )
+    setLongForm(null)
+  }
+
+  /**
+   * [이대로 할게] — 계획을 카드로 저장합니다. 오늘 카드를 고친 계획이면 그 카드들을 바꿉니다.
+   * 긴 계획이면 시험 · 대회 날을 내 일정(홈 "다가오는 일정")에 D-day 로 넣습니다.
+   */
+  function handleAcceptPlan(bubble: ThreadBubble) {
+    const plan = bubble.plan
+    if (!plan || isBusy) return
+    setIsPickingTime(false)
+    const saved = withPlanStatus(thread, (item) => (item.id === bubble.id ? 'saved' : null))
+    const withAnswer = withBubble(saved, { speaker: 'me', text: '이대로 할게' })
+    if (plan.fromCards) {
+      // 지금 카드를 그대로 쓰기로 했으면 바꿀 것이 없습니다.
+      setThread(
+        withBubble(withAnswer, {
+          speaker: 'ai',
+          text: '좋아, 지금 계획 그대로 가자! 시간 되면 내가 알려 줄게.',
+          chips: nowCard
+            ? [{ kind: 'startCard', label: '▷ 지금 카드 시작', cardId: nowCard.id }]
+            : [{ kind: 'say', label: '고마워!' }],
+        }),
+      )
+      return
+    }
+    const now = Date.now()
+    plan.replaceCardIds.forEach(deleteCard)
+    const newCards = planToCards(plan, now)
+    newCards.forEach(addCard)
+    const lines = [`카드 ${newCards.length}장을 달력에 넣었어. 시간 되면 내가 알려 줄게!`]
+    // 학생이 알려 준 시험 · 대회 날까지의 계획이면 그 날을 홈 일정에 D-day 로 넣습니다.
+    if (plan.kind === 'long' && plan.spec && plan.isEventDate) {
+      const name = plan.spec.goal.slice(0, FOCUS_NAME_MAX)
+      saveMyEvent({ name, date: plan.spec.endDate, kind: 'focus' })
+      lines.push(`📅 '${name}' D-day 도 홈 일정에 넣었어.`)
+    }
+    // 오늘 카드가 생겼으면 미션 ② "코치와 오늘 계획 정하기" 가 끝납니다.
+    const nextMissions = loadDailyMissions(todayKey)
+    if (countDoneMissions(nextMissions) > countDoneMissions(missions)) {
+      lines.push(`✅ 오늘의 미션 ${countDoneMissions(nextMissions)}/${nextMissions.length} 끝!`)
+    }
+    setMissions(nextMissions)
+    const firstToday = newCards
+      .filter((card) => card.date === todayKey)
+      .sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''))[0]
+    const chips: CoachChip[] = firstToday
+      ? [
+          { kind: 'startCard', label: '▷ 오늘 첫 카드 시작', cardId: firstToday.id },
+          { kind: 'say', label: '고마워!' },
+        ]
+      : [{ kind: 'say', label: '고마워!' }]
+    setThread(withBubble(withAnswer, { speaker: 'ai', text: lines.join('\n'), chips }))
+  }
+
+  /** [나중에 할래] — 계획을 저장하지 않고 닫습니다. 그다음 말은 다시 AI 코치와의 대화가 됩니다. */
+  function handleClosePlan(bubble: ThreadBubble) {
+    if (isBusy) return
+    setIsPickingTime(false)
+    const closed = withPlanStatus(thread, (item) => (item.id === bubble.id ? 'closed' : null))
+    const withAnswer = withBubble(closed, { speaker: 'me', text: '나중에 할래' })
+    setThread(
+      withBubble(withAnswer, { speaker: 'ai', text: '알겠어. 계획은 언제든 다시 짜 줄게.' }),
+    )
+  }
+
+  /** 시각 고르기 칸에서 [바꾸기] 를 누르면 그 시각으로 고쳐 달라고 합니다. */
+  function handlePickTime(event: FormEvent) {
+    event.preventDefault()
+    if (!openPlanBubble || pickedTime === '') return
+    revisePlan(openPlanBubble, `시작 시각을 ${pickedTime}로 바꿔 줘`)
+    setPickedTime('')
   }
 
   function handleSubmit(event: FormEvent) {
@@ -543,6 +990,14 @@ function CoachChat() {
       navigate('/cards/photo')
       return
     }
+    if (chip.kind === 'dayPlan') {
+      startPlan({ type: 'day', light: chip.light === true }, chip.label)
+      return
+    }
+    if (chip.kind === 'longPlan') {
+      if (!isBusy) openLongForm(suggestedGoal(), chip.label)
+      return
+    }
     if (chip.kind === 'startCard') {
       navigate(`/timer?card=${encodeURIComponent(chip.cardId)}`)
       return
@@ -585,7 +1040,7 @@ function CoachChat() {
 
   /** 미션 줄을 누르면 코치가 오늘의 미션을 보여 주고 다음 미션을 권합니다. */
   function handleShowMissions() {
-    if (talk.isPending) return
+    if (isBusy) return
     const message = buildMissionBriefing(missions, null, nowCard)
     setThread(withBubble(thread, { speaker: 'ai', text: message.text, chips: message.chips }))
   }
@@ -617,10 +1072,23 @@ function CoachChat() {
                 {bubble.speaker === 'ai' ? (
                   <li>
                     <CoachBubble text={bubble.text} isDemo={bubble.isDemo} />
-                    {/* 칩은 가장 마지막 코치 말풍선 아래에만 보입니다. 답을 받는 중에는 숨깁니다. */}
-                    {bubble === lastBubble && !talk.isPending && bubble.chips && (
-                      <ChipRow chips={bubble.chips} onPick={handleChip} />
-                    )}
+                    {bubble.plan && <PlanCard plan={bubble.plan} />}
+                    {/* 칩은 가장 마지막 코치 말풍선 아래에만 보입니다. 답을 받는 중에는 숨깁니다.
+                        계획을 고치는 중이면 그 계획의 칩([이대로 할게] · [줄여 줘] …)을 보여 줍니다. */}
+                    {bubble === lastBubble &&
+                      !isBusy &&
+                      (openPlanBubble?.plan ? (
+                        <PlanChips
+                          bubble={openPlanBubble}
+                          plan={openPlanBubble.plan}
+                          onAccept={handleAcceptPlan}
+                          onRevise={revisePlan}
+                          onPickTime={setIsPickingTime}
+                          onClose={handleClosePlan}
+                        />
+                      ) : (
+                        bubble.chips && <ChipRow chips={bubble.chips} onPick={handleChip} />
+                      ))}
                   </li>
                 ) : (
                   <li className="flex justify-end">
@@ -636,6 +1104,18 @@ function CoachChat() {
           {talk.isPending && (
             <li>
               <CoachBubble text="쓰는 중…" isStatus />
+            </li>
+          )}
+          {planTalk.isPending && (
+            <li>
+              <CoachBubble
+                text={
+                  planTalk.variables?.type === 'long' && planTalk.variables.input.image
+                    ? '사진을 읽고 계획 짜는 중…'
+                    : '계획 짜는 중…'
+                }
+                isStatus
+              />
             </li>
           )}
         </ul>
@@ -665,6 +1145,140 @@ function CoachChat() {
           >
             넣기
           </button>
+        </form>
+      )}
+
+      {/* [🕖 시간 바꿔 줘] 를 누르면 여는 시각 고르기 칸. 고르면 그 시각부터로 고쳐 달라고 합니다. */}
+      {isPickingTime && openPlanBubble && (
+        <form
+          onSubmit={handlePickTime}
+          className="flex shrink-0 flex-wrap items-center gap-2 rounded-3xl bg-white p-3"
+        >
+          <label htmlFor="plan-time" className="text-sm font-semibold text-slate-700">
+            🕖 몇 시부터?
+          </label>
+          <input
+            id="plan-time"
+            type="time"
+            value={pickedTime}
+            onChange={(event) => setPickedTime(event.target.value)}
+            className="focus:ring-brand/30 h-11 min-w-0 flex-1 rounded-2xl bg-slate-100 px-3 text-base focus:ring-2 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={pickedTime === '' || isBusy}
+            className="bg-brand h-11 shrink-0 cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            바꾸기
+          </button>
+        </form>
+      )}
+
+      {/* 긴 계획 칸: 무엇을 · 언제까지 · 하루 얼마나 · (선택) 교과서 · 범위 사진 */}
+      {longForm !== null && (
+        <form
+          onSubmit={handleLongSubmit}
+          aria-label="시험·대회 계획 짜기"
+          className="flex shrink-0 flex-col gap-2 rounded-3xl bg-white p-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[15px] font-semibold text-slate-900">📅 시험·대회 계획</p>
+            <button
+              type="button"
+              aria-label="계획 칸 닫기"
+              onClick={() => setLongForm(null)}
+              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+            >
+              ✕
+            </button>
+          </div>
+          <label htmlFor="long-goal" className="text-sm font-medium text-slate-600">
+            뭘 준비해?
+          </label>
+          <input
+            id="long-goal"
+            value={longForm.goal}
+            maxLength={MAX_PLAN_TEXT_LENGTH}
+            onChange={(event) => setLongForm({ ...longForm, goal: event.target.value })}
+            placeholder="예: 중간고사 미적분 1~3단원"
+            className="focus:ring-brand/30 h-11 w-full min-w-0 rounded-2xl bg-slate-100 px-3 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="long-date" className="text-sm font-medium text-slate-600">
+              언제까지?
+            </label>
+            <input
+              id="long-date"
+              type="date"
+              min={longMinDate}
+              max={longMaxDate}
+              value={longForm.endDate}
+              onChange={(event) => setLongForm({ ...longForm, endDate: event.target.value })}
+              className="focus:ring-brand/30 h-11 min-w-0 flex-1 rounded-2xl bg-slate-100 px-3 text-base focus:ring-2 focus:outline-none"
+            />
+          </div>
+          <div
+            role="group"
+            aria-label="하루 공부 시간"
+            className="flex flex-wrap items-center gap-2"
+          >
+            <span className="text-sm font-medium text-slate-600">하루</span>
+            {DAILY_MINUTES_OPTIONS.map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                aria-pressed={longForm.dailyMinutes === minutes}
+                onClick={() => setLongForm({ ...longForm, dailyMinutes: minutes })}
+                className={cn(
+                  chipClass,
+                  'px-3',
+                  longForm.dailyMinutes === minutes &&
+                    'bg-brand-light text-brand border-transparent font-semibold',
+                )}
+              >
+                {minutes}분
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 사진은 줄여서 이 화면의 기억에만 둡니다. 계획을 짜는 데만 서버에 보내고 저장하지 않습니다. */}
+            <label className={cn(chipClass, 'focus-within:ring-brand/30 focus-within:ring-2')}>
+              📎 교과서·범위 사진
+              <input type="file" accept="image/*" onChange={handleLongPhoto} className="sr-only" />
+            </label>
+            {longForm.photo && (
+              <span className="flex items-center gap-1">
+                <img
+                  src={longForm.photo}
+                  alt="넣은 사진"
+                  className="h-10 w-10 max-w-full rounded-lg object-cover"
+                />
+                <button
+                  type="button"
+                  aria-label="사진 빼기"
+                  onClick={() => setLongForm({ ...longForm, photo: null })}
+                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
+          {photoError && (
+            <p role="alert" className="text-sm break-keep text-red-600">
+              {photoError}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={!isLongFormReady || isBusy}
+            className="bg-brand h-11 w-full cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            계획 짜 줘
+          </button>
+          <p className="text-xs break-keep text-slate-400">
+            날짜는 내일부터 {MAX_LONG_PLAN_DAYS}일 안으로 골라 줘. 사진은 저장하지 않아.
+          </p>
         </form>
       )}
 
@@ -711,6 +1325,20 @@ function CoachChat() {
             </button>
           </div>
         )}
+        {planTalk.isError && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 px-2 pt-1">
+            <p className="text-sm break-keep text-red-600">
+              계획을 못 짰어요. {getChatErrorMessage(planTalk.error)}
+            </p>
+            <button
+              type="button"
+              onClick={() => planTalk.variables && planTalk.mutate(planTalk.variables)}
+              className={chipClass}
+            >
+              다시 보내기
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <label htmlFor="chat-input" className="sr-only">
             AI 코치에게 보낼 말
@@ -723,14 +1351,15 @@ function CoachChat() {
             onFocus={(event) => event.currentTarget.scrollIntoView({ block: 'nearest' })}
             maxLength={MAX_CHAT_TEXT_LENGTH}
             rows={1}
-            disabled={talk.isPending}
-            placeholder="코치에게 말하기"
+            disabled={isBusy}
+            // 계획을 고치는 중이면 쓰는 말이 고치는 요청이 된다고 알려 줍니다.
+            placeholder={openPlanBubble ? '계획 고칠 곳을 말해 줘' : '코치에게 말하기'}
             // text-base: 아이폰은 16px 보다 작은 입력칸을 누르면 화면을 확대해서 16px 로 둡니다.
             className="focus:ring-brand/30 max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-2xl bg-slate-100 px-4 py-2.5 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
           />
           <button
             type="submit"
-            disabled={draft.trim() === '' || talk.isPending}
+            disabled={draft.trim() === '' || isBusy}
             className="bg-brand h-11 shrink-0 cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             보내기
@@ -805,6 +1434,149 @@ function CoachBubble({ text, isStatus = false, isDemo = false }: CoachBubbleProp
         {text}
       </p>
       {isDemo && <p className="text-xs text-amber-700">시연용 정해진 답 (AI 아님)</p>}
+    </div>
+  )
+}
+
+// ---- 계획 말풍선 ----
+// 지금은 코치 화면에서만 써서 이 파일에 둡니다. AI 통화 화면에서도 쓰게 되면 components/ui/ 로 뺍니다.
+
+/** 계획 상태 글자 (고치는 중이면 없음) */
+const PLAN_STATUS_LABELS: Record<PlanStatus, string | null> = {
+  open: null,
+  replaced: '고치기 전',
+  saved: '✅ 저장함',
+  closed: '닫음',
+}
+
+/** 처음에 펼쳐 보여 줄 날 수. 나머지는 [전체 보기] 로 펼칩니다. */
+const PLAN_SHOWN_DAYS = 3
+
+interface PlanCardProps {
+  plan: CoachPlan
+}
+
+/**
+ * 코치 말풍선 아래의 계획 카드. 요약 한 줄 · 날짜별 카드 목록을 보여 줍니다.
+ * 고친 계획이 새로 나오면 지난 계획은 흐리게 보입니다.
+ */
+function PlanCard({ plan }: PlanCardProps) {
+  const [isAllShown, setIsAllShown] = useState(false)
+  const groups = groupPlanByDate(plan.drafts)
+  const shownGroups = isAllShown ? groups : groups.slice(0, PLAN_SHOWN_DAYS)
+  const statusLabel = PLAN_STATUS_LABELS[plan.status]
+  const title = plan.kind === 'long' && plan.spec ? `📅 ${plan.spec.goal}` : '📋 오늘 계획'
+  return (
+    <div
+      className={cn(
+        'mt-2 w-full rounded-[20px] border border-slate-200 bg-white p-3 sm:max-w-md',
+        plan.status === 'replaced' && 'opacity-50',
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 text-[15px] font-bold break-words text-slate-900">{title}</p>
+        {statusLabel && (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+            {statusLabel}
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-slate-500">{summarizePlan(plan)}</p>
+      {plan.overflow && (
+        <p className="mt-1 text-sm break-keep text-amber-700">
+          하루 {plan.spec?.dailyMinutes}분으론 다 안 들어가서 줄였어. 늘리고 싶으면 말해 줘.
+        </p>
+      )}
+      {plan.evidence.length > 0 && (
+        <ul className="mt-1 flex flex-col gap-0.5">
+          {plan.evidence.slice(0, 2).map((line) => (
+            <li key={line} className="text-xs break-keep text-slate-400">
+              · {line}
+            </li>
+          ))}
+        </ul>
+      )}
+      <ul className="mt-2 flex flex-col gap-2">
+        {shownGroups.map((group) => (
+          <li key={group.date}>
+            {/* 오늘 계획은 날짜가 하나뿐이라 날짜 줄을 생략합니다. */}
+            {plan.kind === 'long' && (
+              <p className="text-xs font-semibold text-slate-500">{group.label}</p>
+            )}
+            <ul className="flex flex-col gap-1">
+              {group.drafts.map((draft, index) => (
+                <li key={`${draft.startTime}-${index}`} className="flex gap-2 text-[15px]">
+                  <span className="w-12 shrink-0 text-slate-500 tabular-nums">
+                    {draft.startTime ?? '--:--'}
+                  </span>
+                  <span className="min-w-0 flex-1 break-words">
+                    <span className="text-slate-900">{draft.title}</span>
+                    <span className="text-slate-400"> · {draft.durationMinutes}분</span>
+                    {draft.checklist.length > 0 && (
+                      <span className="block text-xs break-words text-slate-400">
+                        {draft.checklist.join(' · ')}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      {groups.length > PLAN_SHOWN_DAYS && (
+        <button
+          type="button"
+          onClick={() => setIsAllShown(!isAllShown)}
+          className="text-brand mt-1 h-10 cursor-pointer text-sm font-semibold"
+        >
+          {isAllShown ? '접기' : `전체 보기 (${groups.length - PLAN_SHOWN_DAYS}일 더)`}
+        </button>
+      )}
+      {plan.isDemo && <p className="mt-1 text-xs text-amber-700">시연용 예시 (AI 아님)</p>}
+    </div>
+  )
+}
+
+interface PlanChipsProps {
+  /** 계획이 붙은 말풍선 */
+  bubble: ThreadBubble
+  plan: CoachPlan
+  onAccept: (bubble: ThreadBubble) => void
+  /** 칩 글자를 그대로 고치는 요청으로 보냅니다. */
+  onRevise: (bubble: ThreadBubble, request: string) => void
+  /** 시각 고르기 칸을 엽니다. (true) */
+  onPickTime: (isOpen: boolean) => void
+  onClose: (bubble: ThreadBubble) => void
+}
+
+/** 고치는 중인 계획의 칩: [이대로 할게] · [줄여 줘] · [주말은 빼 줘] · [시간 바꿔 줘] · [나중에 할래] */
+function PlanChips({ bubble, plan, onAccept, onRevise, onPickTime, onClose }: PlanChipsProps) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => onAccept(bubble)}
+        className={cn(chipClass, 'bg-brand border-transparent font-semibold text-white')}
+      >
+        ✅ 이대로 할게
+      </button>
+      {planReviseLabels(plan).map((label) => (
+        <button
+          key={label}
+          type="button"
+          onClick={() => onRevise(bubble, label)}
+          className={chipClass}
+        >
+          {label}
+        </button>
+      ))}
+      <button type="button" onClick={() => onPickTime(true)} className={chipClass}>
+        🕖 시간 바꿔 줘
+      </button>
+      <button type="button" onClick={() => onClose(bubble)} className={chipClass}>
+        나중에 할래
+      </button>
     </div>
   )
 }

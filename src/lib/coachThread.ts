@@ -12,8 +12,9 @@
  * 요약을 남기고, 그 요약이 다음 세션 대본의 [지난 통화] 가 되어 AI 가 이어서 기억합니다. (pages/CoachPage.tsx)
  */
 import type { CallLine } from '@/lib/callReview'
-import { MAX_CHAT_LINES } from '@/lib/chatApi'
+import { MAX_CHAT_LINES, MAX_CHAT_TEXT_LENGTH } from '@/lib/chatApi'
 import type { CoachChip } from '@/lib/coachBriefing'
+import { planLineForAi, toCoachPlan, type CoachPlan } from '@/lib/coachPlan'
 import { toDayKey } from '@/lib/date'
 import { loadData, saveData } from '@/lib/storage'
 
@@ -28,6 +29,8 @@ export interface ThreadBubble {
   chips?: CoachChip[]
   /** true 면 테스트 로그인용 "시연용 정해진 답" 입니다. (AI 가 쓴 말이 아님) */
   isDemo?: boolean
+  /** 코치가 짜 준 계획 (계획 말풍선, lib/coachPlan.ts). 고치면 새 말풍선에 새 계획이 붙습니다. */
+  plan?: CoachPlan
 }
 
 /** 이 기기에 남기는 대화방 */
@@ -59,7 +62,16 @@ const DAY_MS = 24 * 60 * 60 * 1000
 // 저장소에 넣는 이름 (실제 키는 'study-coach-thread')
 const STORAGE_KEY = 'coach-thread'
 
-const CHIP_KINDS = ['say', 'startCard', 'startMinutes', 'newCard', 'checkIn', 'startTitled']
+const CHIP_KINDS = [
+  'say',
+  'startCard',
+  'startMinutes',
+  'newCard',
+  'checkIn',
+  'startTitled',
+  'dayPlan',
+  'longPlan',
+]
 
 /** 빈 대화방 */
 export function emptyThread(ownerId: string): CoachThread {
@@ -97,6 +109,8 @@ function toBubble(value: unknown): ThreadBubble | null {
   const bubble: ThreadBubble = { id: item.id, speaker: item.speaker, text: item.text, at: item.at }
   if (Array.isArray(item.chips)) bubble.chips = item.chips.filter(isChip)
   if (item.isDemo === true) bubble.isDemo = true
+  const plan = toCoachPlan(item.plan)
+  if (plan) bubble.plan = plan
   return bubble
 }
 
@@ -131,7 +145,11 @@ export function nextBubbleId(bubbles: ThreadBubble[]): number {
 export function sessionLines(thread: CoachThread): CallLine[] {
   return thread.bubbles
     .filter((bubble) => bubble.id >= thread.sessionFrom)
-    .map(({ speaker, text }) => ({ speaker, text }))
+    .map(({ speaker, text, plan }) => ({
+      speaker,
+      // 계획 말풍선이면 계획 한 줄을 붙여서, AI 가 어떤 계획 이야기인지 알게 합니다. (서버 한도 500자)
+      text: plan ? `${text}\n${planLineForAi(plan)}`.slice(0, MAX_CHAT_TEXT_LENGTH) : text,
+    }))
 }
 
 /**
