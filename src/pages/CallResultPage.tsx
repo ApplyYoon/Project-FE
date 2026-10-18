@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { ReasonChips } from '@/components/ui/ReasonChips'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { UnderstandingBadge } from '@/components/ui/UnderstandingBadge'
 import { useCards } from '@/hooks/useCards'
 import { ApiError } from '@/lib/api'
 import { loadSinceLastCall } from '@/lib/callCard'
@@ -24,6 +25,7 @@ import { loadTodayCallCard } from '@/lib/callSummary'
 import { careThemes } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { CARD_FAIL_CAUSES, addCardMark, type CardFailCause } from '@/lib/cardMarks'
+import { splitUnderstanding } from '@/lib/checkCall'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { isSafetyBrakeOnNow } from '@/lib/focusMode'
 import { toggleReason } from '@/lib/reasons'
@@ -545,6 +547,8 @@ function SummaryCard({ conclusion }: ConclusionViewProps) {
   const [card] = useState(() => loadTodayCallCard(getTodayKey()))
   // 오늘의 관리 강도에 맞는 이름과 색입니다. (통화 수신 화면과 같은 값, lib/todayCare.ts)
   const theme = careThemes[getTodayCareLevel()]
+  // 확인 통화였으면 요약 끝에 '이해도: 조금 헷갈림' 이 붙어 옵니다. 떼어 내서 배지로 크게 보여 줍니다. (BE #327)
+  const parsed = conclusion.summary === null ? null : splitUnderstanding(conclusion.summary)
 
   return (
     <Card>
@@ -560,12 +564,19 @@ function SummaryCard({ conclusion }: ConclusionViewProps) {
         </span>
       </div>
 
+      {parsed?.understanding && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-slate-50 px-4 py-3">
+          <span className="text-sm font-semibold text-slate-900">확인 통화 결과</span>
+          <UnderstandingBadge understanding={parsed.understanding} className="text-sm" />
+        </div>
+      )}
+
       {/* 모바일은 이름 아래에 값, PC 는 이름 옆에 값 (시안과 같은 배치) */}
       <dl className="mt-3 divide-y divide-slate-100">
         <SummaryRow label="어제 요약" value={card.headline} />
         {card.missReason !== null && <SummaryRow label="못 채운 이유" value={card.missReason} />}
-        {conclusion.summary !== null && (
-          <SummaryRow label="AI 한마디" value={`"${conclusion.summary}"`} />
+        {parsed !== null && parsed.summary !== '' && (
+          <SummaryRow label="AI 한마디" value={`"${parsed.summary}"`} />
         )}
       </dl>
     </Card>

@@ -11,6 +11,7 @@ import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { getCareLimits } from '@/lib/careLimits'
+import { localCheckCall, type StudiedInfo } from '@/lib/checkCall'
 import { cn } from '@/lib/cn'
 import { runDailyCareStage } from '@/lib/dailyCareRun'
 import { loadDailyMissions } from '@/lib/dailyMission'
@@ -119,6 +120,9 @@ function HomeView() {
     now,
   })
 
+  // 오늘 공부를 하나 끝냈으면 확인 통화 입구를 보여 줍니다. (이 기기 기록으로 봄 — 통화 화면이 서버에 다시 확인, lib/checkCall.ts)
+  const checkCall = localCheckCall(allSessions, cards, todayKey)
+
   // AI 가 바꾼 설정 기록 (#385). [되돌리기] · [확인] 을 누르면 줄어듭니다. (lib/settingChanges.ts)
   const [settingChanges, setSettingChanges] = useState(loadSettingChanges)
 
@@ -161,6 +165,9 @@ function HomeView() {
         onPhoto={() => navigate('/cards/photo')}
       />
 
+      {/* 오늘 공부를 끝냈으면: 코치한테 말로 설명하는 확인 통화 (2026-10-18) */}
+      {checkCall.studied && <CheckCallEntry studied={checkCall.studied} />}
+
       {/* ③ 오늘 시간표 · 급식 → ④ 다가오는 일정 (2026-10-18, BE GET /school/today) */}
       <SchoolTodaySection todayKey={todayKey} />
 
@@ -185,6 +192,37 @@ function HomeView() {
 
 // 흰 묶음 카드 (토스 형식: 테두리 · 그림자 없이 둥근 흰 바탕)
 const sectionCardClass = 'rounded-3xl bg-white p-5'
+
+interface CheckCallEntryProps {
+  /** 오늘 가장 최근에 끝낸 공부 */
+  studied: StudiedInfo
+}
+
+/** 확인 통화 입구 한 줄. 누르면 통화 화면(/call)이 문을 서버에 확인하고 전화를 받게 합니다. */
+function CheckCallEntry({ studied }: CheckCallEntryProps) {
+  return (
+    <Link
+      to="/call"
+      className={cn(sectionCardClass, 'flex items-center gap-3 active:scale-[0.99]')}
+    >
+      <span aria-hidden className={rowIconClass}>
+        📞
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-bold text-slate-900">
+          코치한테 3분 설명해 볼래?
+        </span>
+        <span className="block text-sm break-keep text-slate-500">
+          방금 한 {studied.title ? `'${studied.title}'` : '공부'}({studied.minutes}분)을 말로
+          설명하면 코치가 확인해 줘
+        </span>
+      </span>
+      <span aria-hidden className="shrink-0 text-slate-400">
+        ›
+      </span>
+    </Link>
+  )
+}
 
 // 동그란 배경의 이모지 자리 (목록 줄 왼쪽)
 const rowIconClass =

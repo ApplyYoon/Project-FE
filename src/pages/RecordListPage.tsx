@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { UnderstandingBadge } from '@/components/ui/UnderstandingBadge'
 import { useCards } from '@/hooks/useCards'
 import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
@@ -27,8 +28,10 @@ import {
   loadEvaluationsByDate,
   type CallSummary,
 } from '@/lib/callSummary'
+import { loadCallLog } from '@/lib/callLog'
 import { CARD_RESULT_LABELS } from '@/lib/cardResult'
 import { careThemes } from '@/lib/careTheme'
+import { splitUnderstanding, type Understanding } from '@/lib/checkCall'
 import { cn } from '@/lib/cn'
 import {
   type DailyRecord,
@@ -320,11 +323,43 @@ interface CallSummaryCardProps {
   summaries: CallSummary[]
 }
 
+/**
+ * 날짜별 통화 요약 · 이해도 (그날의 마지막 통화). 통화 결과 화면이 적어 둔 통화 기록(lib/callLog.ts)에서 꺼냅니다.
+ * 확인 통화였으면 요약 끝의 '이해도: …' 를 떼어 배지로 보여 줍니다. (BE #327)
+ */
+function loadCallNotesByDate(): Record<
+  string,
+  { summary: string; understanding: Understanding | null }
+> {
+  const notes: Record<string, { summary: string; understanding: Understanding | null }> = {}
+  // 오래된 것부터 있어서, 같은 날 통화가 여러 번이면 마지막 것이 남습니다.
+  for (const entry of loadCallLog()) {
+    if (typeof entry.summary === 'string' && entry.summary.trim() !== '') {
+      notes[entry.dateKey] = splitUnderstanding(entry.summary.trim())
+    }
+  }
+  return notes
+}
+
+interface DayUnderstandingProps {
+  /** 그날 확인 통화의 이해도. 확인 통화가 아니었으면 없음 */
+  understanding: Understanding | null | undefined
+}
+
+/** 목록 한 줄에 붙는 이해도 배지 (없으면 아무것도 안 그림) */
+function DayUnderstanding({ understanding }: DayUnderstandingProps) {
+  if (!understanding) return null
+  return <UnderstandingBadge understanding={understanding} />
+}
+
 /** "지난 통화 요약": 날짜별 목록(최근 것이 위)과, 눌렀을 때 그날 카드를 자세히 보는 팝업 */
 function CallSummaryCard({ summaries }: CallSummaryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // 지금 팝업으로 보고 있는 요약. null 이면 팝업이 닫혀 있습니다.
   const [selected, setSelected] = useState<CallSummary | null>(null)
+  // 그날 통화의 AI 요약 · 이해도 (확인 통화)
+  const [callNotes] = useState(loadCallNotesByDate)
+  const selectedNote = selected ? callNotes[selected.date] : undefined
 
   const visibleSummaries = isExpanded ? summaries : summaries.slice(0, INITIAL_SUMMARY_COUNT)
 
@@ -347,6 +382,7 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
                   {formatDateLabel(summary.date)}
                   <CareBadge level={summary.careLevel} />
+                  <DayUnderstanding understanding={callNotes[summary.date]?.understanding} />
                 </span>
                 {/* break-words: 긴 문장도 화면 폭을 넘지 않고 줄바꿈됩니다. */}
                 <span className="text-sm font-semibold break-words text-slate-900">
@@ -379,7 +415,20 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
             <CareBadge level={selected.careLevel} />
             <SummaryRow label="어제 요약" value={selected.headline} />
             <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
-            <SummaryRow label="AI 한마디" value={selected.aiComment} emptyText="아직 없어요" />
+            {/* 평가(evaluations)에 한마디가 없으면 그날 통화 요약을 씁니다. (이해도 줄은 뗀 것) */}
+            <SummaryRow
+              label="AI 한마디"
+              value={selected.aiComment ?? (selectedNote?.summary || null)}
+              emptyText="아직 없어요"
+            />
+            {selectedNote?.understanding && (
+              <div>
+                <dt className="text-xs text-slate-500">확인 통화 이해도</dt>
+                <dd className="mt-1">
+                  <UnderstandingBadge understanding={selectedNote.understanding} />
+                </dd>
+              </div>
+            )}
           </dl>
         )}
       </Modal>
