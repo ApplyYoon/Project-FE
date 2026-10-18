@@ -41,6 +41,9 @@ const CardEditPage = lazy(() =>
   import('@/pages/CardEditPage').then((m) => ({ default: m.CardEditPage })),
 )
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
+const CardsFromPhotoPage = lazy(() =>
+  import('@/pages/CardsFromPhotoPage').then((m) => ({ default: m.CardsFromPhotoPage })),
+)
 const GoalDetailPage = lazy(() =>
   import('@/pages/GoalDetailPage').then((m) => ({ default: m.GoalDetailPage })),
 )
@@ -115,6 +118,8 @@ export const router = createBrowserRouter([
       { path: 'cards', element: <CardsPage /> },
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
       { path: 'cards/new', element: <CardEditPage /> },
+      // 시험 범위 사진으로 카드 만들기 (2026-10-18). 사진은 저장하지 않고 AI 가 읽고 버립니다.
+      { path: 'cards/photo', element: <CardsFromPhotoPage /> },
       { path: 'cards/:cardId/edit', element: <CardEditPage /> },
       // 고정 일정(학교·학원) 입력(#393)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 카드 탭으로 보냅니다.
       { path: 'cards/fixed', element: <Navigate to="/cards" replace /> },

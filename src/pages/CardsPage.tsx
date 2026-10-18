@@ -421,6 +421,13 @@ function CardTimeline({
       >
         + 카드 만들기
       </Link>
+      {/* 시험 범위표 · 학습지를 찍으면 AI 가 카드 여러 장을 나눠 줍니다. (pages/CardsFromPhotoPage.tsx) */}
+      <Link
+        to="/cards/photo"
+        className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
+      >
+        📸 사진으로 만들기
+      </Link>
     </Card>
   )
 }

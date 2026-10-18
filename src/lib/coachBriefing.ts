@@ -39,11 +39,16 @@ export type CoachChip =
   | { kind: 'newCard'; label: string }
   | { kind: 'checkIn'; label: string; condition: number; emotions: EmotionTag[] }
   | { kind: 'startTitled'; label: string; title: string; minutes: number }
+  /** 시험 범위 사진으로 카드 만들기 화면(/cards/photo)을 엽니다. 시험이 가까울 때만 나옵니다. */
+  | { kind: 'photoCards'; label: string }
 
 /**
  * 오늘 컨디션을 묻는 칩 3개. 누르면 그날의 체크인이 됩니다. (예전의 "하루 첫 한 줄" 대신)
  * 컨디션은 1 ~ 5 중 4 · 3 · 2 로, '피곤해' 는 감정 태그 '피곤함' 도 같이 남깁니다.
  */
+/** 시험이 이만큼(일) 안으로 다가오면 "📸 시험 범위 찍기" 칩을 보여 줍니다. */
+const PHOTO_CHIP_EXAM_DAYS = 21
+
 export const CONDITION_CHIPS: CoachChip[] = [
   { kind: 'checkIn', label: '😄 좋아', condition: 4, emotions: [] },
   { kind: 'checkIn', label: '😐 그냥 그래', condition: 3, emotions: [] },
@@ -187,6 +192,10 @@ export function buildMorningBriefing(input: BriefingInput): CoachMessage {
     ]
   }
 
+  // 시험이 3주 안이면 "시험 범위 사진 찍기" 칩을 더합니다. 범위표 한 장으로 시험 전날까지 카드를 나눠 줍니다.
+  if (exam && exam.dDay >= 1 && exam.dDay <= PHOTO_CHIP_EXAM_DAYS) {
+    chips = [...chips, { kind: 'photoCards', label: '📸 시험 범위 찍기' }]
+  }
   return { text: lines.join('\n'), chips }
 }
 

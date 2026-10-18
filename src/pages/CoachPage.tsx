@@ -387,6 +387,10 @@ function CoachChat() {
       navigate(`/timer?card=${encodeURIComponent(card.id)}`)
       return
     }
+    if (chip.kind === 'photoCards') {
+      navigate('/cards/photo')
+      return
+    }
     if (chip.kind === 'startCard') {
       navigate(`/timer?card=${encodeURIComponent(chip.cardId)}`)
       return
