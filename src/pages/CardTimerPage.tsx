@@ -11,8 +11,17 @@ import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
 import { useCardSession } from '@/hooks/useCardSession'
 import { useCards } from '@/hooks/useCards'
 import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
+import { usePhoneLift } from '@/hooks/usePhoneLift'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { playAlarm } from '@/lib/alarm'
+import {
+  formatPhoneSummary,
+  getLiftStrength,
+  savePhoneSummary,
+  type LiftStrength,
+  type PhoneLiftSummary,
+} from '@/lib/liftAlerts'
+import { getTodayCareLevel } from '@/lib/todayCare'
 import { formatClock } from '@/lib/away'
 import {
   LONG_PAUSE_MINUTES,
@@ -130,6 +139,15 @@ export function CardTimerPage() {
   const { active, now, allSessions } = session
   // 방금 끝낸 기록. 있으면 종료 팝업을 띄웁니다. (#398)
   const [endedRecord, setEndedRecord] = useState<StudySession | null>(null)
+  // 방금 끝난 세션의 폰 기록 (앱 안에서만 옴). 종료 팝업에 한 줄로 보여 줍니다.
+  const [endedPhone, setEndedPhone] = useState<PhoneLiftSummary | null>(null)
+  // 끝난 세션과 폰 기록이 둘 다 오면 세션 번호로 저장해 둡니다. (코치 채팅 · 분석이 "폰을 몇 번 들었어" 처럼 씀)
+  const endedRecordId = endedRecord?.id
+  useEffect(() => {
+    if (endedRecordId !== undefined && endedPhone !== null) {
+      savePhoneSummary(endedRecordId, endedPhone)
+    }
+  }, [endedRecordId, endedPhone])
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
   // 카드를 시작하기 전에 거치는 화면 — 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
   // (4단계의 다짐 듣기는 다짐 녹음과 함께 2026-10-18 에 지웠습니다)
@@ -291,6 +309,8 @@ export function CardTimerPage() {
   )
   // 관리 4단계(#408): 미루기 잠금 · 다음 반복 카드 1장 절대 · 증빙 필수
   const isStage4 = isStage4Now(todayKey)
+  // 폰 들림 경고 세기: 오늘의 관리 강도로 정합니다. (회복 · 당근이면 안내만, 채찍이면 빠르게) (lib/liftAlerts.ts)
+  const liftStrength = getLiftStrength(getTodayCareLevel(), isStage4)
   const storedAbsolute = loadStage4Absolute()
   const stage4Absolute = !isStage4
     ? undefined
@@ -371,7 +391,12 @@ export function CardTimerPage() {
         card={activeCard}
         now={now}
         experimentRule={experimentRuleOf(active.cardId)}
-        onFinished={setEndedRecord}
+        onFinished={(record) => {
+          setEndedPhone(null)
+          setEndedRecord(record)
+        }}
+        liftStrength={liftStrength}
+        onPhoneSummary={setEndedPhone}
       />
     )
   }
@@ -636,12 +661,16 @@ export function CardTimerPage() {
         <EndPopup
           record={endedRecord}
           card={endedCard}
+          phone={endedPhone}
           onSave={(changes) => {
             session.updateSession(endedRecord.id, changes)
             setEndedRecord({ ...endedRecord, ...changes })
           }}
           onRenameCard={(changes) => endedCard && updateCard(endedCard.id, changes)}
-          onClose={() => setEndedRecord(null)}
+          onClose={() => {
+            setEndedRecord(null)
+            setEndedPhone(null)
+          }}
           onRest={() => {
             setEndedRecord(null)
             document.getElementById(PLAY_SETUP_ID)?.scrollIntoView({ behavior: 'smooth' })
@@ -805,10 +834,22 @@ interface SessionViewProps {
   onFinished: (record: StudySession) => void
   /** 이 카드에 붙은 자기 실험 규칙 (#412) */
   experimentRule?: string
+  /** 폰 들림 경고 세기 (lib/liftAlerts.ts) */
+  liftStrength: LiftStrength
+  /** 세션이 끝나 앱이 잰 폰 기록을 받았을 때 (앱 안에서만) */
+  onPhoneSummary: (summary: PhoneLiftSummary) => void
 }
 
 /** 세션 화면 — 나가는 길은 [일시정지] · [끝내기] 뿐입니다 */
-function SessionView({ session, card, now, onFinished, experimentRule }: SessionViewProps) {
+function SessionView({
+  session,
+  card,
+  now,
+  onFinished,
+  experimentRule,
+  liftStrength,
+  onPhoneSummary,
+}: SessionViewProps) {
   const active = session.active
   const [settings] = useState(loadAutoSettings)
   const [isEndOpen, setIsEndOpen] = useState(false)
@@ -816,6 +857,25 @@ function SessionView({ session, card, now, onFinished, experimentRule }: Session
   const [memo, setMemo] = useState('')
   const remainingMs = active ? getRemainingMs(active, now) : 0
   useKeepScreenOn(active !== null)
+
+  // 앱 안이면 폰을 엎어 뒀는지 재고, 들고 있는 시간에 따라 경고 단계를 정합니다. (hooks/usePhoneLift.ts)
+  const phone = usePhoneLift({
+    isActive: active !== null,
+    isPaused: active?.pausedNow !== undefined,
+    now,
+    strength: liftStrength,
+    onEnd: onPhoneSummary,
+  })
+  // 3단계: 폰을 너무 오래 들고 있으면 세션을 멈추고 '폰 확인' 으로 남깁니다. (돌아와서 [다시 시작])
+  const shouldAutoPause = phone.stage === 3 && active !== null && active.pausedNow === undefined
+  useEffect(() => {
+    if (shouldAutoPause) session.pause('phone', '폰을 오래 들고 있어서 저절로 멈췄어요')
+  }, [shouldAutoPause, session])
+  // 채찍 단계(강)에서는 화면 전체 경고 때 소리도 냅니다.
+  const shouldRing = phone.stage === 2 && liftStrength === 'strong'
+  useEffect(() => {
+    if (shouldRing) playAlarm()
+  }, [shouldRing])
 
   // 예정 종료 시각이 되면 알리고 끝냅니다. (완료 기준은 예정 시간이 끝난 것)
   useEffect(() => {
@@ -879,6 +939,11 @@ function SessionView({ session, card, now, onFinished, experimentRule }: Session
             {LONG_PAUSE_MINUTES}분 넘게 멈춰 있어요. 준비되면 다시 시작해요.
           </p>
         )}
+        {active.pausedNow?.tag === 'phone' && phone.isAvailable && (
+          <p className="text-sm font-medium break-keep text-amber-700">
+            폰을 오래 들고 있어서 잠깐 멈췄어요. 폰을 엎어 두고 다시 시작해요.
+          </p>
+        )}
         <p
           className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl"
           aria-live="off"
@@ -916,7 +981,19 @@ function SessionView({ session, card, now, onFinished, experimentRule }: Session
         <p className="text-xs text-slate-500">
           공부 중에는 화면이 꺼지지 않아요. 일시정지해도 끝나는 시각은 그대로예요.
         </p>
+        {phone.isAvailable && (
+          <p className="text-xs break-keep text-slate-500">
+            폰을 화면이 바닥을 보게 엎어 두면, 들 때마다 코치가 알려 줘요.
+          </p>
+        )}
       </Card>
+
+      {phone.stage === 1 && (
+        <PhoneLiftNotice seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
+      )}
+      {phone.stage === 2 && (
+        <PhoneLiftOverlay seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
+      )}
 
       {showChecklist && checklist.length > 0 && (
         <Card title={`체크리스트 ${checkedCount}/${checklist.length}`}>
@@ -1082,6 +1159,8 @@ interface EndPopupProps {
   proofRequired: boolean
   /** 증빙을 남겼을 때 */
   onProofSaved: () => void
+  /** 앱이 잰 이번 세션의 폰 기록. 앱 밖이거나 아직 안 왔으면 null */
+  phone: PhoneLiftSummary | null
 }
 
 /**
@@ -1101,6 +1180,7 @@ function EndPopup({
   onRest,
   proofRequired,
   onProofSaved,
+  phone,
 }: EndPopupProps) {
   const [step, setStep] = useState<EndStep>('checklist')
   const [settings] = useState(loadAutoSettings)
@@ -1193,6 +1273,12 @@ function EndPopup({
 
   return (
     <Modal isOpen onClose={onClose} title="수고했어요! 마무리해요">
+      {/* 앱 안에서 폰을 엎어 두고 공부했으면 폰 기록을 한 줄로 보여 줍니다. (lib/liftAlerts.ts) */}
+      {phone && (
+        <p className="mb-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm break-keep text-slate-700">
+          📱 {formatPhoneSummary(phone)}
+        </p>
+      )}
       {step === 'checklist' && (
         <div className="flex flex-col gap-3">
           {isInstant ? (
@@ -1650,5 +1736,64 @@ function RecoveryCard({ reason, onStart }: RecoveryCardProps) {
         회복 모드에서는 나무가 시들지 않아요. 내일 다시 볼게요.
       </p>
     </Card>
+  )
+}
+
+interface PhoneLiftAlertProps {
+  /** 폰을 들고 있은 시간 (초) */
+  seconds: number
+  /** [괜찮아] — 이번에 든 것은 더 경고하지 않음 */
+  onDismiss: () => void
+}
+
+/** 폰 들림 1단계: 화면 위에 작게 "다시 엎어 둘까?" (진동은 usePhoneLift 가 앱에 부탁함) */
+function PhoneLiftNotice({ seconds, onDismiss }: PhoneLiftAlertProps) {
+  return (
+    // 하단 탭과 겹치지 않게 화면 위쪽에 띄웁니다. 375px 에서도 양옆 16px 여백을 둡니다.
+    <div
+      role="status"
+      className="fixed inset-x-4 top-4 z-40 mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xl">
+        📱
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-slate-900">다시 엎어 둘까?</p>
+        <p className="text-sm text-slate-500">들고 있은 지 {seconds}초</p>
+      </div>
+      <Button variant="secondary" size="sm" className="h-10 shrink-0" onClick={onDismiss}>
+        괜찮아
+      </Button>
+    </div>
+  )
+}
+
+/** 폰 들림 2단계: 코치 말투 경고를 화면 전체에. 폰을 다시 엎으면 저절로 사라집니다. */
+function PhoneLiftOverlay({ seconds, onDismiss }: PhoneLiftAlertProps) {
+  return (
+    <div
+      role="alertdialog"
+      aria-labelledby="phone-lift-title"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-900/95 px-6 text-center text-white"
+    >
+      <span className="text-6xl" aria-hidden>
+        📱
+      </span>
+      <h2 id="phone-lift-title" className="text-[26px] leading-snug font-bold tracking-tight">
+        공부 중이야.
+        <br />폰 내려놓고 다시 엎어 두자
+      </h2>
+      <p className="text-base text-slate-300">
+        들고 있은 지 {seconds}초 · 조금 더 지나면 세션이 멈춰요
+      </p>
+      <p className="text-sm text-slate-400">폰을 다시 엎으면 이 화면은 저절로 사라져요.</p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="mt-4 h-12 rounded-2xl px-5 text-sm font-medium text-slate-300 underline-offset-4 hover:underline"
+      >
+        공부에 필요해서 든 거야 (이번만)
+      </button>
+    </div>
   )
 }

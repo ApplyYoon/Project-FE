@@ -38,6 +38,19 @@ export interface Alarm {
 export type HapticKind = 'tap' | 'select' | 'success' | 'warning' | 'error'
 
 /**
+ * 공부 세션 중 폰을 든 채 앱 밖으로 나갔을 때 앱이 띄울 알림 하나. (BRIDGE.md v1.3, 'focus.start' 의 nudges)
+ * 나간 시각부터 afterSec 초 뒤에 뜨고, 앱으로 돌아오면 앱이 지웁니다.
+ */
+export interface FocusNudge {
+  /** 앱을 나간 뒤 몇 초 뒤에 (5 ~ 600) */
+  afterSec: number
+  /** 제목 (40자까지) */
+  title: string
+  /** 내용 (120자까지) */
+  body: string
+}
+
+/**
  * 웹 → 앱 메시지. 이름(type)마다 같이 보내는 내용(payload)의 모양입니다. (BRIDGE.md 2장)
  * 새 메시지를 만들려면 여기에 한 줄을 더하고, 앱(Project-App)에도 같은 이름을 만들어 달라고 합니다.
  */
@@ -53,6 +66,13 @@ export interface WebToAppPayloads {
   haptics: { kind: HapticKind }
   /** 휴대폰 구글 계정으로 로그인해서 구글 ID 토큰 받기 (웹뷰 안 구글 로그인은 구글이 막음, components/ui/GoogleButton.tsx) */
   'auth.googleSignIn': { webClientId: string }
+  /**
+   * 공부 세션 시작: 앱이 폰을 엎어 뒀는지 재기 시작합니다. 들고 놓을 때마다 'focus.lifted' · 'focus.down' 이 옵니다. (v1.3)
+   * nudges: 폰을 든 채 앱을 나가면 띄울 알림, url: 그 알림을 누르면 갈 주소 (hooks/usePhoneLift.ts)
+   */
+  'focus.start': { dnd?: boolean; pin?: boolean; nudges?: FocusNudge[]; url?: string }
+  /** 공부 세션 끝: 앱이 숫자를 답합니다. (lib/liftAlerts.ts 의 readPhoneSummary) */
+  'focus.end': Record<string, never>
 }
 
 /** 웹 → 앱 메시지의 이름들 ('ready' | 'notify.show' | …) */
@@ -64,6 +84,10 @@ export type AppToWebMessage =
   | { type: 'navigate'; payload: { url: string } }
   | { type: 'appState'; payload: { state: 'active' | 'background' } }
   | { type: 'notify.permission'; payload: { permission: NotificationPermission } }
+  /** 공부 세션 중 엎어 둔 폰을 집어 들었음 (v1.3). at 은 휴대폰의 Date.now() 값 */
+  | { type: 'focus.lifted'; payload: { at: number } }
+  /** 다시 엎어 뒀음 (v1.3). liftedMs = 들고 있던 시간 */
+  | { type: 'focus.down'; payload: { at: number; liftedMs: number } }
 
 // 앱이 넣어 주는 window 의 값들을 TypeScript 에게 알려 줍니다. (앱 밖에서는 둘 다 없습니다)
 declare global {
@@ -163,6 +187,11 @@ export function onAppMessage(handler: (message: AppToWebMessage) => void): () =>
   return () => window.removeEventListener('starflow-app', handleEvent)
 }
 
+/** 0 이상의 유한한 숫자인지 (시각 · 밀리초) */
+function isTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
 function isPermission(value: unknown): value is NotificationPermission {
   return value === 'granted' || value === 'denied' || value === 'default'
 }
@@ -219,6 +248,12 @@ function toAppMessage(detail: unknown): AppToWebMessage | null {
   }
   if (type === 'notify.permission' && isPermission(data.permission)) {
     return { type: 'notify.permission', payload: { permission: data.permission } }
+  }
+  if (type === 'focus.lifted' && isTime(data.at)) {
+    return { type: 'focus.lifted', payload: { at: data.at } }
+  }
+  if (type === 'focus.down' && isTime(data.at) && isTime(data.liftedMs)) {
+    return { type: 'focus.down', payload: { at: data.at, liftedMs: data.liftedMs } }
   }
   return null
 }
