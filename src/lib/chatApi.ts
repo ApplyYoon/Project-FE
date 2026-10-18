@@ -14,7 +14,7 @@
  * - 열기 요청은 통화를 걸 때와 똑같습니다. (말투 · 학생 카드. pages/CallActivePage.tsx)
  *   서버는 숫자를 서버의 기록으로 다시 계산하고, 서버에 기록이 없을 때만 이 카드를 씁니다.
  * - showHelp 가 true 면 학생의 말에서 위기 표현이 감지된 것입니다. reply 는 서버가 정해 둔 안내입니다. (BE #307 부터 채팅은 이어 갑니다)
- * - quickReplies · action 은 서버가 곧 더하는 칸입니다(BE feat/chat-quick-replies). 없거나 모양이 틀리면 빈 값으로 봅니다.
+ * - quickReplies · action 은 AI 가 고른 빠른 답 · 행동입니다(BE #309, #327). 없거나 모양이 틀리면 빈 값으로 봅니다.
  *
  * ⚠️ 대화는 학생의 마음 이야기입니다. **서버에는 저장하지 않습니다.** 서버는 답을 받는 데만 쓰고, 정리할 때 요약만 남깁니다.
  *    대신 **이 기기에는** 남깁니다. (lib/coachThread.ts, 2026-10-18 사용자 결정: "멘토와 연속적인 대화를 한다는 느낌으로")
@@ -41,17 +41,20 @@ export interface ChatHelpLine {
   detail: string
 }
 
-/** AI 선생님의 말 하나 */
 /**
- * AI 가 함께 제안한 행동 하나 (서버가 곧 더하는 칸). 화면은 칩으로 보여 주고, 누를 때만 실행합니다.
+ * AI 가 함께 제안한 행동 하나. 화면은 칩으로 보여 주고, 누를 때만 실행합니다.
  *   start_timer  — 지금 공부 시작 · shrink_today — 오늘 목표를 줄여서 시작 · create_card — 그 제목의 카드로 시작
+ *   make_plan    — 시험 · 대회 날까지의 긴 계획 짜기 (title = 목표 한 줄, date = 그 날. BE #327, 2026-10-18)
+ *   start_quiz   — 그 주제로 확인 문제 풀기 (title = 주제)
  */
 export interface ChatAction {
-  type: 'start_timer' | 'shrink_today' | 'create_card'
+  type: 'start_timer' | 'shrink_today' | 'create_card' | 'make_plan' | 'start_quiz'
   /** 분 (5 ~ 120). 모르면 null */
   minutes: number | null
-  /** create_card 의 카드 제목 (30자까지). 모르면 null */
+  /** create_card 의 카드 제목 · make_plan 의 목표 · start_quiz 의 주제 (30자까지). 모르면 null */
   title: string | null
+  /** make_plan 의 시험 · 대회 날 'YYYY-MM-DD'. 모르거나 서버가 범위(내일 ~ 30일 뒤) 밖이라고 비웠으면 null */
+  date: string | null
 }
 
 /** AI 코치의 말 하나 */
@@ -67,7 +70,16 @@ export interface ChatReply {
   action: ChatAction | null
 }
 
-const ACTION_TYPES: ChatAction['type'][] = ['start_timer', 'shrink_today', 'create_card']
+const ACTION_TYPES: ChatAction['type'][] = [
+  'start_timer',
+  'shrink_today',
+  'create_card',
+  'make_plan',
+  'start_quiz',
+]
+
+// 날짜 모양 'YYYY-MM-DD'
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 /** 서버가 준 빠른 답을 확인합니다. 글자만, 빈 것은 빼고, 3개 · 한 개 20자까지 */
 function readQuickReplies(value: unknown): string[] {
@@ -91,7 +103,9 @@ function readAction(value: unknown): ChatAction | null {
     typeof record.title === 'string' && record.title.trim() !== ''
       ? record.title.trim().slice(0, 30)
       : null
-  return { type: record.type as ChatAction['type'], minutes, title }
+  const date =
+    typeof record.date === 'string' && DATE_PATTERN.test(record.date) ? record.date : null
+  return { type: record.type as ChatAction['type'], minutes, title, date }
 }
 
 /** 서버가 준 값이 약속한 모양이 맞는지 확인합니다. (서버 응답도 그대로 믿지 않고 확인합니다) 빠른 답 · 행동은 따로 읽습니다. */

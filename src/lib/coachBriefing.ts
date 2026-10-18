@@ -43,6 +43,8 @@ import type { Card, CheckIn, EmotionTag, StudySession } from '@/types'
  *   longPlan     — 시험 · 대회 날까지의 긴 계획을 짜는 칸(목표 · 날짜 · 하루 시간 · 사진)을 엽니다
  *   quiz         — 확인 문제를 냅니다. topic 이 있으면 바로, 없으면 주제를 고르는 칸을 엽니다 (lib/studyQuiz.ts)
  *   quizReview   — 어제 틀린 문제를 다시 냅니다 (서버를 부르지 않음)
+ *   makePlan     — AI 가 알아들은 목표 · 날짜로 긴 계획을 바로 짭니다. 날짜가 없으면 긴 계획 칸을 엽니다 (BE #327)
+ *   checkCall    — 공부 끝 확인 통화를 겁니다 (/call — 오늘 공부를 끝내야 열림, lib/checkCall.ts)
  * 행동 칩(say · checkIn 이 아닌 것)은 누를 때만 실행합니다. 자동으로 하지 않습니다.
  */
 export type CoachChip =
@@ -66,6 +68,10 @@ export type CoachChip =
   | { kind: 'quiz'; label: string; topic?: string; cardId?: string; checklist?: string[] }
   /** 어제 틀린 문제 다시 풀기 */
   | { kind: 'quizReview'; label: string }
+  /** AI 가 채팅에서 알아들은 목표 · 날짜로 긴 계획 짜기 (endDate 가 없으면 칸을 엶) */
+  | { kind: 'makePlan'; label: string; goal: string; endDate: string | null }
+  /** 공부 끝 확인 통화 걸기 (2026-10-18 "공부를 하게 하고 완료한 조건으로 통화") */
+  | { kind: 'checkCall'; label: string }
 
 /**
  * 계획 칩. 코치가 먼저 계획을 짜 주고, 학생이 고칠 곳을 말하며 핑퐁합니다. (lib/coachPlan.ts)
@@ -521,8 +527,10 @@ export function buildMissionProgress(missions: Mission[], nowCard: Card | undefi
  * AI 가 고른 빠른 답과 행동을 칩으로 바꿉니다. 둘 다 없으면 빈 목록 — 그때는 화면이 코드 칩(핑계 협상)을 씁니다.
  * 행동 칩이 먼저, 빠른 답이 그 뒤입니다. 행동은 누를 때만 실행합니다.
  *
- *   chipsFromServer({ quickReplies: ['응 할게'], action: { type: 'shrink_today', minutes: 10, title: null } }, undefined)
+ *   chipsFromServer({ quickReplies: ['응 할게'], action: { type: 'shrink_today', minutes: 10, title: null, date: null } }, undefined)
  *   -> [▷ 오늘 계획 가볍게 고치기, 응 할게]
+ *   action: { type: 'make_plan', title: '중간고사 미적분', date: '2026-11-02' }  -> [📅 계획 짜기]
+ *   action: { type: 'start_quiz', title: '수열의 극한' }                         -> [📝 문제 풀기]
  */
 export function chipsFromServer(
   reply: Pick<ChatReply, 'quickReplies' | 'action'>,
@@ -551,6 +559,17 @@ export function chipsFromServer(
       title: action.title,
       minutes,
     })
+  } else if (action?.type === 'make_plan' && action.title) {
+    // "11월 2일 중간고사 준비해" 처럼 말하면 AI 가 목표 · 날짜를 알아듣고 계획 짜기 칩을 줍니다. (BE #327)
+    chips.push({
+      kind: 'makePlan',
+      label: '📅 계획 짜기',
+      goal: action.title,
+      endDate: action.date,
+    })
+  } else if (action?.type === 'start_quiz' && action.title) {
+    // "방금 수열 공부했어" 처럼 말하면 그 주제로 확인 문제를 풀자고 합니다. (BE #327)
+    chips.push({ kind: 'quiz', label: '📝 문제 풀기', topic: action.title })
   }
   for (const text of reply.quickReplies) {
     chips.push({ kind: 'say', label: text })

@@ -1331,6 +1331,37 @@ function CoachChat() {
       if (!isBusy) startYesterdayReview(chip.label)
       return
     }
+    if (chip.kind === 'makePlan') {
+      if (isBusy) return
+      // AI 가 알아들은 날짜가 짤 수 있는 범위(내일 ~ 30일 뒤)면 바로 짜고, 아니면 목표를 채운 칸을 열어 날짜를 고르게 합니다.
+      const goal = chip.goal.slice(0, MAX_PLAN_TEXT_LENGTH)
+      if (chip.endDate && chip.endDate >= longMinDate && chip.endDate <= longMaxDate) {
+        startPlan(
+          {
+            type: 'long',
+            input: {
+              goal,
+              endDate: chip.endDate,
+              dailyMinutes: DEFAULT_DAILY_MINUTES,
+              image: null,
+              focus: loadStudyFocus(),
+              // 학생이 채팅에서 말한 시험 · 대회 날이라 저장할 때 홈 일정에 넣습니다.
+              isEventDate: true,
+            },
+            notice: null,
+          },
+          chip.label,
+        )
+      } else {
+        openLongForm(goal, chip.label)
+      }
+      return
+    }
+    if (chip.kind === 'checkCall') {
+      // 통화 화면이 문(오늘 끝낸 공부)을 확인합니다. 방금 공부한 기록은 거기서 바로 서버로 보냅니다. (lib/checkCall.ts)
+      navigate('/call')
+      return
+    }
     if (chip.kind === 'startCard') {
       navigate(`/timer?card=${encodeURIComponent(chip.cardId)}`)
       return
