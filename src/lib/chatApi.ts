@@ -23,6 +23,7 @@
  */
 import { api, ApiError } from '@/lib/api'
 import { loadCallCard } from '@/lib/callCard'
+import { loadStudySignals } from '@/lib/studySignals'
 import type { CallLine } from '@/lib/callReview'
 import { loadSchoolClass } from '@/lib/schoolToday'
 import { getCallTone } from '@/lib/todayCare'
@@ -158,6 +159,8 @@ export function startChat(): Promise<ChatReply> {
     careLevel: tone.careLevel,
     maxHarshness: tone.maxHarshness,
     card: loadCallCard(),
+    // 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (lib/studySignals.ts, BE #334)
+    studySignals: loadStudySignals(),
     // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
   })
 }
