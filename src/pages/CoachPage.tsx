@@ -84,6 +84,7 @@ import {
 import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
+import { getPlannedStartAt } from '@/lib/facts'
 import { replyDemo } from '@/lib/demoCoach'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { getUpcomingMyEvents, saveMyEvent } from '@/lib/myEvents'
@@ -108,6 +109,7 @@ import {
   PHOTO_QUIZ_TOPIC,
   answerQuiz,
   countCorrect,
+  loadQuizResults,
   loadYesterdayWrong,
   makeDemoQuiz,
   newQuiz,
@@ -117,12 +119,20 @@ import {
   retryOneQuestion,
   saveQuizResult,
   toQuizResult,
+  wrongForReview,
   wrongQuestionsOf,
   type CoachQuiz,
   type QuizInput,
   type QuizQuestion,
   type QuizReply,
 } from '@/lib/studyQuiz'
+import {
+  buildNudgeCoachMessage,
+  daysAgoText,
+  isNudgeKind,
+  loadNudgeDay,
+  loadStopWhip,
+} from '@/lib/coachNudges'
 import { getTodayCardsState } from '@/lib/todayCards'
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
@@ -294,12 +304,12 @@ function withBubble(thread: CoachThread, bubble: Omit<ThreadBubble, 'id' | 'at'>
 
 /**
  * 계획을 짜거나 고쳐 달라는 요청 하나
- *   day    — 오늘 계획 (light 면 가볍게)
+ *   day    — 오늘 계획 (light 면 가볍게, date 가 있으면 그날 — 밤 정리 알림의 내일 계획)
  *   long   — 시험 · 대회 날까지의 긴 계획 (notice 가 있으면 코치의 답 앞에 붙임)
  *   revise — 열려 있는 계획(bubbleId 의 말풍선)을 학생의 요청대로 고치기
  */
 type PlanRequest =
-  | { type: 'day'; light: boolean }
+  | { type: 'day'; light: boolean; date?: string }
   | { type: 'long'; input: LongPlanInput; notice: string | null }
   | { type: 'revise'; bubbleId: number; plan: CoachPlan; request: string }
 
@@ -315,6 +325,13 @@ interface LongPlanForm {
 
 /** 위기 표현이 감지돼서 계획 대신 하는 말 (아래에 상담 전화 한 줄이 같이 보임) */
 const PLAN_HELP_REPLY = '계획은 잠깐 미뤄 두자. 마음이 힘들면 아래 번호로 언제든 이야기해도 돼.'
+
+/** 내일 계획이면 코치의 말을 "내일 계획" 으로 바꿉니다. (서버 · 시연용 계획의 말은 "오늘 계획을 짜 봤어" 로 정해져 있음) */
+function asTomorrowReply(result: PlanReply): PlanReply {
+  return result.plan
+    ? { ...result, reply: '내일 계획을 짜 봤어. 고칠 곳이 있으면 말해 줘!' }
+    : result
+}
 
 /** 계획 말풍선마다 pickStatus 가 돌려준 상태로 바꿉니다. (null 이면 그대로) */
 function withPlanStatus(
@@ -454,6 +471,8 @@ function CoachChat() {
   const sendCheckIn = useSendCheckIn()
   // 미션 알림을 누르고 들어오면 ?mission=morning 처럼 옵니다. 코치가 그 미션 이야기를 먼저 합니다.
   const [missionParam, setMissionParam] = useQueryParam('mission', '')
+  // 코치 알림을 누르고 들어오면 ?nudge=evening 처럼 옵니다. 코치의 첫 말이 그 알림 글입니다. (lib/coachNudges.ts)
+  const [nudgeParam, setNudgeParam] = useQueryParam('nudge', '')
 
   // 첫 말의 재료: 오늘 학교 정보(못 받으면 null) · 오늘 카드 · 오늘 체크인
   const [schoolClass] = useState(loadSchoolClass)
@@ -521,18 +540,33 @@ function CoachChat() {
       return bubble
     }
 
+    // 코치 알림으로 들어왔으면 그 알림 글이 코치의 첫 말입니다. (lib/coachNudges.ts)
+    const nudgeKind = isNudgeKind(nudgeParam) ? nudgeParam : null
+    const nudgeMessage = nudgeKind
+      ? buildNudgeCoachMessage(
+          nudgeKind,
+          loadNudgeDay(todayKey, loadStopWhip(now)),
+          buildMissionBriefing(missions, 'morning', nowCard).chips,
+        )
+      : null
+    // 아침 알림으로 오늘 처음 들어왔으면 알림 글과 오늘의 첫 말(브리핑)을 한 말풍선으로 합칩니다. (같은 아침 인사가 두 번 나오지 않게)
+    const isNudgeInBriefing = nudgeKind === 'morning' && nudgeMessage !== null
+
     const lastBubble = thread.bubbles[thread.bubbles.length - 1]
     const isFirstToday = !lastBubble || toDayKey(lastBubble.at) !== todayKey
     if (isFirstToday) {
+      const morning = buildMorningBriefing({
+        hour: new Date(now).getHours(),
+        school,
+        grade: schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
+        cards: todayCards,
+        checkIn: loadLocalCheckIn(todayKey),
+        yesterdayWrongCount: loadYesterdayWrong(todayKey).length,
+      })
       const briefing = add(
-        buildMorningBriefing({
-          hour: new Date(now).getHours(),
-          school,
-          grade: schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
-          cards: todayCards,
-          checkIn: loadLocalCheckIn(todayKey),
-          yesterdayWrongCount: loadYesterdayWrong(todayKey).length,
-        }),
+        isNudgeInBriefing
+          ? { ...morning, text: `${nudgeMessage.text}\n\n${morning.text}` }
+          : morning,
       )
       // 오늘의 서버 세션은 오늘의 첫 말부터 보냅니다. (어제 대화는 요약으로만 넘어감)
       if (thread.chatId === null)
@@ -566,12 +600,24 @@ function CoachChat() {
     }
     // 오늘 첫 말이 이미 컨디션을 묻고 있으면(미션 ①), 미션 말풍선으로 같은 걸 또 묻지 않습니다.
     const isAskingCheckIn = isFirstToday && nextMission(missions)?.kind === 'checkIn'
-    if (missionSlot && !isAskingCheckIn) {
+    if (nudgeMessage && !(isNudgeInBriefing && isFirstToday)) {
+      // 고치던 계획이 열려 있으면 닫습니다. (열려 있으면 그 계획의 칩만 보여서 알림의 칩을 누를 수 없음)
+      thread = withPlanStatus(thread, (bubble) =>
+        bubble.plan?.status === 'open' ? 'closed' : null,
+      )
+      add(nudgeMessage)
+    } else if (missionSlot && !isAskingCheckIn) {
       add(buildMissionBriefing(missions, missionSlot, nowCard))
     } else if (hasNewMissionDone && !recapSession) {
       add(buildMissionProgress(missions, nowCard))
     }
-    return { thread, staleSession, recapSessionId: recapSession?.id ?? null, missionSlot }
+    return {
+      thread,
+      staleSession,
+      recapSessionId: recapSession?.id ?? null,
+      missionSlot,
+      nudgeKind,
+    }
   })
 
   const [thread, setThread] = useState<CoachThread>(initial.thread)
@@ -599,6 +645,12 @@ function CoachChat() {
   useEffect(() => {
     if (hasMissionParam) setMissionParam('')
   }, [hasMissionParam, setMissionParam])
+
+  // 코치 알림으로 들어왔을 때도 같은 이유로 ?nudge= 를 지웁니다.
+  const hasNudgeParam = initial.nudgeKind !== null
+  useEffect(() => {
+    if (hasNudgeParam) setNudgeParam('')
+  }, [hasNudgeParam, setNudgeParam])
 
   // 코치가 알아챈 미션 진행을 적어 둡니다. 다음에 더 끝내고 돌아오면 그때 말을 겁니다.
   const doneMissionCount = countDoneMissions(missions)
@@ -669,13 +721,18 @@ function CoachChat() {
           : demo()
         return request.notice ? { ...result, reply: `${request.notice}\n${result.reply}` } : result
       }
-      // 오늘 계획: 오늘 카드가 이미 있으면 새로 짜지 않고 그 카드들을 같이 고칩니다.
-      if (editableTodayCards.length > 0) {
-        const current = planFromCards(editableTodayCards)
+      // 오늘 계획(밤 정리 알림에서 오면 내일 계획): 그날 카드가 이미 있으면 새로 짜지 않고 그 카드들을 같이 고칩니다.
+      const planDate = request.date ?? todayKey
+      const isToday = planDate === todayKey
+      const editableCards = isToday
+        ? editableTodayCards
+        : cards.filter((card) => card.date === planDate && !(card.repeatDays?.length ?? 0))
+      if (editableCards.length > 0) {
+        const current = planFromCards(editableCards)
         if (!request.light) {
           return {
             showHelp: false,
-            reply: '지금 오늘 계획이야. 고칠 곳을 말해 줘. (예: 영어는 빼 줘, 8시부터)',
+            reply: `지금 ${isToday ? '오늘' : '내일'} 계획이야. 고칠 곳을 말해 줘. (예: 영어는 빼 줘, 8시부터)`,
             plan: current,
             cleared: false,
             isDemo: false,
@@ -687,20 +744,27 @@ function CoachChat() {
           () => reviseDemoPlan(current, LIGHTER_REQUEST),
         )
       }
+      // 내일 계획은 내일 시간표 · 컨디션을 아직 몰라서 보내지 않습니다.
+      const planSubjects = isToday ? todaySubjects : []
       const demo = () =>
         makeDemoDayPlan({
-          todayKey,
-          now: Date.now(),
-          subjects: todaySubjects,
+          todayKey: planDate,
+          // 시연용 계획은 "지금" 뒤로 시각을 잡아서, 내일 계획은 내일 아침을 "지금" 으로 넘깁니다.
+          now: isToday
+            ? Date.now()
+            : (getPlannedStartAt({ date: planDate, startTime: '07:00' }) ?? Date.now()),
+          subjects: planSubjects,
           light: request.light,
         })
-      if (!isServerData) return demo()
+      if (!isServerData) return isToday ? demo() : asTomorrowReply(demo())
       // 가볍게 짜 달라면 컨디션을 2 로 보냅니다. (서버가 총량을 줄임) 아니면 오늘 체크인의 컨디션
-      const condition = request.light ? 2 : (loadLocalCheckIn(todayKey)?.condition ?? null)
-      return withDemoFallback(
-        () => requestDayPlan({ date: todayKey, focus, subjects: todaySubjects, condition }),
+      const todayCondition = isToday ? (loadLocalCheckIn(todayKey)?.condition ?? null) : null
+      const condition = request.light ? 2 : todayCondition
+      const result = await withDemoFallback(
+        () => requestDayPlan({ date: planDate, focus, subjects: planSubjects, condition }),
         demo,
       )
+      return isToday ? result : asTomorrowReply(result)
     },
     onSuccess: (result, request) => {
       setThread((current) => applyPlanReply(current, result, request))
@@ -1184,23 +1248,29 @@ function CoachChat() {
     )
   }
 
-  /** [📝 틀린 문제 다시] — 어제 틀린 문제를 다시 냅니다. (이 기기의 결과에서 꺼냄, 서버를 부르지 않음) */
-  function startYesterdayReview(label: string) {
-    const wrong = loadYesterdayWrong(todayKey).slice(0, 5)
+  /**
+   * [📝 틀린 문제 다시] — 틀린 문제를 다시 냅니다. (이 기기의 결과에서 꺼냄, 서버를 부르지 않음)
+   * daysAgo 가 없으면 어제 것, 있으면 그 날들의 것 (복습 알림: 1 · 3 · 7일 전, lib/coachNudges.ts)
+   */
+  function startReview(label: string, daysAgo?: number[]) {
+    const isYesterday = !daysAgo || (daysAgo.length === 1 && daysAgo[0] === 1)
+    const days = (daysAgo ?? [1]).filter((day) => Number.isInteger(day) && day > 0)
+    const wrong = wrongForReview(loadQuizResults(), todayKey, days).slice(0, 5)
+    const when = isYesterday ? '어제' : `${daysAgoText(days)}에`
     const withAnswer = withBubble(thread, { speaker: 'me', text: label })
     if (wrong.length === 0) {
       setThread(
         withBubble(withAnswer, {
           speaker: 'ai',
-          text: '어제 틀린 문제는 이미 다 다시 풀었어. 오늘 공부한 걸로 새로 내 볼까?',
+          text: `${when} 틀린 문제는 이미 다 다시 풀었어. 오늘 공부한 걸로 새로 내 볼까?`,
           chips: [QUIZ_CHIP],
         }),
       )
       return
     }
     setThread(
-      withNewQuiz(withAnswer, `어제 틀린 ${wrong.length}문제야. 이번엔 맞혀 보자!`, {
-        topic: '어제 틀린 문제',
+      withNewQuiz(withAnswer, `${when} 틀린 ${wrong.length}문제야. 이번엔 맞혀 보자!`, {
+        topic: `${when} 틀린 문제`,
         cardId: null,
         questions: wrong,
         isDemo: false,
@@ -1301,7 +1371,8 @@ function CoachChat() {
       return
     }
     if (chip.kind === 'dayPlan') {
-      startPlan({ type: 'day', light: chip.light === true }, chip.label)
+      const date = chip.tomorrow ? moveDateKey(todayKey, 1) : undefined
+      startPlan({ type: 'day', light: chip.light === true, date }, chip.label)
       return
     }
     if (chip.kind === 'longPlan') {
@@ -1328,7 +1399,7 @@ function CoachChat() {
       return
     }
     if (chip.kind === 'quizReview') {
-      if (!isBusy) startYesterdayReview(chip.label)
+      if (!isBusy) startReview(chip.label, chip.daysAgo)
       return
     }
     if (chip.kind === 'startCard') {
@@ -2021,6 +2092,16 @@ interface PlanCardProps {
   plan: CoachPlan
 }
 
+/** 하루 계획의 제목. 오늘이 아닌 날(밤 정리 알림의 내일 계획)이면 그날을 씁니다. */
+function dayPlanTitle(plan: CoachPlan): string {
+  const date = plan.drafts[0]?.date
+  const todayKey = getTodayKey()
+  if (!date || date === todayKey) return '📋 오늘 계획'
+  if (date === moveDateKey(todayKey, 1)) return '📋 내일 계획'
+  const [, month, day] = date.split('-').map(Number)
+  return `📋 ${month}월 ${day}일 계획`
+}
+
 /**
  * 코치 말풍선 아래의 계획 카드. 요약 한 줄 · 날짜별 카드 목록을 보여 줍니다.
  * 고친 계획이 새로 나오면 지난 계획은 흐리게 보입니다.
@@ -2030,7 +2111,7 @@ function PlanCard({ plan }: PlanCardProps) {
   const groups = groupPlanByDate(plan.drafts)
   const shownGroups = isAllShown ? groups : groups.slice(0, PLAN_SHOWN_DAYS)
   const statusLabel = PLAN_STATUS_LABELS[plan.status]
-  const title = plan.kind === 'long' && plan.spec ? `📅 ${plan.spec.goal}` : '📋 오늘 계획'
+  const title = plan.kind === 'long' && plan.spec ? `📅 ${plan.spec.goal}` : dayPlanTitle(plan)
   return (
     <div
       className={cn(
