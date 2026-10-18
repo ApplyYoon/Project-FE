@@ -30,6 +30,7 @@ import {
   type CoachChip,
   type CoachMessage,
 } from '@/lib/coachBriefing'
+import { loadFocusScore } from '@/lib/focusScore'
 import {
   dayLabel,
   hasStudentLine,
@@ -317,7 +318,11 @@ function CoachChat() {
     const lastProgress = loadMissionProgress(todayKey)
     const hasNewMissionDone = lastProgress !== null && doneMissions > lastProgress
     if (recapSession) {
-      const recap = buildSessionRecap(recapSession, loadPhoneLift(recapSession.id))
+      const recap = buildSessionRecap(
+        recapSession,
+        loadPhoneLift(recapSession.id),
+        loadFocusScore(recapSession.id),
+      )
       // 공부를 끝내서 미션이 늘었으면 같은 말풍선에 한 줄로 붙입니다. (말풍선이 너무 많아지지 않게)
       if (hasNewMissionDone && !missionSlot) {
         recap.text += `\n✅ 오늘의 미션 ${doneMissions}/${missions.length} 끝!`

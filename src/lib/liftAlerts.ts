@@ -121,6 +121,10 @@ export interface PhoneLiftSummary {
   outsideLifts: number
   /** 앱 밖에 있던 시간 합계 (밀리초) */
   outsideMs: number
+  /** 5초 넘게 든 것 하나하나: 든 시각 · 들고 있던 시간. 집중도 점수가 일시정지와 겹친 부분을 빼는 데 씁니다. (lib/focusScore.ts) */
+  liftSpans?: { at: number; ms: number }[]
+  /** 폰을 엎어 둔 시간 합계 (밀리초). 0 이면 한 번도 안 엎은 것(센서가 없거나 [그냥 시작]). 옛 앱은 없음 */
+  faceDownMs?: number
 }
 
 /** 5초보다 짧게 든 것은 책상을 치거나 폰을 민 것으로 보고 셈에서 뺍니다. (팀 회의안) */
@@ -131,27 +135,32 @@ const LONG_LIFT_MS = 30_000
 /**
  * 'focus.end' 의 답을 정리합니다. 모양이 틀리거나 답이 없었으면(앱 밖 · 옛 앱) null.
  *
- *   readPhoneSummary({ lifts: [{ at: 1, ms: 12000, inApp: true }], outsideMs: 0 })
- *     -> { liftedMs: 12000, checks: 1, longLifts: 0, outsideLifts: 0, outsideMs: 0 }
+ *   readPhoneSummary({ lifts: [{ at: 1, ms: 12000, inApp: true }], outsideMs: 0, faceDownMs: 60000 })
+ *     -> { liftedMs: 12000, checks: 1, longLifts: 0, outsideLifts: 0, outsideMs: 0,
+ *          liftSpans: [{ at: 1, ms: 12000 }], faceDownMs: 60000 }
  */
 export function readPhoneSummary(reply: unknown): PhoneLiftSummary | null {
   if (typeof reply !== 'object' || reply === null) return null
-  const { lifts, outsideMs } = reply as Record<string, unknown>
+  const { lifts, outsideMs, faceDownMs } = reply as Record<string, unknown>
   // lifts · outsideMs 가 없으면 v1.3 전의 옛 앱입니다.
   if (!Array.isArray(lifts) || typeof outsideMs !== 'number') return null
 
+  const liftSpans: { at: number; ms: number }[] = []
   const summary: PhoneLiftSummary = {
     liftedMs: 0,
     checks: 0,
     longLifts: 0,
     outsideLifts: 0,
     outsideMs: Math.max(0, outsideMs),
+    liftSpans,
   }
+  if (typeof faceDownMs === 'number') summary.faceDownMs = Math.max(0, faceDownMs)
   for (const lift of lifts) {
     if (typeof lift !== 'object' || lift === null) continue
-    const { ms, inApp } = lift as Record<string, unknown>
+    const { at, ms, inApp } = lift as Record<string, unknown>
     if (typeof ms !== 'number' || ms < IGNORE_UNDER_MS) continue
     summary.liftedMs += ms
+    if (typeof at === 'number') liftSpans.push({ at, ms })
     if (ms >= LONG_LIFT_MS) summary.longLifts += 1
     else summary.checks += 1
     if (inApp === false) summary.outsideLifts += 1
@@ -160,7 +169,7 @@ export function readPhoneSummary(reply: unknown): PhoneLiftSummary | null {
 }
 
 /** 밀리초 → '2분 10초' · '40초' */
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000)
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60

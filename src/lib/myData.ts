@@ -90,6 +90,8 @@ const RECORD_KEYS = [
   'coach-thread',
   // 공부 중 폰을 든 기록 (세션별, lib/liftAlerts.ts)
   'phone-lifts',
+  // 세션별 집중도 점수 (lib/focusScore.ts)
+  'focus-scores',
   // 내가 준비하는 것(lib/studyFocus.ts) · 내 일정(lib/myEvents.ts)
   'focus',
   'my-events',

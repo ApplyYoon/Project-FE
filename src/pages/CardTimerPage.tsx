@@ -76,6 +76,13 @@ import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
 import { showSystemNotification } from '@/lib/notifications'
 import { isInApp, onAppMessage, sendToApp } from '@/lib/appBridge'
+import {
+  formatFocusEvidence,
+  saveFocusScore,
+  scoreEndedSession,
+  type DistractionSpan,
+  type FocusScoreRecord,
+} from '@/lib/focusScore'
 import { getSessionCardId } from '@/lib/sessionRecords'
 import {
   countChecklistComplete,
@@ -136,6 +143,17 @@ export function CardTimerPage() {
       savePhoneSummary(endedRecordId, endedPhone)
     }
   }, [endedRecordId, endedPhone])
+  // 방금 끝난 세션에서 타이머 화면이 안 보이던 구간들 (웹에서만. 앱 안이면 null)
+  const [endedHidden, setEndedHidden] = useState<DistractionSpan[] | null>(null)
+  // 집중도 점수 (lib/focusScore.ts). 앱은 폰 기록이 온 뒤, 웹은 끝나자마자 계산됩니다.
+  const endedFocus = endedRecord ? scoreEndedSession(endedRecord, endedPhone, endedHidden) : null
+  // 계산되면 세션 번호로 저장합니다. (코치의 "집중도 92%" · 기록 탭 카드가 씀)
+  // 종료 팝업에서 답을 고를 때마다 기록이 바뀌어 다시 불리지만, 같은 세션 번호면 덮어써서 괜찮습니다.
+  useEffect(() => {
+    if (endedRecord === null) return
+    const focus = scoreEndedSession(endedRecord, endedPhone, endedHidden)
+    if (focus !== null) saveFocusScore(focus)
+  }, [endedRecord, endedPhone, endedHidden])
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
   // 카드를 시작하기 전에 거치는 화면 — 카운트다운이 켜져 있으면 5초 카운트다운(#399) → (앱 안이면) 폰 엎기 → 세션
   // (4단계의 다짐 듣기는 다짐 녹음과 함께 2026-10-18 에 지웠습니다)
@@ -385,8 +403,9 @@ export function CardTimerPage() {
         card={activeCard}
         now={now}
         experimentRule={experimentRuleOf(active.cardId)}
-        onFinished={(record) => {
+        onFinished={(record, hiddenSpans) => {
           setEndedPhone(null)
+          setEndedHidden(hiddenSpans)
           setEndedRecord(record)
         }}
         liftStrength={liftStrength}
@@ -659,6 +678,7 @@ export function CardTimerPage() {
           record={endedRecord}
           card={endedCard}
           phone={endedPhone}
+          focus={endedFocus}
           onSave={(changes) => {
             session.updateSession(endedRecord.id, changes)
             setEndedRecord({ ...endedRecord, ...changes })
@@ -667,6 +687,7 @@ export function CardTimerPage() {
           onClose={() => {
             setEndedRecord(null)
             setEndedPhone(null)
+            setEndedHidden(null)
           }}
           proofRequired={isStage4}
           onProofSaved={() => {
@@ -823,14 +844,31 @@ interface SessionViewProps {
   session: ReturnType<typeof useCardSession>
   card: CardModel | undefined
   now: number
-  /** 세션이 끝나 기록을 저장한 뒤 부릅니다 (종료 팝업을 띄움) */
-  onFinished: (record: StudySession) => void
+  /**
+   * 세션이 끝나 기록을 저장한 뒤 부릅니다 (종료 팝업을 띄움)
+   * hiddenSpans: 웹에서 타이머 화면이 안 보이던 구간들 (집중도 점수용). 앱 안이면 null
+   */
+  onFinished: (record: StudySession, hiddenSpans: DistractionSpan[] | null) => void
   /** 이 카드에 붙은 자기 실험 규칙 (#412) */
   experimentRule?: string
   /** 폰 들림 경고 세기 (lib/liftAlerts.ts) */
   liftStrength: LiftStrength
   /** 세션이 끝나 앱이 잰 폰 기록을 받았을 때 (앱 안에서만) */
   onPhoneSummary: (summary: PhoneLiftSummary) => void
+}
+
+/**
+ * 세션이 끝날 때 "화면이 안 보이던 구간들" 을 마무리합니다. (웹 집중도용)
+ * 화면을 떠나 있는 채로 끝났으면(hiddenSince 가 있음) 그 구간도 끝 시각까지 넣습니다.
+ */
+function closeHiddenSpans(
+  spans: DistractionSpan[],
+  hiddenSince: number | null,
+  endedAt: number,
+): DistractionSpan[] {
+  return hiddenSince === null
+    ? [...spans]
+    : [...spans, { at: hiddenSince, ms: endedAt - hiddenSince }]
 }
 
 /** 세션 화면 — 나가는 길은 [일시정지] · [끝내기] 뿐입니다 */
@@ -859,6 +897,27 @@ function SessionView({
     strength: liftStrength,
     onEnd: onPhoneSummary,
   })
+  // 웹(앱 밖)에서는 다른 탭 · 앱으로 가서 이 화면이 안 보인 구간을 적어 둡니다. 집중도 점수의 딴짓 시간입니다. (lib/focusScore.ts)
+  // 화면에 보여 줄 값이 아니라서 state 가 아니라 ref 에 둡니다. (바뀌어도 화면을 다시 그리지 않음)
+  const hiddenSpans = useRef<DistractionSpan[]>([])
+  const hiddenSince = useRef<number | null>(null)
+  useEffect(() => {
+    if (phone.isAvailable) return
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        hiddenSince.current = Date.now()
+      } else if (hiddenSince.current !== null) {
+        hiddenSpans.current.push({
+          at: hiddenSince.current,
+          ms: Date.now() - hiddenSince.current,
+        })
+        hiddenSince.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [phone.isAvailable])
+
   // 3단계: 폰을 너무 오래 들고 있으면 세션을 멈추고 '폰 확인' 으로 남깁니다. (돌아와서 [다시 시작])
   const shouldAutoPause = phone.stage === 3 && active !== null && active.pausedNow === undefined
   useEffect(() => {
@@ -875,9 +934,14 @@ function SessionView({
     if (active && remainingMs === 0) {
       playAlarm()
       const record = session.finish()
-      if (record) onFinished(record)
+      if (record) {
+        const spans = phone.isAvailable
+          ? null
+          : closeHiddenSpans(hiddenSpans.current, hiddenSince.current, record.endedAt)
+        onFinished(record, spans)
+      }
     }
-  }, [active, remainingMs, session, onFinished])
+  }, [active, remainingMs, session, onFinished, phone.isAvailable])
 
   // 일시정지가 15분을 넘으면 복귀 알림을 한 번 보냅니다. (앱을 뒤로 보내 둔 동안에도 뜨게 시스템 알림도 씁니다)
   // 휴대폰 앱 안에서는 앱이 같은 알림을 미리 예약해 두므로(lib/cardAlarms.ts 의 buildSessionAlarms) 소리만 냅니다.
@@ -1075,7 +1139,11 @@ function SessionView({
             onClick={() => {
               setIsEndOpen(false)
               const record = session.finish()
-              if (record) onFinished(record)
+              if (!record) return
+              const spans = phone.isAvailable
+                ? null
+                : closeHiddenSpans(hiddenSpans.current, hiddenSince.current, record.endedAt)
+              onFinished(record, spans)
             }}
           >
             끝내기
@@ -1169,6 +1237,8 @@ interface EndPopupProps {
   onProofSaved: () => void
   /** 앱이 잰 이번 세션의 폰 기록. 앱 밖이거나 아직 안 왔으면 null */
   phone: PhoneLiftSummary | null
+  /** 이번 세션의 집중도 (lib/focusScore.ts). 너무 짧았거나 숫자가 아직 안 왔으면 null */
+  focus: FocusScoreRecord | null
 }
 
 /**
@@ -1188,6 +1258,7 @@ function EndPopup({
   proofRequired,
   onProofSaved,
   phone,
+  focus,
 }: EndPopupProps) {
   const [step, setStep] = useState<EndStep>('checklist')
   const [settings] = useState(loadAutoSettings)
@@ -1280,11 +1351,21 @@ function EndPopup({
 
   return (
     <Modal isOpen onClose={onClose} title="수고했어요! 마무리해요">
-      {/* 앱 안에서 폰을 엎어 두고 공부했으면 폰 기록을 한 줄로 보여 줍니다. (lib/liftAlerts.ts) */}
-      {phone && (
-        <p className="mb-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm break-keep text-slate-700">
-          📱 {formatPhoneSummary(phone)}
-        </p>
+      {/* 집중도: 타이머가 잰 숫자로 계산한 점수와 근거 한 줄 (lib/focusScore.ts) */}
+      {focus ? (
+        <div className="mb-3 rounded-2xl bg-slate-100 px-4 py-3">
+          <p className="text-[28px] leading-tight font-bold tracking-tight text-slate-900">
+            집중도 <span className="text-brand tabular-nums">{focus.score}%</span>
+          </p>
+          <p className="mt-1 text-sm break-keep text-slate-700">{formatFocusEvidence(focus)}</p>
+        </div>
+      ) : (
+        // 점수가 없으면(1분이 안 됨) 앱 안에서 잰 폰 기록만 한 줄로 보여 줍니다. (lib/liftAlerts.ts)
+        phone && (
+          <p className="mb-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm break-keep text-slate-700">
+            📱 {formatPhoneSummary(phone)}
+          </p>
+        )
       )}
       {step === 'checklist' && (
         <div className="flex flex-col gap-3">

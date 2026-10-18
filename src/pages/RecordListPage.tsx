@@ -39,6 +39,7 @@ import {
   toDateKey,
 } from '@/lib/dailyRecords'
 import { getTodayKey, isDateKey, isMonthKey, toDayDate, toDayKey } from '@/lib/date'
+import { loadFocusScores, summarizeFocusWeek } from '@/lib/focusScore'
 import { useSubjects } from '@/hooks/useSubjects'
 import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
 import { loadRoutines } from '@/lib/routines'
@@ -150,6 +151,7 @@ export function RecordListPage() {
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <RunRateCard summary={recentRunRate} />
         <WeeklyBarCard sessions={sessions} />
+        <FocusWeekCard now={now} />
 
         <Card title="주간 리포트">
           <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
@@ -799,5 +801,49 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
         </ul>
       )}
     </div>
+  )
+}
+
+interface FocusWeekCardProps {
+  now: number
+}
+
+/**
+ * 최근 7일 집중도 카드 — 평균 한 줄과 시간대(오전 · 오후 · 저녁 · 밤)별 집중도. (lib/focusScore.ts)
+ * 집중도 = 공부한 시간 중 폰을 들거나 다른 탭에 가 있지 않은 비율. 묻지 않고 타이머가 잰 숫자만 씁니다.
+ */
+function FocusWeekCard({ now }: FocusWeekCardProps) {
+  const [records] = useState(loadFocusScores)
+  const summary = summarizeFocusWeek(records, now)
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-base font-semibold text-slate-900">최근 7일 집중도</h3>
+        {summary.average !== null && (
+          <p className="text-2xl font-bold text-slate-900 tabular-nums">{summary.average}%</p>
+        )}
+      </div>
+      {summary.average === null ? (
+        <p className="mt-2 text-sm break-keep text-slate-500">
+          타이머로 1분 넘게 공부하면, 폰을 들거나 다른 탭에 간 시간을 빼고 집중도를 보여 줘요.
+        </p>
+      ) : (
+        // 시간대별 집중도. 네 칸을 같은 크기로 놓습니다. grid-cols-4: 375px 에서도 한 줄
+        <ul className="mt-3 grid grid-cols-4 gap-2">
+          {summary.bands.map((band) => (
+            <li
+              key={band.key}
+              className="flex flex-col items-center gap-0.5 rounded-lg bg-slate-50 py-2 text-xs font-semibold text-slate-600"
+            >
+              <span>{band.label}</span>
+              <span className="text-sm text-slate-900 tabular-nums">
+                {band.average === null ? '–' : `${band.average}%`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }

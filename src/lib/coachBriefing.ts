@@ -17,6 +17,7 @@ import {
 } from '@/lib/dailyMission'
 import type { ChatReply } from '@/lib/chatApi'
 import { sessionMinutes } from '@/lib/dailyRecords'
+import type { FocusScoreRecord } from '@/lib/focusScore'
 import type { SchoolToday } from '@/lib/schoolToday'
 import { loadData } from '@/lib/storage'
 import {
@@ -306,17 +307,40 @@ function formatDuration(ms: number): string {
 
 /**
  * 타이머가 끝나고 코치 탭에 오면 코치가 먼저 거는 말. 숫자는 기록으로 계산한 것만 씁니다.
+ * 집중도(lib/focusScore.ts)가 있으면 맨 앞에 붙입니다.
  *
- *   buildSessionRecap(25분 기록, { checks: 1, longLifts: 1, outsideMs: 100000, … })
- *   -> '25분 했네! 폰은 2번 들었고, 그중 앱 밖에 1분 40초 있었어. 어땠어?'
+ *   buildSessionRecap(25분 기록, { checks: 1, longLifts: 1, outsideMs: 100000, … }, { score: 92, … })
+ *   -> '25분 했네! 집중도 92%, 폰은 2번 들었어, 그중 앱 밖에 1분 40초 있었어. 어땠어?'
+ *   웹(폰 기록 없음) -> '25분 했네! 집중도 88%, 다른 탭·앱에 3분 있었어. 어땠어?'
  */
 export function buildSessionRecap(
   session: StudySession,
   phone: PhoneLiftRecord | null,
+  focus: FocusScoreRecord | null = null,
 ): CoachMessage {
   const minutes = sessionMinutes(session)
   let text = `${minutes}분 했네!`
-  if (phone) {
+  // 폰을 한 번도 안 엎었으면 "폰은 한 번도 안 들었어" 가 사실이 아니라서 폰 이야기는 하지 않습니다.
+  const showPhone = phone !== null && focus?.measuredBy !== 'outside'
+  if (focus) {
+    text += ` 집중도 ${focus.score}%`
+    if (focus.measuredBy === 'hidden') {
+      // 웹: 다른 탭 · 앱에 있던 시간
+      text +=
+        focus.count === 0
+          ? ', 다른 탭·앱으로 한 번도 안 갔어.'
+          : `, 다른 탭·앱에 ${formatDuration(focus.distractedMs)} 있었어.`
+    } else if (focus.measuredBy === 'outside') {
+      text +=
+        focus.distractedMs === 0
+          ? ', 폰을 안 엎어서 앱 밖 시간으로 셌는데 밖으로는 안 나갔어.'
+          : `, 폰을 안 엎어서 앱 밖에 있던 시간(${formatDuration(focus.distractedMs)})으로 셌어.`
+    } else {
+      // 앱: 뒤에 폰 이야기가 이어집니다.
+      text += showPhone ? ',' : '.'
+    }
+  }
+  if (phone && showPhone) {
     const lifts = phone.checks + phone.longLifts
     if (lifts === 0) {
       text += ' 폰은 한 번도 안 들었어. 대단한데?'
