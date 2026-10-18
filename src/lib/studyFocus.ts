@@ -3,7 +3,7 @@
  * 사용자: "시간표 바탕으로 하고, 내가 수능 준비면 그거, 대회 준비면 그거 넣어도 되고"
  *
  * 코치가 대화에서 한 번 묻고(pages/CoachPage.tsx), 설정의 계정 묶음에서 고칠 수 있습니다.
- * 오늘의 미션(lib/dailyMission.ts)이 이 값을 보고 공부 미션을 정합니다. (AI 미션 · 규칙 미션 둘 다)
+ * 코치가 오늘 계획을 같이 짤 때(AI 하루 계획) 재료로 씁니다. 읽을 때는 loadStudyFocus · describeFocus 를 씁니다.
  * 이 기기에만 저장합니다. '모든 기록 지우기' 에 들어 있습니다. (lib/myData.ts)
  */
 import { loadData, saveData } from '@/lib/storage'

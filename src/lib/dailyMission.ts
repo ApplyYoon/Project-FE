@@ -1,234 +1,71 @@
 /**
  * 오늘의 미션 (2026-10-18 사용자 결정: "오늘의 기분은 미션 알림 + 코치가 채팅에서 묻기, 첫 화면을 막던 체크인은 없앰")
  *
- * 하루에 미션 3~4개를 만들고, 이미 있는 기록(체크인 · 공부 기록)으로 끝났는지 봅니다. 따로 입력받지 않습니다.
- *   1. 컨디션 알려 주기        — 오늘 체크인이 있으면 끝 (코치 채팅의 컨디션 칩을 누르면 저장됨)
- *   2. 폰 엎어 두고 첫 공부 시작 — 오늘 끝낸 공부 기록이 하나라도 있으면 끝
- *   3~4. 공부 미션 1~2개       — 그 이름의 카드로 공부했으면 끝
- *
- * 공부 미션은 "내가 준비하는 것"(lib/studyFocus.ts)과 오늘 시간표 · 가까운 시험으로 정합니다. (2026-10-18)
- *   - 진짜 로그인: AI 가 짠 미션(lib/aiMissionsApi.ts, 하루 한 번 받아 저장) 2개까지. 화면에 'AI 추천' 이라고 붙입니다.
- *   - 못 받았거나 테스트 로그인: 아래 규칙 미션 1개 (ruleStudyMission)
- *       내신(또는 아직 모름) → 오늘 배운 ○○ 10분 복습 (시험 D-14 안이면 시험 범위 ○○ 25분)
- *       수능 → 수능 기출 ○○ 3문제 (15분)
- *       대회 · 기타 → {이름} 준비 25분
+ * 하루에 미션 3개를 만들고, 이미 있는 기록(체크인 · 카드 · 공부 기록)으로 끝났는지 봅니다. 따로 입력받지 않습니다.
+ *   1. 컨디션 알려 주기          — 오늘 체크인이 있으면 끝 (코치 채팅의 컨디션 칩을 누르면 저장됨)
+ *   2. 코치와 오늘 계획 정하기    — 오늘 카드가 1장 이상 있으면 끝 (계획을 저장하면 카드가 생김)
+ *   3. 첫 카드 폰 엎어 두고 시작  — 오늘 끝낸 공부 기록이 하나라도 있으면 끝
+ * (2026-10-18 사용자: "AI 가 플래너를 한번 짜 주고 핑퐁하며 고치는 게 맞지, 일방적으로 10분 주는 건 아님"
+ *  → 공부 미션을 정해서 내려 주지 않고, 코치와 오늘 계획을 같이 정하는 것을 미션으로 둡니다)
  *
  * 앱 안이면 아침 · 하교 무렵 · 저녁에 "오늘의 미션" 휴대폰 알림을 예약합니다. (buildMissionAlarms → hooks/useAppBridge.ts)
  * 알림을 누르면 코치 화면(/?mission=morning 등)이 열리고 코치가 미션을 먼저 말합니다. (pages/CoachPage.tsx)
  * React 를 쓰지 않는 순수 함수와, 저장소를 읽는 함수(load…)로 나눠 두었습니다.
  */
-import {
-  aiMissionsInputKey,
-  loadCachedAiMissions,
-  type AiMission,
-  type AiMissionsInput,
-} from '@/lib/aiMissionsApi'
 import type { Alarm } from '@/lib/appBridge'
-import { loadSavedCards } from '@/lib/cards'
-import { loadStudySessions, sessionMinutes } from '@/lib/dailyRecords'
+import { getCardsOnDate, loadSavedCards } from '@/lib/cards'
+import { loadStudySessions } from '@/lib/dailyRecords'
 import { moveDateKey, toDayKey } from '@/lib/date'
 import { getPlannedStartAt } from '@/lib/facts'
 import { getMessageSettings } from '@/lib/messageSettings'
-import { nearestMyEvent } from '@/lib/myEvents'
 import { toQuietHours } from '@/lib/notifications'
-import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
-import { hasCheckIn, loadLocalCheckIn } from '@/lib/quickCheckIn'
+import { hasCheckIn } from '@/lib/quickCheckIn'
 import { isWithinQuietHours, type QuietHours } from '@/lib/safetyBrake'
-import { gradeNumberOf } from '@/lib/schoolEvents'
-import { loadSchoolClass, loadSchoolDay, type SchoolDay } from '@/lib/schoolToday'
+import { loadSchoolDay } from '@/lib/schoolToday'
 import { loadData, saveData } from '@/lib/storage'
-import { loadStudyFocus, type StudyFocus } from '@/lib/studyFocus'
 import { COACH_PATH } from '@/lib/tabMenu'
 import type { StudySession } from '@/types'
 
-export type MissionKind = 'checkIn' | 'firstStudy' | 'study'
+export type MissionKind = 'checkIn' | 'plan' | 'firstStudy'
 
 /** 미션 하나 */
 export interface Mission {
   kind: MissionKind
-  /** 화면 · 알림에 쓰는 이름. 예) '오늘 배운 미적분Ⅰ 10분 복습' */
+  /** 화면 · 알림에 쓰는 이름. 예) '코치와 오늘 계획 정하기' */
   title: string
   done: boolean
-  /** 공부 미션: [▷ 시작] 을 누르면 이 제목의 카드를 만들어 바로 시작합니다. 없으면 '오늘 공부 25분 채우기' 처럼 즉석 시작 */
-  cardTitle?: string
-  /** 공부 미션의 길이 (분) */
-  minutes?: number
-  /** 공부 미션이 이어지는 오늘 시간표 과목 */
-  subject?: string
-  /** AI 가 정한 미션이면 true (화면에 'AI 추천' 이라고 붙입니다) */
-  isAi?: boolean
 }
 
-/** 복습 미션의 길이 (분) */
-export const REVIEW_MINUTES = 10
-/** 시간표를 모를 때 공부 미션: 오늘 공부를 이만큼 채우기 (분) */
+/** 오늘 카드가 없을 때 [▷ 시작] 칩으로 만드는 즉석 카드의 길이 (분) */
 export const DAILY_GOAL_MINUTES = 25
-/** 수능 기출 미션의 길이 (분) */
-export const SUNEUNG_MINUTES = 15
-/** 시험 범위 · 대회 준비 미션의 길이 (분) */
-export const FOCUS_MINUTES = 25
-/** 시험이 이만큼(일) 안이면 내신 미션을 "시험 범위" 로 바꿉니다. */
-export const EXAM_MISSION_DAYS = 14
-/** AI 미션은 이만큼까지 씁니다. (체크인 · 첫 공부와 합쳐 4개) */
-const MAX_AI_MISSIONS = 2
-
-// 복습 미션으로 고르지 않는 과목 (공부라기보다 활동이라서)
-const NOT_REVIEW_SUBJECTS = ['체육', '창의적 체험활동', '자율', '동아리', '진로']
 
 export interface MissionInput {
   /** 오늘 체크인을 했는지 */
   hasCheckIn: boolean
+  /** 오늘 카드가 1장 이상 있는지 (계획을 저장하면 카드가 생김) */
+  hasTodayCard: boolean
   /** 오늘 끝낸 공부 기록 (놀기 제외) */
   todaySessions: StudySession[]
-  /** 오늘 시간표 과목 (교시 순서, 모르면 빈 목록) */
-  subjects: string[]
-  /** 카드 번호 → 카드 제목 (공부 미션을 했는지 볼 때 씀) */
-  cardTitleOf: (cardId: string) => string | undefined
-  /** 내가 준비하는 것. 아직 안 골랐으면 null (내신처럼 다룹니다) */
-  focus?: StudyFocus | null
-  /** 가장 가까운 내 학년 시험. 없으면 null */
-  exam?: { name: string; dDay: number } | null
-  /** AI 가 짠 오늘의 공부 미션. 없으면(못 받음 · 테스트 로그인) null */
-  aiMissions?: AiMission[] | null
-}
-
-/** 규칙으로 정한 공부 미션 하나 (done 은 buildDailyMissions 가 정함) */
-interface StudyMissionPlan {
-  title: string
-  cardTitle?: string
-  minutes: number
-  subject?: string
-  /** true 면 그 과목 이름이 들어간 카드로 공부해도 끝 (복습 미션) */
-  doneBySubject?: boolean
-}
-
-/** 시간표에서 복습할 과목 하나를 고릅니다. 활동 과목은 빼고 첫 과목입니다. 없으면 undefined */
-export function pickReviewSubject(subjects: string[]): string | undefined {
-  return subjects.find((subject) => !NOT_REVIEW_SUBJECTS.some((word) => subject.includes(word)))
 }
 
 /**
- * 준비하는 것 · 시간표 · 시험으로 규칙 공부 미션 하나를 정합니다. (AI 미션을 못 받았을 때)
+ * 오늘의 미션 3개를 만듭니다.
  *
- *   ruleStudyMission({ kind: 'SUNEUNG', name: null }, ['미적분Ⅰ'], null)
- *   -> { title: '수능 기출 미적분Ⅰ 3문제 (15분)', cardTitle: '수능 기출 미적분Ⅰ 3문제', minutes: 15, subject: '미적분Ⅰ' }
- *   ruleStudyMission({ kind: 'CONTEST', name: '정보올림피아드' }, [], null)
- *   -> { title: '정보올림피아드 준비 25분', cardTitle: '정보올림피아드 준비', minutes: 25 }
- *   ruleStudyMission(null, ['미적분Ⅰ'], { name: '2학기 2차 정기시험', dDay: 9 })
- *   -> { title: '시험 범위 미적분Ⅰ 25분', cardTitle: '미적분Ⅰ 시험 범위', minutes: 25, subject: '미적분Ⅰ' }
- */
-export function ruleStudyMission(
-  focus: StudyFocus | null,
-  subjects: string[],
-  exam: { name: string; dDay: number } | null,
-): StudyMissionPlan {
-  const subject = pickReviewSubject(subjects)
-  if (focus?.kind === 'SUNEUNG') {
-    return subject
-      ? {
-          title: `수능 기출 ${subject} 3문제 (${SUNEUNG_MINUTES}분)`,
-          cardTitle: `수능 기출 ${subject} 3문제`,
-          minutes: SUNEUNG_MINUTES,
-          subject,
-        }
-      : {
-          title: `수능 기출 3문제 (${SUNEUNG_MINUTES}분)`,
-          cardTitle: '수능 기출 3문제',
-          minutes: SUNEUNG_MINUTES,
-        }
-  }
-  // 대회는 이름이 없어도 '대회 준비', 기타는 이름이 있을 때만 '{이름} 준비'
-  const focusName =
-    focus?.kind === 'CONTEST' ? (focus.name ?? '대회') : focus?.kind === 'OTHER' ? focus.name : null
-  if (focusName) {
-    return {
-      title: `${focusName} 준비 ${FOCUS_MINUTES}분`,
-      cardTitle: `${focusName} 준비`,
-      minutes: FOCUS_MINUTES,
-    }
-  }
-  // 내신(또는 아직 안 고름): 시험이 2주 안이면 시험 범위, 아니면 오늘 배운 과목 복습
-  const isExamSoon = exam !== null && exam.dDay <= EXAM_MISSION_DAYS
-  if (subject && isExamSoon) {
-    return {
-      title: `시험 범위 ${subject} ${FOCUS_MINUTES}분`,
-      cardTitle: `${subject} 시험 범위`,
-      minutes: FOCUS_MINUTES,
-      subject,
-      doneBySubject: true,
-    }
-  }
-  if (subject) {
-    return {
-      title: `오늘 배운 ${subject} ${REVIEW_MINUTES}분 복습`,
-      cardTitle: `${subject} 복습`,
-      minutes: REVIEW_MINUTES,
-      subject,
-      doneBySubject: true,
-    }
-  }
-  if (isExamSoon) {
-    return { title: `시험 대비 ${FOCUS_MINUTES}분`, cardTitle: '시험 대비', minutes: FOCUS_MINUTES }
-  }
-  return { title: `오늘 공부 ${DAILY_GOAL_MINUTES}분 채우기`, minutes: DAILY_GOAL_MINUTES }
-}
-
-/**
- * 오늘의 미션 3~4개를 만듭니다.
- *
- *   buildDailyMissions({ hasCheckIn: true, todaySessions: [], subjects: ['미적분Ⅰ', '문학'], cardTitleOf })
+ *   buildDailyMissions({ hasCheckIn: true, hasTodayCard: false, todaySessions: [] })
  *   -> [ { kind: 'checkIn', title: '컨디션 알려 주기', done: true },
- *        { kind: 'firstStudy', title: '폰 엎어 두고 첫 공부 시작', done: false },
- *        { kind: 'study', title: '오늘 배운 미적분Ⅰ 10분 복습', cardTitle: '미적분Ⅰ 복습', minutes: 10, … } ]
+ *        { kind: 'plan', title: '코치와 오늘 계획 정하기', done: false },
+ *        { kind: 'firstStudy', title: '첫 카드 폰 엎어 두고 시작', done: false } ]
  */
 export function buildDailyMissions(input: MissionInput): Mission[] {
-  const missions: Mission[] = [
+  return [
     { kind: 'checkIn', title: '컨디션 알려 주기', done: input.hasCheckIn },
+    { kind: 'plan', title: '코치와 오늘 계획 정하기', done: input.hasTodayCard },
     {
       kind: 'firstStudy',
-      title: '폰 엎어 두고 첫 공부 시작',
+      title: '첫 카드 폰 엎어 두고 시작',
       done: input.todaySessions.length > 0,
     },
   ]
-  const studiedTitles = input.todaySessions.map(
-    (session) => input.cardTitleOf(session.cardId ?? '') ?? '',
-  )
-  /** 그 제목(또는 과목)이 들어간 카드로 공부했는지 */
-  const hasStudied = (text: string) => studiedTitles.some((title) => title.includes(text))
-
-  const aiMissions = (input.aiMissions ?? []).slice(0, MAX_AI_MISSIONS)
-  if (aiMissions.length > 0) {
-    for (const mission of aiMissions) {
-      missions.push({
-        kind: 'study',
-        title: mission.title,
-        cardTitle: mission.title,
-        minutes: mission.minutes,
-        subject: mission.subject ?? undefined,
-        isAi: true,
-        done: hasStudied(mission.title),
-      })
-    }
-    return missions
-  }
-
-  const plan = ruleStudyMission(input.focus ?? null, input.subjects, input.exam ?? null)
-  const totalMinutes = input.todaySessions.reduce(
-    (sum, session) => sum + sessionMinutes(session),
-    0,
-  )
-  const done = plan.cardTitle
-    ? hasStudied(plan.cardTitle) || (plan.doneBySubject === true && hasStudied(plan.subject ?? ''))
-    : totalMinutes >= plan.minutes
-  missions.push({
-    kind: 'study',
-    title: plan.title,
-    cardTitle: plan.cardTitle,
-    minutes: plan.minutes,
-    subject: plan.subject,
-    done,
-  })
-  return missions
 }
 
 /** 끝낸 미션 수 */
@@ -300,7 +137,7 @@ function makeMissionAlarm(
 ): Alarm | null {
   const at = getPlannedStartAt({ date: dateKey, startTime: time })
   if (at === null) return null
-  // 코치 주소는 상수로 씁니다. (탭 순서가 바뀌어도 알림이 코치를 열게)
+  // 코치 주소는 상수로 씁니다. (탭 순서가 바뀌어 코치가 다른 주소로 가도 알림이 코치를 열게)
   return { id: `mission-${dateKey}-${slot}`, at, title, body, url: `${COACH_PATH}?mission=${slot}` }
 }
 
@@ -339,7 +176,7 @@ export function buildMissionAlarms(input: MissionAlarmsInput): Alarm[] {
       ),
     )
   }
-  const tomorrowBody = '코치가 오늘의 미션을 골라 뒀어. 눌러서 시작하자.'
+  const tomorrowBody = '컨디션 알려 주고, 코치랑 오늘 계획 정하자. 눌러서 시작해.'
   alarms.push(
     makeMissionAlarm(tomorrowKey, 'morning', MORNING_TIME, '☀️ 오늘의 미션', tomorrowBody),
     makeMissionAlarm(
@@ -365,62 +202,12 @@ function loadTodaySessions(todayKey: string): StudySession[] {
   return loadStudySessions().filter((session) => toDayKey(session.startedAt) === todayKey)
 }
 
-/** 적어 둔 시험 중 가장 가까운 내 학년 시험 (60일 안). 없으면 null */
-function nearestSavedExam(
-  schoolDay: SchoolDay | null,
-  grade: number | null,
-): { name: string; dDay: number } | null {
-  const exam = (schoolDay?.exams ?? []).find(
-    (item) =>
-      item.dDay >= 0 &&
-      item.dDay <= 60 &&
-      (grade === null || item.grades.length === 0 || item.grades.includes(grade)),
-  )
-  return exam ? { name: exam.name, dDay: exam.dDay } : null
-}
-
-/** 적어 둔 학교 시험 중 가장 가까운 내 학년 시험 (저장소에서) */
-function loadNearestSchoolExam(todayKey: string): { name: string; dDay: number } | null {
-  const grade = loadSchoolClass()?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade)
-  return nearestSavedExam(loadSchoolDay(todayKey), grade)
-}
-
-/**
- * AI 미션을 부탁할 때 보낼 것을 저장소에서 모읍니다. (코치 화면이 서버에 묻고, 오늘의 미션도 같은 입력으로 저장된 답을 찾음)
- * 시험은 학교 시험과 내 일정(대회 등, lib/myEvents.ts) 중 더 가까운 것입니다.
- * 컨디션은 오늘 체크인이 있을 때만 넣습니다.
- */
-export function loadAiMissionsInput(todayKey: string): AiMissionsInput {
-  const schoolExam = loadNearestSchoolExam(todayKey)
-  const myEvent = nearestMyEvent(todayKey)
-  const exam =
-    schoolExam === null
-      ? myEvent
-      : myEvent === null || schoolExam.dDay <= myEvent.dDay
-        ? schoolExam
-        : myEvent
-  return {
-    focus: loadStudyFocus(),
-    subjects: loadSchoolDay(todayKey)?.subjects ?? [],
-    exam,
-    condition: loadLocalCheckIn(todayKey)?.condition ?? null,
-  }
-}
-
-/** 저장소의 체크인 · 공부 기록 · 오늘 시간표 · 준비하는 것 · 저장해 둔 AI 미션으로 오늘의 미션을 만듭니다. */
+/** 저장소의 체크인 · 오늘 카드 · 공부 기록으로 오늘의 미션을 만듭니다. */
 export function loadDailyMissions(todayKey: string): Mission[] {
-  const cards = loadSavedCards() ?? []
-  const input = loadAiMissionsInput(todayKey)
   return buildDailyMissions({
     hasCheckIn: hasCheckIn(todayKey),
+    hasTodayCard: getCardsOnDate(loadSavedCards() ?? [], todayKey).length > 0,
     todaySessions: loadTodaySessions(todayKey),
-    subjects: input.subjects,
-    cardTitleOf: (cardId) => cards.find((card) => card.id === cardId)?.title,
-    focus: input.focus,
-    // 규칙 미션의 "시험 범위" 는 학교 시험만 봅니다. (대회 날짜로 내신 미션이 바뀌지 않게)
-    exam: loadNearestSchoolExam(todayKey),
-    // 지금 입력과 같은 입력으로 받아 둔 AI 미션만 씁니다. (준비하는 것을 바꿨으면 규칙 미션 → 새로 받으면 AI 미션)
-    aiMissions: loadCachedAiMissions(todayKey, aiMissionsInputKey(input)) ?? null,
   })
 }
 

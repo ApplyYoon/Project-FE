@@ -13,7 +13,6 @@ import { loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat, type ChatReply } from '@/lib/chatApi'
 import { canSyncCheckIns, todayCheckInForCoachQuery } from '@/lib/checkInsApi'
-import { aiMissionsQuery } from '@/lib/aiMissionsApi'
 import {
   SKIP_FOCUS_NAME_LABEL,
   buildFocusDateQuestion,
@@ -48,7 +47,6 @@ import { runDailyCareStage } from '@/lib/dailyCareRun'
 import {
   countDoneMissions,
   isMissionSlot,
-  loadAiMissionsInput,
   loadDailyMissions,
   nextMission,
   type Mission,
@@ -73,7 +71,7 @@ import {
   saveStudyFocus,
 } from '@/lib/studyFocus'
 import { getTodayCardsState } from '@/lib/todayCards'
-import { useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -253,23 +251,8 @@ function CoachChat() {
   )
   // 다른 기기에서 이미 오늘 컨디션을 알려 줬으면 이 기기에 옮겨 적습니다. (그러면 코치가 다시 묻지 않음)
   useSuspenseQuery(todayCheckInForCoachQuery(todayKey, canSyncCheckIns(token)))
-  // 오늘의 미션 (체크인 · 공부 기록 · 시간표 · 준비하는 것으로 정함). 컨디션 · 준비하는 것 칩을 누르면 다시 계산합니다.
+  // 오늘의 미션 (체크인 · 오늘 카드 · 공부 기록으로 끝났는지 봄). 컨디션 칩을 누르면 다시 계산합니다.
   const [missions, setMissions] = useState<Mission[]>(() => loadDailyMissions(todayKey))
-  // AI 가 짜는 오늘의 미션: 진짜 로그인이고 오늘 컨디션을 들은 뒤에 하루 한 번 서버에 묻습니다. (lib/aiMissionsApi.ts)
-  // AI 답을 기다리느라 대화방이 멈추면 안 돼서 useSuspenseQuery 가 아니라 useQuery 로 받고, 받으면 미션을 다시 계산합니다.
-  // (받은 미션은 저장소에 남아서 loadDailyMissions · 미션 알림이 같이 씁니다. 못 받으면 규칙 미션 그대로)
-  const hasCheckedInToday = missions.some((mission) => mission.kind === 'checkIn' && mission.done)
-  const { data: aiMissions } = useQuery({
-    ...aiMissionsQuery(todayKey, loadAiMissionsInput(todayKey)),
-    enabled: isServerData && hasCheckedInToday,
-  })
-  // AI 미션이 새로 오면 미션을 다시 계산합니다. useEffect 대신 "그리는 중에 바뀐 것을 알아채는" 방법을 씁니다.
-  // (React 문서의 '이전 렌더링의 정보 저장하기' — effect 로 하면 화면을 한 번 더 그리게 돼서)
-  const [seenAiMissions, setSeenAiMissions] = useState(aiMissions)
-  if (aiMissions !== seenAiMissions) {
-    setSeenAiMissions(aiMissions)
-    setMissions(loadDailyMissions(todayKey))
-  }
   // "내가 준비하는 것" 을 묻는 중 어디까지 왔는지 (대회 · 기타일 때만 이름 → 날짜를 더 묻습니다)
   //   name: 학생이 쓴 다음 한 줄을 이름으로 저장 · date: 날짜를 고르거나 [아직 몰라] 를 기다림
   const [focusStep, setFocusStep] = useState<'name' | 'date' | null>(null)
@@ -422,22 +405,17 @@ function CoachChat() {
   }, [bubbles, talk.isPending])
 
   /**
-   * 준비하는 것을 다 정했을 때 코치의 한 줄 반응 (테스트 로그인에서 씀). 바뀐 공부 미션과, 날짜를 받았으면 D-day 를 말합니다.
-   * 진짜 로그인은 그 말을 AI 에게 보내서 AI 가 반응합니다.
+   * 준비하는 것을 다 정했을 때 코치의 한 줄 반응 (테스트 로그인에서 씀). 날짜를 받았으면 D-day 를 말하고,
+   * 오늘 계획을 아직 안 정했으면 같이 정하자고 권합니다. 진짜 로그인은 그 말을 AI 에게 보내서 AI 가 반응합니다.
    */
   function focusReactionNow(): CoachMessage | null {
     const focus = loadStudyFocus()
     if (focus === null) return null
-    const updated = loadDailyMissions(todayKey)
-    setMissions(updated)
     const myEvent = focus.name
       ? getUpcomingMyEvents(todayKey, 365).find((event) => event.name === focus.name)
       : undefined
-    return buildFocusReaction(
-      focus,
-      updated.find((mission) => mission.kind === 'study'),
-      myEvent?.dDay ?? null,
-    )
+    const needsPlan = !missions.some((mission) => mission.kind === 'plan' && mission.done)
+    return buildFocusReaction(focus, myEvent?.dDay ?? null, needsPlan)
   }
 
   /** 학생의 말을 보냅니다. 진짜 로그인은 서버 AI, 테스트 로그인은 시연용 정해진 답이 답합니다. */
@@ -450,7 +428,6 @@ function CoachChat() {
       const focus = loadStudyFocus()
       const name = focus === null || text === SKIP_FOCUS_NAME_LABEL ? null : cleanFocusName(text)
       if (focus) saveStudyFocus({ ...focus, name })
-      setMissions(loadDailyMissions(todayKey))
       if (name) {
         // 이름을 받았으면 날짜를 한 번 더 묻습니다. (코드가 묻고, 날짜를 고르면 그때 반응 · AI)
         setFocusStep('date')
@@ -527,9 +504,9 @@ function CoachChat() {
       return
     }
     if (chip.kind === 'focus') {
+      // 준비하는 것은 오늘 계획을 짤 때의 재료입니다. (lib/studyFocus.ts)
       saveStudyFocus({ kind: chip.focus, name: null })
-      setMissions(loadDailyMissions(todayKey))
-      // 대회 · 기타는 이름 한 줄(그다음 날짜)을 더 묻습니다. 내신 · 수능은 바로 미션을 바꿉니다.
+      // 대회 · 기타는 이름 한 줄(그다음 날짜)을 더 묻습니다. 내신 · 수능은 바로 반응합니다.
       if (needsFocusName(chip.focus)) {
         setFocusStep('name')
         const question = buildFocusNameQuestion(chip.focus)
@@ -572,7 +549,7 @@ function CoachChat() {
       return
     }
     if (chip.kind === 'startTitled') {
-      // 제목을 붙인 카드(예: '미적분Ⅰ 복습' 10분)를 만들어 바로 시작합니다. 제목으로 복습 미션이 끝났는지 봅니다.
+      // 제목을 붙인 카드(예: '미적분Ⅰ 복습' 10분)를 만들어 바로 시작합니다.
       const card = createInstantCardNow(todayKey, chip.minutes)
       addCard({
         ...card,
@@ -792,10 +769,7 @@ function MissionBar({ missions, onOpen }: MissionBarProps) {
         {done}/{missions.length}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-xs font-medium text-slate-500">
-          오늘의 미션
-          {next?.isAi && <span className="text-brand ml-1">· AI 추천</span>}
-        </span>
+        <span className="block text-xs font-medium text-slate-500">오늘의 미션</span>
         <span className="block truncate text-[15px] font-semibold text-slate-900">
           {next ? next.title : '오늘 미션 다 끝냈어요 👏'}
         </span>

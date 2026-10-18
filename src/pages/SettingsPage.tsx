@@ -326,7 +326,7 @@ export function SettingsPage() {
             </p>
           )}
 
-          {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 오늘의 미션이 이걸 보고 공부 미션을 정해요. */}
+          {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 코치가 오늘 계획을 짤 때 이걸 보고 맞춰요. */}
           <StudyFocusField className="mt-5" />
 
           {/* 내 정보 고치기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
@@ -1002,7 +1002,7 @@ function DemoDataSection() {
 
 /**
  * 설정 › 계정의 "내가 준비하는 것" (내신 · 수능 · 대회·자격증 · 기타 + 이름). 이 화면에서만 써서 여기에 둡니다.
- * 코치가 대화에서 묻는 것과 같은 저장소(lib/studyFocus.ts)라, 여기서 바꾸면 오늘의 미션도 같이 바뀝니다.
+ * 코치가 대화에서 묻는 것과 같은 저장소(lib/studyFocus.ts)입니다.
  */
 function StudyFocusField({ className }: { className?: string }) {
   const [focus, setFocus] = useState(loadStudyFocus)
@@ -1030,7 +1030,7 @@ function StudyFocusField({ className }: { className?: string }) {
     <div className={className}>
       <p className="text-sm font-semibold text-slate-900">내가 준비하는 것</p>
       <p className="mt-1 text-sm break-keep text-slate-500">
-        오늘의 미션이 이걸 보고 공부 미션을 정해요.
+        코치가 오늘 계획을 짤 때 이걸 보고 맞춰요.
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         {STUDY_FOCUS_OPTIONS.map((option) => (
@@ -1060,7 +1060,7 @@ function StudyFocusField({ className }: { className?: string }) {
       )}
       {isSaved && (
         <p role="status" className="mt-2 text-sm text-slate-600">
-          저장했어요. 오늘의 미션에 반영돼요.
+          저장했어요.
         </p>
       )}
     </div>

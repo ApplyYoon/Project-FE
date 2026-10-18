@@ -351,75 +351,44 @@ const MISSION_SLOT_GREETINGS: Record<MissionSlot, string> = {
 /**
  * 미션 하나를 하자고 권하는 코치의 말과 칩. 칩을 누르면 그 미션을 바로 할 수 있습니다.
  *
- *   buildMissionPrompt({ kind: 'review', subject: '미적분Ⅰ', … }, undefined)
- *   -> { text: '오늘 미적분Ⅰ 수업 있었지? 잊기 전에 10분만 복습하자.', chips: [▷ 미적분Ⅰ 복습 10분, 이따 할게] }
+ *   buildMissionPrompt({ kind: 'plan', … }, undefined)
+ *   -> { text: '오늘 할 공부를 같이 정해 보자. …', chips: [▷ 오늘 계획 정하기, 이따 할게] }
  */
 export function buildMissionPrompt(mission: Mission, nowCard: Card | undefined): CoachMessage {
   const laterChip: CoachChip = { kind: 'say', label: '이따 할게' }
   if (mission.kind === 'checkIn') {
     return { text: '오늘 컨디션은 어때? 하나만 골라 줘.', chips: CONDITION_CHIPS }
   }
-  if (mission.kind === 'firstStudy') {
-    const startChip: CoachChip = nowCard
-      ? { kind: 'startCard', label: `▷ ${shorten(nowCard.title, 10)} 시작`, cardId: nowCard.id }
-      : {
-          kind: 'startMinutes',
-          label: `▷ ${DAILY_GOAL_MINUTES}분 시작`,
-          minutes: DAILY_GOAL_MINUTES,
-        }
+  if (mission.kind === 'plan') {
     return {
-      text: '폰을 화면이 바닥을 보게 엎어 두고 시작해 보자. 폰을 들면 내가 알려 줄게 📱',
-      chips: [startChip, laterChip],
+      text: '오늘 할 공부를 같이 정해 보자. 카드로 저장하면 시간 맞춰 내가 알려 줄게.',
+      chips: [PLAN_CHIP, laterChip],
     }
   }
-  const minutes = mission.minutes ?? DAILY_GOAL_MINUTES
-  // 복습 미션은 수업과 이어서 말합니다. 나머지(시험 범위 · 수능 기출 · 대회 준비 · AI 미션)는 미션 이름으로 권합니다.
-  const isReview = mission.subject !== undefined && mission.cardTitle?.endsWith('복습') === true
-  const text = isReview
-    ? `오늘 ${mission.subject} 수업 있었지? 잊기 전에 ${minutes}분만 복습하자.`
-    : mission.cardTitle
-      ? `${mission.isAi ? 'AI 가 고른 ' : ''}다음 미션은 '${mission.title}'이야. ${minutes}분만 해 보자.`
-      : `오늘 공부 ${minutes}분 채우기가 남았어. 지금 시작해 볼까?`
-  return { text, chips: [studyStartChip(mission), laterChip] }
-}
-
-/** 공부 미션을 바로 시작하는 칩. 이름이 있으면 그 제목의 카드를, 없으면 그 길이의 즉석 카드를 만듭니다. */
-function studyStartChip(mission: Mission): CoachChip {
-  const minutes = mission.minutes ?? DAILY_GOAL_MINUTES
-  if (mission.cardTitle) {
-    return {
-      kind: 'startTitled',
-      label: `▷ ${shorten(mission.cardTitle, 10)} ${minutes}분`,
-      title: mission.cardTitle,
-      minutes,
-    }
+  const startChip: CoachChip = nowCard
+    ? { kind: 'startCard', label: `▷ ${shorten(nowCard.title, 10)} 시작`, cardId: nowCard.id }
+    : {
+        kind: 'startMinutes',
+        label: `▷ ${DAILY_GOAL_MINUTES}분 시작`,
+        minutes: DAILY_GOAL_MINUTES,
+      }
+  return {
+    text: '폰을 화면이 바닥을 보게 엎어 두고 시작해 보자. 폰을 들면 내가 알려 줄게 📱',
+    chips: [startChip, laterChip],
   }
-  return { kind: 'startMinutes', label: `▷ ${minutes}분 시작`, minutes }
 }
 
-/** '① ✅ 컨디션 알려 주기' 처럼 미션 목록을 줄로 만듭니다. AI 가 고른 미션에는 (AI 추천) 을 붙입니다. */
+/** "코치와 오늘 계획 정하기" 미션의 칩. 지금은 카드 만들기 화면으로 갑니다. */
+const PLAN_CHIP: CoachChip = { kind: 'newCard', label: '▷ 오늘 계획 정하기' }
+
+/** '① ✅ 컨디션 알려 주기' 처럼 미션 목록을 줄로 만듭니다. */
 function missionListText(missions: Mission[]): string {
-  const numbers = ['①', '②', '③', '④']
+  const numbers = ['①', '②', '③']
   return missions
     .map(
-      (mission, index) =>
-        `${numbers[index] ?? '·'} ${mission.done ? '✅' : '⬜'} ${mission.title}${mission.isAi ? ' (AI 추천)' : ''}`,
+      (mission, index) => `${numbers[index] ?? '·'} ${mission.done ? '✅' : '⬜'} ${mission.title}`,
     )
     .join('\n')
-}
-
-/**
- * 미션 목록을 보여 줄 때 붙이는 칩: 다음 미션의 칩 + 아직 안 한 다른 공부 미션마다 [▷ 시작].
- * 그래서 미션 줄을 누르면 남은 공부 미션을 바로 골라 시작할 수 있습니다.
- */
-function missionChips(missions: Mission[], next: Mission, nowCard: Card | undefined): CoachChip[] {
-  const prompt = buildMissionPrompt(next, nowCard)
-  const others = missions
-    .filter((mission) => mission !== next && mission.kind === 'study' && !mission.done)
-    .map(studyStartChip)
-  const later = prompt.chips.filter((chip) => chip.kind === 'say' && chip.label === '이따 할게')
-  const main = prompt.chips.filter((chip) => !later.includes(chip))
-  return [...main, ...others, ...later]
 }
 
 /**
@@ -441,13 +410,13 @@ export function buildMissionBriefing(
     }
   }
   const prompt = buildMissionPrompt(next, nowCard)
-  return { text: `${head}\n${list}\n${prompt.text}`, chips: missionChips(missions, next, nowCard) }
+  return { text: `${head}\n${list}\n${prompt.text}`, chips: prompt.chips }
 }
 
 /**
  * 미션을 끝내고 코치 화면에 돌아왔을 때 코치가 먼저 거는 한 줄. (몇 개 끝냈는지 + 다음 미션)
  *
- *   -> '✅ 오늘의 미션 2/3 끝! 남은 건 '오늘 배운 미적분Ⅰ 10분 복습' 하나야.'
+ *   -> '✅ 오늘의 미션 2/3 끝! 남은 건 '첫 카드 폰 엎어 두고 시작'. …'
  */
 export function buildMissionProgress(missions: Mission[], nowCard: Card | undefined): CoachMessage {
   const done = countDoneMissions(missions)
@@ -525,7 +494,7 @@ export const SKIP_FOCUS_NAME_LABEL = '이름은 나중에'
  */
 export function buildFocusQuestion(): CoachMessage {
   return {
-    text: '알려 줘서 고마워! 하나만 더 — 요즘 뭐 준비하고 있어? 고르면 오늘의 미션을 거기에 맞춰 줄게.',
+    text: '알려 줘서 고마워! 하나만 더 — 요즘 뭐 준비하고 있어? 고르면 오늘 계획을 거기에 맞춰 짜 줄게.',
     chips: FOCUS_CHIPS,
   }
 }
@@ -534,7 +503,7 @@ export function buildFocusQuestion(): CoachMessage {
 export function buildFocusNameQuestion(kind: StudyFocusKind): CoachMessage {
   const example = kind === 'CONTEST' ? '정보올림피아드, 컴활 1급' : '코딩 공부, 토익'
   return {
-    text: `좋아! 이름을 적어 주면 미션을 더 맞춰 줄게. (예: ${example})`,
+    text: `좋아! 이름을 적어 주면 계획을 더 맞춰 줄게. (예: ${example})`,
     chips: [{ kind: 'say', label: SKIP_FOCUS_NAME_LABEL }],
   }
 }
@@ -553,16 +522,16 @@ export function buildFocusDateQuestion(name: string): CoachMessage {
 }
 
 /**
- * 준비하는 것을 정한 뒤 코치의 한 줄 반응 (테스트 로그인 · 서버 없이). 바뀐 공부 미션을 바로 권합니다.
- * 날짜를 받았으면 D-day 도 같이 말합니다.
+ * 준비하는 것을 정한 뒤 코치의 한 줄 반응 (테스트 로그인 · 서버 없이). 날짜를 받았으면 D-day 도 말합니다.
+ * 오늘 계획을 아직 안 정했으면 같이 정하자고 권합니다. (오늘의 미션 ②)
  *
- *   buildFocusReaction({ kind: 'SUNEUNG', name: null }, 미션, null)
- *   -> { text: "수능 준비 중이구나! 오늘의 미션에 '수능 기출 미적분Ⅰ 3문제 (15분)'를 넣어 뒀어. …", chips: [▷ 시작, 이따 할게] }
+ *   buildFocusReaction({ kind: 'SUNEUNG', name: null }, null, true)
+ *   -> { text: '수능 준비 중이구나! 오늘 계획 짤 때 거기에 맞춰 볼게. 같이 정해 볼까?', chips: [▷ 오늘 계획 정하기, 이따 할게] }
  */
 export function buildFocusReaction(
   focus: StudyFocus,
-  studyMission: Mission | undefined,
-  dDay: number | null = null,
+  dDay: number | null,
+  needsPlan: boolean,
 ): CoachMessage {
   // 이름이 있으면 이름으로("정보올림피아드 준비 중이구나!"), 없으면 종류로("수능 준비 중이구나!") 말합니다.
   const head = `${focus.name ?? describeFocus(focus)} 준비 중이구나!`
@@ -570,11 +539,11 @@ export function buildFocusReaction(
     dDay === null
       ? ''
       : ` ${dDay === 0 ? '바로 오늘이네!' : `D-${dDay}, 오늘 탭 일정에 넣어 뒀어.`}`
-  if (!studyMission) {
-    return { text: `${head}${dateLine} 오늘의 미션을 거기에 맞춰 둘게.`, chips: [] }
+  if (!needsPlan) {
+    return { text: `${head}${dateLine} 계획 짤 때 거기에 맞춰 볼게.`, chips: [] }
   }
   return {
-    text: `${head}${dateLine} 오늘의 미션에 '${studyMission.title}'을 넣어 뒀어. 지금 시작해 볼까?`,
-    chips: [studyStartChip(studyMission), { kind: 'say', label: '이따 할게' }],
+    text: `${head}${dateLine} 오늘 계획 짤 때 거기에 맞춰 볼게. 같이 정해 볼까?`,
+    chips: [PLAN_CHIP, { kind: 'say', label: '이따 할게' }],
   }
 }

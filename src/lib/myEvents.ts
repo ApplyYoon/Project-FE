@@ -3,7 +3,8 @@
  * 사용자: "채팅으로 자연스레 '나 이거 준비하고 있어' 하면 달력에도 일정이 뜨게"
  *
  * 코치가 준비하는 것(대회 · 기타)의 이름을 들은 뒤 날짜를 물어서 여기에 저장합니다. (pages/CoachPage.tsx)
- * 오늘 탭의 "다가오는 일정" 에 학교 일정과 같이 D-day 로 보이고, AI 미션을 부탁할 때 가까운 시험 대신 쓰입니다.
+ * 오늘 탭의 "다가오는 일정" 에 학교 일정과 같이 D-day 로 보이고, 코치가 오늘 계획을 짤 때 재료로 씁니다.
+ * 읽을 때는 loadMyEvents(전부) · getUpcomingMyEvents(며칠 안, D-day 포함) · nearestMyEvent(가장 가까운 것)를 씁니다.
  * 이 기기에만 저장합니다. '모든 기록 지우기' 에 들어 있습니다. (lib/myData.ts)
  */
 import { loadData, saveData } from '@/lib/storage'
