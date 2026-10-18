@@ -171,7 +171,7 @@ export const mockEvaluations: Evaluation[] = [
 export const mockInsights: Insight[] = [
   {
     id: 'insight-1',
-    sentence: '스스로 밤형이라고 했지만, 오전 세션은 일시정지가 밤의 절반이야.',
+    sentence: '스스로 저녁형이라고 했지만, 오전 세션은 일시정지가 저녁의 절반이야.',
     // 비교하는 두 조건(오전/밤) 중 하나가 아직 5일 미만이라 "가설" 배지가 붙습니다.
     evidenceDates: [dateDaysAgo(1), dateDaysAgo(2), dateDaysAgo(3), dateDaysAgo(4)],
     isHypothesis: true,
@@ -275,7 +275,8 @@ export const mockManualItems: ManualItem[] = [
     category: 'rhythm',
     title: '오전 집중형',
     confirmedDate: '2026-10-02',
-    evidence: '오전 세션은 일시정지가 밤의 절반이야. 기록 18일 (온보딩 때는 "밤형" 이라고 했어)',
+    evidence:
+      '오전 세션은 일시정지가 저녁의 절반이야. 기록 18일 (온보딩 때는 "저녁형" 이라고 했어)',
   },
   {
     id: 'manual-2',
