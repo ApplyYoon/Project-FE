@@ -24,8 +24,6 @@ import type { Card, StudyPlan } from '@/types'
 export const ALARM_DAYS = 7
 /** 앱이 한 번에 예약하는 최대 개수 (BRIDGE.md 의 alarms.set) */
 export const MAX_ALARMS = 48
-/** 예정 시각 몇 분 뒤에 "아직 시작 안 했어요" 를 보낼지 */
-export const LATE_NOTICE_MINUTES = 3
 
 const MINUTE_MS = 60 * 1000
 
@@ -57,10 +55,10 @@ export interface CardAlarmsInput {
 /**
  * 카드 → 예약 알림 목록. React 도 저장소도 쓰지 않는 순수 함수라서, now 만 바꿔 넣어 확인할 수 있습니다.
  *
- * ■ 카드 하루치마다 알림 3개
+ * ■ 카드 하루치마다 알림 2개
  *  1. 시작: 시작 시각 (카드 알림을 "몇 분 전" 으로 정했으면 그만큼 앞). 카드에 쓴 문장 그대로 [시작]
- *  2. 늦음: 시작 3분 뒤. "6시 03분이야. 10분 기다리지 말고 지금 시작해요" [시작]
- *  3. 끝:   카드가 끝나는 시각. 유연 카드 [미루기][실패로 기록], 절대 카드 [실패로 기록]
+ *  2. 끝:   카드가 끝나는 시각. 유연 카드 [미루기][실패로 기록], 절대 카드 [실패로 기록]
+ *  (예전의 "시작 3분 뒤 늦음" 알림은 뺐습니다. 2026-10-18 #578 — 알림이 너무 많아서. 코치 알림은 lib/coachNudges.ts)
  * ■ 빼는 것: 시작 시각이 없는 카드, 이미 시작한 카드 하루치, 이미 지난 시각, 연락 금지 시간
  * ■ 날짜는 새벽 4시 기준입니다. '10-17' 카드의 '01:00' 은 달력으로 10-18 새벽 1시입니다. (lib/facts.ts 의 getPlannedStartAt)
  * ■ 가까운 순서로 정렬해서 48개까지만 돌려줍니다.
@@ -69,7 +67,6 @@ export interface CardAlarmsInput {
  *     카드 c1 = { title: '수학', date: '2026-10-17', startTime: '18:00', durationMinutes: 50, priority: 'flexible' }
  *   buildCardAlarms({ cards: [c1], startedCardDays: new Set(), quietHours, now })
  *     -> [ { id: 'card-c1-2026-10-17-start', at: 18:00, body: '지금 시작할 시간이에요', category: 'card-start' },
- *          { id: 'card-c1-2026-10-17-late',  at: 18:03, body: '6시 03분이야. 10분 기다리지 말고 지금 시작해요' },
  *          { id: 'card-c1-2026-10-17-end',   at: 18:50, category: 'card-missed', actionUrls: { postpone, fail } } ]
  *   startedCardDays 에 'c1 2026-10-17' 이 있으면 -> []  (이미 시작함)
  */
@@ -99,12 +96,11 @@ export function buildCardAlarms({
     .slice(0, MAX_ALARMS)
 }
 
-/** 카드 하루치의 알림 3개 (buildCardAlarms 의 설명) */
+/** 카드 하루치의 알림 2개 (buildCardAlarms 의 설명) */
 function makeCardDayAlarms(card: Card, dateKey: string, startAt: number): Alarm[] {
   const urls = getCardAlarmUrls(card.id)
   const idPrefix = `card-${card.id}-${dateKey}`
   const minutesBefore = card.alert?.minutesBefore ?? 0
-  const lateAt = startAt + LATE_NOTICE_MINUTES * MINUTE_MS
   const isAbsolute = card.priority === 'absolute'
   const defaultStartText =
     minutesBefore > 0 ? `${minutesBefore}분 뒤에 시작해요` : '지금 시작할 시간이에요'
@@ -115,15 +111,6 @@ function makeCardDayAlarms(card: Card, dateKey: string, startAt: number): Alarm[
       at: startAt - minutesBefore * MINUTE_MS,
       title: card.title,
       body: card.alert?.text?.trim() || defaultStartText,
-      url: urls.start,
-      category: 'card-start',
-      actionUrls: { start: urls.start },
-    },
-    {
-      id: `${idPrefix}-late`,
-      at: lateAt,
-      title: card.title,
-      body: `${formatClock(lateAt)}이야. 10분 기다리지 말고 지금 시작해요`,
       url: urls.start,
       category: 'card-start',
       actionUrls: { start: urls.start },
@@ -141,13 +128,6 @@ function makeCardDayAlarms(card: Card, dateKey: string, startAt: number): Alarm[
       actionUrls: isAbsolute ? { fail: urls.fail } : { postpone: urls.postpone, fail: urls.fail },
     },
   ]
-}
-
-/** 시각을 "6시 03분" 처럼 12시간제로 바꿉니다. (18:03 -> '6시 03분', 00:05 -> '12시 05분') */
-function formatClock(time: number): string {
-  const date = new Date(time)
-  const hour = date.getHours() % 12 === 0 ? 12 : date.getHours() % 12
-  return `${hour}시 ${String(date.getMinutes()).padStart(2, '0')}분`
 }
 
 /** 진행 중 세션 알림을 누르면 갈 주소 (타이머 세션 화면) */
@@ -233,7 +213,7 @@ export function loadCardAlarms(now: number): Alarm[] {
 }
 
 /**
- * 이미 시작한 카드 하루치를 모읍니다. 그날은 시작 · 늦음 · 끝 알림을 보내지 않습니다.
+ * 이미 시작한 카드 하루치를 모읍니다. 그날은 시작 · 끝 알림을 보내지 않습니다.
  * - 끝낸 기록: 카드 id(cardId)로, 옛 기록은 계획 id(planId)로 찾습니다. 루틴이 만든 계획이면 루틴 id 가 카드 id 입니다.
  * - 지금 재는 중: 카드 타이머(#395)가 저장해 둔 진행 중 세션('card-session')의 카드 id · 날짜.
  *   (예전에는 옛 타이머 키만 봐서, 카드로 공부하는 중에도 "지금 시작해요" · "카드 시간이 끝났어요" 가 울렸습니다)
