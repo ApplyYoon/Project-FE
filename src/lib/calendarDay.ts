@@ -13,7 +13,7 @@ import { moveDateKey, toDayKey } from '@/lib/date'
 import { getPlannedStartAt } from '@/lib/facts'
 import { missReasonOptions } from '@/lib/missReasons'
 import { getSessionCardId } from '@/lib/sessionRecords'
-import { SHORTFALL_REASONS } from '@/lib/sessionTags'
+import { SHORTFALL_REASONS, getShortfallReasons } from '@/lib/sessionTags'
 import type { Card, MissReason, StudySession } from '@/types'
 
 /**
@@ -196,10 +196,14 @@ function getReasons(day: CardDay, status: DayStatus, markReason?: MissReason): s
         missReasonOptions.find((option) => option.key === session.stopReason)?.label ?? '기타'
       reasons.push(`그만둔 이유: ${label}`)
     }
-    const shortfall = session.endReport?.shortfallReason
-    if (shortfall) {
-      const label = SHORTFALL_REASONS.find((option) => option.key === shortfall)?.label ?? '기타'
-      reasons.push(`다 못 한 이유: ${label}`)
+    // 다 못 한 이유를 여러 개 골랐으면 한 줄에 같이 씁니다. 예) '다 못 한 이유: 막힘 · 피곤함'
+    const shortfalls = getShortfallReasons(session.endReport)
+    if (shortfalls.length > 0) {
+      const labels = shortfalls.map(
+        (shortfall) =>
+          SHORTFALL_REASONS.find((option) => option.key === shortfall)?.label ?? '기타',
+      )
+      reasons.push(`다 못 한 이유: ${labels.join(' · ')}`)
     }
   }
   return [...new Set(reasons)]
