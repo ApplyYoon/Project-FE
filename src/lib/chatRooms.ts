@@ -34,7 +34,7 @@ export interface ChatRoomInfo {
   emoji: string
   /** 목록 · 머리에 보이는 역할 한 줄 */
   role: string
-  /** 입력칸에 미리 보이는 글 */
+  /** 입력칸에 미리 보이는 글 (375px 한 줄에 들어가게 짧게) */
   placeholder: string
   /**
    * true 면 "매일 코치" 방입니다: 아침 브리핑 · 오늘의 미션 · 코치 알림 첫 말 · 공부 끝 회고 · 머리의 [📞 통화].
@@ -62,7 +62,7 @@ export const CHAT_ROOMS: ChatRoomInfo[] = [
     name: '계획',
     emoji: '📅',
     role: 'AI 가 계획을 짜 주고 같이 고쳐요',
-    placeholder: '계획 이야기하기 (예: 영어는 빼 줘)',
+    placeholder: '계획 이야기하기',
     isDailyCoach: false,
     isPlanner: true,
     greeting: {
@@ -98,7 +98,7 @@ export const CHAT_ROOMS: ChatRoomInfo[] = [
     name: '과목 쌤',
     emoji: '📚',
     role: '모르는 문제 · 개념을 단계별로 설명해',
-    placeholder: '과목 쌤에게 물어보기 (📎 사진도 돼)',
+    placeholder: '과목 쌤에게 물어보기',
     isDailyCoach: false,
     isPlanner: false,
     greeting: {

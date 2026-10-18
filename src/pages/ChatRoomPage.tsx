@@ -760,13 +760,15 @@ function RoomChat({ room }: RoomChatProps) {
   }, [initial.recapSessionId])
 
   // 미션 알림으로 들어왔으면 이야기를 꺼냈으니 주소의 ?mission= 을 지웁니다. (새로고침해도 또 말하지 않게)
-  const hasMissionParam = initial.missionSlot !== null
+  // 주소에 아직 값이 남아 있을 때만 지웁니다. (지우는 함수는 그릴 때마다 새로 만들어져서, 이렇게 안 하면
+  // 다른 방으로 옮기는 순간에도 다시 불려 지금 주소로 되돌려 버립니다)
+  const hasMissionParam = initial.missionSlot !== null && missionParam !== ''
   useEffect(() => {
     if (hasMissionParam) setMissionParam('')
   }, [hasMissionParam, setMissionParam])
 
   // 코치 알림으로 들어왔을 때도 같은 이유로 ?nudge= 를 지웁니다.
-  const hasNudgeParam = initial.nudgeKind !== null
+  const hasNudgeParam = initial.nudgeKind !== null && nudgeParam !== ''
   useEffect(() => {
     if (hasNudgeParam) setNudgeParam('')
   }, [hasNudgeParam, setNudgeParam])
@@ -2804,7 +2806,7 @@ function ReasonCheckBox({ check, onConfirm, onEdit, onSave, onDismiss }: ReasonC
   if (check.status === 'saved') {
     return (
       <p className="w-full rounded-[20px] bg-emerald-50 px-3 py-2 text-sm break-keep text-emerald-800 sm:max-w-md">
-        ✅ {isReview ? '다 못 한 이유' : '못 한 원인'}를 기록했어: {labels.join(' · ')}
+        ✅ {isReview ? '다 못 한 이유를' : '못 한 원인을'} 기록했어: {labels.join(' · ')}
       </p>
     )
   }
