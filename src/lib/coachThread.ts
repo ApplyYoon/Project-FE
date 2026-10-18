@@ -107,6 +107,13 @@ function isChip(value: unknown): value is CoachChip {
     const isOptionalList = chip.checklist === undefined || Array.isArray(chip.checklist)
     return isOptionalText(chip.topic) && isOptionalText(chip.cardId) && isOptionalList
   }
+  if (chip.kind === 'quizReview') {
+    // 며칠 전 문제인지는 없어도 됩니다. (없으면 어제 것)
+    return (
+      chip.daysAgo === undefined ||
+      (Array.isArray(chip.daysAgo) && chip.daysAgo.every((days) => typeof days === 'number'))
+    )
+  }
   return true
 }
 
