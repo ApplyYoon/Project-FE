@@ -2,7 +2,9 @@ import { isInApp, onAppMessage, requestFromApp, sendToApp } from '@/lib/appBridg
 import {
   getLiftNudges,
   getLiftStage,
+  readDndState,
   readPhoneSummary,
+  shouldTurnOnDnd,
   type LiftStage,
   type LiftStrength,
   type PhoneLiftSummary,
@@ -43,6 +45,8 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
   const [liftedAt, setLiftedAt] = useState<number | null>(null)
   // "잠깐만" 을 누른 들림의 시각. 같은 들림에는 다시 경고하지 않습니다.
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
+  // 방해 금지 상태 (앱의 'focus.start' 답). 권한이 없으면 'noPermission' 이라 화면에서 권한 열기를 안내합니다.
+  const [dndState, setDndState] = useState<ReturnType<typeof readDndState>>(null)
   // onEnd 는 화면을 다시 그릴 때마다 새로 만들어질 수 있어서, 가장 최근 것을 담아 둡니다.
   // (그래야 세션을 시작 · 끝내는 아래 useEffect 가 onEnd 때문에 다시 돌지 않습니다)
   const onEndRef = useRef(onEnd)
@@ -54,7 +58,12 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
   useEffect(() => {
     if (!isActive || !inApp) return
     // 폰을 든 채 앱을 나가면 띄울 알림 문구도 같이 보냅니다. 누르면 타이머로 돌아옵니다.
-    void requestFromApp('focus.start', { nudges: getLiftNudges(strength), url: '/timer' })
+    // 관리 강도가 '강' 이면 휴대폰 방해 금지도 켭니다(안드로이드). 끝나면 앱이 원래대로 되돌립니다.
+    void requestFromApp('focus.start', {
+      nudges: getLiftNudges(strength),
+      url: '/timer',
+      dnd: shouldTurnOnDnd(strength),
+    }).then((reply) => setDndState(readDndState(reply)))
     const stopListening = onAppMessage((message) => {
       if (message.type === 'focus.lifted') setLiftedAt(message.payload.at)
       if (message.type === 'focus.down') setLiftedAt(null)
@@ -62,6 +71,7 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
     return () => {
       stopListening()
       setLiftedAt(null)
+      setDndState(null)
       // 세션이 끝났거나 화면을 떠났습니다. 앱의 세션을 닫고, 답으로 온 숫자를 넘깁니다.
       void requestFromApp('focus.end', {}, END_TIMEOUT_MS).then((reply) => {
         const summary = readPhoneSummary(reply)
@@ -91,6 +101,10 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
     /** 앱 안이라 폰 센서를 쓸 수 있는지 */
     isAvailable: inApp,
     stage,
+    /** 방해 금지 상태. 'noPermission' 이면 권한 열기를 안내합니다. 앱 밖이면 null */
+    dndState,
+    /** 안드로이드 "방해 금지 접근" 설정 화면을 엽니다. 허락하고 돌아오면 다음 세션부터 켜집니다. */
+    openDndSettings: () => sendToApp('focus.openSettings', {}),
     /** 들고 있은 시간 (초). 엎어 둔 상태면 0 */
     liftedSeconds: Math.floor(liftedMs / 1000),
     dismiss,
