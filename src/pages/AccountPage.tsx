@@ -1,20 +1,12 @@
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { GoogleButton } from '@/components/ui/GoogleButton'
 import { Input } from '@/components/ui/Input'
-import { Modal } from '@/components/ui/Modal'
+import { LeaveAccountSection } from '@/components/ui/LeaveAccountSection'
 import { SchoolField } from '@/components/ui/SchoolField'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
-import {
-  getAccountErrorMessage,
-  profileQuery,
-  updateProfile,
-  withdraw,
-  type Profile,
-} from '@/lib/accountApi'
-import { isGoogleConfigured } from '@/lib/googleClient'
+import { getAccountErrorMessage, profileQuery, updateProfile, type Profile } from '@/lib/accountApi'
 import type { School } from '@/lib/schoolSearch'
 import {
   NAME_MAX_LENGTH,
@@ -25,9 +17,7 @@ import {
   getNicknameError,
   updateSavedSignupProfile,
 } from '@/lib/signup'
-import { removeAllData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
-import { unsubscribeThisDevice } from '@/lib/webPush'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -62,9 +52,10 @@ export function AccountPage() {
       {isTestUser ? (
         <Card title="테스트 계정이에요">
           <p className="text-sm break-keep text-slate-600">
-            테스트 계정은 서버에 계정이 없어서 고칠 정보가 없어요. 구글로 가입하면 내 정보를 고치고
-            탈퇴할 수 있어요.
+            테스트 계정은 서버에 계정이 없어서 고칠 정보가 없어요. 처음 화면부터 다시 보고 싶으면
+            아래 [처음부터 다시 하기] 를 눌러 주세요.
           </p>
+          <LeaveAccountSection isTestUser className="mt-4" />
         </Card>
       ) : (
         <AsyncBoundary
@@ -100,7 +91,10 @@ function AccountSections() {
   return (
     <>
       <ProfileCard profile={profile} />
-      <WithdrawCard />
+      {/* 탈퇴는 설정의 계정 묶음과 같은 부품입니다. (components/ui/LeaveAccountSection.tsx) */}
+      <Card title="탈퇴">
+        <LeaveAccountSection isTestUser={false} />
+      </Card>
     </>
   )
 }
@@ -262,111 +256,6 @@ function ProfileCard({ profile }: ProfileCardProps) {
           {mutation.isPending ? '저장하는 중…' : '저장'}
         </Button>
       </form>
-    </Card>
-  )
-}
-
-/**
- * 탈퇴 카드입니다. 되돌릴 수 없는 일이라, 확인 창에서 구글로 한 번 더 확인합니다.
- * 구글 버튼을 누르면 구글이 신분증(credential)을 주고, 서버가 그것으로 가입한 그 구글 계정이 맞는지 본 뒤 지웁니다.
- */
-function WithdrawCard() {
-  const [isOpen, setIsOpen] = useState(false)
-  // 구글 창을 끝까지 마치지 않았을 때 보여줄 안내. 없으면 null
-  const [googleError, setGoogleError] = useState<string | null>(null)
-
-  const mutation = useMutation({
-    mutationFn: withdraw,
-    onSuccess: async () => {
-      // 이 기기의 푸시 구독도 지웁니다. 남겨 두면 같은 기기에서 다른 사람이 로그인했을 때, 설정에 "켜져 있어요" 가 뜨고 앞사람 알림이 옵니다.
-      // 서버의 계정은 이미 지워졌으니 브라우저의 구독만 지웁니다. (지우지 못해도 탈퇴는 계속합니다)
-      await unsubscribeThisDevice()
-      // 서버의 계정이 지워졌으니, 이 기기에 저장된 것도 전부 지웁니다. (로그인 정보 · 기록 · 설정 · 다짐 녹음)
-      removeAllData()
-      // 화면을 통째로 새로 엽니다. 그냥 주소만 옮기면, 화면이 기억하고 있던 값이 저장소에 다시 적힐 수 있기 때문입니다.
-      // replace: 뒤로 가기로 이 화면에 돌아오지 못하게 합니다.
-      window.location.replace('/login')
-    },
-  })
-
-  function handleClose() {
-    if (mutation.isPending) return
-    setIsOpen(false)
-    setGoogleError(null)
-    mutation.reset()
-  }
-
-  /** 구글이 신분증을 줬을 때. 서버에 보내서 탈퇴합니다. */
-  function handleCredential(credential: string) {
-    if (mutation.isPending) return
-    setGoogleError(null)
-    mutation.mutate(credential)
-  }
-
-  return (
-    <Card title="탈퇴">
-      <p className="text-sm break-keep text-slate-600">
-        탈퇴하면 서버의 계정과 기록, 이 기기에 저장된 기록이 모두 지워져요. 되돌릴 수 없어요.
-      </p>
-      <Button
-        variant="danger"
-        size="lg"
-        className="mt-4 w-full sm:w-auto"
-        onClick={() => setIsOpen(true)}
-      >
-        탈퇴하기
-      </Button>
-
-      <Modal isOpen={isOpen} onClose={handleClose} title="정말 탈퇴할까요?">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm break-keep text-slate-600">
-            계정과 모든 기록이 지워지고 되돌릴 수 없어요. 같은 구글 계정으로 다시 가입할 수는
-            있어요.
-          </p>
-          <p className="text-sm break-keep text-slate-600">
-            본인이 맞는지 보려고, 가입한 구글 계정으로 한 번 더 확인하면 바로 탈퇴돼요.
-          </p>
-
-          {/* 클라이언트 ID 가 없으면(lib/googleClient.ts) 구글 버튼 대신 안내를 보여줍니다. */}
-          {isGoogleConfigured ? (
-            <GoogleButton
-              onCredential={handleCredential}
-              onFail={() => setGoogleError('구글 창을 마치지 않았어요. 다시 눌러 주세요.')}
-            />
-          ) : (
-            <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm break-keep text-slate-500">
-              구글 확인이 아직 준비 중이라 탈퇴할 수 없어요.
-            </p>
-          )}
-
-          {mutation.isPending && (
-            <p role="status" className="text-sm text-slate-500">
-              탈퇴하는 중…
-            </p>
-          )}
-          {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}
-          {googleError !== null && (
-            <p role="alert" className="text-sm break-keep text-red-600">
-              {googleError}
-            </p>
-          )}
-          {mutation.isError && (
-            <p role="alert" className="text-sm break-keep text-red-600">
-              {getAccountErrorMessage(mutation.error)}
-            </p>
-          )}
-
-          <Button
-            variant="secondary"
-            size="lg"
-            className="w-full"
-            onClick={handleClose}
-            disabled={mutation.isPending}
-          >
-            취소
-          </Button>
-        </div>
-      </Modal>
     </Card>
   )
 }
