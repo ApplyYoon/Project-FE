@@ -99,8 +99,14 @@ export const DEFAULT_START_TIME = '19:00'
 /** 긴 계획의 하루 공부 시간 보기 (분). 처음 값은 60분 */
 export const DAILY_MINUTES_OPTIONS = [30, 60, 90, 120]
 export const DEFAULT_DAILY_MINUTES = 60
-/** 긴 계획의 하루 공부 시간 범위 (분). 서버도 20 ~ 300분을 받습니다. */
-const MIN_DAILY_MINUTES = 20
+/**
+ * AI 가 만드는 공부 카드 한 장의 가장 짧은 길이 (분). 서버의 StudyBlock 과 같은 값입니다.
+ * 학교 한 교시가 50분이고 집중이 붙는 데 10 ~ 15분이 걸려서, 30분 밑은 공부 블록으로 보지 않습니다. (2026-10-18 멘토 결정)
+ * 학생이 카드 폼에서 직접 정하는 길이는 자유입니다. 이 값은 코치가 짜 주는 계획에만 씁니다.
+ */
+const MIN_STUDY_MINUTES = 30
+/** 긴 계획의 하루 공부 시간 범위 (분). 서버도 30 ~ 300분을 받습니다. */
+const MIN_DAILY_MINUTES = MIN_STUDY_MINUTES
 const MAX_DAILY_MINUTES = 300
 /** 긴 계획은 오늘부터 이만큼(일) 뒤까지만 짤 수 있습니다. (서버도 같음) */
 export const MAX_LONG_PLAN_DAYS = 30
@@ -308,7 +314,10 @@ function subjectsBody(subjects: string[]): string[] {
   return subjects.slice(0, 8).map((subject) => subject.slice(0, 20))
 }
 
-/** 고칠 때 보내는 카드 모양 (서버 한도: 5 ~ 120분 · 제목 30자 · 체크리스트 5개 · 각 50자) */
+/**
+ * 고칠 때 보내는 카드 모양 (서버 한도: 5 ~ 120분 · 제목 30자 · 체크리스트 5개 · 각 50자)
+ * 서버는 AI 가 30분보다 짧게 고친 카드를 30분으로 올립니다. 학생이 원래 넣어 둔 짧은 카드는 그대로 둡니다.
+ */
 function draftBody(draft: PlanDraft) {
   return {
     date: draft.date,
@@ -583,8 +592,8 @@ function demoPlan(fields: Pick<CoachPlan, 'kind' | 'drafts' | 'spec' | 'evidence
 }
 
 /**
- * 시연용 오늘 계획. 오늘 시간표 과목으로 2 ~ 3장을 19시(지났으면 지금부터 10분 뒤)부터 놓습니다.
- * light 면 2장 · 15분씩입니다. (컨디션이 안 좋을 때)
+ * 시연용 오늘 계획. 오늘 시간표 과목으로 3장(50 · 50 · 40분)을 19시(지났으면 지금부터 10분 뒤)부터 놓습니다.
+ * light 면 1장 · 40분입니다. (컨디션이 안 좋을 때 — 한 장을 짧게 깎지 않고 장 수를 줄임)
  */
 export function makeDemoDayPlan(input: {
   todayKey: string
@@ -602,39 +611,32 @@ export function makeDemoDayPlan(input: {
         {
           date: input.todayKey,
           startTime: null,
-          durationMinutes: 15,
-          title: `${first} 오늘 배운 것 훑기`,
-          checklist: ['필기 다시 읽기'],
-        },
-        {
-          date: input.todayKey,
-          startTime: null,
-          durationMinutes: 15,
-          title: '영어 단어 20개',
-          checklist: ['소리 내어 2번 읽기'],
+          durationMinutes: 40,
+          title: `${first} 오늘 배운 것 복습`,
+          checklist: ['필기 다시 읽기', '예제 2개 풀기'],
         },
       ]
     : [
         {
           date: input.todayKey,
           startTime: null,
-          durationMinutes: 30,
+          durationMinutes: 50,
           title: `${first} 복습`,
           checklist: ['오늘 배운 부분 다시 읽기', '예제 3개 풀기'],
         },
         {
           date: input.todayKey,
           startTime: null,
-          durationMinutes: 30,
+          durationMinutes: 50,
           title: `${second} 문제 풀기`,
-          checklist: ['문제집 2쪽', '틀린 문제 표시'],
+          checklist: ['문제집 4쪽', '틀린 문제 표시'],
         },
         {
           date: input.todayKey,
           startTime: null,
-          durationMinutes: 20,
-          title: '영어 단어 30개',
-          checklist: ['외우고 가리고 쓰기'],
+          durationMinutes: 40,
+          title: '영어 단어 · 본문',
+          checklist: ['단어 30개 외우고 가리고 쓰기', '본문 1과 소리 내어 읽기'],
         },
       ]
   const placed = retimeDay(drafts, start)
@@ -779,8 +781,8 @@ export function timeOf(request: string): string | null {
 /**
  * 시연용 고치기. 낱말을 보고 아래만 알아듣습니다. (진짜 AI 는 더 자유롭게 고칩니다)
  *   '주말 빼'            -> 토 · 일을 뺌
- *   '하루 30분' · '30분' -> 하루 합을 그 분으로
- *   '줄여' · '가볍게'    -> 절반으로
+ *   '하루 90분' · '90분' -> 하루 합을 그 분으로 (한 장은 30분 밑으로 줄이지 않고, 모자라면 뒤 카드부터 뺌)
+ *   '줄여' · '가볍게'    -> 오늘 계획은 카드 수를 줄임(한 장 길이는 그대로), 긴 계획은 하루 시간을 절반으로(30분까지)
  *   '8시부터' · '20:00'  -> 매일 그 시각부터
  *   '영어는 빼'          -> 제목에 '영어' 가 든 것을 뺌
  * 긴 계획은 서버처럼 설정(spec)만 바꾸고 카드를 다시 나눕니다. 오늘 계획은 카드를 바로 고칩니다.
@@ -795,7 +797,9 @@ export function reviseDemoPlan(plan: CoachPlan, request: string): PlanReply {
     .replace(/\d{1,2}:\d{2}/g, ' ')
     .replace(/\d{1,2}\s*시\s*(반|\d{1,2}\s*분)?/g, ' ')
   const minutesMatch = /(\d{2,3})\s*분/.exec(withoutTime)
-  const targetMinutes = minutesMatch ? Math.min(120, Math.max(10, Number(minutesMatch[1]))) : null
+  const targetMinutes = minutesMatch
+    ? Math.min(MAX_DAILY_MINUTES, Math.max(MIN_STUDY_MINUTES, Number(minutesMatch[1])))
+    : null
   const isShorter = ['줄여', '가볍게', '적게'].some((word) => request.includes(word))
   const newTime = timeOf(request)
 
@@ -844,23 +848,22 @@ export function reviseDemoPlan(plan: CoachPlan, request: string): PlanReply {
         changes.push(`'${word}' 카드는 뺐어`)
       }
     }
-    if (targetMinutes !== null) {
-      // 하루 합을 그 분에 맞춥니다. (카드가 여러 장이면 같은 비율로 줄이거나 늘림)
-      const dayTotal = drafts.reduce((sum, draft) => sum + draft.durationMinutes, 0)
-      drafts = drafts.map((draft) => ({
-        ...draft,
-        durationMinutes: Math.max(
-          5,
-          Math.round((draft.durationMinutes * targetMinutes) / dayTotal / 5) * 5,
-        ),
-      }))
-      changes.push(`모두 ${targetMinutes}분으로 맞췄어`)
-    } else if (isShorter) {
-      drafts = drafts.map((draft) => ({
-        ...draft,
-        durationMinutes: Math.max(10, Math.round(draft.durationMinutes / 2 / 5) * 5),
-      }))
-      changes.push('절반으로 줄였어')
+    if (targetMinutes !== null && drafts.length > 0) {
+      drafts = fitDayTotal(drafts, targetMinutes)
+      changes.push(`모두 ${targetMinutes}분 안쪽으로 맞췄어`)
+    } else if (isShorter && drafts.length > 1) {
+      // 줄여 달라면 한 장을 짧게 깎지 않고 장 수를 줄입니다. (뒤 카드부터)
+      drafts = drafts.slice(0, Math.ceil(drafts.length / 2))
+      changes.push(`카드를 ${drafts.length}장으로 줄였어. 한 장은 그대로 두고 개수만 줄였어`)
+    } else if (isShorter && drafts.length === 1) {
+      const only = drafts[0]
+      const shorter = Math.max(MIN_STUDY_MINUTES, Math.round((only.durationMinutes * 0.6) / 5) * 5)
+      drafts = [{ ...only, durationMinutes: shorter }]
+      changes.push(
+        shorter < only.durationMinutes
+          ? `${shorter}분으로 줄였어`
+          : `이미 ${MIN_STUDY_MINUTES}분 한 장이라 더 줄이진 않을게`,
+      )
     }
     if (newTime) changes.push(`${newTime} 부터로 바꿨어`)
     // 길이나 시각이 바뀌었으면 카드 사이 10분 쉬는 시간을 다시 맞춥니다.
@@ -1016,7 +1019,8 @@ export function toCoachPlan(value: unknown): CoachPlan | null {
  * 계획 말풍선 아래의 "고쳐 줘" 칩 글자. 누르면 이 글이 그대로 고치는 요청이 됩니다. ([이대로 할게] · [시간 바꿔 줘] 는 화면이 붙임)
  *
  *   오늘 계획                       -> ['가볍게 줄여 줘']
- *   긴 계획(하루 60분)              -> ['하루 30분으로 줄여 줘', '주말은 빼 줘']
+ *   긴 계획(하루 90분)              -> ['하루 1시간으로 줄여 줘', '주말은 빼 줘']
+ *   긴 계획(하루 60분)              -> ['하루 40분으로 줄여 줘', '주말은 빼 줘']
  *   긴 계획(하루 60분, 다 안 들어감) -> ['하루 90분으로 늘려 줘', '주말은 빼 줘']
  */
 export function planReviseLabels(plan: CoachPlan): string[] {
@@ -1026,8 +1030,41 @@ export function planReviseLabels(plan: CoachPlan): string[] {
   const labels =
     plan.overflow && daily < MAX_DAILY_MINUTES
       ? [`하루 ${Math.min(MAX_DAILY_MINUTES, daily + 30)}분으로 늘려 줘`]
-      : [daily > 30 ? '하루 30분으로 줄여 줘' : '조금 줄여 줘']
+      : [reduceLabelOf(daily)]
   const hasWeekend = plan.drafts.some((draft) => [0, 6].includes(weekdayIndexOf(draft.date)))
   if (hasWeekend) labels.push('주말은 빼 줘')
   return labels
+}
+
+/**
+ * 긴 계획의 "줄여 줘" 칩 글자. 한 번에 현실적인 만큼만 줄이고, 30분 밑으로는 권하지 않습니다.
+ *   reduceLabelOf(120) -> '하루 1시간으로 줄여 줘'   reduceLabelOf(60) -> '하루 40분으로 줄여 줘'
+ *   reduceLabelOf(40)  -> '하루 30분으로 줄여 줘'    reduceLabelOf(30) -> '조금 줄여 줘'
+ */
+function reduceLabelOf(daily: number): string {
+  if (daily > 60) return '하루 1시간으로 줄여 줘'
+  if (daily > 40) return '하루 40분으로 줄여 줘'
+  if (daily > MIN_STUDY_MINUTES) return `하루 ${MIN_STUDY_MINUTES}분으로 줄여 줘`
+  return '조금 줄여 줘'
+}
+
+/**
+ * 시연용: 오늘 계획의 합을 target 분에 맞춥니다. 한 장은 30분 밑으로 줄이지 않고, 그래도 넘치면 뒤 카드부터 뺍니다.
+ *   [50, 50, 40] 을 90분에  -> [30, 30, 30]
+ *   [50, 50, 40] 을 60분에  -> [30, 30]   (세 장 × 30분 = 90분이 넘어서 한 장을 뺌)
+ *   [50] 을 90분에          -> [90]
+ */
+function fitDayTotal(drafts: PlanDraft[], target: number): PlanDraft[] {
+  let kept = drafts
+  while (kept.length > 1 && kept.length * MIN_STUDY_MINUTES > target) {
+    kept = kept.slice(0, -1)
+  }
+  const total = kept.reduce((sum, draft) => sum + draft.durationMinutes, 0)
+  return kept.map((draft) => ({
+    ...draft,
+    durationMinutes: Math.min(
+      120,
+      Math.max(MIN_STUDY_MINUTES, Math.round((draft.durationMinutes * target) / total / 5) * 5),
+    ),
+  }))
 }
