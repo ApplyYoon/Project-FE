@@ -20,12 +20,13 @@ import {
   type ToolCall,
 } from '@/lib/callTools'
 import { createConnectionWatcher } from '@/lib/connectionWatch'
+import { loadStudySignals } from '@/lib/studySignals'
 import type { CallTone } from '@/lib/todayCare'
 import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
-//   요청  POST /realtime/session   { careLevel, maxHarshness, card }
+//   요청  POST /realtime/session   { careLevel, maxHarshness, card, studySignals }
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 //         403 CALL_LOCKED (오늘 공부를 하나 끝내야 열리는 "확인 통화", BE #327 · lib/checkCall.ts)
@@ -143,6 +144,8 @@ async function requestCallSession(
             careLevel: tone.careLevel,
             maxHarshness: tone.maxHarshness,
             card,
+            // 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (lib/studySignals.ts, BE #334)
+            studySignals: loadStudySignals(),
             // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
           }),
           signal,
