@@ -80,12 +80,13 @@ export function Layout() {
   const isCoach = pathname === COACH_PATH
 
   return (
-    // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
+    // 모바일에서 하단 탭이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
     <div
       className={cn(
         'flex flex-col',
         isCoach ? 'h-dvh' : 'min-h-screen',
-        isLoggedIn && !isTimerLocked && 'pb-14 sm:pb-0',
+        // 하단 탭(높이 h-14 + 아이폰 홈 막대 안전 영역)이 마지막 내용을 가리지 않게 아래를 비웁니다.
+        isLoggedIn && !isTimerLocked && 'pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0',
       )}
     >
       <Header hideNav={isTimerLocked} />
