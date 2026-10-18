@@ -20,6 +20,7 @@ import { toQuietHours } from '@/lib/notifications'
 import { hasCheckIn } from '@/lib/quickCheckIn'
 import { isWithinQuietHours, type QuietHours } from '@/lib/safetyBrake'
 import { loadSchoolDay } from '@/lib/schoolToday'
+import { loadData, saveData } from '@/lib/storage'
 import type { StudySession } from '@/types'
 
 export type MissionKind = 'checkIn' | 'firstStudy' | 'review'
@@ -244,11 +245,25 @@ export function loadDailyMissions(todayKey: string): Mission[] {
   })
 }
 
+// 미션 알림을 껐는지 넣어 두는 이름 (실제 키는 'study-mission-alerts-off'). 설정의 "알림" 에서 켜고 끕니다.
+const MISSION_ALERTS_OFF_KEY = 'mission-alerts-off'
+
+/** 미션 알림이 켜져 있는지 (처음에는 켜져 있습니다) */
+export function isMissionAlertsOn(): boolean {
+  return loadData<unknown>(MISSION_ALERTS_OFF_KEY, false) !== true
+}
+
+/** 미션 알림을 켜거나 끕니다. 끄면 다음 확인(10초 안)에 앱의 예약에서도 빠집니다. */
+export function setMissionAlertsOn(isOn: boolean): void {
+  saveData(MISSION_ALERTS_OFF_KEY, !isOn)
+}
+
 /**
  * 지금의 미션 알림 목록을 저장소에서 만듭니다. (hooks/useAppBridge.ts 가 카드 알림과 합쳐서 보냅니다)
- * 저장된 값이 깨져 있어도 앱이 멈추지 않게, 문제가 생기면 빈 목록입니다.
+ * 미션 알림을 껐으면 빈 목록입니다. 저장된 값이 깨져 있어도 앱이 멈추지 않게, 문제가 생기면 빈 목록입니다.
  */
 export function loadMissionAlarms(now: number): Alarm[] {
+  if (!isMissionAlertsOn()) return []
   try {
     const todayKey = toDayKey(now)
     return buildMissionAlarms({

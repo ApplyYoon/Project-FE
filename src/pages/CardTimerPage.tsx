@@ -2,7 +2,6 @@ import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { FailCardModal } from '@/components/ui/FailCardModal'
@@ -84,24 +83,11 @@ import {
   shouldAskGoodReason,
   splitInstantLine,
 } from '@/lib/endReport'
-import {
-  PLAY_MINUTE_PRESETS,
-  PLAY_WARN_MINUTES,
-  isPlayOver,
-  shouldWarnPlayEnd,
-} from '@/lib/playSession'
-import {
-  GOOD_REASONS,
-  PAUSE_TAGS,
-  PLAY_TAGS,
-  SHORTFALL_REASONS,
-  WITH_WHAT_OPTIONS,
-} from '@/lib/sessionTags'
+import { GOOD_REASONS, PAUSE_TAGS, SHORTFALL_REASONS, WITH_WHAT_OPTIONS } from '@/lib/sessionTags'
 import { loadAutoSettings } from '@/lib/settingsMapping'
 import type {
   Card as CardModel,
   PauseTag,
-  PlayTag,
   SessionEndReport,
   ShortfallReason,
   StudySession,
@@ -419,29 +405,12 @@ export function CardTimerPage() {
     )
   }
 
-  if (session.play) {
-    const nextCard = waitingCards[0]
-    return (
-      <PlayView
-        session={session}
-        now={now}
-        nextCard={nextCard}
-        onStartNext={() => {
-          // 놀기를 끝내고(초과 휴식이 기록됨) 바로 다음 카드를 시작합니다.
-          session.finishPlay()
-          if (nextCard) beginCard(nextCard)
-          else handleStartNow(DEFAULT_INSTANT_MINUTES)
-        }}
-      />
-    )
-  }
-
   const endedCard = endedRecord ? cards.find((card) => card.id === endedRecord.cardId) : undefined
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">타이머</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">타이머</h1>
         <p className="mt-2 text-slate-600">
           카드를 누르면 바로 시작해요. 시계는 카드가 끝나는 시각까지 줄어들어요.
         </p>
@@ -579,7 +548,6 @@ export function CardTimerPage() {
         </Card>
 
         <InstantStart onStart={handleStartNow} />
-        <PlaySetup onStart={session.startPlay} />
       </div>
 
       {missTarget?.action === 'postpone' && (
@@ -670,10 +638,6 @@ export function CardTimerPage() {
           onClose={() => {
             setEndedRecord(null)
             setEndedPhone(null)
-          }}
-          onRest={() => {
-            setEndedRecord(null)
-            document.getElementById(PLAY_SETUP_ID)?.scrollIntoView({ behavior: 'smooth' })
           }}
           proofRequired={isStage4}
           onProofSaved={() => {
@@ -1153,8 +1117,6 @@ interface EndPopupProps {
   /** 즉석 카드의 제목 · 체크리스트를 정했을 때 */
   onRenameCard: (changes: Pick<CardModel, 'title' | 'checklist'>) => void
   onClose: () => void
-  /** [쉬기 → 놀기 타이머] */
-  onRest: () => void
   /** 관리 4단계라 증빙이 꼭 필요한지 — 없으면 실행으로 인정하지 않습니다 (#408) */
   proofRequired: boolean
   /** 증빙을 남겼을 때 */
@@ -1177,7 +1139,6 @@ function EndPopup({
   onSave,
   onRenameCard,
   onClose,
-  onRest,
   proofRequired,
   onProofSaved,
   phone,
@@ -1447,10 +1408,7 @@ function EndPopup({
       {step === 'next' && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-700">다음은 무엇을 할까요?</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Button variant="secondary" onClick={onRest}>
-              쉬기 → 놀기 타이머
-            </Button>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Button onClick={onClose}>다음 카드 보기</Button>
             <Button variant="ghost" onClick={onClose}>
               닫기
@@ -1459,157 +1417,6 @@ function EndPopup({
         </div>
       )}
     </Modal>
-  )
-}
-
-// 종료 팝업의 [쉬기] 가 놀기 고르기 카드로 내려가게 붙이는 이름
-const PLAY_SETUP_ID = 'play-setup'
-const DEFAULT_PLAY_MINUTES = 15
-
-interface PlaySetupProps {
-  onStart: (minutes: number, tag: PlayTag) => void
-}
-
-/** [놀기] — 놀 시간과 무엇을 할지 고르고 시작합니다 (「4.4」 놀기 타이머, #401) */
-function PlaySetup({ onStart }: PlaySetupProps) {
-  const [minutes, setMinutes] = useState(DEFAULT_PLAY_MINUTES)
-  const [tag, setTag] = useState<PlayTag>('rest')
-  return (
-    <Card title="놀기" id={PLAY_SETUP_ID} className="sm:col-span-2">
-      <p className="text-sm text-slate-600">
-        정한 시간이 끝나면 알려 주고 다음 카드로 이어 줘요. 더 쉬면 그 시간도 기록돼요.
-      </p>
-      <MinutesPicker
-        label="놀 시간"
-        presets={PLAY_MINUTE_PRESETS}
-        value={minutes}
-        onChange={setMinutes}
-        max={180}
-        className="mt-3"
-      />
-      <p className="mt-3 text-sm font-medium text-slate-800">무엇을 하며 쉬나요?</p>
-      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {PLAY_TAGS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            aria-pressed={tag === item.key}
-            onClick={() => setTag(item.key)}
-            className={cn(
-              'h-10 rounded-lg border text-sm',
-              tag === item.key
-                ? 'border-brand bg-brand/10 text-brand'
-                : 'border-slate-200 text-slate-700',
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <Button
-        size="lg"
-        variant="secondary"
-        className="mt-4 w-full"
-        onClick={() => onStart(minutes, tag)}
-      >
-        놀기 시작
-      </Button>
-    </Card>
-  )
-}
-
-interface PlayViewProps {
-  session: ReturnType<typeof useCardSession>
-  now: number
-  nextCard: CardModel | undefined
-  onStartNext: () => void
-}
-
-/**
- * 놀기 화면. 끝나기 1분 전에 한 번 알리고, 끝나면 다음 카드 시작 화면이 됩니다.
- * 끝난 뒤 [카드 시작] · [놀기 끝] 을 누를 때까지의 시간이 초과 휴식으로 보입니다.
- */
-function PlayView({ session, now, nextCard, onStartNext }: PlayViewProps) {
-  const play = session.play
-  const isOver = play !== null && isPlayOver(play, now)
-  const isWarnTime = play !== null && shouldWarnPlayEnd(play, now)
-  const needsEndAlert = isOver && !play?.endAlerted
-  useKeepScreenOn(play !== null)
-
-  // 끝나기 1분 전 알림 (한 번)
-  useEffect(() => {
-    if (!isWarnTime) return
-    playAlarm()
-    void showSystemNotification({
-      title: `놀기가 ${PLAY_WARN_MINUTES}분 남았어요`,
-      body: '이제 슬슬 다음 카드를 준비해요.',
-      tag: 'play-warn',
-      url: '/timer',
-    })
-    session.markPlayAlert('warned')
-  }, [isWarnTime, session])
-
-  // 끝났을 때 알림 (한 번)
-  useEffect(() => {
-    if (!needsEndAlert) return
-    playAlarm()
-    void showSystemNotification({
-      title: '놀기 끝!',
-      body: nextCard ? `다음 카드: ${nextCard.title}` : '이제 공부를 시작해요.',
-      tag: 'play-end',
-      url: '/timer',
-    })
-    session.markPlayAlert('endAlerted')
-  }, [needsEndAlert, nextCard, session])
-
-  if (!play) return null
-  const tagLabel = PLAY_TAGS.find((item) => item.key === play.tag)?.label ?? '쉬기'
-
-  return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-      <Card className="flex flex-col items-center gap-4 py-8 text-center">
-        <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
-          {isOver ? '놀기 끝' : `놀기 중 · ${tagLabel}`}
-        </span>
-        {isOver ? (
-          <>
-            <p className="text-lg font-semibold text-slate-900">이제 다시 시작해요</p>
-            <p className="text-5xl font-bold text-amber-600 tabular-nums">
-              +{formatRemaining(now - play.endAt)}
-            </p>
-            <p className="text-sm text-slate-600">놀기가 끝난 뒤 더 쉰 시간(초과 휴식)이에요.</p>
-            {nextCard && (
-              <p className="max-w-full truncate text-sm text-slate-700">
-                다음 카드: {nextCard.title}
-              </p>
-            )}
-            <div className="grid w-full max-w-sm grid-cols-1 gap-3 sm:grid-cols-2">
-              <Button size="lg" onClick={onStartNext}>
-                {nextCard ? '다음 카드 시작' : '지금 시작'}
-              </Button>
-              <Button size="lg" variant="secondary" onClick={() => session.finishPlay()}>
-                놀기 끝
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl">
-              {formatRemaining(play.endAt - now)}
-            </p>
-            <p className="text-sm text-slate-500">{formatClock(play.endAt)}에 끝나요</p>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="w-full max-w-sm"
-              onClick={() => session.finishPlay()}
-            >
-              그만 놀기
-            </Button>
-          </>
-        )}
-      </Card>
-    </div>
   )
 }
 

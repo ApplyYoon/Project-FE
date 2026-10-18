@@ -144,7 +144,7 @@ export function checkAppAlerts(now: Date = new Date()): void {
     dailyCount: settings.dailyCount,
     alreadySentToday: EVENT_TYPES.filter((type) => sentIds.has(makeAlertId(type, todayKey))),
     plannedStartTime: isPlanTimePassed ? (firstPlan.plan.startTime ?? null) : null,
-    // 카드 세션이나 놀기가 진행 중이면(일시정지 포함) 알림을 보내지 않습니다. (lib/timerLock.ts)
+    // 카드 세션이 진행 중이면(일시정지 포함) 알림을 보내지 않습니다. (lib/timerLock.ts)
     isTimerRunning: isTimerLocked(),
     hasStudiedToday: hasStudiedToday(sessions, now),
     // 계획에서 시작한 타이머로 공부한 시간의 합입니다. 홈의 "오늘 계획" 카드와 같은 숫자입니다.

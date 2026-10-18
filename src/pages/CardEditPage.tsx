@@ -706,7 +706,9 @@ export function CardEditPage() {
   if (cardId && !editingCard) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">카드를 찾을 수 없어요</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+          카드를 찾을 수 없어요
+        </h1>
         <p className="text-slate-600">지워졌거나 주소가 틀렸어요.</p>
         <Link to="/cards" className="text-brand inline-flex h-10 items-center font-medium">
           카드로 돌아가기
@@ -724,7 +726,7 @@ export function CardEditPage() {
         >
           ← 카드
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+        <h1 className="mt-2 text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
           {editingCard ? '카드 고치기' : '새 카드'}
         </h1>
         <p className="mt-2 text-sm break-keep text-slate-600">

@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { MyHypothesesCard } from '@/components/ui/MyHypothesesCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { SettingsLink } from '@/components/ui/SettingsLink'
+import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
@@ -30,9 +30,7 @@ import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
 import {
-  getDefaultGrade,
   loadSchoolClass,
-  MAX_CLASS_NO,
   saveSchoolClass,
   schoolTodayQuery,
   type SchoolClass,
@@ -105,7 +103,7 @@ const INSTANT_CARD_MINUTES = 50
  * 오늘 탭(/today)입니다. 예전 홈 화면(기획서 「4.2 홈」, #405)이 그대로 옮겨 왔습니다.
  * 2026-10-18 에 첫 화면("/")이 AI 코치 채팅이 되면서, 홈에 있던 것은 여기서 봅니다.
  *
- *   맨 위: 오른쪽 위 설정 아이콘 (그날 컨디션은 코치가 채팅에서 묻습니다, 2026-10-18)
+ *   맨 위: 날짜와 제목 (설정 · 알림 · 통화는 코치 화면 머리에만 둡니다. 그날 컨디션은 코치가 채팅에서 묻습니다, 2026-10-18)
  *   오늘 학교: 우리 반 시간표 · 급식(오늘 · 내일) · 다가오는 학사일정 (SchoolTodaySection)
  *   숲 → 지금/다음 카드와 [시작] · [지금 시작] → 오늘 한 줄 → 지금 관리 모드와 이유 → AI 가 바꾼 설정 알림
  *   내 가설 3일째·7일째에는 기록과 비교한 첫 확인을 띄웁니다.
@@ -200,8 +198,6 @@ export function TodayPage() {
             오늘도 같이 시작해 볼까?
           </h1>
         </div>
-        {/* 설정은 아래 탭에 없어서 오른쪽 위 아이콘으로 갑니다. (기획서 3장, #386) */}
-        <SettingsLink className="-mt-2 -mr-2" />
       </section>
 
       {/* 오늘 학교: 우리 반 시간표 · 급식 · 다가오는 학사일정 (2026-10-18, BE GET /school/today) */}
@@ -241,7 +237,7 @@ export function TodayPage() {
           ) : isFirstReportReady ? (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-slate-600">{FIRST_REPORT_DAYS}일치 기록이 다 쌓였어요!</p>
-              <Button onClick={() => navigate('/analysis?tab=report')}>첫 리포트 보기</Button>
+              <Button onClick={() => navigate('/records?tab=report')}>첫 리포트 보기</Button>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -839,12 +835,15 @@ function SchoolTodayView({
         </div>
 
         {showClassPicker ? (
-          <ClassPicker
+          <SchoolClassPicker
             initial={schoolClass}
             onSave={(next) => {
               onSaveClass(next)
               setIsEditingClass(false)
             }}
+            description="몇 학년 몇 반이야? 알려 주면 오늘 시간표를 보여 줄게."
+            saveLabel="시간표 보기"
+            className="mt-2"
           />
         ) : data.timetable === null || data.timetable.length === 0 ? (
           <p className="mt-2 text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
@@ -942,62 +941,4 @@ function SchoolTodayView({
 function formatMonthDay(dateKey: string): string {
   const [, month, day] = dateKey.split('-').map(Number)
   return `${month}월 ${day}일`
-}
-
-interface ClassPickerProps {
-  initial: SchoolClass | null
-  onSave: (next: SchoolClass) => void
-}
-
-/** 학년 · 반을 고르는 작은 칸. 고른 반은 서버에 저장하지 않고 이 기기에만 둡니다. */
-function ClassPicker({ initial, onSave }: ClassPickerProps) {
-  const [grade, setGrade] = useState(initial?.grade ?? getDefaultGrade())
-  const [classNo, setClassNo] = useState(initial?.classNo ?? 1)
-
-  return (
-    <div className="mt-2 flex flex-col gap-3">
-      <p className="text-[15px] break-keep text-slate-500">
-        몇 학년 몇 반이야? 알려 주면 오늘 시간표를 보여 줄게.
-      </p>
-      <div className="flex gap-2">
-        <label className="sr-only" htmlFor="school-grade">
-          학년
-        </label>
-        <select
-          id="school-grade"
-          value={grade}
-          onChange={(event) => setGrade(Number(event.target.value))}
-          className="h-12 min-w-0 flex-1 rounded-2xl bg-slate-100 px-3 text-base text-slate-900"
-        >
-          {[1, 2, 3].map((value) => (
-            <option key={value} value={value}>
-              {value}학년
-            </option>
-          ))}
-        </select>
-        <label className="sr-only" htmlFor="school-class-no">
-          반
-        </label>
-        <select
-          id="school-class-no"
-          value={classNo}
-          onChange={(event) => setClassNo(Number(event.target.value))}
-          className="h-12 min-w-0 flex-1 rounded-2xl bg-slate-100 px-3 text-base text-slate-900"
-        >
-          {Array.from({ length: MAX_CLASS_NO }, (_, index) => index + 1).map((value) => (
-            <option key={value} value={value}>
-              {value}반
-            </option>
-          ))}
-        </select>
-      </div>
-      <button
-        type="button"
-        onClick={() => onSave({ grade, classNo })}
-        className="bg-brand hover:bg-brand-dark h-14 w-full cursor-pointer rounded-2xl text-[17px] font-semibold text-white transition-transform active:scale-[0.98]"
-      >
-        시간표 보기
-      </button>
-    </div>
-  )
 }

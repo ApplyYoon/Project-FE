@@ -67,11 +67,11 @@ export function Layout() {
   const focusAutoUnlock = useFocusModeAutoUnlock(focusMode.isOn)
   // 집중 모드 중에 타이머가 아닌 주소로 가려고 하면(뒤로 가기·주소 직접 입력 등) 해제 화면을 먼저 보여줍니다.
   const isBlockedByFocusMode = focusMode.isOn && pathname !== '/timer'
-  // 탭 아래에 묶인 화면(시험·일기 등)이면 맨 위에 "‹ 분석" · "‹ 상담" 돌아가기 링크를 둡니다. 아니면 null (lib/tabMenu.ts)
+  // 탭 아래에 묶인 화면(시험·일기 등)이면 맨 위에 "‹ 기록" 같은 돌아가기 링크를 둡니다. 아니면 null (lib/tabMenu.ts)
   const backToTab = getBackToTabLink(pathname)
   // 과목이 필요한 화면인지. 그렇다면 열기 전에 서버에서 과목을 받아 둡니다. (진짜 로그인일 때만)
   const needsSubjects = needsSubjectsPath(pathname)
-  // 타이머 잠금(#396): 공부 세션 · 놀기 중이면 탭을 숨기고, 다른 주소로 가도 타이머로 돌려보냅니다.
+  // 타이머 잠금(#396): 공부 세션 중이면 탭을 숨기고, 다른 주소로 가도 타이머로 돌려보냅니다.
   // (뒤로 가기 · 주소 직접 입력 · 알림 눌러 들어오기 모두 여기서 막힙니다)
   const isTimerLocked = useTimerLock()
   const isOutsideTimer = isTimerLocked && pathname !== TIMER_PATH
@@ -80,12 +80,13 @@ export function Layout() {
   const isCoach = pathname === COACH_PATH
 
   return (
-    // pb-14: 모바일에서 하단 탭(높이 h-14)이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
+    // 모바일에서 하단 탭이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)
     <div
       className={cn(
         'flex flex-col',
         isCoach ? 'h-dvh' : 'min-h-screen',
-        isLoggedIn && !isTimerLocked && 'pb-14 sm:pb-0',
+        // 하단 탭(높이 h-14 + 아이폰 홈 막대 안전 영역)이 마지막 내용을 가리지 않게 아래를 비웁니다.
+        isLoggedIn && !isTimerLocked && 'pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0',
       )}
     >
       <Header hideNav={isTimerLocked} />
@@ -100,7 +101,7 @@ export function Layout() {
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
         {/* 오늘 탭에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되고, 코치 화면은 채팅 자리가 좁아지기 때문입니다. */}
         {pathname === TODAY_PATH && <IosInstallGuide />}
-        {/* 분석 탭의 하위 탭 막대(기록·리포트·사용설명서)는 AnalysisPage 가 직접 그립니다. */}
+        {/* 기록 탭의 하위 탭 막대(기록 · 리포트)는 RecordsPage 가 직접 그립니다. */}
         {backToTab && <BackToTabLink to={backToTab.to} label={backToTab.label} />}
 
         {/* 집중 모드가 자동으로 풀렸을 때(설정을 껐거나 안전 브레이크) 한 번 알려 줍니다. */}

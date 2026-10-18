@@ -12,7 +12,7 @@ interface ModalProps {
 /**
  * 화면 위에 뜨는 팝업창입니다.
  * 바깥 어두운 부분을 누르거나, ESC 키를 누르거나, ✕ 버튼을 누르면 onClose 가 불립니다.
- * 모바일에서는 화면 아래쪽에, PC(sm 이상)에서는 가운데에 뜹니다.
+ * 모바일에서는 화면 아래에서 올라오는 시트(위 모서리만 둥근 판)로, PC(sm 이상)에서는 가운데에 뜹니다. (2026-10-18 모바일 UI)
  */
 export function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
   // 팝업이 열려 있을 때만 ESC 키를 듣습니다. 닫히면 정리(removeEventListener)합니다.
@@ -58,7 +58,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
   return (
     <div
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
     >
       <div
         ref={dialogRef}
@@ -70,13 +70,21 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
         // max-h-full + overflow-y-auto: 내용이 길어도 화면 밖으로 넘치지 않고 안에서 스크롤됩니다.
         // outline-none: 상자 전체에 포커스 테두리가 그려지지 않게 합니다. (안의 버튼들은 그대로 테두리가 보입니다)
         className={cn(
-          'max-h-full w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-lg outline-none',
+          // pb: 아이폰 아래 홈 막대에 버튼이 가리지 않게 안전 영역만큼 더 띄웁니다.
+          'max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] outline-none sm:rounded-3xl sm:pb-6',
           className,
         )}
       >
+        {/* 모바일 시트 맨 위의 작은 손잡이 (꾸밈) */}
+        <div
+          aria-hidden
+          className="mx-auto -mt-2 mb-3 h-1 w-10 rounded-full bg-slate-200 sm:hidden"
+        />
         <div className="mb-3 flex items-center justify-between gap-2">
           {/* min-w-0 + break-words: 긴 제목이 가로로 튀어나가지 않게 합니다. */}
-          <h2 className="min-w-0 text-lg font-semibold break-words text-slate-900">{title}</h2>
+          <h2 className="min-w-0 text-[19px] font-bold tracking-tight break-words text-slate-900">
+            {title}
+          </h2>
           <button
             type="button"
             onClick={onClose}

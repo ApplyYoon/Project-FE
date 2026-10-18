@@ -16,6 +16,7 @@ import {
   type Mission,
   type MissionSlot,
 } from '@/lib/dailyMission'
+import type { ChatReply } from '@/lib/chatApi'
 import { sessionMinutes } from '@/lib/dailyRecords'
 import type { SchoolToday } from '@/lib/schoolToday'
 import { loadData } from '@/lib/storage'
@@ -438,4 +439,47 @@ export function buildMissionProgress(missions: Mission[], nowCard: Card | undefi
     text: `✅ 오늘의 미션 ${done}/${missions.length} 끝! 남은 건 '${next.title}'.\n${prompt.text}`,
     chips: prompt.chips,
   }
+}
+
+// ---- 서버 AI 가 준 빠른 답 · 행동 (lib/chatApi.ts 의 quickReplies · action) ----
+
+/**
+ * AI 가 고른 빠른 답과 행동을 칩으로 바꿉니다. 둘 다 없으면 빈 목록 — 그때는 화면이 코드 칩(핑계 협상)을 씁니다.
+ * 행동 칩이 먼저, 빠른 답이 그 뒤입니다. 행동은 누를 때만 실행합니다.
+ *
+ *   chipsFromServer({ quickReplies: ['응 할게'], action: { type: 'shrink_today', minutes: 10, title: null } }, undefined)
+ *   -> [▷ 10분으로 줄여서 시작, 응 할게]
+ */
+export function chipsFromServer(
+  reply: Pick<ChatReply, 'quickReplies' | 'action'>,
+  nowCard: Card | undefined,
+): CoachChip[] {
+  const chips: CoachChip[] = []
+  const action = reply.action
+  if (action?.type === 'shrink_today') {
+    const minutes = action.minutes ?? SMALL_START_MINUTES
+    chips.push({ kind: 'startMinutes', label: `▷ ${minutes}분으로 줄여서 시작`, minutes })
+  } else if (action?.type === 'start_timer') {
+    chips.push(
+      nowCard && action.minutes === null
+        ? { kind: 'startCard', label: `▷ ${shorten(nowCard.title, 10)} 시작`, cardId: nowCard.id }
+        : {
+            kind: 'startMinutes',
+            label: `▷ ${action.minutes ?? DAILY_GOAL_MINUTES}분 시작`,
+            minutes: action.minutes ?? DAILY_GOAL_MINUTES,
+          },
+    )
+  } else if (action?.type === 'create_card' && action.title) {
+    const minutes = action.minutes ?? DAILY_GOAL_MINUTES
+    chips.push({
+      kind: 'startTitled',
+      label: `▷ ${shorten(action.title, 8)} ${minutes}분 시작`,
+      title: action.title,
+      minutes,
+    })
+  }
+  for (const text of reply.quickReplies) {
+    chips.push({ kind: 'say', label: text })
+  }
+  return chips
 }

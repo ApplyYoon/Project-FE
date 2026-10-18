@@ -10,7 +10,7 @@ import {
 } from '@/lib/onboardingProgress'
 import { CONSENT_PATH } from '@/lib/consentApi'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
-import { ANALYSIS_PATH } from '@/lib/tabMenu'
+import { RECORDS_PATH } from '@/lib/tabMenu'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { ErrorPage } from '@/pages/ErrorPage'
@@ -26,8 +26,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 const AccountPage = lazy(() =>
   import('@/pages/AccountPage').then((m) => ({ default: m.AccountPage })),
 )
-const AnalysisPage = lazy(() =>
-  import('@/pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })),
+const RecordsPage = lazy(() =>
+  import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
 )
 const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
@@ -132,22 +132,22 @@ export const router = createBrowserRouter([
       // 상담 탭(/counsel) · 상담 채팅(/counsel/chat)은 2026-10-18 에 첫 화면의 AI 코치로 합쳤습니다. 옛 주소는 코치로 보냅니다.
       { path: 'counsel', element: <Navigate to="/" replace /> },
       { path: 'counsel/chat', element: <Navigate to="/" replace /> },
-      // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
-      { path: 'analysis', element: <AnalysisPage /> },
+      // 기록 탭(예전 '분석'). [기록] · [리포트] 는 이 화면 안의 하위 탭입니다. (?tab=)
+      { path: 'records', element: <RecordsPage /> },
       // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)
       { path: 'check', element: <Navigate to="/" replace /> },
       // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 코치로 보냅니다.
       { path: 'diary', element: <Navigate to="/" replace /> },
       { path: 'diary/reflection', element: <Navigate to="/" replace /> },
       // 시험 기록(/exams · 시험 결과)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 시험 날짜는 학교 학사일정(NEIS)이 알려 줍니다.
-      // 옛 링크는 분석 탭으로 보냅니다.
-      { path: 'exams', element: <Navigate to={ANALYSIS_PATH} replace /> },
-      { path: 'exams/:examId/result', element: <Navigate to={ANALYSIS_PATH} replace /> },
+      // 옛 링크는 기록 탭으로 보냅니다.
+      { path: 'exams', element: <Navigate to={RECORDS_PATH} replace /> },
+      { path: 'exams/:examId/result', element: <Navigate to={RECORDS_PATH} replace /> },
       // 휴대폰 집중 모드 안내(/phone-focus)는 #417 에서 지웠습니다. (OS 앱 잠금은 다음 버전)
       { path: 'phone-focus', element: <Navigate to="/settings" replace /> },
       { path: 'call/result', element: <CallResultPage /> },
-      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 분석 탭으로 보냅니다. (가설·실험 탭도 2026-10-18 에 지움)
-      { path: 'suggestions', element: <Navigate to={ANALYSIS_PATH} replace /> },
+      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 기록 탭으로 보냅니다. (가설·실험 탭도 2026-10-18 에 지움)
+      { path: 'suggestions', element: <Navigate to={RECORDS_PATH} replace /> },
       { path: 'settings', element: <SettingsPage /> },
       // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
       { path: 'settings/account', element: <AccountPage /> },
@@ -159,9 +159,10 @@ export const router = createBrowserRouter([
       { path: 'support', element: <Navigate to="/" replace /> },
       // 탭 이름을 바꾸기 전의 옛 주소들. ?date= 같은 값은 그대로 가져갑니다. (#386)
       { path: 'planner', element: <RedirectWithQuery to="/cards" /> },
-      { path: 'records', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
-      { path: 'report', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="report" /> },
-      { path: 'manual', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
+      // 탭 이름을 '분석' 에서 '기록' 으로 바꾸기 전 주소(2026-10-18). ?tab= 같은 값은 그대로 가져갑니다.
+      { path: 'analysis', element: <RedirectWithQuery to={RECORDS_PATH} /> },
+      { path: 'report', element: <RedirectWithQuery to={RECORDS_PATH} tab="report" /> },
+      { path: 'manual', element: <RedirectWithQuery to={RECORDS_PATH} /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
