@@ -253,3 +253,26 @@ export function schoolTodayQuery(
     staleTime: 30 * 60 * 1000,
   })
 }
+
+/**
+ * 코치 브리핑용 오늘 학교 정보 쿼리. 못 받으면 에러 대신 null 을 줍니다.
+ * 학교 정보가 없어도 코치와의 대화는 열려야 해서, 실패를 화면 전체의 에러로 만들지 않습니다.
+ */
+export function schoolTodayOrNullQuery(
+  schoolClass: SchoolClass | null,
+  isServerData: boolean,
+  todayKey: string,
+) {
+  const base = schoolTodayQuery(schoolClass, isServerData, todayKey)
+  return queryOptions({
+    queryKey: ['school-today-or-null', ...base.queryKey.slice(1)],
+    queryFn: async (): Promise<SchoolToday | null> => {
+      try {
+        return isServerData ? await fetchSchoolToday(schoolClass) : buildDemoSchoolToday(todayKey)
+      } catch {
+        return null
+      }
+    },
+    staleTime: 30 * 60 * 1000,
+  })
+}

@@ -1,19 +1,32 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { SettingsLink } from '@/components/ui/SettingsLink'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
+import { useCards } from '@/hooks/useCards'
 import { ApiError, getApiErrorMessage } from '@/lib/api'
-import type { CallResultState } from '@/lib/callReview'
+import type { CallLine, CallResultState } from '@/lib/callReview'
+import { loadCardMarks } from '@/lib/cardMarks'
+import { createInstantCardNow } from '@/lib/cardSession'
+import { MAX_CHAT_LINES, MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat } from '@/lib/chatApi'
 import {
-  MAX_CHAT_LINES,
-  MAX_CHAT_TEXT_LENGTH,
-  sendChatMessage,
-  startChat,
-  type ChatReply,
-} from '@/lib/chatApi'
+  buildMorningBriefing,
+  negotiationChipsFor,
+  type CoachChip,
+  type CoachMessage,
+} from '@/lib/coachBriefing'
 import { cn } from '@/lib/cn'
 import { runDailyCareStage } from '@/lib/dailyCareRun'
+import { loadAllSessions } from '@/lib/dailyRecords'
+import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey } from '@/lib/date'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
-import { useMutation } from '@tanstack/react-query'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { loadLocalCheckIn } from '@/lib/quickCheckIn'
+import { loadRestDays } from '@/lib/restDays'
+import { gradeNumberOf } from '@/lib/schoolEvents'
+import { loadSchoolClass, schoolTodayOrNullQuery } from '@/lib/schoolToday'
+import { getTodayCardsState } from '@/lib/todayCards'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -22,6 +35,8 @@ interface ChatBubble {
   id: number
   speaker: 'ai' | 'me'
   text: string
+  /** 코치 말풍선 아래의 빠른 답 칩. 가장 마지막 코치 말풍선의 칩만 보입니다. */
+  chips?: CoachChip[]
 }
 
 /** 탭을 옮겼다 돌아와도 이어지게 들고 있는 대화 */
@@ -39,8 +54,8 @@ const EMPTY_CHAT: KeptChat = { token: null, chatId: null, bubbles: [], isHelpSho
 // ⚠️ 브라우저 저장소에는 넣지 않습니다. 그래서 새로고침하거나 앱을 다시 열면 사라집니다. (대화는 학생의 마음 이야기라서)
 let keptChat: KeptChat = EMPTY_CHAT
 
-/** 말풍선 목록을 서버에 보내는 대화 줄로 바꿉니다. (말풍선 번호는 화면에서만 씁니다) */
-function toLines(bubbles: ChatBubble[]) {
+/** 말풍선 목록을 서버에 보내는 대화 줄로 바꿉니다. (말풍선 번호 · 칩은 화면에서만 씁니다) */
+function toLines(bubbles: ChatBubble[]): CallLine[] {
   return bubbles.map(({ speaker, text }) => ({ speaker, text }))
 }
 
@@ -56,124 +71,25 @@ function getChatErrorMessage(error: unknown): string {
 }
 
 /**
- * 코치 탭(첫 화면 "/") — AI 코치와 채팅하는 곳입니다. (2026-10-18 "AI 코치 채팅 중심", BE #238)
+ * 코치 탭(첫 화면 "/") — AI 코치와 이야기하는 곳입니다. (2026-10-18 "AI 코치 채팅 중심", BE #238)
  * 예전 상담 탭(/counsel) · 상담 채팅(/counsel/chat)을 합쳤습니다. 음성 통화는 머리의 [통화] 버튼으로 갑니다.
  *
- *   1. [대화 시작] → 서버가 통화와 같은 대본으로 AI 코치의 첫 인사를 줍니다.
- *      (화면을 열자마자 자동으로 시작하지 않습니다. 실수로 열어도 AI 사용량을 쓰지 않게)
- *   2. 말을 보내면 지금까지의 대화를 모두 보내고 AI 의 다음 말을 받습니다. (서버는 대화를 저장하지 않습니다)
- *   3. 위기 표현이 감지되면 서버가 정해 둔 안내를 주고, 화면은 상담 전화 한 줄을 더 보여 줍니다.
- *      입력창은 닫지 않습니다. 서버가 그 대화를 끝냈으면(409) [새로 시작] 이 나옵니다.
- *   4. [끝내기] → 통화 결과 화면(/call/result)이 통화와 똑같이 정리합니다. (요약 · 생각 습관 · 약속)
+ *   1. 화면을 열면 코치가 먼저 말을 겁니다. (아침 브리핑: 시간표 · 급식 · 시험 D-day · 오늘 카드 · 오늘 컨디션)
+ *      이 첫 말은 코드가 만듭니다(lib/coachBriefing.ts). 그래서 열기만 해서는 AI 사용량을 쓰지 않습니다.
+ *   2. 말풍선 아래 칩을 누르거나 말을 쓰면 AI 가 답합니다.
+ *      그때 처음 서버 채팅을 열고, 지금까지의 대화를 모두 보내 AI 의 답을 받습니다.
+ *   3. "피곤해 · 시간 없어" 같은 핑계에는 AI 답 아래에 [▷ 10분으로 줄여서 시작] 칩을 붙입니다. (핑계 협상)
+ *      행동 칩(시작 · 카드 만들기)은 누를 때만 실행합니다.
+ *   4. 위기 표현이 나오면 상담 전화 한 줄을 보여 줍니다. 입력창은 닫지 않습니다. 서버가 대화를 끝냈으면(409) [새로 시작]
+ *   5. [대화 끝내고 정리하기] → 통화 결과 화면(/call/result)이 통화와 똑같이 정리합니다. (진짜 로그인만)
  *
  * 모바일에서는 화면 높이를 꽉 채웁니다. 말풍선 목록만 스크롤되고, 입력창은 아래(하단 탭 위)에 붙어 있습니다.
- * (높이는 Layout 이 코치 화면일 때 h-dvh 로 잡아 줍니다)
- *
  * ⚠️ 대화는 메모리(위의 keptChat)에만 있습니다. 브라우저 저장소에 넣지 않고, console.log 로 찍지 않습니다.
  */
 export function CoachPage() {
-  const navigate = useNavigate()
-  const { token } = useAuth()
-  // 들고 있던 대화로 시작합니다. 다른 사람이 로그인했으면 앞사람의 대화는 쓰지 않습니다.
-  const [initial] = useState(() => (keptChat.token === token ? keptChat : EMPTY_CHAT))
-
   // 하루 1번 관리 단계를 판정해 저장합니다. ("통화가 없으면 다음 날 첫 진입 때", 기획서 5.4)
   // 첫 화면이 홈에서 코치로 바뀌어서 여기서도 부릅니다. 오늘 이미 판정했으면 아무것도 바꾸지 않습니다.
   useState(() => runDailyCareStage(getTodayKey(), Date.now()))
-
-  const [chatId, setChatId] = useState<string | null>(initial.chatId)
-  const [bubbles, setBubbles] = useState<ChatBubble[]>(initial.bubbles)
-  const [draft, setDraft] = useState('')
-  // 위기 표현이 감지돼서 상담 전화 한 줄을 보여 주는 중인지
-  const [isHelpShown, setIsHelpShown] = useState(initial.isHelpShown)
-  // 다음 말풍선 번호. 들고 있던 대화가 있으면 그 뒤 번호부터 씁니다.
-  const nextId = useRef(initial.bubbles.reduce((max, bubble) => Math.max(max, bubble.id), 0) + 1)
-  const listRef = useRef<HTMLDivElement>(null)
-
-  // 대화가 바뀔 때마다 메모리에 적어 둡니다. (탭을 옮겼다 돌아오면 이어서 보여 주려고)
-  useEffect(() => {
-    keptChat = { token, chatId, bubbles, isHelpShown }
-  }, [token, chatId, bubbles, isHelpShown])
-
-  function addBubble(speaker: 'ai' | 'me', text: string, base: ChatBubble[]): ChatBubble[] {
-    const bubble = { id: nextId.current, speaker, text }
-    nextId.current += 1
-    return [...base, bubble]
-  }
-
-  /** AI 의 말을 말풍선으로 더합니다. 위기 표현이면 상담 전화 한 줄도 보여 줍니다. */
-  function receive(reply: ChatReply, base: ChatBubble[]) {
-    setBubbles(addBubble('ai', reply.reply, base))
-    if (reply.showHelp) setIsHelpShown(true)
-  }
-
-  const start = useMutation({
-    mutationFn: startChat,
-    onSuccess: (reply) => {
-      setChatId(reply.chatId)
-      receive(reply, [])
-    },
-  })
-
-  const send = useMutation({
-    mutationFn: ({ id, lines }: { id: string; lines: ReturnType<typeof toLines> }) =>
-      sendChatMessage(id, lines),
-    onSuccess: (reply, variables) => {
-      // 보낸 대화 뒤에 AI 의 말을 붙입니다. (보내는 사이 화면의 목록이 바뀌지 않으므로 보낸 줄 수로 자릅니다)
-      setBubbles((current) => {
-        const sent = current.slice(0, variables.lines.length)
-        return addBubble('ai', reply.reply, sent)
-      })
-      if (reply.showHelp) setIsHelpShown(true)
-    },
-  })
-
-  // 새 말풍선이 생기면 맨 아래로 내립니다.
-  useEffect(() => {
-    const list = listRef.current
-    if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
-  }, [bubbles, send.isPending])
-
-  // 서버가 받는 줄 수(60)를 넘지 않게, 새 말과 AI 의 답이 들어갈 자리를 남겨 둡니다.
-  const isTooLong = bubbles.length >= MAX_CHAT_LINES - 1
-  // 409: 이미 끝났거나 서버가 다시 켜져 대본을 잊었습니다. 새로 시작해야 합니다.
-  const needsRestart = send.error instanceof ApiError && send.error.status === 409
-  const hasStudentLine = bubbles.some((bubble) => bubble.speaker === 'me')
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    const text = draft.trim()
-    if (chatId === null || text === '' || send.isPending || isTooLong) return
-    const next = addBubble('me', text.slice(0, MAX_CHAT_TEXT_LENGTH), bubbles)
-    setBubbles(next)
-    setDraft('')
-    send.mutate({ id: chatId, lines: toLines(next) })
-  }
-
-  /** 대화를 비웁니다. 메모리에 들고 있던 것도 같이 비웁니다. */
-  function clearChat() {
-    keptChat = { ...EMPTY_CHAT, token }
-    setChatId(null)
-    setBubbles([])
-    setIsHelpShown(false)
-    send.reset()
-  }
-
-  function handleFinish() {
-    if (chatId === null || !hasStudentLine) {
-      clearChat()
-      return
-    }
-    // 통화와 같은 기록이라, 통화 결과 화면이 POST /calls/{chatId}/finish 로 정리합니다.
-    const state: CallResultState = { callId: chatId, lines: toLines(bubbles) }
-    clearChat()
-    navigate('/call/result', { state })
-  }
-
-  function handleRestart() {
-    clearChat()
-    start.mutate()
-  }
 
   return (
     // flex-1 · min-h-0: Layout 이 잡아 준 높이를 꽉 채우고, 안의 목록만 스크롤되게 합니다.
@@ -195,6 +111,200 @@ export function CoachPage() {
         </div>
       </div>
 
+      {/* 첫 말(브리핑)에 쓸 오늘 학교 정보를 받는 동안만 자리 표시를 보여 줍니다. 못 받아도 대화는 열립니다. */}
+      <AsyncBoundary pendingFallback={<ChatSkeleton />}>
+        <CoachChat />
+      </AsyncBoundary>
+    </div>
+  )
+}
+
+function ChatSkeleton() {
+  return (
+    <div role="status" className="flex min-h-0 flex-1 flex-col gap-3 rounded-3xl bg-white p-4">
+      <span className="sr-only">코치를 부르는 중이에요</span>
+      <Skeleton className="h-4 w-16" />
+      <Skeleton className="h-24 w-4/5 rounded-[20px]" />
+    </div>
+  )
+}
+
+/** 코치의 첫 말을 말풍선으로 만듭니다. */
+function toCoachBubble(id: number, message: CoachMessage): ChatBubble {
+  return { id, speaker: 'ai', text: message.text, chips: message.chips }
+}
+
+function CoachChat() {
+  const navigate = useNavigate()
+  const { token } = useAuth()
+  const isServerData = isServerDataToken(token)
+  const [todayKey] = useState(getTodayKey)
+  const [now] = useState(() => Date.now())
+
+  // 첫 말의 재료: 오늘 학교 정보(못 받으면 null) · 오늘 카드 · 오늘 체크인
+  const [schoolClass] = useState(loadSchoolClass)
+  const { data: school } = useSuspenseQuery(
+    schoolTodayOrNullQuery(schoolClass, isServerData, todayKey),
+  )
+  const { cards, addCard } = useCards()
+  const [allSessions] = useState(loadAllSessions)
+  const [marks] = useState(loadCardMarks)
+  const [restDays] = useState(loadRestDays)
+  const todayCards = getTodayCardsState({
+    cards,
+    sessions: allSessions,
+    marks,
+    isRestDay: restDays.some((day) => day.date === todayKey),
+    todayKey,
+    now,
+  })
+
+  // 처음 그릴 때 한 번만 정합니다: 들고 있던 대화(없으면 코치의 첫 말)
+  const [initial] = useState(() => {
+    const base = keptChat.token === token ? keptChat : EMPTY_CHAT
+    let bubbles = base.bubbles
+    if (bubbles.length === 0) {
+      bubbles = [
+        toCoachBubble(
+          1,
+          buildMorningBriefing({
+            hour: new Date(now).getHours(),
+            school,
+            grade: schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
+            cards: todayCards,
+            checkIn: loadLocalCheckIn(todayKey),
+          }),
+        ),
+      ]
+    }
+    return { ...base, bubbles }
+  })
+
+  const [chatId, setChatId] = useState<string | null>(initial.chatId)
+  const [bubbles, setBubbles] = useState<ChatBubble[]>(initial.bubbles)
+  const [draft, setDraft] = useState('')
+  // 위기 표현이 감지돼서 상담 전화 한 줄을 보여 주는 중인지
+  const [isHelpShown, setIsHelpShown] = useState(initial.isHelpShown)
+  // 다음 말풍선 번호
+  const nextId = useRef(initial.bubbles.reduce((max, bubble) => Math.max(max, bubble.id), 0) + 1)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // 대화가 바뀔 때마다 메모리에 적어 둡니다. (탭을 옮겼다 돌아오면 이어서 보여 주려고)
+  useEffect(() => {
+    keptChat = { token, chatId, bubbles, isHelpShown }
+  }, [token, chatId, bubbles, isHelpShown])
+
+  function addBubble(bubble: Omit<ChatBubble, 'id'>, base: ChatBubble[]): ChatBubble[] {
+    const next = { ...bubble, id: nextId.current }
+    nextId.current += 1
+    return [...base, next]
+  }
+
+  // 진짜 로그인일 때 AI 의 답을 받습니다. 채팅이 아직 안 열렸으면 그때 처음 엽니다.
+  // (코치의 첫 말은 코드가 만든 것이라, 학생이 처음 말할 때까지 서버 채팅을 열지 않습니다)
+  const talk = useMutation({
+    mutationFn: async ({ id, lines }: { id: string | null; lines: CallLine[] }) => {
+      let openId = id
+      if (openId === null) {
+        const opened = await startChat()
+        openId = opened.chatId
+        // 보내기가 실패해도 다시 보낼 때 채팅을 또 열지 않게, 연 번호를 바로 적어 둡니다.
+        setChatId(openId)
+      }
+      const reply = await sendChatMessage(openId, lines)
+      return { openId, reply }
+    },
+    onSuccess: ({ openId, reply }, variables) => {
+      setChatId(openId)
+      // 보낸 대화 뒤에 AI 의 말을 붙입니다. 학생이 핑계를 댔으면 목표를 줄이는 칩을 코드가 붙입니다.
+      const studentText = variables.lines[variables.lines.length - 1]?.text ?? ''
+      setBubbles((current) =>
+        addBubble(
+          { speaker: 'ai', text: reply.reply, chips: negotiationChipsFor(studentText) },
+          current.slice(0, variables.lines.length),
+        ),
+      )
+      if (reply.showHelp) setIsHelpShown(true)
+    },
+  })
+
+  // 서버가 받는 줄 수(60)를 넘지 않게, 새 말과 AI 의 답이 들어갈 자리를 남겨 둡니다.
+  const isTooLong = bubbles.length >= MAX_CHAT_LINES - 1
+  // 409: 이미 끝났거나 서버가 다시 켜져 대본을 잊었습니다. 새로 시작해야 합니다.
+  const needsRestart = talk.error instanceof ApiError && talk.error.status === 409
+  const hasStudentLine = bubbles.some((bubble) => bubble.speaker === 'me')
+  const lastBubble = bubbles[bubbles.length - 1]
+
+  // 새 말풍선이 생기면 맨 아래로 내립니다.
+  useEffect(() => {
+    const list = listRef.current
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
+  }, [bubbles, talk.isPending])
+
+  /** 학생의 말을 보내고 AI 의 답을 받습니다. */
+  function sendText(raw: string) {
+    const text = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
+    if (text === '' || talk.isPending || isTooLong) return
+    const next = addBubble({ speaker: 'me', text }, bubbles)
+    setBubbles(next)
+    talk.mutate({ id: chatId, lines: toLines(next) })
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    sendText(draft)
+    setDraft('')
+  }
+
+  /** 칩을 누르면: 말 칩은 그 말을 보내고, 행동 칩은 그 일을 합니다. (누를 때만 실행) */
+  function handleChip(chip: CoachChip) {
+    if (chip.kind === 'say') {
+      sendText(chip.label)
+      return
+    }
+    if (chip.kind === 'startCard') {
+      navigate(`/timer?card=${encodeURIComponent(chip.cardId)}`)
+      return
+    }
+    if (chip.kind === 'startMinutes') {
+      // 정한 길이의 즉석 카드를 만들어 그 카드로 바로 시작합니다. (addCard 는 바로 저장해서 카드가 남습니다)
+      const card = createInstantCardNow(todayKey, chip.minutes)
+      addCard(card)
+      navigate(`/timer?card=${encodeURIComponent(card.id)}`)
+      return
+    }
+    navigate(`/cards/new?date=${todayKey}`)
+  }
+
+  /** 대화를 비우고 코치의 첫 말부터 다시 보여 줍니다. 메모리에 들고 있던 것도 같이 비웁니다. */
+  function clearChat() {
+    keptChat = { ...EMPTY_CHAT, token }
+    const briefing = buildMorningBriefing({
+      hour: new Date().getHours(),
+      school,
+      grade: schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
+      cards: todayCards,
+      checkIn: loadLocalCheckIn(todayKey),
+    })
+    setChatId(null)
+    setBubbles(addBubble({ speaker: 'ai', text: briefing.text, chips: briefing.chips }, []))
+    setIsHelpShown(false)
+    talk.reset()
+  }
+
+  function handleFinish() {
+    if (chatId === null || !hasStudentLine) {
+      clearChat()
+      return
+    }
+    // 통화와 같은 기록이라, 통화 결과 화면이 POST /calls/{chatId}/finish 로 정리합니다.
+    const state: CallResultState = { callId: chatId, lines: toLines(bubbles) }
+    clearChat()
+    navigate('/call/result', { state })
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* role="log": 새 말이 생기면 화면을 읽어 주는 프로그램이 알려 줍니다. */}
       <div
         ref={listRef}
@@ -202,46 +312,31 @@ export function CoachPage() {
         aria-label="AI 코치와의 대화"
         className="min-h-0 flex-1 overflow-y-auto rounded-3xl bg-white p-4"
       >
-        {chatId === null ? (
-          <div className="flex h-full flex-col justify-end gap-4">
-            <CoachBubble text="오늘 할 공부, 미루고 싶은 마음, 뭐든 말해 줘. 숫자는 내 기록으로 계산한 것만 말할게." />
-            <button
-              type="button"
-              onClick={() => start.mutate()}
-              disabled={start.isPending}
-              className={primaryButtonClass}
-            >
-              {start.isPending ? 'AI 코치가 오는 중…' : '대화 시작'}
-            </button>
-            {start.isError && (
-              <p role="alert" className="text-[15px] break-keep text-red-600">
-                {getChatErrorMessage(start.error)}
-              </p>
-            )}
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {bubbles.map((bubble) =>
-              bubble.speaker === 'ai' ? (
-                <li key={bubble.id}>
-                  <CoachBubble text={bubble.text} />
-                </li>
-              ) : (
-                <li key={bubble.id} className="flex justify-end">
-                  {/* max-w-[80%] + break-words: 긴 말풍선도 화면 폭을 넘지 않고 안에서 줄바꿈됩니다. */}
-                  <p className="bg-brand max-w-[80%] rounded-[20px] px-4 py-2.5 text-[15px] break-words whitespace-pre-wrap text-white">
-                    {bubble.text}
-                  </p>
-                </li>
-              ),
-            )}
-            {send.isPending && (
-              <li>
-                <CoachBubble text="쓰는 중…" isStatus />
+        <ul className="flex flex-col gap-3">
+          {bubbles.map((bubble) =>
+            bubble.speaker === 'ai' ? (
+              <li key={bubble.id}>
+                <CoachBubble text={bubble.text} />
+                {/* 칩은 가장 마지막 코치 말풍선 아래에만 보입니다. 답을 받는 중에는 숨깁니다. */}
+                {bubble === lastBubble && !talk.isPending && bubble.chips && (
+                  <ChipRow chips={bubble.chips} onPick={handleChip} />
+                )}
               </li>
-            )}
-          </ul>
-        )}
+            ) : (
+              <li key={bubble.id} className="flex justify-end">
+                {/* max-w-[80%] + break-words: 긴 말풍선도 화면 폭을 넘지 않고 안에서 줄바꿈됩니다. */}
+                <p className="bg-brand max-w-[80%] rounded-[20px] px-4 py-2.5 text-[15px] break-words whitespace-pre-wrap text-white">
+                  {bubble.text}
+                </p>
+              </li>
+            ),
+          )}
+          {talk.isPending && (
+            <li>
+              <CoachBubble text="쓰는 중…" isStatus />
+            </li>
+          )}
+        </ul>
       </div>
 
       {/* 위기 표현이 감지됐을 때 상담 전화 한 줄. 대화는 막지 않습니다. (누르면 바로 전화가 걸립니다) */}
@@ -270,78 +365,102 @@ export function CoachPage() {
         </a>
       )}
 
-      {chatId !== null && (
-        // 입력창은 목록 아래에 붙습니다. 하단 탭은 Layout 이 아래 여백(pb-14)으로 비켜 줍니다.
-        <form
-          onSubmit={handleSubmit}
-          className="flex shrink-0 flex-col gap-1 rounded-3xl bg-white p-2"
-        >
-          {send.isError && (
-            <div role="alert" className="flex flex-wrap items-center gap-2 px-2 pt-1">
-              <p className="text-sm break-keep text-red-600">{getChatErrorMessage(send.error)}</p>
-              {needsRestart ? (
-                <button type="button" onClick={handleRestart} className={chipClass}>
-                  새로 시작
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => send.variables && send.mutate(send.variables)}
-                  className={chipClass}
-                >
-                  다시 보내기
-                </button>
-              )}
-            </div>
-          )}
-          <div className="flex items-end gap-2">
-            <label htmlFor="chat-input" className="sr-only">
-              AI 코치에게 보낼 말
-            </label>
-            <textarea
-              id="chat-input"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              // 키보드가 올라왔을 때 입력창이 가려지지 않게 화면 안으로 끌어옵니다.
-              onFocus={(event) => event.currentTarget.scrollIntoView({ block: 'nearest' })}
-              maxLength={MAX_CHAT_TEXT_LENGTH}
-              rows={1}
-              disabled={send.isPending || isTooLong}
-              placeholder={
-                isTooLong ? '대화가 길어졌어요. 끝내기를 눌러 정리해요.' : '코치에게 말하기'
-              }
-              // text-base: 아이폰은 16px 보다 작은 입력칸을 누르면 화면을 확대해서 16px 로 둡니다.
-              className="focus:ring-brand/30 max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-2xl bg-slate-100 px-4 py-2.5 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={draft.trim() === '' || send.isPending || isTooLong}
-              className="bg-brand h-11 shrink-0 cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              보내기
-            </button>
+      {/* 입력창은 목록 아래에 붙습니다. 하단 탭은 Layout 이 아래 여백(pb-14)으로 비켜 줍니다. */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex shrink-0 flex-col gap-1 rounded-3xl bg-white p-2"
+      >
+        {talk.isError && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 px-2 pt-1">
+            <p className="text-sm break-keep text-red-600">{getChatErrorMessage(talk.error)}</p>
+            {needsRestart ? (
+              <button type="button" onClick={clearChat} className={chipClass}>
+                새로 시작
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  talk.variables && talk.mutate({ id: chatId, lines: talk.variables.lines })
+                }
+                className={chipClass}
+              >
+                다시 보내기
+              </button>
+            )}
           </div>
+        )}
+        <div className="flex items-end gap-2">
+          <label htmlFor="chat-input" className="sr-only">
+            AI 코치에게 보낼 말
+          </label>
+          <textarea
+            id="chat-input"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            // 키보드가 올라왔을 때 입력창이 가려지지 않게 화면 안으로 끌어옵니다.
+            onFocus={(event) => event.currentTarget.scrollIntoView({ block: 'nearest' })}
+            maxLength={MAX_CHAT_TEXT_LENGTH}
+            rows={1}
+            disabled={talk.isPending || isTooLong}
+            placeholder={
+              isTooLong ? '대화가 길어졌어요. 끝내기를 눌러 정리해요.' : '코치에게 말하기'
+            }
+            // text-base: 아이폰은 16px 보다 작은 입력칸을 누르면 화면을 확대해서 16px 로 둡니다.
+            className="focus:ring-brand/30 max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-2xl bg-slate-100 px-4 py-2.5 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={draft.trim() === '' || talk.isPending || isTooLong}
+            className="bg-brand h-11 shrink-0 cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            보내기
+          </button>
+        </div>
+        {hasStudentLine && (
           <button
             type="button"
             onClick={handleFinish}
-            disabled={send.isPending}
+            disabled={talk.isPending}
             className="h-10 cursor-pointer self-end rounded-full px-3 text-sm font-medium text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            대화 끝내고 정리하기
+            {chatId === null ? '처음부터 다시' : '대화 끝내고 정리하기'}
           </button>
-        </form>
-      )}
+        )}
+      </form>
     </div>
   )
 }
 
-// 주 행동 버튼: 전체 폭 · 높이 56px · 둥근 모서리. 누르면 살짝 작아집니다.
-const primaryButtonClass =
-  'bg-brand hover:bg-brand-dark h-14 w-full cursor-pointer rounded-2xl text-[17px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
-
 // 작은 칩 버튼: 흰 바탕 + 옅은 테두리, 높이 40px
 const chipClass =
   'flex h-10 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-transform active:scale-[0.98]'
+
+interface ChipRowProps {
+  chips: CoachChip[]
+  onPick: (chip: CoachChip) => void
+}
+
+/** 코치 말풍선 바로 아래의 빠른 답 칩 줄. 넘치면 다음 줄로 내려갑니다. 행동 칩은 brand 색으로 구분합니다. */
+function ChipRow({ chips, onPick }: ChipRowProps) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {chips.map((chip) => (
+        <button
+          key={`${chip.kind}-${chip.label}`}
+          type="button"
+          onClick={() => onPick(chip)}
+          className={cn(
+            chipClass,
+            chip.kind !== 'say' && 'bg-brand-light text-brand border-transparent',
+          )}
+        >
+          {chip.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 interface CoachBubbleProps {
   text: string
