@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useCards } from '@/hooks/useCards'
 import { useIsServerData } from '@/hooks/useIsServerData'
-import { getApiErrorMessage } from '@/lib/api'
+import { ApiError, getApiErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
@@ -31,6 +31,17 @@ function formatDay(dateKey: string): string {
   const [year, month, day] = dateKey.split('-').map(Number)
   const weekday = WEEKDAYS[new Date(year, month - 1, day).getDay()]
   return `${month}/${day} (${weekday})`
+}
+
+/**
+ * 사진 읽기가 실패했을 때 보여 줄 한 줄.
+ * 서버에 이 기능(BE /ai/cards/from-photo)이 아직 배포되지 않았으면 404 라서 "곧 열려요" 로 알려 줍니다.
+ */
+function getReadErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return '사진으로 만들기는 서버 준비가 끝나면 열려요. 지금은 [+ 카드 만들기] 로 만들어 주세요.'
+  }
+  return getApiErrorMessage(error)
 }
 
 /** 초안 한 장을 화면에서 고칠 수 있게 담는 모양 */
@@ -229,7 +240,7 @@ export function CardsFromPhotoPage() {
 
           {read.isError && (
             <p role="alert" className="text-sm break-keep text-red-600">
-              {getApiErrorMessage(read.error)}
+              {getReadErrorMessage(read.error)}
             </p>
           )}
           {notice && (
