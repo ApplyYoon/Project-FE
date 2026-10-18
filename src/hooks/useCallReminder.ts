@@ -6,6 +6,8 @@ import {
   shouldRingNow,
   showCallNotification,
 } from '@/lib/callReminder'
+import { loadCheckCall } from '@/lib/checkCall'
+import { isServerDataMode } from '@/lib/dataMode'
 import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { loadFocusMode } from '@/lib/focusMode'
 import { isTimerLocked } from '@/lib/timerLock'
@@ -19,6 +21,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 // 시간을 확인하는 간격(밀리초)입니다. 정해진 시간으로부터 5분 안이면 울리므로 10초마다 봐도 충분합니다.
 const CHECK_INTERVAL_MS = 10_000
+// 확인 통화의 문이 닫혀 있으면 이만큼 뒤에 다시 물어봅니다. (10초마다 서버에 묻지 않게)
+const GATE_RECHECK_MS = 60_000
 
 /**
  * 앱이 열려 있는 동안, 정해 둔 "전화 받을 시간" 이 되면 브라우저 알림을 띄우고 전화 수신 화면(/call)으로 보냅니다.
@@ -26,6 +30,8 @@ const CHECK_INTERVAL_MS = 10_000
  * - 이미 전화 화면(/call, /call/active)에 있으면 건드리지 않습니다. (통화 중에 또 울리면 안 됩니다)
  * - 집중 모드 중이거나 글을 쓰는 화면이면 건너뜁니다. (lib/callReminder.ts 의 isBusyForCall)
  * - 하루에 한 번만 울립니다. (언제 울렸는지 저장해 둡니다)
+ * - 확인 통화의 문(오늘 끝낸 공부)이 닫혀 있으면 울리지 않습니다. 울려도 걸 수 없기 때문입니다. (BE #327, lib/checkCall.ts)
+ *   테스트 로그인(시연)은 막지 않습니다.
  * - 앱이 닫혀 있을 때는 동작하지 않습니다. (웹 푸시는 서버와 서비스 워커가 필요합니다)
  *
  * 라우터 안쪽에 있는 컴포넌트에서 한 번만 부르면 됩니다. (지금은 Layout)
@@ -40,6 +46,9 @@ export function useCallReminder() {
   useEffect(() => {
     pathnameRef.current = pathname
   }, [pathname])
+  // 문을 마지막으로 물어본 시각과, 지금 묻는 중인지 (같은 때 여러 번 묻지 않게)
+  const gateCheckedAtRef = useRef(0)
+  const isCheckingGateRef = useRef(false)
 
   useEffect(() => {
     // 로그인 전(로그아웃한 뒤 켜 둔 로그인 화면 등)에는 전화를 걸지 않습니다. 로그인하면 갑자기 전화 화면이 뜨기 때문입니다.
@@ -72,10 +81,24 @@ export function useCallReminder() {
       })
       if (brake.quiet || brake.stopWhip || brake.recoveryMode) return
 
-      // 먼저 "울렸다" 고 기록해서, 아래에서 에러가 나도 같은 전화가 계속 반복되지 않게 합니다.
-      saveData(LAST_RING_STORAGE_KEY, Date.now())
-      showCallNotification()
-      navigate('/call')
+      // 확인 통화의 문을 서버에 물어봅니다. 닫혀 있으면 1분 뒤에 다시 묻습니다. (그사이 공부를 끝낼 수 있으니까)
+      if (isCheckingGateRef.current) return
+      if (Date.now() - gateCheckedAtRef.current < GATE_RECHECK_MS) return
+      isCheckingGateRef.current = true
+      void loadCheckCall(isServerDataMode())
+        .then((gate) => {
+          gateCheckedAtRef.current = Date.now()
+          // 테스트 로그인(demo)은 서버에 기록이 없어서 막지 않습니다. 묻는 사이 전화 화면으로 갔으면 울리지 않습니다.
+          if (!gate.open && gate.source !== 'demo') return
+          if (pathnameRef.current.startsWith('/call')) return
+          // 먼저 "울렸다" 고 기록해서, 아래에서 에러가 나도 같은 전화가 계속 반복되지 않게 합니다.
+          saveData(LAST_RING_STORAGE_KEY, Date.now())
+          showCallNotification()
+          navigate('/call')
+        })
+        .finally(() => {
+          isCheckingGateRef.current = false
+        })
     }
 
     // 열자마자 한 번 확인하고(시간이 막 지난 직후에 열 수도 있으니까), 그다음부터 10초마다 확인합니다.

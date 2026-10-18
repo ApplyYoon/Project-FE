@@ -3,26 +3,14 @@ import {
   closePause,
   finishActiveSession,
   getScheduledEndAt,
+  loadActiveCardSession,
   type ActiveCardSession,
 } from '@/lib/cardSession'
-import { loadData, removeData, saveData } from '@/lib/storage'
+import { removeData, saveData } from '@/lib/storage'
 // 진행 중인 세션을 넣어 두는 이름 (새로고침하거나 앱을 닫았다 열어도 세션 화면으로 돌아오기 위해 저장)
 import { CARD_SESSION_KEY, OLD_PLAY_SESSION_KEY, notifyTimerLockChange } from '@/lib/timerLock'
 import type { Card, PauseTag, StudySession } from '@/types'
 import { useEffect, useRef, useState } from 'react'
-
-/** 저장된 진행 중 세션. 없거나 모양이 틀리면 null */
-export function loadActiveCardSession(): ActiveCardSession | null {
-  const saved = loadData<unknown>(CARD_SESSION_KEY, null)
-  if (typeof saved !== 'object' || saved === null) return null
-  const value = saved as Partial<ActiveCardSession>
-  const isValid =
-    typeof value.cardId === 'string' &&
-    typeof value.startedAt === 'number' &&
-    typeof value.endAt === 'number' &&
-    Array.isArray(value.pauses)
-  return isValid ? (saved as ActiveCardSession) : null
-}
 
 /**
  * 카드 세션(타이머 한 번)을 시작 · 일시정지 · 끝냅니다. (#395)
@@ -79,13 +67,35 @@ export function useCardSession() {
     })
   }
 
-  /** 일시정지합니다. 이유(tag)는 1탭으로 받습니다 (#397). */
-  function pause(tag: PauseTag, note?: string) {
+  /**
+   * 일시정지합니다. 첫 이유를 누르는 순간 멈춥니다 (#397).
+   * tags 의 맨 앞이 대표 이유(tag)가 됩니다. 멈춘 뒤 더 고른 이유는 setPauseReasons 로 바꿉니다.
+   */
+  function pause(tags: PauseTag[], note?: string) {
+    const [first] = tags
+    if (first === undefined) return
     setActive((prev) =>
       prev && !prev.pausedNow
-        ? { ...prev, pausedNow: { startedAt: Date.now(), tag, ...(note ? { note } : {}) } }
+        ? {
+            ...prev,
+            pausedNow: { startedAt: Date.now(), tag: first, tags, ...(note ? { note } : {}) },
+          }
         : prev,
     )
+  }
+
+  /**
+   * 멈춰 있는 동안 이유를 바꿉니다. (여러 개 고르기, 2026-10-18)
+   * 하나도 없으면 바꾸지 않습니다 — 이유는 최소 하나가 있어야 합니다.
+   */
+  function setPauseReasons(tags: PauseTag[], note?: string) {
+    const [first] = tags
+    if (first === undefined) return
+    setActive((prev) => {
+      if (!prev?.pausedNow) return prev
+      const { note: _oldNote, ...pausedNow } = prev.pausedNow
+      return { ...prev, pausedNow: { ...pausedNow, tag: first, tags, ...(note ? { note } : {}) } }
+    })
   }
 
   /** 다시 시작합니다. 방금 일시정지는 끝난 일시정지 목록으로 옮깁니다. */
@@ -140,6 +150,7 @@ export function useCardSession() {
     allSessions,
     start,
     pause,
+    setPauseReasons,
     resume,
     markLongPauseAlerted,
     updateSession,

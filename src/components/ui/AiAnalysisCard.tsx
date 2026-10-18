@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Card } from '@/components/ui/Card'
 import { InsightCard } from '@/components/ui/InsightCard'
+import { TalkButton } from '@/components/ui/TalkButton'
 import { useAnalysisMaterial } from '@/hooks/useAnalysisMaterial'
 import { aiAnalysisQuery, mergeAnalysis, type AnalysisView } from '@/lib/aiAnalysisApi'
 import {
@@ -15,6 +16,7 @@ import {
 } from '@/lib/analysisFacts'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
+import { analysisLines } from '@/lib/talkLines'
 import type { Insight, StudySession } from '@/types'
 
 /**
@@ -167,6 +169,13 @@ function AnalysisCardView({ view, className }: AnalysisCardViewProps) {
           AI 가 쓴 글은 틀릴 수 있어요. 묶음마다 근거 숫자를 같이 확인해 주세요.
         </p>
       )}
+
+      {/* 분석을 들고 대화방에서 다음에 바꿀 것 하나를 같이 정합니다. (#582) */}
+      <TalkButton
+        about={{ kind: 'WEEKLY_REPORT', lines: analysisLines(analysis, ANALYSIS_DAYS) }}
+        label="📅 AI 분석 같이 볼래"
+        className="mt-4"
+      />
     </Card>
   )
 }

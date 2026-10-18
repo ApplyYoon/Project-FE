@@ -1,8 +1,10 @@
 /**
- * AI 코치(멘토)와의 대화방을 **이 기기에만** 남기는 곳입니다. (2026-10-18 사용자 결정)
+ * AI 와의 대화방을 **이 기기에만** 남기는 곳입니다. (2026-10-18 사용자 결정)
  *   "채팅 탭은 무조건 하나" · "멘토와 연속적인 대화를 한다는 느낌으로"
+ *   저녁에 대화방을 3개(📅 계획 · 💬 상담 · 📚 과목 쌤)로 나눴습니다. 방마다 기록을 따로 둡니다. (lib/chatRooms.ts, #582)
  *
- * - 대화방은 하나이고, 다시 열면 지난 대화가 이어서 보입니다. 날이 바뀌면 날짜 구분선 아래로 그날 대화가 이어집니다.
+ * - 다시 열면 지난 대화가 이어서 보입니다. 날이 바뀌면 날짜 구분선 아래로 그날 대화가 이어집니다.
+ * - [새 대화] 를 누르면 "새 대화" 구분선을 긋고 서버 세션을 새로 엽니다. 앞의 말풍선은 그대로 남습니다.
  * - 서버에는 대화를 저장하지 않습니다. (lib/chatApi.ts) 이 기기에 최근 14일 · 말풍선 300개까지만 둡니다.
  * - 설정의 "모든 기록 지우기" 가 같이 지웁니다. (lib/myData.ts 의 'coach-thread')
  * - 다른 사람이 로그인하면 빈 대화방에서 시작합니다. (ownerId)
@@ -12,10 +14,20 @@
  * 요약을 남기고, 그 요약이 다음 세션 대본의 [지난 통화] 가 되어 AI 가 이어서 기억합니다. (pages/CoachPage.tsx)
  */
 import type { CallLine } from '@/lib/callReview'
-import { MAX_CHAT_LINES } from '@/lib/chatApi'
+import { MAX_CHAT_LINES, MAX_CHAT_TEXT_LENGTH } from '@/lib/chatApi'
+import {
+  cleanAboutLines,
+  isChatAboutKind,
+  threadStorageKey,
+  type ChatAbout,
+  type ChatRoomId,
+  type TalkTarget,
+} from '@/lib/chatRooms'
 import type { CoachChip } from '@/lib/coachBriefing'
+import { planLineForAi, toCoachPlan, type CoachPlan } from '@/lib/coachPlan'
 import { toDayKey } from '@/lib/date'
 import { loadData, saveData } from '@/lib/storage'
+import { quizLineForAi, toCoachQuiz, type CoachQuiz } from '@/lib/studyQuiz'
 
 /** 대화방의 말풍선 하나 */
 export interface ThreadBubble {
@@ -28,6 +40,39 @@ export interface ThreadBubble {
   chips?: CoachChip[]
   /** true 면 테스트 로그인용 "시연용 정해진 답" 입니다. (AI 가 쓴 말이 아님) */
   isDemo?: boolean
+  /** 코치가 짜 준 계획 (계획 말풍선, lib/coachPlan.ts). 고치면 새 말풍선에 새 계획이 붙습니다. */
+  plan?: CoachPlan
+  /** 코치가 낸 확인 문제 (문제 말풍선, lib/studyQuiz.ts). 푸는 동안 이 말풍선 안에서 바뀝니다. */
+  quiz?: CoachQuiz
+  /** 내 말에 사진을 붙여 보냈는지. 사진 자체는 저장하지 않고 "보냈다" 는 표시만 남깁니다. */
+  hasPhoto?: boolean
+  /** true 면 말풍선이 아니라 [새 대화] 구분선입니다. 서버에는 보내지 않습니다. */
+  isDivider?: boolean
+  /** AI 가 짐작한 이유를 "맞아?" 로 확인받는 칸 (후기 · 못 한 카드 대화) */
+  reasonCheck?: ReasonCheck
+  /**
+   * true 면 방금 받은 AI 의 답이라 메신저처럼 문장마다 나눠 타자 치듯 보여 줍니다. (lib/chatReveal.ts)
+   * 효과는 받은 때(at)부터 몇 초 동안만이라, 새로고침하거나 다시 열면 바로 전체가 보입니다.
+   */
+  typing?: boolean
+}
+
+/**
+ * AI 가 학생 말로 짐작한 이유 확인 (BE #330 의 tags)
+ *   open 확인 기다림 · editing 칩으로 고치는 중 · saved 기록함 · dismissed 넘김
+ */
+export interface ReasonCheck {
+  kind: 'SESSION_REVIEW' | 'CARD_FAIL'
+  values: string[]
+  /** 저장할 곳 (그 공부 기록 · 그 카드 하루치) */
+  target: TalkTarget
+  status: 'open' | 'editing' | 'saved' | 'dismissed'
+}
+
+/** 지금 서버 세션이 무엇에 대한 대화인지. [이야기하기] 로 연 세션만 있습니다. */
+export interface ThreadTopic {
+  about: ChatAbout
+  target: TalkTarget | null
 }
 
 /** 이 기기에 남기는 대화방 */
@@ -43,6 +88,8 @@ export interface CoachThread {
   lastServerAt: number | null
   /** 위기 표현이 감지돼서 상담 전화 한 줄을 보여 주는 중인지 */
   isHelpShown: boolean
+  /** 지금 서버 세션의 주제. 없으면 null (보통 대화). 서버가 대본을 잊어 다시 열 때도 이 주제로 엽니다. */
+  topic: ThreadTopic | null
 }
 
 /** 며칠 치 대화를 남길지 */
@@ -56,10 +103,22 @@ export const THREAD_MAX_BUBBLES = 300
 export const SESSION_IDLE_MS = 100 * 60 * 1000
 
 const DAY_MS = 24 * 60 * 60 * 1000
-// 저장소에 넣는 이름 (실제 키는 'study-coach-thread')
-const STORAGE_KEY = 'coach-thread'
-
-const CHIP_KINDS = ['say', 'startCard', 'startMinutes', 'newCard', 'checkIn', 'startTitled']
+const CHIP_KINDS = [
+  'say',
+  'startCard',
+  'startMinutes',
+  'newCard',
+  'checkIn',
+  'startTitled',
+  'dayPlan',
+  'longPlan',
+  'quiz',
+  'quizReview',
+  'makePlan',
+  'checkCall',
+  'pickPhoto',
+  'reviewTalk',
+]
 
 /** 빈 대화방 */
 export function emptyThread(ownerId: string): CoachThread {
@@ -70,6 +129,7 @@ export function emptyThread(ownerId: string): CoachThread {
     sessionFrom: 1,
     lastServerAt: null,
     isHelpShown: false,
+    topic: null,
   }
 }
 
@@ -84,6 +144,26 @@ function isChip(value: unknown): value is CoachChip {
     return typeof chip.condition === 'number' && Array.isArray(chip.emotions)
   if (chip.kind === 'startTitled')
     return typeof chip.title === 'string' && typeof chip.minutes === 'number'
+  if (chip.kind === 'quiz') {
+    // 주제 · 카드 번호 · 체크리스트는 없어도 됩니다. (없으면 주제를 고르는 칸이 열림)
+    const isOptionalText = (field: unknown) => field === undefined || typeof field === 'string'
+    const isOptionalList = chip.checklist === undefined || Array.isArray(chip.checklist)
+    return isOptionalText(chip.topic) && isOptionalText(chip.cardId) && isOptionalList
+  }
+  if (chip.kind === 'makePlan') {
+    // 목표 한 줄은 꼭 있고, 날짜는 없어도 됩니다. (없으면 긴 계획 칸이 열림)
+    return (
+      typeof chip.goal === 'string' && (chip.endDate === null || typeof chip.endDate === 'string')
+    )
+  }
+  if (chip.kind === 'reviewTalk') return typeof chip.sessionId === 'string'
+  if (chip.kind === 'quizReview') {
+    // 며칠 전 문제인지는 없어도 됩니다. (없으면 어제 것)
+    return (
+      chip.daysAgo === undefined ||
+      (Array.isArray(chip.daysAgo) && chip.daysAgo.every((days) => typeof days === 'number'))
+    )
+  }
   return true
 }
 
@@ -97,12 +177,63 @@ function toBubble(value: unknown): ThreadBubble | null {
   const bubble: ThreadBubble = { id: item.id, speaker: item.speaker, text: item.text, at: item.at }
   if (Array.isArray(item.chips)) bubble.chips = item.chips.filter(isChip)
   if (item.isDemo === true) bubble.isDemo = true
+  const plan = toCoachPlan(item.plan)
+  if (plan) bubble.plan = plan
+  const quiz = toCoachQuiz(item.quiz)
+  if (quiz) bubble.quiz = quiz
+  if (item.hasPhoto === true) bubble.hasPhoto = true
+  if (item.typing === true) bubble.typing = true
+  if (item.isDivider === true) bubble.isDivider = true
+  const reasonCheck = toReasonCheck(item.reasonCheck)
+  if (reasonCheck) bubble.reasonCheck = reasonCheck
   return bubble
 }
 
-/** 이 기기의 대화방. 없거나 다른 사람 것이거나 깨져 있으면 빈 대화방입니다. */
-export function loadCoachThread(ownerId: string): CoachThread {
-  const saved = loadData<unknown>(STORAGE_KEY, null)
+const REASON_CHECK_STATUSES: ReasonCheck['status'][] = ['open', 'editing', 'saved', 'dismissed']
+
+function isTarget(value: unknown): value is TalkTarget {
+  if (typeof value !== 'object' || value === null) return false
+  const target = value as Record<string, unknown>
+  if (target.type === 'session') return typeof target.sessionId === 'string'
+  return (
+    target.type === 'card' &&
+    typeof target.cardId === 'string' &&
+    typeof target.dateKey === 'string'
+  )
+}
+
+/** 저장소에서 꺼낸 이유 확인 칸. 모양이 틀리면 버립니다. */
+function toReasonCheck(value: unknown): ReasonCheck | null {
+  if (typeof value !== 'object' || value === null) return null
+  const check = value as Record<string, unknown>
+  if (check.kind !== 'SESSION_REVIEW' && check.kind !== 'CARD_FAIL') return null
+  if (!Array.isArray(check.values) || !isTarget(check.target)) return null
+  if (!REASON_CHECK_STATUSES.includes(check.status as ReasonCheck['status'])) return null
+  return {
+    kind: check.kind,
+    values: check.values.filter((item): item is string => typeof item === 'string'),
+    target: check.target,
+    status: check.status as ReasonCheck['status'],
+  }
+}
+
+/** 저장소에서 꺼낸 세션 주제. 모양이 틀리면 null */
+function toTopic(value: unknown): ThreadTopic | null {
+  if (typeof value !== 'object' || value === null) return null
+  const topic = value as Record<string, unknown>
+  const about = topic.about as Record<string, unknown> | undefined
+  if (!about || !isChatAboutKind(about.kind) || !Array.isArray(about.lines)) return null
+  const lines = cleanAboutLines(about.lines.filter((line) => typeof line === 'string'))
+  if (lines.length === 0) return null
+  return {
+    about: { kind: about.kind, lines },
+    target: isTarget(topic.target) ? topic.target : null,
+  }
+}
+
+/** 이 기기의 대화방 (room 방). 없거나 다른 사람 것이거나 깨져 있으면 빈 대화방입니다. */
+export function loadCoachThread(ownerId: string, room: ChatRoomId): CoachThread {
+  const saved = loadData<unknown>(threadStorageKey(room), null)
   if (typeof saved !== 'object' || saved === null) return emptyThread(ownerId)
   const record = saved as Record<string, unknown>
   if (record.ownerId !== ownerId || !Array.isArray(record.bubbles)) return emptyThread(ownerId)
@@ -113,13 +244,19 @@ export function loadCoachThread(ownerId: string): CoachThread {
     sessionFrom: typeof record.sessionFrom === 'number' ? record.sessionFrom : 1,
     lastServerAt: typeof record.lastServerAt === 'number' ? record.lastServerAt : null,
     isHelpShown: record.isHelpShown === true,
+    topic: toTopic(record.topic),
   }
 }
 
-/** 대화방을 저장합니다. 14일보다 오래된 말풍선과, 300개를 넘는 앞쪽 말풍선은 버립니다. */
-export function saveCoachThread(thread: CoachThread, now: number): void {
+/** 대화방(room 방)을 저장합니다. 14일보다 오래된 말풍선과, 300개를 넘는 앞쪽 말풍선은 버립니다. */
+export function saveCoachThread(thread: CoachThread, now: number, room: ChatRoomId): void {
   const recent = thread.bubbles.filter((bubble) => now - bubble.at <= THREAD_KEEP_DAYS * DAY_MS)
-  saveData(STORAGE_KEY, { ...thread, bubbles: recent.slice(-THREAD_MAX_BUBBLES) })
+  saveData(threadStorageKey(room), { ...thread, bubbles: recent.slice(-THREAD_MAX_BUBBLES) })
+}
+
+/** 대화방 목록에 보여 줄 마지막 말풍선 (구분선 빼고). 없으면 null */
+export function lastTalkBubble(thread: CoachThread): ThreadBubble | null {
+  return thread.bubbles.findLast((bubble) => !bubble.isDivider) ?? null
 }
 
 /** 다음 말풍선 번호 */
@@ -130,8 +267,15 @@ export function nextBubbleId(bubbles: ThreadBubble[]): number {
 /** 지금 서버 세션의 대화 줄 (sessionFrom 번호부터 끝까지). 서버에는 말 · 사람만 보냅니다. */
 export function sessionLines(thread: CoachThread): CallLine[] {
   return thread.bubbles
-    .filter((bubble) => bubble.id >= thread.sessionFrom)
-    .map(({ speaker, text }) => ({ speaker, text }))
+    .filter((bubble) => bubble.id >= thread.sessionFrom && !bubble.isDivider)
+    .map(({ speaker, text, plan, quiz }) => {
+      // 계획 · 문제 말풍선이면 계획 한 줄 · 결과 한 줄을 붙여서, AI 가 무슨 이야기인지 알게 합니다. (서버 한도 500자)
+      const extra = plan ? planLineForAi(plan) : quiz ? quizLineForAi(quiz) : null
+      return {
+        speaker,
+        text: extra ? `${text}\n${extra}`.slice(0, MAX_CHAT_TEXT_LENGTH) : text,
+      }
+    })
 }
 
 /**

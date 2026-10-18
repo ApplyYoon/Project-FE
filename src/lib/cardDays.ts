@@ -55,7 +55,11 @@ export function buildJudgedCardDays(
         priority: card.priority,
         result,
         runRate: result === 'rest' ? 0 : getRunRate(cardDay),
+        // 실패 원인: 대표 원인(하나)과 고른 원인 모두(여러 개)를 같이 넘깁니다. (2026-10-18)
         ...(markInfo?.mark === 'failed' && markInfo.reason ? { missReason: markInfo.reason } : {}),
+        ...(markInfo?.mark === 'failed' && markInfo.reasons && markInfo.reasons.length > 0
+          ? { missReasons: markInfo.reasons }
+          : {}),
         ...(startedOnTime === null ? {} : { startedOnTime }),
         ...(daySessions.length > 0 ? { checklistRate: getChecklistRate(cardDay) } : {}),
       })

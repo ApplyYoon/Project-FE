@@ -1,6 +1,6 @@
 /**
  * 오늘 학교 정보(우리 반 시간표 · 급식 · 다가오는 학사일정)를 서버(BE)에서 받아오는 곳입니다. (BE PR #305 · #306)
- * 오늘 탭(/today) 맨 위와 AI 코치의 아침 브리핑이 씁니다.
+ * 홈(/)의 시간표 · 급식 · 일정 칸과 AI 코치의 아침 브리핑이 씁니다.
  *
  *   GET /school/today?grade=2&classNo=1
  *     -> 200 { date, school: { code, name } | null,
@@ -16,7 +16,7 @@ import { ApiError, api } from '@/lib/api'
 import { moveDateKey } from '@/lib/date'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { gradeNumberOf } from '@/lib/schoolEvents'
-import { loadData, saveData } from '@/lib/storage'
+import { loadData, removeData, saveData } from '@/lib/storage'
 import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 NEIS 를 부르는 동안 조금 넉넉히 기다립니다. */
@@ -92,6 +92,22 @@ export function loadSchoolClass(): SchoolClass | null {
 /** 학년 · 반을 이 기기에 저장합니다. */
 export function saveSchoolClass(schoolClass: SchoolClass): void {
   saveData(CLASS_STORAGE_KEY, schoolClass)
+}
+
+/**
+ * 저장해 둔 학년 · 반을 지웁니다. 온보딩에서 학년을 다르게 고르면, 다른 학년의 반 번호는 쓸 수 없어서 지웁니다.
+ * 그러면 홈 시간표 칸이 반을 다시 묻습니다.
+ */
+export function clearSchoolClass(): void {
+  removeData(CLASS_STORAGE_KEY)
+}
+
+/**
+ * 내 학년 (1 ~ 3). 반을 저장해 뒀으면 그 학년, 없으면 온보딩에서 고른 학년입니다. 모르면 null 입니다.
+ * 설정에서 반을 바꾸면 학년도 같이 바뀌어서 반의 학년을 먼저 봅니다. (학교 일정에서 내 학년 시험만 고를 때 씀)
+ */
+export function getMyGrade(): number | null {
+  return loadSchoolClass()?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade)
 }
 
 /** 오늘의 미션 · 미션 알림이 쓰는 하루 시간표 요약 (lib/dailyMission.ts) */
@@ -217,7 +233,7 @@ async function fetchSchoolToday(schoolClass: SchoolClass | null): Promise<School
 }
 
 /**
- * 테스트 로그인으로 시연할 때 보여 줄 예시입니다. 서버 없이도 오늘 탭 · 코치 브리핑이 굴러가게 합니다.
+ * 테스트 로그인으로 시연할 때 보여 줄 예시입니다. 서버 없이도 홈 · 코치 브리핑이 굴러가게 합니다.
  * 날짜는 오늘을 기준으로 만들어서, 언제 시연해도 "오늘 · 내일 · D-12" 가 맞게 나옵니다.
  */
 export function buildDemoSchoolToday(todayKey: string): SchoolToday {

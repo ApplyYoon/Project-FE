@@ -1,22 +1,145 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { useToggle } from '@/hooks/useToggle'
 import { careThemes, pickGreeting } from '@/lib/careTheme'
+import { CALL_LOCKED_TEXT, checkCallQuery, type StudiedInfo } from '@/lib/checkCall'
 import { cn } from '@/lib/cn'
 import { unlockCallAudio } from '@/lib/realtimeCall'
+import { COACH_PATH } from '@/lib/chatRooms'
 import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 // 마이크를 못 쓰는 이유. denied: 사용자가 거부함 / unavailable: 마이크가 없거나 쓸 수 없는 주소
 type MicError = 'denied' | 'unavailable'
 
+/** 테스트 로그인(시연)에서 문이 닫혀 있을 때 보여 주는 한 줄. 시연이 막히지 않게 걸 수는 있습니다. */
+const DEMO_LOCK_NOTICE =
+  '시연용: 원래는 오늘 공부를 하나 끝내야 열리는 통화예요. 테스트 로그인이라 그냥 걸 수 있어요.'
+
 /**
  * AI 전화 수신 화면입니다. (탭·헤더 없이 화면 전체를 씁니다)
- * 받기 → 마이크 권한 요청 → 통화 중 화면, 거절 → 확인 팝업을 거쳐 홈으로 갑니다.
+ * 먼저 "확인 통화" 의 문을 봅니다. (2026-10-18 "공부를 하게 하고 완료한 조건으로 통화", lib/checkCall.ts)
+ *   - 열림: 받기 → 마이크 권한 요청 → 통화 중 화면, 거절 → 확인 팝업을 거쳐 코치 화면으로 갑니다.
+ *     방금 끝낸 공부가 있으면 "그걸 말로 설명해 봐" 를 보여 줍니다.
+ *   - 닫힘: 잠금 화면 — [공부 시작] · [채팅으로 이야기하기]. 채팅은 언제나 열려 있습니다.
  * 마이크를 못 쓰면 켜는 방법 안내 화면으로 바뀝니다.
  */
 export function CallPage() {
+  return (
+    <AsyncBoundary pendingFallback={<CallGateSkeleton />}>
+      <CallGate />
+    </AsyncBoundary>
+  )
+}
+
+/** 문을 확인하는 동안 (방금 공부한 기록을 서버로 보내고 묻는 중) */
+function CallGateSkeleton() {
+  return (
+    <div className="flex min-h-screen flex-col items-center bg-white px-4 py-10 sm:px-6">
+      <div className="flex w-full max-w-md flex-col items-center gap-4">
+        <Skeleton className="size-20 rounded-full" />
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-5 w-64" />
+        <p role="status" className="text-sm text-slate-500">
+          오늘 공부 기록을 확인하고 있어요…
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** 문을 확인하고, 열렸으면 수신 화면 · 닫혔으면 잠금 화면을 보여 줍니다. */
+function CallGate() {
+  const isServerData = useIsServerData()
+  const { data: gate, refetch, isRefetching } = useSuspenseQuery(checkCallQuery(isServerData))
+  if (gate.open) return <CallRingView studied={gate.studied} notice={null} />
+  // 테스트 로그인은 서버에 기록이 없어서, 잠금은 알려 주기만 하고 걸 수 있게 둡니다. (시연이 막히지 않게)
+  if (gate.source === 'demo') return <CallRingView studied={null} notice={DEMO_LOCK_NOTICE} />
+  return (
+    <CallLockedView
+      isSyncPending={gate.isSyncPending}
+      isChecking={isRefetching}
+      onRecheck={() => void refetch()}
+    />
+  )
+}
+
+interface CallLockedViewProps {
+  /** true 면 이 기기에는 오늘 끝낸 공부가 있는데 서버에 아직 덜 간 것입니다. */
+  isSyncPending: boolean
+  isChecking: boolean
+  onRecheck: () => void
+}
+
+/** 확인 통화가 아직 닫혀 있을 때: 공부를 하나 끝내면 열린다고 알려 주고, 공부 · 채팅으로 보냅니다. */
+function CallLockedView({ isSyncPending, isChecking, onRecheck }: CallLockedViewProps) {
+  const navigate = useNavigate()
+  return (
+    <div className="flex min-h-screen flex-col items-center bg-white px-4 py-10 text-slate-900 sm:px-6">
+      <div className="flex w-full max-w-md flex-1 flex-col items-center text-center">
+        <div
+          aria-hidden
+          className="flex size-20 items-center justify-center rounded-full bg-slate-100 text-4xl"
+        >
+          🔒
+        </div>
+        <h1 className="mt-5 text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+          {CALL_LOCKED_TEXT}
+        </h1>
+        <p className="mt-3 break-keep text-slate-600">
+          확인 통화는 방금 공부한 걸 코치한테 말로 설명하면서 복습하는 통화야. 코치가 2~3개 물어보고
+          이해도를 알려 줘.
+        </p>
+        {/* role="status": 화면을 읽어 주는 프로그램도 바로 알려 줍니다. */}
+        {isSyncPending && (
+          <p
+            role="status"
+            className="mt-4 w-full rounded-2xl bg-amber-50 px-4 py-3 text-sm break-keep text-amber-800"
+          >
+            방금 한 공부 기록을 서버로 보내는 중이야. 잠깐 뒤에 [다시 확인] 을 눌러 줘.
+          </p>
+        )}
+
+        {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
+        <div className="mt-auto flex w-full flex-col gap-3 pt-10">
+          {isSyncPending ? (
+            <Button size="lg" className="w-full" disabled={isChecking} onClick={onRecheck}>
+              {isChecking ? '확인하는 중…' : '다시 확인'}
+            </Button>
+          ) : (
+            <Button size="lg" className="w-full" onClick={() => navigate('/timer')}>
+              공부 시작
+            </Button>
+          )}
+          {/* 채팅은 문이 없습니다. 힘들 때 말할 곳은 언제나 열려 있어야 해서입니다. */}
+          <Button
+            size="lg"
+            variant="secondary"
+            className="w-full"
+            onClick={() => navigate(COACH_PATH)}
+          >
+            코치랑 채팅하기
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface CallRingViewProps {
+  /** 방금 끝낸 공부. 있으면 "그걸 말로 설명해 봐" 를 보여 줍니다. (없으면 위로 통화 · 시연) */
+  studied: StudiedInfo | null
+  /** 위에 띄울 안내 한 줄 (시연용 잠금 안내). 없으면 null */
+  notice: string | null
+}
+
+/** 전화 받기 화면 (문이 열렸을 때) */
+function CallRingView({ studied, notice }: CallRingViewProps) {
   const navigate = useNavigate()
   const [isRejectOpen, toggleReject] = useToggle(false)
   const [micError, setMicError] = useState<MicError | null>(null)
@@ -65,8 +188,9 @@ export function CallPage() {
     }
   }
 
+  // 통화는 코치 화면의 [통화] 버튼에서 걸어서, 그만두면 코치 화면으로 돌아갑니다.
   function handleConfirmReject() {
-    navigate('/')
+    navigate(COACH_PATH)
   }
 
   // 마이크를 못 쓰는 경우: 켜는 방법을 안내하는 화면
@@ -117,7 +241,7 @@ export function CallPage() {
           {/* 권한을 바꾸기 전에는 "다시 시도" 가 소용없어서, 바로 할 수 있는 채팅을 첫 번째(진한) 버튼으로 둡니다. (#460) */}
           {/* 채팅은 통화와 같은 대본을 글로 합니다. (최종 기획서 「4.5」 "통화를 못 받았을 때 같은 대본을 채팅으로") */}
           <div className="mt-auto flex w-full flex-col gap-3 pt-10">
-            <Button size="lg" className="w-full" onClick={() => navigate('/')}>
+            <Button size="lg" className="w-full" onClick={() => navigate(COACH_PATH)}>
               말 대신 채팅으로 하기
             </Button>
             <Button
@@ -150,7 +274,14 @@ export function CallPage() {
       )}
     >
       <div className="flex w-full max-w-md flex-1 flex-col items-center text-center">
-        <p className="text-sm text-indigo-100 sm:text-base">아침 체크인 전화 · 07:30</p>
+        {notice && (
+          <p className="mb-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-sm break-keep">
+            {notice}
+          </p>
+        )}
+        <p className="text-sm text-indigo-100 sm:text-base">
+          {studied ? '확인 통화 · 방금 한 공부' : 'AI 선생님 전화'}
+        </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">AI 선생님</h1>
 
         {/* 프로필 사진 자리: 사진이 없어서 전화 아이콘으로 대신합니다. animate-pulse 로 숨 쉬듯 깜빡입니다. */}
@@ -166,6 +297,13 @@ export function CallPage() {
         </div>
 
         <p className="mt-10 text-lg break-keep sm:text-xl">&quot;{greeting}&quot;</p>
+        {/* 방금 끝낸 공부가 있으면 확인 통화로 무엇을 할지 알려 줍니다. (코치가 서버 기록으로 같은 공부를 물어봄) */}
+        {studied && (
+          <p className="mt-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-[15px] break-keep">
+            방금 한 {studied.title ? `'${studied.title}'` : '공부'}({studied.minutes}분)을 코치한테
+            말로 설명해 봐. 코치가 2~3개 물어보고 이해도를 알려 줄 거야.
+          </p>
+        )}
         <p className="mt-3 text-sm break-keep text-indigo-100">
           1~3분 · 녹음하지 않고 요약만 저장해요
         </p>

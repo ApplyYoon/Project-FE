@@ -1,4 +1,6 @@
 import { summarizePauses } from '@/lib/sessionRecords'
+import { loadData } from '@/lib/storage'
+import { CARD_SESSION_KEY } from '@/lib/timerLock'
 import type { Card, PauseTag, SessionMemo, SessionMode, SessionPause, StudySession } from '@/types'
 
 /**
@@ -21,8 +23,17 @@ export interface ActiveCardSession {
   plannedMinutes: number
   /** 끝난 일시정지들 */
   pauses: SessionPause[]
-  /** 지금 일시정지 중이면 시작한 시각과 이유. alerted: 15분 복귀 알림을 이미 보냈는지 */
-  pausedNow?: { startedAt: number; tag: PauseTag; note?: string; alerted?: boolean }
+  /**
+   * 지금 일시정지 중이면 시작한 시각과 이유. alerted: 15분 복귀 알림을 이미 보냈는지
+   * tag 는 처음 고른 대표 이유, tags 는 멈춘 뒤 더 고른 것까지 모두입니다. (여러 개 고르기, 2026-10-18)
+   */
+  pausedNow?: {
+    startedAt: number
+    tag: PauseTag
+    tags?: PauseTag[]
+    note?: string
+    alerted?: boolean
+  }
   /** 체크한 체크리스트 항목 (항목 id → 체크한 시각) */
   checked: Record<string, number>
   /** 딴생각 주차장 메모 */
@@ -115,8 +126,25 @@ export function closePause(
     startedAt: pausedNow.startedAt,
     endedAt,
     tag: pausedNow.tag,
+    ...(pausedNow.tags && pausedNow.tags.length > 0 ? { tags: pausedNow.tags } : {}),
     ...(pausedNow.note ? { note: pausedNow.note } : {}),
   }
+}
+
+/**
+ * 저장된 진행 중 세션. 없거나 모양이 틀리면 null
+ * hooks/useCardSession.ts(화면)와 lib/cardAlarms.ts(앱 예약 알림)가 같이 읽습니다.
+ */
+export function loadActiveCardSession(): ActiveCardSession | null {
+  const saved = loadData<unknown>(CARD_SESSION_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return null
+  const value = saved as Partial<ActiveCardSession>
+  const isValid =
+    typeof value.cardId === 'string' &&
+    typeof value.startedAt === 'number' &&
+    typeof value.endAt === 'number' &&
+    Array.isArray(value.pauses)
+  return isValid ? (saved as ActiveCardSession) : null
 }
 
 /** 일시정지가 이만큼(분) 넘으면 복귀 알림을 한 번 보냅니다 (「4.4」 일시정지) */

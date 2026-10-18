@@ -123,7 +123,7 @@ export interface StudySession {
 /** 세션을 잰 방법 — normal: 타이머, offline: 폰을 내고 앱이 잰 세션(야자 등), selfReport: 끝난 뒤 사후 입력 */
 export type SessionMode = 'normal' | 'offline' | 'selfReport'
 
-/** 일시정지 이유 (1탭). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
+/** 일시정지 이유 (첫 탭에 멈추고 더 고를 수 있음). 이름표와 내부/외부 분류는 lib/sessionTags.ts */
 export type PauseTag = 'toilet' | 'snack' | 'phone' | 'mindWander' | 'stuck' | 'external' | 'other'
 
 /** 일시정지 한 번 */
@@ -132,8 +132,10 @@ export interface SessionPause {
   startedAt: number
   /** 다시 시작한 시각. 일시정지한 채로 끝냈으면 세션이 끝난 시각 */
   endedAt: number
-  /** 이유 */
+  /** 대표 이유 — 처음 고른 것. 하나만 읽는 예전 코드 · 서버(칸이 하나)는 이 값을 씁니다 */
   tag: PauseTag
+  /** 고른 이유 모두 (2026-10-18 여러 개 고르기). 예전 기록에는 없으니 lib/sessionTags.ts 의 getPauseTags 로 읽습니다 */
+  tags?: PauseTag[]
   /** '기타' 를 골랐을 때 쓴 글 (빈칸 허용) */
   note?: string
 }
@@ -151,12 +153,14 @@ export type WithWhat = 'music' | 'video' | 'none'
 /** 노는 기록의 종류 */
 export type PlayTag = 'youtube' | 'game' | 'sns' | 'webtoon' | 'rest' | 'etc'
 
-/** 종료 팝업에서 받은 것 (산출물 말고는 모두 1탭) */
+/** 종료 팝업에서 받은 것 (이유는 여러 개, 나머지는 1탭, 산출물은 글) */
 export interface SessionEndReport {
   /** 체크한 체크리스트 항목 (ChecklistItem 의 id → 체크한 시각) */
   checked: Record<string, number>
-  /** 다 못 했을 때 고른 이유 */
+  /** 다 못 했을 때 고른 대표 이유 — 처음 고른 것. 하나만 읽는 예전 코드 · 서버(칸이 하나)는 이 값을 씁니다 */
   shortfallReason?: ShortfallReason
+  /** 다 못 했을 때 고른 이유 모두 (2026-10-18 여러 개 고르기). 읽을 때는 lib/sessionTags.ts 의 getShortfallReasons */
+  shortfallReasons?: ShortfallReason[]
   /** 같이 한 것 */
   withWhat?: WithWhat
   /** 산출물 증빙 — 링크 또는 2~3줄 요약 (사진은 저장소가 정해진 뒤) */
@@ -457,7 +461,7 @@ export type InsightResponse =
 export interface Insight {
   /** 인사이트를 구분하는 고유 값 */
   id: string
-  /** 카드에 보여줄 한 문장 (예: "스스로 밤형이라고 했지만...") */
+  /** 카드에 보여줄 한 문장 (예: "스스로 저녁형이라고 했지만...") */
   sentence: string
   /** 이 결론의 근거가 된 날짜 목록 */
   evidenceDates: string[]
@@ -512,12 +516,16 @@ export interface Exam {
 
 /**
  * 온보딩 설문 답 (#58, #88, #89 → 최종 기획서 「4.1」)
- * 처음 온보딩은 학년만 묻고, 취침 · 기상 시각은 관리 설정 화면이 같은 칸에 저장합니다.
+ * 처음 온보딩은 학년만 묻고, 취침 · 기상 시각은 관리 설정 화면이 같은 칸에 저장합니다. (반은 홈의 시간표 칸에서 따로 고릅니다)
  * (자기 인식 4문항은 주관적인 짐작이라 2026-10-18 에 지웠습니다. 옛 답이 저장돼 있어도 읽지 않습니다)
  * (예전 "내 정보 더 알려주기" 의 질문은 #417 에서 지웠습니다. 시험 이름 · 날짜 · 공부 이유는 옛 답이 있으면 다짐 녹음 화면이 읽습니다)
  */
 export interface OnboardingAnswers {
-  /** 학년 */
+  /**
+   * 학년. 새로 고를 때는 '고1' ~ '고3' 만 있습니다. (2026-10-18, 고등학생만 가입)
+   * 'N수' · '대학생' 은 예전에 저장된 답을 읽을 때만 나옵니다. (BE 의 Grade 도 예전 데이터 때문에 그대로 둡니다)
+   * 반은 여기 말고 학년 · 반 저장소(study-school-class, lib/schoolToday.ts)에 있습니다. 이 기기에만 두고 서버에는 보내 저장하지 않습니다.
+   */
   grade: '고1' | '고2' | '고3' | 'N수' | '대학생'
   /** 평소 기상 시각 ('HH:MM'). 관리 설정의 수면 보호 */
   wakeUpTime?: string

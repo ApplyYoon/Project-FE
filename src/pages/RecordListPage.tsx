@@ -7,7 +7,10 @@ import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { TalkButton } from '@/components/ui/TalkButton'
+import { UnderstandingBadge } from '@/components/ui/UnderstandingBadge'
 import { useCards } from '@/hooks/useCards'
+import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import {
   buildCalendarDay,
@@ -26,8 +29,10 @@ import {
   loadEvaluationsByDate,
   type CallSummary,
 } from '@/lib/callSummary'
+import { loadCallLog } from '@/lib/callLog'
 import { CARD_RESULT_LABELS } from '@/lib/cardResult'
 import { careThemes } from '@/lib/careTheme'
+import { splitUnderstanding, type Understanding } from '@/lib/checkCall'
 import { cn } from '@/lib/cn'
 import {
   type DailyRecord,
@@ -38,12 +43,17 @@ import {
   sessionMinutes,
   toDateKey,
 } from '@/lib/dailyRecords'
+import { runDailyCareStage } from '@/lib/dailyCareRun'
 import { getTodayKey, isDateKey, isMonthKey, toDayDate, toDayKey } from '@/lib/date'
+import { loadFocusScores, summarizeFocusWeek } from '@/lib/focusScore'
+import type { ForestState, ForestTree } from '@/lib/forest'
+import { loadForestState } from '@/lib/forestData'
 import { useSubjects } from '@/hooks/useSubjects'
 import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { loadData, loadRecord } from '@/lib/storage'
+import { dayReviewLines } from '@/lib/talkLines'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
 import type { CareLevel, CheckIn, EmotionTag, StudyPlan, StudySession, Subject } from '@/types'
 
@@ -111,6 +121,13 @@ export function RecordListPage() {
   const { cards } = useCards()
   // 지금 시각은 화면을 처음 그릴 때 한 번만 읽습니다. (다시 그릴 때마다 바뀌면 결과가 흔들립니다)
   const [now] = useState(Date.now)
+  // 내 숲 (#404). 2026-10-18 에 홈에서 기록 탭 맨 위로 옮겼습니다.
+  // 숲은 오늘 관리 단계를 읽어서, 오늘 판정이 먼저 저장돼 있어야 합니다. 오늘 이미 판정했으면 아무것도 바꾸지 않습니다. (lib/dailyCareRun.ts)
+  const [forest] = useState(() => {
+    const todayKey = getTodayKey()
+    runDailyCareStage(todayKey, now)
+    return loadForestState(todayKey, now, loadManualItems().length)
+  })
   // 옛 계획으로 잰 기록도 그 카드의 기록으로 보려고 "옛 계획 id → 카드 id" 표를 만듭니다. (lib/sessionRecords.ts)
   const [cardIdByPlanId] = useState(() =>
     buildCardIdByPlanId(loadRecord<StudyPlan[]>('plans'), loadRoutines()),
@@ -142,6 +159,9 @@ export function RecordListPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">기록·통계</h1>
 
+      {/* 내 숲: 가운데 전체 나무 + 둘레의 목표 나무. 공부한 시간이 쌓이면 자랍니다. */}
+      <ForestCard forest={forest} />
+
       {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
       <AiAnalysisCard />
 
@@ -150,6 +170,7 @@ export function RecordListPage() {
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <RunRateCard summary={recentRunRate} />
         <WeeklyBarCard sessions={sessions} />
+        <FocusWeekCard now={now} />
 
         <Card title="주간 리포트">
           <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
@@ -304,11 +325,43 @@ interface CallSummaryCardProps {
   summaries: CallSummary[]
 }
 
+/**
+ * 날짜별 통화 요약 · 이해도 (그날의 마지막 통화). 통화 결과 화면이 적어 둔 통화 기록(lib/callLog.ts)에서 꺼냅니다.
+ * 확인 통화였으면 요약 끝의 '이해도: …' 를 떼어 배지로 보여 줍니다. (BE #327)
+ */
+function loadCallNotesByDate(): Record<
+  string,
+  { summary: string; understanding: Understanding | null }
+> {
+  const notes: Record<string, { summary: string; understanding: Understanding | null }> = {}
+  // 오래된 것부터 있어서, 같은 날 통화가 여러 번이면 마지막 것이 남습니다.
+  for (const entry of loadCallLog()) {
+    if (typeof entry.summary === 'string' && entry.summary.trim() !== '') {
+      notes[entry.dateKey] = splitUnderstanding(entry.summary.trim())
+    }
+  }
+  return notes
+}
+
+interface DayUnderstandingProps {
+  /** 그날 확인 통화의 이해도. 확인 통화가 아니었으면 없음 */
+  understanding: Understanding | null | undefined
+}
+
+/** 목록 한 줄에 붙는 이해도 배지 (없으면 아무것도 안 그림) */
+function DayUnderstanding({ understanding }: DayUnderstandingProps) {
+  if (!understanding) return null
+  return <UnderstandingBadge understanding={understanding} />
+}
+
 /** "지난 통화 요약": 날짜별 목록(최근 것이 위)과, 눌렀을 때 그날 카드를 자세히 보는 팝업 */
 function CallSummaryCard({ summaries }: CallSummaryCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   // 지금 팝업으로 보고 있는 요약. null 이면 팝업이 닫혀 있습니다.
   const [selected, setSelected] = useState<CallSummary | null>(null)
+  // 그날 통화의 AI 요약 · 이해도 (확인 통화)
+  const [callNotes] = useState(loadCallNotesByDate)
+  const selectedNote = selected ? callNotes[selected.date] : undefined
 
   const visibleSummaries = isExpanded ? summaries : summaries.slice(0, INITIAL_SUMMARY_COUNT)
 
@@ -331,6 +384,7 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
                   {formatDateLabel(summary.date)}
                   <CareBadge level={summary.careLevel} />
+                  <DayUnderstanding understanding={callNotes[summary.date]?.understanding} />
                 </span>
                 {/* break-words: 긴 문장도 화면 폭을 넘지 않고 줄바꿈됩니다. */}
                 <span className="text-sm font-semibold break-words text-slate-900">
@@ -363,7 +417,20 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
             <CareBadge level={selected.careLevel} />
             <SummaryRow label="어제 요약" value={selected.headline} />
             <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
-            <SummaryRow label="AI 한마디" value={selected.aiComment} emptyText="아직 없어요" />
+            {/* 평가(evaluations)에 한마디가 없으면 그날 통화 요약을 씁니다. (이해도 줄은 뗀 것) */}
+            <SummaryRow
+              label="AI 한마디"
+              value={selected.aiComment ?? (selectedNote?.summary || null)}
+              emptyText="아직 없어요"
+            />
+            {selectedNote?.understanding && (
+              <div>
+                <dt className="text-xs text-slate-500">확인 통화 이해도</dt>
+                <dd className="mt-1">
+                  <UnderstandingBadge understanding={selectedNote.understanding} />
+                </dd>
+              </div>
+            )}
           </dl>
         )}
       </Modal>
@@ -798,6 +865,286 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
           )}
         </ul>
       )}
+
+      {/* 이 날 숫자를 들고 상담 방에서 무엇이 잘 됐고 아쉬웠는지 이야기합니다. (#582) 기록이 있는 날만 */}
+      {(day.cards.length > 0 || studyMinutes !== undefined) && (
+        <TalkButton
+          about={{ kind: 'DAY_REVIEW', lines: dayReviewLines(day, studyMinutes) }}
+          label={`💬 ${formatDateLabel(day.dateKey)} 이야기할래`}
+          className="self-start"
+        />
+      )}
     </div>
+  )
+}
+
+interface FocusWeekCardProps {
+  now: number
+}
+
+/**
+ * 최근 7일 집중도 카드 — 평균 한 줄과 시간대(오전 · 오후 · 저녁 · 밤)별 집중도. (lib/focusScore.ts)
+ * 집중도 = 공부한 시간 중 폰을 들거나 다른 탭에 가 있지 않은 비율. 묻지 않고 타이머가 잰 숫자만 씁니다.
+ */
+function FocusWeekCard({ now }: FocusWeekCardProps) {
+  const [records] = useState(loadFocusScores)
+  const summary = summarizeFocusWeek(records, now)
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-base font-semibold text-slate-900">최근 7일 집중도</h3>
+        {summary.average !== null && (
+          <p className="text-2xl font-bold text-slate-900 tabular-nums">{summary.average}%</p>
+        )}
+      </div>
+      {summary.average === null ? (
+        <p className="mt-2 text-sm break-keep text-slate-500">
+          타이머로 1분 넘게 공부하면, 폰을 들거나 다른 탭에 간 시간을 빼고 집중도를 보여 줘요.
+        </p>
+      ) : (
+        // 시간대별 집중도. 네 칸을 같은 크기로 놓습니다. grid-cols-4: 375px 에서도 한 줄
+        <ul className="mt-3 grid grid-cols-4 gap-2">
+          {summary.bands.map((band) => (
+            <li
+              key={band.key}
+              className="flex flex-col items-center gap-0.5 rounded-lg bg-slate-50 py-2 text-xs font-semibold text-slate-600"
+            >
+              <span>{band.label}</span>
+              <span className="text-sm text-slate-900 tabular-nums">
+                {band.average === null ? '–' : `${band.average}%`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
+interface ForestCardProps {
+  forest: ForestState
+}
+
+/** 목표 나무 아래에 보여 줄 상태 글자 */
+function goalTreeStatus(tree: ForestTree): string {
+  if (tree.isFinished) return '끝난 목표'
+  if (tree.isWilted) return `${tree.stageName} · 시듦`
+  return tree.stageName
+}
+
+/**
+ * "내 숲" 카드 (#404). 가운데 전체 나무 그림 + 잎·열매 개수 + 다음 단계까지 남은 시간,
+ * 그 아래 목표 나무들(진행 중인 목표 먼저, 끝난 목표는 흐리게). 목표가 없으면 전체 나무만 보입니다.
+ */
+function ForestCard({ forest }: ForestCardProps) {
+  const { main } = forest
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-slate-900">내 숲</h3>
+        <p className="text-sm text-slate-500">
+          {main.stageName} · {main.stage + 1}단계
+          {main.isWilted && <span className="font-semibold text-amber-700"> · 시듦</span>}
+        </p>
+      </div>
+
+      <div className="mt-3 flex justify-center rounded-lg bg-slate-50 px-4 py-3">
+        <TreeDrawing tree={main} />
+      </div>
+
+      {main.isWilted && (
+        <p className="mt-3 text-sm break-keep text-amber-700">
+          미루거나 못 한 카드가 이어져서 조금 시들었어. 다시 카드를 하면 살아나.
+        </p>
+      )}
+
+      <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+        <span>
+          <span className="font-semibold text-green-700">잎 {main.leafCount}</span> · 회고·인사이트
+        </span>
+        <span>
+          <span className="font-semibold text-orange-600">열매 {main.fruitCount}</span> · 효과가
+          확인된 방법
+        </span>
+      </p>
+
+      <div className="mt-4 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2 text-sm text-slate-600">
+          <span>다음 단계까지</span>
+          <span>
+            {main.isFullGrown ? '다 자랐어!' : `${formatMinutes(main.minutesToNextStage)} 남음`}
+          </span>
+        </div>
+        <ProgressBar value={main.progressPercent} />
+      </div>
+
+      {forest.goals.length > 0 && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="text-sm font-semibold text-slate-900">목표 나무</p>
+          {/* 375px 에서도 3그루가 한 줄에 들어가고, 지난 목표가 늘면 다음 줄로 내려갑니다. (가로 스크롤 없음) */}
+          <ul className="mt-2 grid grid-cols-3 gap-2">
+            {forest.goals.map((tree) => (
+              <li
+                key={tree.goalId}
+                className={cn(
+                  'flex min-w-0 flex-col items-center rounded-lg bg-slate-50 px-1 py-2',
+                  tree.isFinished && 'opacity-60',
+                )}
+              >
+                <TreeDrawing tree={tree} className="h-16" />
+                <p className="mt-1 w-full truncate text-center text-xs font-medium text-slate-800">
+                  {tree.title}
+                </p>
+                <p
+                  className={cn(
+                    'text-center text-xs',
+                    tree.isWilted ? 'text-amber-700' : 'text-slate-500',
+                  )}
+                >
+                  {goalTreeStatus(tree)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// 큰 나무 위에 잎(작은 흰 점)과 열매(주황 동그라미)를 그릴 자리입니다. 개수가 많아도 이 자리까지만 그립니다.
+const LEAF_SPOTS = [
+  { x: 78, y: 52 },
+  { x: 100, y: 34 },
+  { x: 122, y: 50 },
+  { x: 66, y: 68 },
+  { x: 90, y: 60 },
+  { x: 114, y: 66 },
+  { x: 134, y: 70 },
+  { x: 106, y: 44 },
+]
+const FRUIT_SPOTS = [
+  { x: 118, y: 58 },
+  { x: 84, y: 72 },
+  { x: 100, y: 52 },
+  { x: 130, y: 76 },
+  { x: 70, y: 58 },
+]
+
+interface TreeDrawingProps {
+  /** 그릴 나무 (전체 나무 · 목표 나무 모두 같은 모양으로 그립니다) */
+  tree: Pick<ForestTree, 'stage' | 'stageName' | 'isWilted' | 'leafCount' | 'fruitCount'>
+  /** 그림 높이. 기본은 h-36(전체 나무), 목표 나무는 더 작게 넘깁니다 */
+  className?: string
+}
+
+/** 나무 그림 (라이브러리 없이 SVG 를 직접 그립니다) */
+function TreeDrawing({ tree, className }: TreeDrawingProps) {
+  // 시들면 초록 잎이 누런 갈색으로 바뀝니다. transition-colors 로 색이 천천히 바뀝니다.
+  const leafColor = tree.isWilted ? 'fill-amber-600' : 'fill-green-500'
+  const darkLeafColor = tree.isWilted ? 'fill-amber-700' : 'fill-green-700'
+  const label = `${tree.stageName}${tree.isWilted ? ', 시든 모습' : ''}`
+
+  // 큰 나무가 되어야 잎·열매 점을 그립니다. (씨앗·새싹에는 붙일 자리가 없어서 개수 글자로만 보여줍니다)
+  const leafSpots = tree.stage === 3 ? LEAF_SPOTS.slice(0, tree.leafCount) : []
+  const fruitSpots = tree.stage === 3 ? FRUIT_SPOTS.slice(0, tree.fruitCount) : []
+
+  return (
+    <svg
+      role="img"
+      aria-label={label}
+      viewBox="0 0 200 140"
+      className={cn('h-36 w-full max-w-full', className)}
+    >
+      {/* 땅 그림자 */}
+      <ellipse cx="100" cy="128" rx="60" ry="6" className="fill-slate-200" />
+
+      {/*
+        key 가 단계마다 달라서, 단계가 바뀌면 이 묶음이 새로 그려집니다.
+        starting: 는 "처음 나타날 때의 모습" 이라, 작고 투명한 상태에서 transition 으로 커지며 나타납니다.
+      */}
+      <g
+        key={tree.stage}
+        className="origin-bottom transition duration-700 ease-out [transform-box:fill-box] starting:scale-50 starting:opacity-0"
+      >
+        {tree.stage === 0 && <ellipse cx="100" cy="122" rx="9" ry="6" className="fill-amber-800" />}
+
+        {tree.stage === 1 && (
+          <>
+            <rect x="98" y="96" width="4" height="30" rx="2" className="fill-green-800" />
+            <ellipse
+              cx="88"
+              cy="96"
+              rx="12"
+              ry="6"
+              className={cn('transition-colors duration-700', leafColor)}
+            />
+            <ellipse
+              cx="112"
+              cy="90"
+              rx="12"
+              ry="6"
+              className={cn('transition-colors duration-700', darkLeafColor)}
+            />
+          </>
+        )}
+
+        {tree.stage === 2 && (
+          <>
+            <rect x="95" y="80" width="10" height="46" rx="3" className="fill-amber-800" />
+            <circle
+              cx="100"
+              cy="64"
+              r="30"
+              className={cn('transition-colors duration-700', leafColor)}
+            />
+          </>
+        )}
+
+        {tree.stage === 3 && (
+          <>
+            <rect x="92" y="76" width="16" height="50" rx="4" className="fill-amber-800" />
+            <circle
+              cx="74"
+              cy="64"
+              r="26"
+              className={cn('transition-colors duration-700', leafColor)}
+            />
+            <circle
+              cx="126"
+              cy="64"
+              r="26"
+              className={cn('transition-colors duration-700', darkLeafColor)}
+            />
+            <circle
+              cx="100"
+              cy="46"
+              r="30"
+              className={cn('transition-colors duration-700', leafColor)}
+            />
+            {leafSpots.map((spot) => (
+              <ellipse
+                key={`leaf-${spot.x}-${spot.y}`}
+                cx={spot.x}
+                cy={spot.y}
+                rx="5"
+                ry="3"
+                className="fill-white/70"
+              />
+            ))}
+            {fruitSpots.map((spot) => (
+              <circle
+                key={`fruit-${spot.x}-${spot.y}`}
+                cx={spot.x}
+                cy={spot.y}
+                r="5"
+                className="fill-orange-500"
+              />
+            ))}
+          </>
+        )}
+      </g>
+    </svg>
   )
 }

@@ -1,8 +1,36 @@
 import { Button } from '@/components/ui/Button'
+import { PlanCard } from '@/components/ui/PlanCard'
+import { useCards } from '@/hooks/useCards'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { loadCallCard } from '@/lib/callCard'
+import {
+  buildCallTools,
+  planOutputForAi,
+  readLongPlanArgs,
+  readReviseArgs,
+  type ToolCall,
+} from '@/lib/callTools'
+import {
+  DEFAULT_DAILY_MINUTES,
+  makeDemoDayPlan,
+  makeDemoLongPlan,
+  planToCards,
+  requestDayPlan,
+  requestLongPlan,
+  reviseDayPlan,
+  reviseDemoPlan,
+  reviseLongPlan,
+  withDemoFallback,
+  type CoachPlan,
+  type PlanReply,
+} from '@/lib/coachPlan'
+import { getTodayKey, moveDateKey } from '@/lib/date'
+import { saveMyEvent } from '@/lib/myEvents'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
+import { FOCUS_NAME_MAX, loadStudyFocus } from '@/lib/studyFocus'
+import { COACH_PATH } from '@/lib/chatRooms'
 import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { toCallLines, type CallResultState } from '@/lib/callReview'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
@@ -280,6 +308,104 @@ export function CallActivePage() {
   // 서버의 통화 기록 번호. 연결되면 정해집니다. 통화가 끝나면 결과 화면이 이 번호로 자막을 보내 결론을 받습니다.
   const [callId, setCallId] = useState<string | null>(null)
 
+  // ---- 통화 중 계획 (2026-10-18, 이슈 #577 · lib/callTools.ts) ----
+  // 학생이 "계획 짜 줘" 라고 하면 AI 가 도구를 부르고, 이 화면이 계획을 짜서 카드로 띄웁니다. 저장은 [이대로 할게] 를 눌러야 합니다.
+  const isServerData = useIsServerData()
+  const { addCard } = useCards()
+  // 화면에 띄운 계획과 코치의 한 줄. 없으면 null
+  const [shownPlan, setShownPlan] = useState<{ plan: CoachPlan; reply: string } | null>(null)
+  // 계획을 짜는 중인지 · 저장한 뒤의 한 줄
+  const [isPlanBusy, setIsPlanBusy] = useState(false)
+  const [planNote, setPlanNote] = useState<string | null>(null)
+
+  /**
+   * AI 가 부른 도구를 실행합니다. 계획을 짜거나 고쳐서 화면에 띄우고, AI 에게 돌려줄 글을 돌려줍니다.
+   * 진짜 로그인은 서버 AI 로, 테스트 로그인 · 서버 준비 전(404 · 503 · 429)은 시연용 예시로 짭니다. (코치 채팅과 같음)
+   */
+  async function handleToolCall(call: ToolCall): Promise<string> {
+    const todayKey = getTodayKey()
+    const focus = loadStudyFocus()
+    let result: PlanReply
+    setIsPlanBusy(true)
+    try {
+      if (call.name === 'show_day_plan') {
+        const demo = () =>
+          makeDemoDayPlan({ todayKey, now: Date.now(), subjects: [], light: false })
+        result = isServerData
+          ? await withDemoFallback(
+              () => requestDayPlan({ date: todayKey, focus, subjects: [], condition: null }),
+              demo,
+            )
+          : demo()
+      } else if (call.name === 'show_long_plan') {
+        const args = readLongPlanArgs(call.args, todayKey)
+        if (args === null) {
+          return '무엇을 언제까지 준비하는지 못 알아들었어. 내일부터 30일 안의 날짜로 다시 물어봐.'
+        }
+        const input = {
+          goal: args.goal,
+          endDate: args.endDate,
+          dailyMinutes: DEFAULT_DAILY_MINUTES,
+          image: null,
+          focus,
+          // 학생이 통화에서 말한 시험 · 대회 날이라 저장할 때 홈 일정에 넣습니다.
+          isEventDate: true,
+        }
+        const demo = () => makeDemoLongPlan({ ...input, todayKey, hasPhoto: false })
+        result = isServerData ? await withDemoFallback(() => requestLongPlan(input), demo) : demo()
+      } else if (call.name === 'revise_plan') {
+        const request = readReviseArgs(call.args)
+        const current = shownPlan?.plan.status === 'open' ? shownPlan.plan : null
+        if (current === null) return '아직 화면에 고칠 계획이 없어. 먼저 계획을 짜 줄지 물어봐.'
+        if (request === null) return '어떻게 고칠지 못 알아들었어. 다시 물어봐.'
+        const demo = () => reviseDemoPlan(current, request)
+        result =
+          !isServerData || current.isDemo
+            ? demo()
+            : await withDemoFallback(
+                () =>
+                  current.kind === 'day'
+                    ? reviseDayPlan(current, request, { focus, subjects: [] })
+                    : reviseLongPlan(current, request),
+                demo,
+              )
+      } else {
+        return '그런 도구는 없어. 학생에게 채팅에서 해 보자고 해.'
+      }
+    } finally {
+      setIsPlanBusy(false)
+    }
+    if (result.plan) {
+      setShownPlan({ plan: result.plan, reply: result.reply })
+      setPlanNote(null)
+    } else if (result.cleared) {
+      setShownPlan(null)
+    }
+    return planOutputForAi(result)
+  }
+
+  // 연결은 시도마다 한 번 만들어지므로, 도구를 부를 때는 이 ref 로 "지금 화면의" 처리 함수를 씁니다. (화면이 다시 그려질 때마다 바꿔 둠)
+  const toolHandlerRef = useRef(handleToolCall)
+  useEffect(() => {
+    toolHandlerRef.current = handleToolCall
+  })
+
+  /** [이대로 할게] — 화면의 계획을 카드로 저장합니다. 긴 계획이면 시험 · 대회 날을 홈 일정에 D-day 로 넣습니다. */
+  function handleAcceptPlan() {
+    if (!shownPlan || shownPlan.plan.status !== 'open') return
+    const plan = shownPlan.plan
+    const newCards = planToCards(plan, Date.now())
+    newCards.forEach(addCard)
+    const lines = [`카드 ${newCards.length}장을 달력에 넣었어.`]
+    if (plan.kind === 'long' && plan.spec && plan.isEventDate) {
+      const name = plan.spec.goal.slice(0, FOCUS_NAME_MAX)
+      saveMyEvent({ name, date: plan.spec.endDate, kind: 'focus' })
+      lines.push(`'${name}' D-day 도 홈 일정에 넣었어.`)
+    }
+    setShownPlan({ ...shownPlan, plan: { ...plan, status: 'saved' } })
+    setPlanNote(lines.join(' '))
+  }
+
   // 화면이 열리면 AI 와 음성 연결을 시작하고, 화면을 떠나면(끊기·뒤로가기) 연결과 마이크를 정리합니다.
   // attempt 가 바뀌면(다시 시도) 이전 연결을 정리하고 새로 연결합니다.
   useEffect(() => {
@@ -300,6 +426,9 @@ export function CallActivePage() {
       card: loadCallCard(),
       // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
       onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
+      // 통화 중 "계획 짜 줘" 를 위한 도구 (오늘 날짜를 알려 줘야 AI 가 날짜를 셀 수 있음)
+      tools: buildCallTools(getTodayKey()),
+      onToolCall: (toolCall) => toolHandlerRef.current(toolCall),
       // 연결이 끊어지면 마이크를 끄고, 안내 화면을 보여줍니다.
       onDisconnect: (wasConnected) => {
         if (isCancelled) return
@@ -403,12 +532,12 @@ export function CallActivePage() {
 
   function handleHangUp() {
     // 화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다.
-    // 통화가 연결된 적이 없으면 평가할 내용이 없어서, 결과 화면 대신 홈으로 갑니다.
+    // 통화가 연결된 적이 없으면 평가할 내용이 없어서, 결과 화면 대신 코치 화면(통화를 건 곳)으로 갑니다.
     if (isCounting) {
       goToResult()
       return
     }
-    navigate('/', { replace: true })
+    navigate(COACH_PATH, { replace: true })
   }
 
   // 다시 시도: "연결 중"으로 돌려놓고 attempt 를 올리면 위 useEffect 가 새로 연결합니다.
@@ -441,7 +570,7 @@ export function CallActivePage() {
             goToResult()
             return
           }
-          navigate('/', { replace: true })
+          navigate(COACH_PATH, { replace: true })
         }}
         onPreview={import.meta.env.DEV ? () => setIsPreview(true) : undefined}
       />
@@ -476,7 +605,74 @@ export function CallActivePage() {
 
         <p className="mt-8 text-lg break-keep sm:text-xl">&quot;{greeting}&quot;</p>
 
+        {/* 통화 중에 짠 계획 (AI 가 도구를 불렀을 때). 저장은 [이대로 할게] 를 눌러야 합니다. */}
+        {(shownPlan !== null || isPlanBusy || planNote !== null) && (
+          <section aria-label="통화 중 계획" className="mt-6 w-full text-left">
+            {isPlanBusy && (
+              <p role="status" className="text-sm text-indigo-100">
+                계획 짜는 중…
+              </p>
+            )}
+            {shownPlan && (
+              <>
+                <p className="text-sm break-keep text-indigo-50">{shownPlan.reply}</p>
+                <PlanCard plan={shownPlan.plan} className="sm:max-w-none" />
+                {shownPlan.plan.status === 'open' && (
+                  <div className="mt-2 flex gap-2">
+                    <Button className="flex-1" onClick={handleAcceptPlan}>
+                      ✅ 이대로 할게
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="flex-1"
+                      onClick={() => setShownPlan(null)}
+                    >
+                      닫기
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {planNote && <p className="mt-2 text-sm break-keep text-indigo-50">{planNote}</p>}
+          </section>
+        )}
+
         <SubtitleList messages={messages} />
+
+        {/* 개발 서버의 연습 화면에서만: AI 가 도구를 부른 것처럼 흉내 내서 계획 카드를 확인합니다. (배포 화면에는 없음) */}
+        {import.meta.env.DEV && isPreview && (
+          <div className="mt-3 flex w-full flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void handleToolCall({
+                  callId: 'dev-long',
+                  name: 'show_long_plan',
+                  args: {
+                    goal: '중간고사 미적분 1~3단원',
+                    endDate: moveDateKey(getTodayKey(), 14),
+                  },
+                })
+              }
+            >
+              (개발용) 도구: 긴 계획
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void handleToolCall({
+                  callId: 'dev-revise',
+                  name: 'revise_plan',
+                  args: { request: '주말은 빼 줘' },
+                })
+              }
+            >
+              (개발용) 도구: 주말 빼기
+            </Button>
+          </div>
+        )}
 
         {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
         <div className="mt-auto flex w-full items-start justify-around pt-12">

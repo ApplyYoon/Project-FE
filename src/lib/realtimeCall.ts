@@ -13,15 +13,23 @@
  */
 import { ApiError, api, parseErrorBody } from '@/lib/api'
 import type { CallCard } from '@/lib/callCard'
+import {
+  parseToolCallEvent,
+  toolOutputEvents,
+  type RealtimeTool,
+  type ToolCall,
+} from '@/lib/callTools'
 import { createConnectionWatcher } from '@/lib/connectionWatch'
+import { loadStudySignals } from '@/lib/studySignals'
 import type { CallTone } from '@/lib/todayCare'
 import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
-//   요청  POST /realtime/session   { careLevel, maxHarshness, card }
+//   요청  POST /realtime/session   { careLevel, maxHarshness, card, studySignals }
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
+//         403 CALL_LOCKED (오늘 공부를 하나 끝내야 열리는 "확인 통화", BE #327 · lib/checkCall.ts)
 const SESSION_PATH = '/realtime/session'
 
 // BE 대신 Vercel 함수(api/voice-key.ts)에서 임시 키를 받을 때 쓰는 주소입니다. 비어 있으면 위의 BE 에서 받습니다.
@@ -136,6 +144,8 @@ async function requestCallSession(
             careLevel: tone.careLevel,
             maxHarshness: tone.maxHarshness,
             card,
+            // 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (lib/studySignals.ts, BE #334)
+            studySignals: loadStudySignals(),
             // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
           }),
           signal,
@@ -157,9 +167,12 @@ async function requestCallSession(
   } catch (error) {
     // 에러 안에 키가 들어 있을 수 있어서 원문 대신 이유만 남깁니다.
     const detail = error instanceof Error ? error.message : '알 수 없는 오류'
-    // 429(오늘 통화를 다 씀) · 503(통화가 꺼져 있음)은 서버가 사람이 읽을 문장을 줍니다. 화면에 그대로 보여주게 넘깁니다.
+    // 429(오늘 통화를 다 씀) · 503(통화가 꺼져 있음) · 403 CALL_LOCKED(오늘 공부를 아직 안 끝냄)는
+    // 서버가 사람이 읽을 문장을 줍니다. 화면에 그대로 보여주게 넘깁니다.
+    const isLocked =
+      error instanceof ApiError && error.status === 403 && error.code === 'CALL_LOCKED'
     const userMessage =
-      error instanceof ApiError && (error.status === 429 || error.status === 503)
+      error instanceof ApiError && (error.status === 429 || error.status === 503 || isLocked)
         ? error.message
         : undefined
     throw new RealtimeCallError('token', `임시 키를 받지 못했어요: ${detail}`, userMessage)
@@ -259,6 +272,13 @@ export interface StartCallOptions {
   tone?: CallTone
   /** 학생 카드(내 기록을 숫자로 정리한 것). 서버가 이것으로 질문과 말투를 정합니다. 기록이 없으면 null (lib/callCard.ts) */
   card?: CallCard | null
+  /** AI 가 통화 중에 부를 수 있는 도구 (예: 계획 짜서 화면에 띄우기, lib/callTools.ts). 없으면 알리지 않습니다. */
+  tools?: RealtimeTool[]
+  /**
+   * AI 가 도구를 부르면 불립니다. 돌려준 글이 AI 에게 결과로 전해지고, AI 가 이어서 말합니다.
+   * 실패하면(던지면) "하지 못했어" 를 대신 전합니다.
+   */
+  onToolCall?: (call: ToolCall) => Promise<string>
 }
 
 /**
@@ -332,13 +352,38 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     // (공식 문서에 인사 방법이 따로 없어서 response.create 이벤트를 쓴 것입니다. 실제 서버로 확인이 필요합니다)
     // 내 말을 글자로 바꾸는 설정(자막)과 AI 의 지침은 서버가 임시 키를 만들 때 이미 넣었습니다. 여기서 다시 보내지 않습니다.
     channel.addEventListener('open', () => {
+      // 도구가 있으면 인사 전에 알립니다. 지침 · 자막 설정은 서버가 정했으니 tools 칸만 보냅니다.
+      // (session.update 는 보낸 칸만 바꾼다고 문서에 있습니다. 실제 서버로 확인이 필요합니다)
+      if (options.tools && options.tools.length > 0) {
+        channel.send(
+          JSON.stringify({
+            type: 'session.update',
+            session: { type: 'realtime', tools: options.tools, tool_choice: 'auto' },
+          }),
+        )
+      }
       channel.send(JSON.stringify({ type: 'response.create' }))
     })
 
-    // 서버가 보내는 이벤트 중 대화 글자만 골라서 화면에 알려줍니다.
+    // AI 가 부른 도구를 실행하고 결과를 돌려줍니다. 통로가 닫혔으면(통화가 끝남) 보내지 않습니다.
+    function answerToolCall(call: ToolCall) {
+      const run = options.onToolCall ?? (() => Promise.reject(new Error('도구 없음')))
+      run(call)
+        .catch(() => '앱이 이 일을 하지 못했어. 학생에게 채팅에서 다시 해 보자고 해.')
+        .then((output) => {
+          if (channel.readyState !== 'open') return
+          toolOutputEvents(call.callId, output).forEach((item) =>
+            channel.send(JSON.stringify(item)),
+          )
+        })
+    }
+
+    // 서버가 보내는 이벤트 중 대화 글자와 도구 부르기만 골라서 처리합니다.
     channel.addEventListener('message', (event: MessageEvent) => {
       const transcriptEvent = parseTranscriptEvent(event.data)
       if (transcriptEvent) options.onTranscript?.(transcriptEvent)
+      const toolCall = parseToolCallEvent(event.data)
+      if (toolCall) answerToolCall(toolCall)
     })
 
     // 연결 정보(SDP)를 만들어 OpenAI 에 보내고, 받은 답을 적용합니다.

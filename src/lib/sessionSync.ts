@@ -13,6 +13,8 @@ import type { Card, StudySession } from '@/types'
  *   서버에 보낸 기록은 서버의 분석 · AI(통화 · 리포트)가 "타이머가 잰 숫자" 로 씁니다.
  * ■ 끝나고 10분이 지난 기록만 보냅니다.
  *   끝난 직후에는 종료 팝업에서 체크 · 증빙을 더 붙이는데(#398), 서버에는 보낸 기록을 고치는 주소가 없기 때문입니다.
+ *   단, 확인 통화를 걸 때는 기다리지 않고 바로 보냅니다(settleMs 0). 서버가 "오늘 끝낸 공부" 를 봐야 통화를 열어 주기 때문입니다.
+ *   (그때는 종료 팝업이 이미 끝난 뒤라서 더 붙일 것이 없습니다. lib/checkCall.ts)
  * ■ 카드 세션은 그 카드가 서버에 올라간 뒤(서버 번호가 생긴 뒤) 보냅니다. 서버는 내 카드의 번호만 받습니다. (lib/cardSync.ts)
  * ■ 보내지 않는 기록
  *   - 사후 입력(selfReport): 서버가 이 주소로 받지 않습니다. (사후 입력 주소로 따로 보냅니다 — #516 다음 단계)
@@ -103,6 +105,7 @@ export function pickSessionsToSend(
   cards: Card[],
   state: SessionSyncState,
   now: number,
+  settleMs: number = SESSION_SETTLE_MS,
 ): { ready: SessionToSend[]; skip: string[] } {
   const ready: SessionToSend[] = []
   const skip: string[] = []
@@ -110,7 +113,7 @@ export function pickSessionsToSend(
   for (const session of sorted) {
     if (state.sent[session.id] !== undefined || state.skipped.includes(session.id)) continue
     if (session.mode === 'selfReport') continue
-    if (now - session.endedAt < SESSION_SETTLE_MS) continue
+    if (now - session.endedAt < settleMs) continue
     const card = session.cardId ? cards.find((item) => item.id === session.cardId) : undefined
     if (session.kind === 'play') {
       ready.push({ sessionId: session.id, input: toSessionInput(session, card?.serverId) })
@@ -130,39 +133,52 @@ function isRejected(error: unknown): boolean {
   return error instanceof ApiError && [400, 404, 409].includes(error.status)
 }
 
-// 지금 보내는 중인지. 보내는 중에 또 불리면 무시합니다. (1분마다 다시 부르니까요)
-let isPushing = false
+// 지금 보내는 일. 보내는 중이 아니면 null 입니다.
+let pushing: Promise<void> | null = null
 
 /**
  * 보낼 기록을 하나씩 서버로 보냅니다. 서버에 닿지 못하면 거기서 멈추고 남은 것은 다음에 보냅니다.
  * 같은 기록을 두 번 보내도 서버에 두 번 저장되지 않습니다. (createSession 이 409 를 "이미 저장됨" 으로 알아봅니다)
+ * settleMs 는 끝나고 얼마나 기다린 기록부터 보낼지입니다. 확인 통화 전에는 0 으로 불러 바로 보냅니다.
+ *
+ * 이미 보내는 중에 또 불리면: 보통(1분마다)은 그냥 넘어가고, 바로 보내기(settleMs 0)는 그 일이 끝나기를 기다렸다가 한 번 더 봅니다.
  */
-export async function pushPendingSessions(): Promise<void> {
-  if (isPushing) return
-  isPushing = true
+export async function pushPendingSessions(settleMs: number = SESSION_SETTLE_MS): Promise<void> {
+  if (pushing) {
+    if (settleMs >= SESSION_SETTLE_MS) return
+    await pushing
+    return pushPendingSessions(settleMs)
+  }
+  pushing = pushOnce(settleMs)
   try {
-    const { ready, skip } = pickSessionsToSend(
-      loadAllSessions(),
-      loadSavedCards() ?? [],
-      loadSessionSyncState(),
-      Date.now(),
-    )
-    if (skip.length > 0) {
-      const state = loadSessionSyncState()
-      saveSessionSyncState({ ...state, skipped: [...state.skipped, ...skip] })
-    }
-    for (const { sessionId, input } of ready) {
-      try {
-        const saved = await createSession(input)
-        const state = loadSessionSyncState()
-        saveSessionSyncState({ ...state, sent: { ...state.sent, [sessionId]: saved.id } })
-      } catch (error) {
-        if (!isRejected(error)) return
-        const state = loadSessionSyncState()
-        saveSessionSyncState({ ...state, skipped: [...state.skipped, sessionId] })
-      }
-    }
+    await pushing
   } finally {
-    isPushing = false
+    pushing = null
+  }
+}
+
+/** pushPendingSessions 가 한 번 보내는 일 */
+async function pushOnce(settleMs: number): Promise<void> {
+  const { ready, skip } = pickSessionsToSend(
+    loadAllSessions(),
+    loadSavedCards() ?? [],
+    loadSessionSyncState(),
+    Date.now(),
+    settleMs,
+  )
+  if (skip.length > 0) {
+    const state = loadSessionSyncState()
+    saveSessionSyncState({ ...state, skipped: [...state.skipped, ...skip] })
+  }
+  for (const { sessionId, input } of ready) {
+    try {
+      const saved = await createSession(input)
+      const state = loadSessionSyncState()
+      saveSessionSyncState({ ...state, sent: { ...state.sent, [sessionId]: saved.id } })
+    } catch (error) {
+      if (!isRejected(error)) return
+      const state = loadSessionSyncState()
+      saveSessionSyncState({ ...state, skipped: [...state.skipped, sessionId] })
+    }
   }
 }

@@ -7,6 +7,7 @@ import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPicke
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
+import { LeaveAccountSection } from '@/components/ui/LeaveAccountSection'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -37,7 +38,13 @@ import {
   type StudyFocusKind,
 } from '@/lib/studyFocus'
 import { getCoachStrength, STRENGTH_PRESETS, type StrengthPreset } from '@/lib/coachStrength'
-import { isMissionAlertsOn, setMissionAlertsOn } from '@/lib/dailyMission'
+import {
+  NUDGE_KINDS,
+  NUDGE_LABELS,
+  loadNudgeSettings,
+  setNudgeOn,
+  type NudgeKind,
+} from '@/lib/coachNudges'
 import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
@@ -95,10 +102,11 @@ const CONFIRM_CARE_LEVEL = 4
 
 /**
  * 설정 화면(/settings). 코치 화면 머리의 톱니로 들어옵니다. (2026-10-18 "설정은 잡다한 기록이 너무 많아" → 네 묶음만)
- *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내가 준비하는 것 · 내 계정 관리(정보 고치기 · 탈퇴) · 로그아웃
+ *   ① 계정     — 누구로 로그인했는지 · 학년 반(홈 시간표 칸과 같은 저장소) · 내가 준비하는 것 · 내 정보 고치기 · 로그아웃 ·
+ *                탈퇴(테스트 계정은 처음부터 다시 하기) — 숨기지 않고 여기 바로 둡니다 (2026-10-18)
  *   ② 코치 세기 — 약 · 보통 · 강 하나로 고름 (관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 한꺼번에, lib/coachStrength.ts)
  *                하나씩 정하던 예전 칸은 "자세히" 안에 접어 둡니다.
- *   ③ 알림     — 오늘의 미션 알림 · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
+ *   ③ 알림     — 코치 알림(종류별) · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
  *   ④ 내 데이터 — 모든 기록 지우기 하나
  * 시연용 가상 데이터 칸은 주소 끝에 ?demo=on 을 붙였을 때만 보입니다.
  */
@@ -180,7 +188,7 @@ export function SettingsPage() {
     applyStrength(preset)
   }
 
-  // 학년 · 반 (오늘 탭과 같은 저장소). 저장하면 "저장했어요" 를 잠깐 보여 줍니다.
+  // 학년 · 반 (홈 시간표 칸과 같은 저장소). 저장하면 "저장했어요" 를 잠깐 보여 줍니다.
   const [schoolClass, setSchoolClass] = useState<SchoolClass | null>(loadSchoolClass)
   const [isClassSaved, setIsClassSaved] = useState(false)
 
@@ -190,12 +198,11 @@ export function SettingsPage() {
     setIsClassSaved(true)
   }
 
-  // 오늘의 미션 알림 켜기 · 끄기 (lib/dailyMission.ts)
-  const [isMissionAlertOn, setIsMissionAlertOn] = useState(isMissionAlertsOn)
+  // 코치 알림 종류별 켜기 · 끄기 (lib/coachNudges.ts)
+  const [nudgeSettings, setNudgeSettings] = useState(loadNudgeSettings)
 
-  function handleToggleMissionAlerts(isOn: boolean) {
-    setMissionAlertsOn(isOn)
-    setIsMissionAlertOn(isOn)
+  function handleToggleNudge(kind: NudgeKind, isOn: boolean) {
+    setNudgeSettings(setNudgeOn(kind, isOn))
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
@@ -307,15 +314,15 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* 학년 · 반은 오늘 탭의 시간표 칸과 같은 저장소(study-school-class)를 씁니다. 서버에는 저장하지 않습니다. */}
+          {/* 학년 · 반은 홈의 시간표 칸과 같은 저장소(study-school-class)를 씁니다. 서버에는 저장하지 않습니다. */}
           <SchoolClassPicker
             key={schoolClass ? `${schoolClass.grade}-${schoolClass.classNo}` : 'none'}
             initial={schoolClass}
             onSave={handleSaveClass}
             description={
               schoolClass
-                ? `지금 ${schoolClass.grade}학년 ${schoolClass.classNo}반이에요. 오늘 탭 시간표와 코치가 이 반 기준으로 말해요.`
-                : '학년 · 반을 알려 주면 오늘 탭에 시간표가 나오고, 코치가 오늘 배운 과목으로 말을 걸어요.'
+                ? `지금 ${schoolClass.grade}학년 ${schoolClass.classNo}반이에요. 홈 시간표와 코치가 이 반 기준으로 말해요.`
+                : '학년 · 반을 알려 주면 홈에 시간표가 나오고, 코치가 오늘 배운 과목으로 말을 걸어요.'
             }
             saveLabel="반 저장"
             className="mt-5"
@@ -329,13 +336,13 @@ export function SettingsPage() {
           {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 코치가 오늘 계획을 짤 때 이걸 보고 맞춰요. */}
           <StudyFocusField className="mt-5" />
 
-          {/* 내 정보 고치기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
+          {/* 내 정보 고치기는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) 탈퇴는 아래에 바로 둡니다. */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <Link
               to="/settings/account"
               className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 sm:flex-1"
             >
-              내 계정 관리 (정보 고치기 · 탈퇴)
+              내 정보 고치기
             </Link>
             <Button
               variant="secondary"
@@ -345,6 +352,8 @@ export function SettingsPage() {
               로그아웃
             </Button>
           </div>
+          {/* 탈퇴(테스트 계정은 처음부터 다시 하기). 확인 창 한 번이고, 붙잡는 말 없이 지워지는 것만 알려 줍니다. */}
+          <LeaveAccountSection isTestUser={user?.id === testUser.id} className="mt-5" />
         </Card>
 
         {/* ② 코치 세기: 관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 약 · 보통 · 강 하나로 (lib/coachStrength.ts) */}
@@ -456,26 +465,38 @@ export function SettingsPage() {
           </details>
         </Card>
 
-        {/* ③ 알림: 오늘의 미션 알림 · 전화 받을 시간 · 하루 메시지 횟수와 연락 금지 시간 */}
+        {/* ③ 알림: 코치 알림(종류별) · 전화 받을 시간 · 하루 메시지 횟수와 연락 금지 시간 */}
         <Card title="알림">
           <div className="flex flex-col gap-5">
-            <label className="flex cursor-pointer items-center justify-between gap-3">
-              <span className="flex flex-col">
-                <span className="text-sm font-semibold text-slate-900">오늘의 미션 알림</span>
-                <span className="text-sm break-keep text-slate-500">
-                  아침 · 하교 무렵 · 저녁에 코치가 미션을 알려 줘요. (휴대폰 앱에서)
-                </span>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-semibold text-slate-900">코치 알림</span>
+              <span className="text-sm break-keep text-slate-500">
+                코치가 먼저 말을 걸어요. 하루 메시지 수(최대 4개)만큼만, 수업 시간 · 연락 금지
+                시간에는 보내지 않아요. (휴대폰 앱에서)
               </span>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={isMissionAlertOn}
-                  onChange={(event) => handleToggleMissionAlerts(event.target.checked)}
-                  aria-label="오늘의 미션 알림"
-                  className="accent-brand h-5 w-5 cursor-pointer"
-                />
-              </span>
-            </label>
+              {NUDGE_KINDS.map((kind) => (
+                <label
+                  key={kind}
+                  className="flex cursor-pointer items-center justify-between gap-3"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-sm text-slate-900">{NUDGE_LABELS[kind].title}</span>
+                    <span className="text-xs break-keep text-slate-500">
+                      {NUDGE_LABELS[kind].description}
+                    </span>
+                  </span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={nudgeSettings[kind]}
+                      onChange={(event) => handleToggleNudge(kind, event.target.checked)}
+                      aria-label={`코치 알림 — ${NUDGE_LABELS[kind].title}`}
+                      className="accent-brand h-5 w-5 cursor-pointer"
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
 
             <div className="flex flex-col gap-2">
               <Input
@@ -554,6 +575,10 @@ export function SettingsPage() {
             <p className="text-sm text-slate-500">
               이 기기와 서버의 공부 기록 · 체크인 · 코치와의 대화를 모두 지워요. 지우면 되돌릴 수
               없어요.
+            </p>
+            <p className="text-sm break-keep text-slate-500">
+              계정과 설정은 남겨요. 계정까지 지우고 처음부터 시작하려면 위의{' '}
+              {user?.id === testUser.id ? '[처음부터 다시 하기]' : '[탈퇴하기]'} 를 눌러 주세요.
             </p>
             <Button
               variant="danger"

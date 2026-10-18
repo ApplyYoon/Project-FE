@@ -37,7 +37,7 @@ import { getFacts, getPlannedStartAt } from '@/lib/facts'
 import { loadUnlockRecords, type FocusUnlockRecord } from '@/lib/focusMode'
 import { isGoalCheckDue } from '@/lib/goalProgress'
 import { loadGoals } from '@/lib/goals'
-import { getRelapseSignal, type JudgedCardDay } from '@/lib/relapseSignal'
+import { getMissReasons, getRelapseSignal, type JudgedCardDay } from '@/lib/relapseSignal'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { getSafetyBrakeResult } from '@/lib/safetyBrake'
 import { loadAutoSettings } from '@/lib/settingsMapping'
@@ -298,10 +298,12 @@ export function buildSinceLastCall(input: SinceLastCallInput): SinceLastCallFiel
 
   const runDays = days.filter((day) => isRunResult(day.result))
   const missDays = days.filter((day) => isMissResult(day.result))
-  // 미실행 원인 중 가장 많은 것 (같으면 먼저 나온 것)
+  // 미실행 원인 중 가장 많은 것 (같으면 먼저 나온 것). 하루에 여러 개 골랐으면 하나하나 셉니다.
   const causeCounts = new Map<CardFailCause, number>()
   for (const day of missDays) {
-    if (day.missReason) causeCounts.set(day.missReason, (causeCounts.get(day.missReason) ?? 0) + 1)
+    for (const cause of getMissReasons(day)) {
+      causeCounts.set(cause, (causeCounts.get(cause) ?? 0) + 1)
+    }
   }
   let mainMissCause: CardFailCause | null = null
   for (const [cause, count] of causeCounts) {

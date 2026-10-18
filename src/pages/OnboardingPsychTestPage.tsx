@@ -13,6 +13,7 @@ import {
   PSYCH_TEST_PATH,
   getScaleLevel,
   isPsychTestComplete,
+  isPsychTestReliable,
   loadPsychTest,
   psychScales,
   psychTestItems,
@@ -237,6 +238,9 @@ interface PsychTestResultViewProps {
 /** 검사 결과. 척도 7개마다 이름·설명·높낮이를 보여 줍니다. */
 function PsychTestResultView({ result, onNext, onRetry }: PsychTestResultViewProps) {
   const scales = Object.keys(psychScales) as PsychScale[]
+  // 답이 거의 다 같으면 점수 위에서 한 번만 "다시 해 볼래?" 를 묻습니다. (규칙: lib/psychTest.ts 의 isPsychTestReliable)
+  const isReliable = isPsychTestReliable(result.answers)
+  const [isCheckClosed, setIsCheckClosed] = useState(false)
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
@@ -249,6 +253,30 @@ function PsychTestResultView({ result, onNext, onRetry }: PsychTestResultViewPro
           문장이 적어서 정확하지 않은 첫 짐작이에요. 2주 동안 기록을 보고 같이 확인해 볼게요.
         </p>
       </div>
+
+      {/* 의심은 벌이 아니라 한 번 더 묻는 것입니다. 두 버튼은 같은 모양 · 같은 크기로 둡니다. (다크패턴 금지) */}
+      {!isReliable && !isCheckClosed && (
+        <section
+          aria-label="답 확인"
+          className="flex flex-col gap-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:p-5"
+        >
+          <div>
+            <p className="text-base font-semibold text-slate-900">답이 거의 다 같아요</p>
+            <p className="mt-1 text-sm break-keep text-slate-600">
+              빨리 넘겼다면 한 번만 다시 해 볼래? 그대로 둬도 괜찮아요. 코치가 이야기하면서 천천히
+              알아갈게요.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={onRetry}>
+              다시 하기
+            </Button>
+            <Button variant="secondary" onClick={() => setIsCheckClosed(true)}>
+              이대로 둘게
+            </Button>
+          </div>
+        </section>
+      )}
 
       <Card>
         <ul className="flex flex-col gap-4">
