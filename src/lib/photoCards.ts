@@ -68,8 +68,11 @@ function isText(value: unknown): value is string {
   return typeof value === 'string'
 }
 
-/** 서버가 준 초안 하나를 확인합니다. 모양이 틀리면 null (서버 응답도 그대로 믿지 않습니다) */
-function toDraft(value: unknown): PhotoCardDraft | null {
+/**
+ * 서버가 준 초안 하나를 확인합니다. 모양이 틀리면 null (서버 응답도 그대로 믿지 않습니다)
+ * 코치의 계획 말풍선(lib/coachPlan.ts)도 같은 모양의 초안을 받아서 이 함수로 확인합니다.
+ */
+export function toDraft(value: unknown): PhotoCardDraft | null {
   if (typeof value !== 'object' || value === null) return null
   const draft = value as Record<string, unknown>
   if (!isText(draft.date) || !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return null
