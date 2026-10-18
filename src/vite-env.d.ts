@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string
   /** 'false' 면 로그인 화면의 테스트 로그인을 숨깁니다. 비워 두면 보입니다. (lib/testLogin.ts) */
   readonly VITE_TEST_LOGIN?: string
+  /** 'true' 면 로그인 화면에 "시연 코드로 로그인" 을 보여줍니다. 비워 두면 숨깁니다. (lib/demoLogin.ts) */
+  readonly VITE_DEMO_CODE_LOGIN?: string
   /** 구글 로그인 · 가입에 쓰는 OAuth 클라이언트 ID. (lib/googleClient.ts) 구글 캘린더 연동은 #417 에서 지웠습니다 */
   readonly VITE_GOOGLE_CLIENT_ID?: string
   /** 통화 임시 키를 받을 Vercel 함수 주소 (예: /api/voice-key). 비워 두면 BE 에서 받습니다. (lib/realtimeCall.ts) */

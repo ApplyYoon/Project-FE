@@ -6,6 +6,7 @@ import type { AuthUser } from '@/types'
 /**
  * 서버(BE)에 로그인하고 가입하는 함수들입니다.
  * 로그인·가입은 구글 하나뿐입니다. (#319) 이메일 가입은 2026-10-15 에, 이메일 로그인은 2026-10-17 에 뺐습니다.
+ * 시연 때만 쓰는 "시연 코드로 로그인" 이 따로 있습니다. (2026-10-18, lib/demoLogin.ts)
  * 서버(BE)와 정한 약속은 BE 저장소의 docs/API.md "가입 · 로그인" 에 있습니다. (BE 이슈 #19)
  */
 
@@ -115,6 +116,37 @@ const SERVER_UNREACHABLE_MESSAGE = '서버에 연결하지 못했어요. 잠시 
 export function getGoogleAuthErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return SERVER_NOT_READY_MESSAGE
+    return error.message
+  }
+  if (isConnectionError(error)) return SERVER_UNREACHABLE_MESSAGE
+  return '알 수 없는 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'
+}
+
+/* ---------- 시연 코드로 로그인 (2026-10-18, lib/demoLogin.ts) ----------
+ *   POST /auth/demo-login  { code }  -> 200 { token, user }
+ *   실패  400 (비었음) / 401 (코드가 틀림) / 404 (서버에 시연 코드가 없어서 꺼짐) / 429 (1분 안에 너무 많이 틀림)
+ */
+
+/** 시연 코드를 서버에 보냅니다. 맞으면 시연 계정의 로그인 정보를 돌려줍니다. */
+export async function loginWithDemoCode(code: string): Promise<AuthResult> {
+  const result = await api<unknown>('/auth/demo-login', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  if (!isAuthResult(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+  return result
+}
+
+/**
+ * 시연 코드 로그인이 실패했을 때 화면에 보여줄 한 줄을 고릅니다.
+ *   401 · 429 · 400  -> 서버가 준 메시지 (예: '시연 코드가 맞지 않아요')
+ *   404              -> '시연 코드 로그인이 꺼져 있어요' (서버에 코드가 없거나, 옛 서버라 이 API 가 없음)
+ *   서버에 닿지 못함 -> '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.'
+ */
+export function getDemoLoginErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return '시연 코드 로그인이 꺼져 있어요'
     return error.message
   }
   if (isConnectionError(error)) return SERVER_UNREACHABLE_MESSAGE
