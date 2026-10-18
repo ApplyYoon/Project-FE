@@ -950,6 +950,19 @@ function SessionView({
             폰을 화면이 바닥을 보게 엎어 두면, 들 때마다 코치가 알려 줘요.
           </p>
         )}
+        {/* 관리 강도 '강' 이면 방해 금지를 켭니다(안드로이드). 권한이 없으면 한 번 열어 달라고 안내합니다. */}
+        {phone.dndState === 'on' && (
+          <p className="text-xs break-keep text-slate-500">🔕 공부하는 동안 방해 금지를 켰어요.</p>
+        )}
+        {phone.dndState === 'noPermission' && (
+          <button
+            type="button"
+            onClick={phone.openDndSettings}
+            className="h-10 rounded-xl bg-slate-100 px-4 text-xs font-medium break-keep text-slate-700"
+          >
+            🔕 방해 금지를 켜려면 권한이 필요해요 · 권한 열기
+          </button>
+        )}
       </Card>
 
       {phone.stage === 1 && (
