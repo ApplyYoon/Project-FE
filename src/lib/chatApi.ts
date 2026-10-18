@@ -12,6 +12,8 @@
  *     about — 무엇에 대한 대화인지: 종류 + 이 기기에서 만든 사실 줄 1~8개. 서버가 첫 말을 그 주제로 꺼냅니다.
  *     image — 이번 말에 붙인 사진 한 장(줄인 data URL). 그 한 번의 답에만 쓰고 서버 · 이 기기 어디에도 저장하지 않습니다.
  *     tags  — 후기 · 못 한 카드 대화에서 AI 가 학생 말로 짐작한 이유 값 (0~3개). 화면은 "맞아?" 로 확인만 받습니다.
+ *   sources (BE #342, 2026-10-18) — 📚 과목 쌤 방에서 AI 가 웹 검색을 했을 때 답에 쓴 출처 (0~3개, { title, url }).
+ *     서버가 교육 · 공공 · 백과사전 사이트만 남겨 줍니다. 화면은 답 아래에 작은 링크로 보여 줍니다.
  *   정리하기  POST /calls/{chatId}/finish (lib/callReview.ts 의 finishCall). 코치 탭은 날이 바뀌면 지난 세션을 조용히 정리합니다.
  *             정리한 요약은 서버 대본의 [지난 통화] 로 들어가서, 다음 날 AI 가 "어제 약속 지켰어?" 처럼 이어서 물어봅니다.
  *   실패      400 대화 모양이 틀림 · 409 이미 끝났거나 서버가 대본을 잊음 · 429 오늘 AI 사용량을 다 씀 · 503 AI 가 꺼져 있음
@@ -77,6 +79,14 @@ export interface ChatReply {
   action: ChatAction | null
   /** AI 가 학생 말로 짐작한 이유 값 (후기 · 못 한 카드 대화에서만, 3개까지). 없으면 빈 목록 */
   tags: string[]
+  /** 과목 쌤이 웹 검색으로 찾은 출처 (3개까지). 검색하지 않았으면 빈 목록 */
+  sources: ChatSource[]
+}
+
+/** 출처 하나 (웹 검색으로 찾은 페이지) */
+export interface ChatSource {
+  title: string
+  url: string
 }
 
 const ACTION_TYPES: ChatAction['type'][] = [
@@ -106,6 +116,38 @@ function readTags(value: unknown): string[] {
   return [...new Set(tags)].slice(0, 3)
 }
 
+/**
+ * 서버가 준 출처를 확인합니다. http · https 주소만, 같은 주소는 하나만, 3개까지.
+ * 제목은 60자까지, 비었으면 사이트 주소를 씁니다. 저장해 둔 대화를 다시 읽을 때도 씁니다. (lib/coachThread.ts)
+ *   readChatSources([{ title: '극한 - 위키백과', url: 'https://ko.wikipedia.org/wiki/극한' }, { title: 'x', url: 'javascript:1' }])
+ *     -> [{ title: '극한 - 위키백과', url: 'https://ko.wikipedia.org/wiki/극한' }]
+ */
+export function readChatSources(value: unknown): ChatSource[] {
+  if (!Array.isArray(value)) return []
+  const sources: ChatSource[] = []
+  for (const item of value) {
+    if (sources.length === 3) break
+    if (typeof item !== 'object' || item === null) continue
+    const record = item as Record<string, unknown>
+    if (typeof record.url !== 'string') continue
+    let host: string
+    try {
+      const url = new URL(record.url)
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') continue
+      host = url.hostname
+    } catch {
+      continue
+    }
+    if (sources.some((source) => source.url === record.url)) continue
+    const title =
+      typeof record.title === 'string' && record.title.trim() !== ''
+        ? record.title.trim().slice(0, 60)
+        : host
+    sources.push({ title, url: record.url })
+  }
+  return sources
+}
+
 /** 서버가 준 행동을 확인합니다. 모양이 틀리면 null */
 function readAction(value: unknown): ChatAction | null {
   if (typeof value !== 'object' || value === null) return null
@@ -125,7 +167,9 @@ function readAction(value: unknown): ChatAction | null {
 }
 
 /** 서버가 준 값이 약속한 모양이 맞는지 확인합니다. (서버 응답도 그대로 믿지 않고 확인합니다) 빠른 답 · 행동은 따로 읽습니다. */
-function isChatReply(value: unknown): value is Omit<ChatReply, 'quickReplies' | 'action' | 'tags'> {
+function isChatReply(
+  value: unknown,
+): value is Omit<ChatReply, 'quickReplies' | 'action' | 'tags' | 'sources'> {
   if (typeof value !== 'object' || value === null) return false
   const reply = value as Record<string, unknown>
   return (
@@ -160,6 +204,7 @@ async function postChat(path: string, body: unknown): Promise<ChatReply> {
     quickReplies: readQuickReplies(record.quickReplies),
     action: readAction(record.action),
     tags: readTags(record.tags),
+    sources: readChatSources(record.sources),
   }
 }
 

@@ -15,7 +15,13 @@ import { finishCall, type CallLine } from '@/lib/callReview'
 import { addCardMark, CARD_FAIL_CAUSES, loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { countsForCheckCall } from '@/lib/checkCall'
-import { MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat, type ChatReply } from '@/lib/chatApi'
+import {
+  MAX_CHAT_TEXT_LENGTH,
+  sendChatMessage,
+  startChat,
+  type ChatReply,
+  type ChatSource,
+} from '@/lib/chatApi'
 import {
   clearTalkRequest,
   getChatRoom,
@@ -822,6 +828,8 @@ function RoomChat({ room }: RoomChatProps) {
             // 위기 안내는 효과 없이 바로 전체로 보여 줍니다.
             ...(reply.showHelp ? {} : { typing: true }),
             ...(reasonCheck ? { reasonCheck } : {}),
+            // 과목 쌤이 웹 검색으로 찾은 출처 (없으면 넣지 않음)
+            ...(reply.sources.length > 0 ? { sources: reply.sources } : {}),
           }),
           chatId: openId,
           lastServerAt: Date.now(),
@@ -843,6 +851,7 @@ function RoomChat({ room }: RoomChatProps) {
           chips: chipsFromServer(reply, nowCard),
           ...(reply.showHelp ? {} : { typing: true }),
           ...(reasonCheck ? { reasonCheck } : {}),
+          ...(reply.sources.length > 0 ? { sources: reply.sources } : {}),
         })
         return {
           ...opened,
@@ -1969,6 +1978,7 @@ function RoomChat({ room }: RoomChatProps) {
                       roomName={roomInfo.name}
                       roomEmoji={roomInfo.emoji}
                     />
+                    {!reveal && bubble.sources && <SourceLinks sources={bubble.sources} />}
                     {!reveal && bubble.reasonCheck && (
                       <ReasonCheckBox
                         check={bubble.reasonCheck}
@@ -2739,6 +2749,34 @@ function ReplyParts({ bubble, reveal, roomName, roomEmoji }: ReplyPartsProps) {
         )
       })}
     </>
+  )
+}
+
+interface SourceLinksProps {
+  sources: ChatSource[]
+}
+
+/**
+ * 과목 쌤이 웹 검색으로 찾은 출처. 답 아래에 작은 링크로 둡니다. (BE #342)
+ * 새 창(탭)으로 열고, 우리 앱 정보를 넘기지 않게 noopener · noreferrer 를 붙입니다.
+ */
+function SourceLinks({ sources }: SourceLinksProps) {
+  return (
+    <div className="flex max-w-[85%] flex-wrap items-center gap-1.5">
+      <span className="text-xs text-slate-500">출처</span>
+      {sources.map((source) => (
+        <a
+          key={source.url}
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          // h-10: 손가락으로 누르기 쉽게 40px. 제목이 길면 말줄임(안쪽 span 의 truncate)
+          className="inline-flex h-10 max-w-full min-w-0 items-center rounded-full bg-slate-100 px-3 text-xs text-slate-600 underline-offset-2 hover:underline"
+        >
+          <span className="truncate">{source.title}</span>
+        </a>
+      ))}
+    </div>
   )
 }
 
