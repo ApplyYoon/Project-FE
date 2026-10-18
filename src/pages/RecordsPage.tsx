@@ -160,15 +160,6 @@ export function RecordsPage() {
             주간 리포트 보기
           </Button>
         </Card>
-
-        <Card title="시험">
-          <p className="text-sm text-slate-600">
-            시험 전에 예상 점수를 적어 두고, 다가오는 시험을 D-day 로 확인해요.
-          </p>
-          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/exams')}>
-            시험 보러 가기
-          </Button>
-        </Card>
       </div>
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 기록 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}

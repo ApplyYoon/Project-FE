@@ -1,9 +1,10 @@
 # 이 기기의 데이터를 서버와 맞추기 (#516)
 
-카드 · 공부 기록 · 목표 · 미루기/실패/휴식 · 고정 일정은 **이 기기(localStorage)에 먼저 저장**하고, 서버(BE)와는 **뒤에서 맞춥니다.**
+카드 · 공부 기록 · 목표 · 미루기/실패/휴식은 **이 기기(localStorage)에 먼저 저장**하고, 서버(BE)와는 **뒤에서 맞춥니다.**
 이 문서는 "무엇이 언제 서버로 가는지" 와 "새 코드를 쓸 때 지킬 것" 을 정리한 것입니다. (2026-10-17, FE PR #519 · #523 · #524 · #525 · #526)
 
-> 한 줄 요약: **카드 · 목표 · 고정 일정은 꼭 `saveCards` · `saveGoals` · `saveFixedBlocks`(또는 그 훅)로 저장한다. 그래야 서버로 간다.**
+> 한 줄 요약: **카드 · 목표는 꼭 `saveCards` · `saveGoals`(또는 그 훅)로 저장한다. 그래야 서버로 간다.**
+> (고정 일정 입력과 그 동기화(`lib/fixedBlockSync.ts`)는 2026-10-18 에 지웠습니다. 서버의 `/api/v1/fixed-blocks` 는 그대로입니다.)
 
 ---
 
@@ -18,15 +19,14 @@
 
 ## 2. 무엇이, 어떻게 가나요?
 
-| 데이터                         | 서버 주소 (BE `docs/API.md`)                 | 방향                   | 규칙 파일               | 보낼 목록 · 표시 (localStorage)  |
-| ------------------------------ | -------------------------------------------- | ---------------------- | ----------------------- | -------------------------------- |
-| 카드                           | `/api/v1/cards`                              | 보내기 + **받아 오기** | `lib/cardSync.ts`       | `study-card-sync-pending`        |
-| 목표                           | `/api/v1/goals`                              | 보내기 + **받아 오기** | `lib/goalSync.ts`       | `study-goal-sync-pending`        |
-| 고정 일정 (학교 · 학원)        | `/api/v1/fixed-blocks`                       | 보내기 + **받아 오기** | `lib/fixedBlockSync.ts` | `study-fixed-block-sync-pending` |
-| 공부 기록 (타이머 · 노는 기록) | `POST /api/v1/study-sessions`                | **보내기만**           | `lib/sessionSync.ts`    | `study-session-sync`             |
-| 미루기 · 실패                  | `POST /api/v1/cards/{id}/postpone` · `/fail` | **보내기만**           | `lib/markSync.ts`       | `study-mark-sync`                |
-| 사후 입력                      | `POST /api/v1/cards/{id}/late-entry`         | **보내기만**           | `lib/markSync.ts`       | `study-mark-sync`                |
-| 휴식 처리                      | `POST /api/v1/rest-days/{date}`              | **보내기만**           | `lib/markSync.ts`       | `study-mark-sync`                |
+| 데이터                         | 서버 주소 (BE `docs/API.md`)                 | 방향                   | 규칙 파일            | 보낼 목록 · 표시 (localStorage) |
+| ------------------------------ | -------------------------------------------- | ---------------------- | -------------------- | ------------------------------- |
+| 카드                           | `/api/v1/cards`                              | 보내기 + **받아 오기** | `lib/cardSync.ts`    | `study-card-sync-pending`       |
+| 목표                           | `/api/v1/goals`                              | 보내기 + **받아 오기** | `lib/goalSync.ts`    | `study-goal-sync-pending`       |
+| 공부 기록 (타이머 · 노는 기록) | `POST /api/v1/study-sessions`                | **보내기만**           | `lib/sessionSync.ts` | `study-session-sync`            |
+| 미루기 · 실패                  | `POST /api/v1/cards/{id}/postpone` · `/fail` | **보내기만**           | `lib/markSync.ts`    | `study-mark-sync`               |
+| 사후 입력                      | `POST /api/v1/cards/{id}/late-entry`         | **보내기만**           | `lib/markSync.ts`    | `study-mark-sync`               |
+| 휴식 처리                      | `POST /api/v1/rest-days/{date}`              | **보내기만**           | `lib/markSync.ts`    | `study-mark-sync`               |
 
 - **받아 오기**: 앱을 열 때 서버의 목록을 받아(TanStack Query `useQuery`), 다른 기기에서 만들거나 고치거나 지운 것을 이 기기에도 반영합니다.
 - **보내기만**: 서버에 "고치기" 주소가 없어서 받아 오지 않습니다. 받아 오면 "모든 기록 지우기" 로 지운 기록이 다른 기기에서 다시 들어올 수 있기 때문입니다.
@@ -56,7 +56,7 @@
 | 서버 번호가 있는데 서버에 없음    | 다른 기기에서 지운 것 → 이 기기에서도 뺌  |
 | 이 기기에 없는 서버 카드          | 다른 기기에서 만든 것 → 더함              |
 
-목표 · 고정 일정도 같은 규칙입니다. (목표는 서버에 지우는 주소가 없어서, 서버가 모르는 목표는 빼지 않고 다시 올립니다)
+목표도 같은 규칙입니다. (목표는 서버에 지우는 주소가 없어서, 서버가 모르는 목표는 빼지 않고 다시 올립니다)
 
 ## 4. 순서가 중요한 곳
 
@@ -72,17 +72,17 @@
 | 인터넷 끊김 · 시간 초과 · 서버 오류 | 멈추고 목록에 남김 → 다음에 다시                                               |
 | 400 (값이 틀림)                     | 다시 보내도 같아서 목록에서 뺌. **이 기기의 것은 그대로**                      |
 | 409 (한도 · 기한 · 시간 겹침)       | 목표(진행 중 3개) · 공부 기록 · 미루기 등은 목록에서 뺌. 이 기기의 것은 그대로 |
-| 404 (서버에 없음)                   | 카드 · 목표 · 고정 일정은 다시 만듦(POST), 공부 기록 · 미루기는 뺌             |
+| 404 (서버에 없음)                   | 카드 · 목표는 다시 만듦(POST), 공부 기록 · 미루기는 뺌                         |
 
 공부 기록을 보냈는데 답을 못 받아 다시 보내면 서버가 409(시간 겹침)를 줍니다. 이때는 같은 시작 · 끝 시각의 기록을 찾아 "이미 저장됨" 으로 봅니다. (`lib/sessionsApi.ts` 의 `createSession`) 그래서 두 번 저장되지 않습니다.
 
 ## 6. 새 코드를 쓸 때 지킬 것
 
-- **카드 · 목표 · 고정 일정은 `saveCards` · `saveGoals` · `saveFixedBlocks` 로만 저장합니다.** 화면에서는 `useCards` · `useGoals` · `useFixedBlocks` 의 함수를 쓰면 됩니다.
+- **카드 · 목표는 `saveCards` · `saveGoals` 로만 저장합니다.** 화면에서는 `useCards` · `useGoals` 의 함수를 쓰면 됩니다.
   `saveData('cards', …)` 처럼 저장소에 바로 쓰면 이벤트가 안 나가서 **서버로 가지 않고, 다른 화면도 모릅니다.**
 - 위 훅들은 고칠 때 **저장소의 최신 목록을 다시 읽어서** 고칩니다. 화면이 들고 있는 옛 목록으로 통째로 덮어쓰면, 서버에서 받은 값(서버 번호 등)이 사라져서 같은 것이 서버에 두 번 만들어질 수 있습니다.
 - 공부 기록은 `useStudySessions` 의 `addSession` 으로 저장하면 끝나고 10분 뒤에, 미루기 · 실패(`addCardMark`) · 휴식(`addRestDay`)은 1분 안에 서버로 갑니다.
-- 새 데이터를 서버와 맞추고 싶으면 `lib/fixedBlockSync.ts` 가 가장 짧은 본보기입니다. (주고받는 함수 + 바뀐 것 찾기 + 맞추기 + 보내기가 한 파일에 있음)
+- 새 데이터를 서버와 맞추고 싶으면 `lib/goalSync.ts` 를 본보기로 보세요. (가장 짧던 `lib/fixedBlockSync.ts` 는 2026-10-18 에 지웠고, git 기록에서 볼 수 있습니다)
 
 ## 7. 확인하는 법
 

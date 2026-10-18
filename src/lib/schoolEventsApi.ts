@@ -7,7 +7,8 @@
  *   - 서버는 NEIS 학사일정을 학교마다 저장해 두고 24시간마다 새로 받습니다. NEIS 가 멈춰도 받아 둔 것을 줍니다.
  */
 import { ApiError, api } from '@/lib/api'
-import type { SchoolEvent } from '@/lib/schoolEvents'
+import { gradeNumberOf, saveSchoolExamDates, type SchoolEvent } from '@/lib/schoolEvents'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 처음 한 번은 NEIS 를 여러 번 불러서 조금 넉넉히 줍니다. */
@@ -61,11 +62,20 @@ function toResult(value: unknown): SchoolEventsResult {
   }
 }
 
+/**
+ * 받은 일정에서 내 학년의 시험 날짜를 이 기기에 적어 두고 그대로 돌려줍니다.
+ * 안전 브레이크가 "시험 기간" 을 판단할 때 씁니다. (lib/schoolEvents.ts 의 saveSchoolExamDates)
+ */
+function rememberExamDates(result: SchoolEventsResult): SchoolEventsResult {
+  saveSchoolExamDates(result.events, gradeNumberOf(loadOnboardingAnswers()?.grade))
+  return result
+}
+
 async function fetchSchoolEvents(): Promise<SchoolEventsResult> {
   const result = await api<unknown>('/school/events', {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
-  return toResult(result)
+  return rememberExamDates(toResult(result))
 }
 
 /** [새로고침]: 서버가 NEIS 에서 다시 받아 오늘부터 120일 일정을 돌려줍니다. */
@@ -74,7 +84,7 @@ export async function refreshSchoolEvents(): Promise<SchoolEventsResult> {
     method: 'POST',
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
-  return toResult(result)
+  return rememberExamDates(toResult(result))
 }
 
 /** 내 학교 학사일정 쿼리 (오늘부터 120일) */
