@@ -1,6 +1,5 @@
 import { useSuspenseQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Card } from '@/components/ui/Card'
 import { InsightCard } from '@/components/ui/InsightCard'
@@ -16,7 +15,6 @@ import {
 } from '@/lib/analysisFacts'
 import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
-import { getAnalysisTabPath } from '@/lib/tabMenu'
 import type { Insight, StudySession } from '@/types'
 
 /**
@@ -161,12 +159,6 @@ function AnalysisCardView({ view, className }: AnalysisCardViewProps) {
             {analysis.nextExperiment.ifText} → {analysis.nextExperiment.thenText}
           </p>
           <p className="mt-1 text-sm break-keep text-slate-600">{analysis.nextExperiment.why}</p>
-          <Link
-            to={getAnalysisTabPath('experiment')}
-            className="text-brand mt-1 inline-flex min-h-10 items-center text-sm font-semibold hover:underline"
-          >
-            가설·실험에서 시작하기 ›
-          </Link>
         </div>
       )}
 
@@ -277,22 +269,12 @@ interface AnalysisExperimentSuggestionProps {
 export function AnalysisExperimentSuggestion({ className }: AnalysisExperimentSuggestionProps) {
   const material = useAnalysisMaterial()
 
-  const link = (
-    <Link
-      to={getAnalysisTabPath('experiment')}
-      className="text-brand inline-flex min-h-10 items-center text-sm font-semibold hover:underline"
-    >
-      가설·실험에서 고르기 ›
-    </Link>
-  )
-
   if (material.facts.length < MIN_FACTS) {
     return (
       <div className={className}>
         <p className="text-sm break-keep text-slate-500">
-          다음에 해 볼 실험은 가설·실험에서 내 기록으로 골라 줘요.
+          기록이 더 쌓이면 다음에 해 볼 실험을 내 기록으로 골라 줘요.
         </p>
-        {link}
       </div>
     )
   }
@@ -313,10 +295,9 @@ export function AnalysisExperimentSuggestion({ className }: AnalysisExperimentSu
               </>
             ) : (
               <p className="text-sm break-keep text-slate-500">
-                다음에 해 볼 실험은 가설·실험에서 내 기록으로 골라 줘요.
+                기록이 더 쌓이면 다음에 해 볼 실험을 내 기록으로 골라 줘요.
               </p>
             )}
-            {link}
           </div>
         )
       }}

@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { VoicePledgePlayButton } from '@/components/ui/VoicePledgePlayButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
@@ -82,7 +81,6 @@ import {
 import { deleteServerSessions } from '@/lib/sessionsApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import { testUser } from '@/lib/testLogin'
-import { loadVoicePledge, removeVoicePledge } from '@/lib/voicePledge'
 
 /* 지우기 종류별 안내 문구. 새 종류가 생기면 여기에 한 줄만 더하면 됩니다. */
 const deleteTexts: Record<DeleteKind, { question: string; detail: string; done: string }> = {
@@ -159,13 +157,6 @@ export function SettingsPage() {
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
-  // 처음의 다짐(목소리·글). 없으면 null 입니다. 여기서 지울 수 있어서 바꿀 수 있는 상태로 둡니다. (#241)
-  const [voicePledge, setVoicePledge] = useState(loadVoicePledge)
-
-  function handleRemoveVoicePledge() {
-    // 정말 지워졌을 때만 화면에서도 없앱니다.
-    if (removeVoicePledge()) setVoicePledge(null)
-  }
 
   // 지금 확인창으로 물어보고 있는 종류. null 이면 확인창이 닫혀 있습니다.
   const [pendingKind, setPendingKind] = useState<DeleteKind | null>(null)
@@ -250,9 +241,6 @@ export function SettingsPage() {
       deleteServerCheckInsWithMessage(doneText)
     }
     setPendingKind(null)
-    // 저장소에서는 지워졌지만 화면이 들고 있는 값은 그대로라서, 새로 읽어 옵니다.
-    // (안 읽으면 새로고침하기 전까지 지운 다짐 녹음이 보이고 재생됩니다)
-    setVoicePledge(loadVoicePledge())
   }
 
   // Link(주소로 이동하는 글자)를 버튼처럼 보이게 하는 클래스. h-10 으로 누르는 높이를 40px 로 둡니다.
@@ -318,55 +306,6 @@ export function SettingsPage() {
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 왼쪽은 관리 강도 한도, 오른쪽은 내 데이터 등 그 밖의 설정입니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
-          {/* 처음의 다짐 (#241). "내 정보 더 알려주기" · 과목별 성적 · 처음 계획은 최종 기획서에 없어서 #417 에서 지웠습니다. */}
-          <Card title="처음의 나">
-            {/* 처음의 다짐: 내 목소리와 글 한마디. 이 기기에만 저장됩니다. (#241) */}
-            <div>
-              <h4 className="text-sm font-semibold text-slate-900">처음의 다짐</h4>
-              {voicePledge === null ? (
-                <>
-                  <p className="mt-1 text-sm break-keep text-slate-500">
-                    아직 남긴 다짐이 없어요. 그만두고 싶을 때 다시 들을 한마디를 남겨 보세요.
-                  </p>
-                  <Link to="/onboarding/voice?from=settings" className={secondaryLinkClass}>
-                    한마디 남기기
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p className="mt-1 text-sm break-keep text-slate-500">
-                    {voicePledge.recordedDate} 에 남김 · 이 기기에만 저장돼요
-                  </p>
-                  {voicePledge.text !== '' && (
-                    <p className="mt-2 text-sm font-medium break-words text-slate-900">
-                      “{voicePledge.text}”
-                    </p>
-                  )}
-                  {/* flex-wrap: 좁은 화면에서는 버튼이 다음 줄로 넘어갑니다. */}
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {voicePledge.audioDataUrl && (
-                      <VoicePledgePlayButton
-                        audioDataUrl={voicePledge.audioDataUrl}
-                        seconds={voicePledge.seconds}
-                        label="듣기"
-                        className="border border-slate-200"
-                      />
-                    )}
-                    <Link
-                      to="/onboarding/voice?from=settings"
-                      className={cn(secondaryLinkClass, 'mt-0')}
-                    >
-                      다시 남기기
-                    </Link>
-                    <Button variant="ghost" onClick={handleRemoveVoicePledge}>
-                      지우기
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </Card>
-
           {/* 한도 · 수위는 AI 가 바꾸지 않고 나만 바꿉니다. 낮추면 즉시, 높이면 다음 날부터예요. (「4.8 설정」, #390) */}
           <Card title="관리 강도 최대 한도">
             <p className="text-sm text-slate-500">

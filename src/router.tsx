@@ -83,9 +83,6 @@ const OnboardingPsychTestPage = lazy(() =>
 const OnboardingResumePage = lazy(() =>
   import('@/pages/OnboardingResumePage').then((m) => ({ default: m.OnboardingResumePage })),
 )
-const OnboardingVoicePage = lazy(() =>
-  import('@/pages/OnboardingVoicePage').then((m) => ({ default: m.OnboardingVoicePage })),
-)
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
@@ -150,7 +147,7 @@ export const router = createBrowserRouter([
       { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
       // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 자기 실험(가설·실험 탭)으로 보냅니다.
-      { path: 'suggestions', element: <Navigate to="/analysis?tab=experiment" replace /> },
+      { path: 'suggestions', element: <Navigate to={ANALYSIS_PATH} replace /> },
       { path: 'settings', element: <SettingsPage /> },
       // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
       { path: 'settings/account', element: <AccountPage /> },
@@ -164,7 +161,7 @@ export const router = createBrowserRouter([
       { path: 'planner', element: <RedirectWithQuery to="/cards" /> },
       { path: 'records', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
       { path: 'report', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="report" /> },
-      { path: 'manual', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="manual" /> },
+      { path: 'manual', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
@@ -286,18 +283,8 @@ export const router = createBrowserRouter([
   // 처음 계획(/onboarding/plan) · 옛 온보딩 끝 화면(/onboarding/done)은 #417 에서 지웠습니다. 옛 링크는 설정 · 홈으로 보냅니다.
   { path: '/onboarding/plan', element: <Navigate to="/settings" replace /> },
   { path: '/onboarding/done', element: <Navigate to="/" replace /> },
-  // 처음의 나에게 한마디(목소리·글) 남기기. 온보딩에서는 빠졌고 첫 목표를 만들 때로 옮깁니다(#388 → #391). (#241)
-  {
-    path: '/onboarding/voice',
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <OnboardingVoicePage />
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
+  // 처음의 다짐 녹음(/onboarding/voice)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 홈으로 보냅니다.
+  { path: '/onboarding/voice', element: <Navigate to="/" replace /> },
   // 로그인 화면도 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 써서 Layout 밖에 둡니다.
   // 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
   {

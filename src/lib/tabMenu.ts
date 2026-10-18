@@ -4,7 +4,8 @@
  * 탭에는 화면이 다 들어갈 자리가 없어서, 시험·일기 같은 화면은 가까운 탭 아래에 묶었습니다.
  * 이 주소들에 있을 때는 그 탭이 선택된 모양이어야 하고, 화면 위에 "‹ 분석" 같은 돌아가기 링크가 나옵니다.
  *
- *   분석 탭: /analysis (하위 탭: 기록 · 리포트 · 사용설명서 · 가설·실험) + 시험
+ *   분석 탭: /analysis (하위 탭: 기록 · 리포트) + 시험
+ *   (사용설명서 · 가설·실험 하위 탭은 시연 범위 밖이라 2026-10-18 에 지웠습니다)
  *   상담 탭: /counsel + 일기
  */
 
@@ -12,15 +13,12 @@
 export const ANALYSIS_PATH = '/analysis'
 
 /** 분석 탭 안의 하위 탭 이름. 주소의 ?tab= 값입니다. */
-export type AnalysisTab = 'records' | 'report' | 'manual' | 'experiment'
+export type AnalysisTab = 'records' | 'report'
 
 /** 분석 탭 위쪽의 하위 탭 막대에 나오는 순서와 글자. 첫 번째(기록)가 기본입니다. */
 export const analysisTabs: { tab: AnalysisTab; label: string }[] = [
   { tab: 'records', label: '기록' },
   { tab: 'report', label: '리포트' },
-  { tab: 'manual', label: '사용설명서' },
-  // 내 가설 확인(#411) · 자기 실험(#412)
-  { tab: 'experiment', label: '가설·실험' },
 ]
 
 /**

@@ -49,7 +49,6 @@ import {
   type RestReason,
 } from '@/lib/restDays'
 import {
-  PLEDGE_GATE_SECONDS,
   isStage4AbsoluteOn,
   isStage4Now,
   loadStage4Absolute,
@@ -57,7 +56,6 @@ import {
   releaseStage4,
   saveStage4Absolute,
 } from '@/lib/stage4'
-import { loadVoicePledge } from '@/lib/voicePledge'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildLateEntrySession, checkLateEntry, makeLateEntryReport } from '@/lib/lateEntry'
 import { loadData } from '@/lib/storage'
@@ -133,10 +131,11 @@ export function CardTimerPage() {
   // 방금 끝낸 기록. 있으면 종료 팝업을 띄웁니다. (#398)
   const [endedRecord, setEndedRecord] = useState<StudySession | null>(null)
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
-  // 카드를 시작하기 전에 거치는 화면 — 4단계면 다짐 듣기(#408) → 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
+  // 카드를 시작하기 전에 거치는 화면 — 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
+  // (4단계의 다짐 듣기는 다짐 녹음과 함께 2026-10-18 에 지웠습니다)
   const [startFlow, setStartFlow] = useState<{
     card: CardModel
-    step: 'pledge' | 'countdown'
+    step: 'countdown'
   } | null>(null)
   const [pageSettings] = useState(loadAutoSettings)
 
@@ -290,10 +289,8 @@ export function CardTimerPage() {
     pageSettings.countdown.value,
     loadLocalCheckIn(todayKey)?.emotions,
   )
-  // 관리 4단계(#408): 시작 전 다짐 녹음 10초 · 미루기 잠금 · 다음 반복 카드 1장 절대 · 증빙 필수
+  // 관리 4단계(#408): 미루기 잠금 · 다음 반복 카드 1장 절대 · 증빙 필수
   const isStage4 = isStage4Now(todayKey)
-  const pledge = isStage4 ? loadVoicePledge() : null
-  const hasPledgeAudio = pledge !== null && pledge.audioDataUrl !== null
   const storedAbsolute = loadStage4Absolute()
   const stage4Absolute = !isStage4
     ? undefined
@@ -312,8 +309,7 @@ export function CardTimerPage() {
   }, [stage4AbsoluteKey])
 
   /** 시작 전에 처음 거칠 화면. 없으면 null (바로 시작) */
-  function firstStartStep(): 'pledge' | 'countdown' | null {
-    if (isStage4 && hasPledgeAudio) return 'pledge'
+  function firstStartStep(): 'countdown' | null {
     return isCountdownToday ? 'countdown' : null
   }
   const paramStep = paramCard ? firstStartStep() : null
@@ -327,7 +323,7 @@ export function CardTimerPage() {
   }, [cardParam, paramCard, hasParamFlow, session, todayKey, setCardParam])
 
   /**
-   * 카드로 시작합니다. 4단계면 다짐 듣기부터, 5초 카운트다운이 켜져 있으면(설정 또는 오늘 막막함·불안함) 카운트다운부터.
+   * 카드로 시작합니다. 5초 카운트다운이 켜져 있으면(설정 또는 오늘 막막함·불안함) 카운트다운부터.
    * [지금 시작] 즉석 카드는 할 일이 아직 없어서 바로 시작합니다.
    */
   function beginCard(card: CardModel) {
@@ -381,23 +377,6 @@ export function CardTimerPage() {
   }
 
   const shownFlow = startFlow ?? paramFlow
-  if (shownFlow?.step === 'pledge' && pledge?.audioDataUrl) {
-    return (
-      <PledgeGate
-        cardTitle={shownFlow.card.title}
-        audioDataUrl={pledge.audioDataUrl}
-        text={pledge.text}
-        onDone={() => {
-          setCardParam('')
-          if (isCountdownToday) setStartFlow({ card: shownFlow.card, step: 'countdown' })
-          else {
-            session.start(shownFlow.card, todayKey)
-            setStartFlow(null)
-          }
-        }}
-      />
-    )
-  }
   if (shownFlow?.step === 'countdown') {
     return (
       <CountdownView
@@ -462,9 +441,6 @@ export function CardTimerPage() {
               </li>
             )}
             <li>끝날 때 증빙이 있어야 한 것으로 쳐요.</li>
-            {hasPledgeAudio && (
-              <li>카드를 시작하기 전에 내 다짐을 {PLEDGE_GATE_SECONDS}초 들어요.</li>
-            )}
           </ul>
           <p className="mt-2 text-sm font-medium text-red-900">
             증빙이 있는 실행을 한 번 하면 3단계로 내려가요.
@@ -1631,62 +1607,6 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
           </Button>
         </div>
         <p className="text-xs text-slate-500">0 이 되면 바로 시작해요.</p>
-      </Card>
-    </div>
-  )
-}
-
-interface PledgeGateProps {
-  cardTitle: string
-  audioDataUrl: string
-  /** 녹음할 때 적은 다짐 글 (없으면 빈 글자) */
-  text: string
-  onDone: () => void
-}
-
-/**
- * 관리 4단계 — 카드 시작 전에 내 다짐 녹음을 10초 들려줍니다. 건너뛸 수 없습니다. (「5.4」 4단계, #408)
- * 녹음은 기기에만 있고 서버로 보내지 않습니다.
- */
-function PledgeGate({ cardTitle, audioDataUrl, text, onDone }: PledgeGateProps) {
-  const [seconds, setSeconds] = useState(PLEDGE_GATE_SECONDS)
-  const onDoneRef = useRef(onDone)
-  useEffect(() => {
-    onDoneRef.current = onDone
-  })
-
-  // 처음 한 번 재생하고, 10초가 지나면 멈춥니다.
-  useEffect(() => {
-    const audio = new Audio(audioDataUrl)
-    void audio.play().catch(() => {
-      // 브라우저가 소리를 막아도 10초는 기다립니다. (글로 된 다짐이 화면에 있음)
-    })
-    return () => audio.pause()
-  }, [audioDataUrl])
-
-  useEffect(() => {
-    if (seconds <= 0) {
-      onDoneRef.current()
-      return
-    }
-    const id = setTimeout(() => setSeconds((value) => value - 1), 1000)
-    return () => clearTimeout(id)
-  }, [seconds])
-
-  return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-      <Card className="flex flex-col items-center gap-4 py-10 text-center">
-        <p className="text-sm font-medium text-red-700">관리 4단계 · {cardTitle} 시작 전에</p>
-        <p className="text-lg font-semibold text-slate-900">처음에 한 내 다짐을 들어요</p>
-        {text.trim() !== '' && (
-          <p className="max-w-sm text-base break-keep text-slate-700">“{text}”</p>
-        )}
-        <p className="text-6xl font-bold text-red-600 tabular-nums" aria-live="polite">
-          {Math.max(0, seconds)}
-        </p>
-        <p className="text-xs text-slate-500">
-          {PLEDGE_GATE_SECONDS}초가 지나면 바로 시작해요. 건너뛸 수 없어요.
-        </p>
       </Card>
     </div>
   )
