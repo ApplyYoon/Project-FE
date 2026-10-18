@@ -16,7 +16,7 @@ src/
 ├── router.tsx            🗺 주소 ↔ 페이지 연결표    ← 페이지 추가할 때 꼭 수정
 │
 ├── pages/                📄 화면 하나 = 파일 하나 (주소가 있는 것)
-│   ├── HomePage.tsx          /        홈
+│   ├── CoachPage.tsx         /        코치 (AI 채팅, 첫 화면)
 │   ├── AboutPage.tsx         /about   소개
 │   └── NotFoundPage.tsx      없는 주소로 들어왔을 때 (404)
 │

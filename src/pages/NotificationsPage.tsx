@@ -151,7 +151,7 @@ export function NotificationsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">알림</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">알림</h1>
         <p className="mt-1 text-sm break-keep text-slate-500">
           앱에서 생긴 일과 AI 선생님이 보낸 메시지가 여기에 쌓여.
         </p>

@@ -8,10 +8,7 @@ import {
   loadFocusMode,
   startFocusMode,
 } from '@/lib/focusMode'
-import { shouldShowCrisisHelp } from '@/lib/diarySafety'
-import { SUPPORT_PATH } from '@/lib/helpLines'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 // 안전 브레이크·설정을 다시 확인하는 간격(밀리초). 켜진 동안 30초마다 봅니다.
 const AUTO_CHECK_INTERVAL_MS = 30_000
@@ -26,13 +23,10 @@ const AUTO_CHECK_INTERVAL_MS = 30_000
  *   focusMode.unlock('엄마가 불러서')
  */
 export function useFocusMode() {
-  const navigate = useNavigate()
   const [state, setState] = useState(loadFocusMode)
 
   function unlock(reason: string) {
     endFocusMode(reason, false)
-    // 해제 이유에 위기 표현이 있거나 기분이 오래 낮으면 도움 안내로 보냅니다. (QA: 집중 모드 해제 이유)
-    if (shouldShowCrisisHelp({ texts: [reason], diaryMoods: [] })) navigate(SUPPORT_PATH)
   }
 
   useEffect(() => {

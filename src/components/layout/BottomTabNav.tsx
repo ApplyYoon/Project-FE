@@ -1,10 +1,57 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
 import { cn } from '@/lib/cn'
 import { scrollToTop } from '@/lib/scroll'
+import { COACH_PATH, RECORDS_PATH, TODAY_PATH } from '@/lib/tabMenu'
+import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
+/** 아이콘 하나 (라이브러리 없이 SVG 를 직접 그립니다. 선 굵기 · 크기를 탭마다 같게) */
+function TabIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-6 w-6"
+    >
+      {children}
+    </svg>
+  )
+}
+
+/** 탭 주소 → 아이콘. 코치(말풍선) · 오늘(해) · 타이머(시계) · 기록(막대그래프) */
+const TAB_ICONS: Record<string, ReactNode> = {
+  [COACH_PATH]: (
+    <TabIcon>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
+    </TabIcon>
+  ),
+  [TODAY_PATH]: (
+    <TabIcon>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </TabIcon>
+  ),
+  '/timer': (
+    <TabIcon>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 2.5M9 2h6" />
+    </TabIcon>
+  ),
+  [RECORDS_PATH]: (
+    <TabIcon>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+    </TabIcon>
+  ),
+}
+
 /**
- * 모바일 화면 아래에 고정되는 탭 메뉴입니다.
+ * 모바일 화면 아래에 고정되는 탭 메뉴입니다. (코치 · 오늘 · 타이머 · 기록)
+ * 아이콘 + 작은 글자이고, 지금 있는 탭은 진한 글자로 보여 줍니다. (2026-10-18 모바일 UI)
  * PC(sm 이상)에서는 숨기고, 대신 헤더 메뉴를 보여줍니다.
  */
 export function BottomTabNav() {
@@ -13,10 +60,11 @@ export function BottomTabNav() {
   return (
     <nav
       aria-label="하단 메뉴"
-      className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white sm:hidden"
+      // pb: 아이폰 아래 홈 막대만큼 띄웁니다. (안전 영역이 없는 화면에서는 0)
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-100 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
     >
-      {/* 탭 5개를 같은 너비로 나눕니다. */}
-      <ul className="grid grid-cols-5">
+      {/* 탭 4개를 같은 너비로 나눕니다. */}
+      <ul className="grid grid-cols-4">
         {navItems.map((item) => (
           <li key={item.to}>
             <NavLink
@@ -24,10 +72,11 @@ export function BottomTabNav() {
               // 탭을 누르면 맨 위로 올립니다. 지금 보고 있는 탭을 다시 눌러도 올라갑니다.
               onClick={scrollToTop}
               className={({ isActive }) =>
-                // 분석·상담 아래 화면(시험·일기 등)에서도 그 탭이 선택된 모양이 되게 합니다.
+                // 오늘 · 기록 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
                 tabLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
               }
             >
+              {TAB_ICONS[item.to]}
               {item.label}
             </NavLink>
           </li>
@@ -37,10 +86,10 @@ export function BottomTabNav() {
   )
 }
 
-/* 지금 있는 탭이면 브랜드 색으로 표시합니다. */
+/* 지금 있는 탭이면 진한 글자, 아니면 연한 회색입니다. 누르는 동안 살짝 작아집니다. */
 function tabLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
-    'flex h-14 items-center justify-center text-sm font-medium transition-colors',
-    isActive ? 'text-brand bg-brand-light' : 'text-slate-500 hover:bg-slate-100',
+    'flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition active:scale-95',
+    isActive ? 'text-slate-900' : 'text-slate-400',
   )
 }

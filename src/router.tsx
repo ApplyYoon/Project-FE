@@ -10,7 +10,7 @@ import {
 } from '@/lib/onboardingProgress'
 import { CONSENT_PATH } from '@/lib/consentApi'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
-import { ANALYSIS_PATH } from '@/lib/tabMenu'
+import { RECORDS_PATH } from '@/lib/tabMenu'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { ErrorPage } from '@/pages/ErrorPage'
@@ -26,14 +26,14 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 const AccountPage = lazy(() =>
   import('@/pages/AccountPage').then((m) => ({ default: m.AccountPage })),
 )
-const AnalysisPage = lazy(() =>
-  import('@/pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })),
+const RecordsPage = lazy(() =>
+  import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
 )
 const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
 )
 const CallPage = lazy(() => import('@/pages/CallPage').then((m) => ({ default: m.CallPage })))
-const ChatPage = lazy(() => import('@/pages/ChatPage').then((m) => ({ default: m.ChatPage })))
+const CoachPage = lazy(() => import('@/pages/CoachPage').then((m) => ({ default: m.CoachPage })))
 const CallResultPage = lazy(() =>
   import('@/pages/CallResultPage').then((m) => ({ default: m.CallResultPage })),
 )
@@ -41,23 +41,16 @@ const CardEditPage = lazy(() =>
   import('@/pages/CardEditPage').then((m) => ({ default: m.CardEditPage })),
 )
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
-const FixedBlocksPage = lazy(() =>
-  import('@/pages/FixedBlocksPage').then((m) => ({ default: m.FixedBlocksPage })),
+const CardsFromPhotoPage = lazy(() =>
+  import('@/pages/CardsFromPhotoPage').then((m) => ({ default: m.CardsFromPhotoPage })),
 )
-const CounselPage = lazy(() =>
-  import('@/pages/CounselPage').then((m) => ({ default: m.CounselPage })),
-)
-const ExamResultPage = lazy(() =>
-  import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
-)
-const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
 const GoalDetailPage = lazy(() =>
   import('@/pages/GoalDetailPage').then((m) => ({ default: m.GoalDetailPage })),
 )
 const GoalNewPage = lazy(() =>
   import('@/pages/GoalNewPage').then((m) => ({ default: m.GoalNewPage })),
 )
-const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
+const TodayPage = lazy(() => import('@/pages/TodayPage').then((m) => ({ default: m.TodayPage })))
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
@@ -83,18 +76,12 @@ const OnboardingPsychTestPage = lazy(() =>
 const OnboardingResumePage = lazy(() =>
   import('@/pages/OnboardingResumePage').then((m) => ({ default: m.OnboardingResumePage })),
 )
-const OnboardingVoicePage = lazy(() =>
-  import('@/pages/OnboardingVoicePage').then((m) => ({ default: m.OnboardingVoicePage })),
-)
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 )
 const SignupPage = lazy(() => import('@/pages/SignupPage').then((m) => ({ default: m.SignupPage })))
 const ConsentPage = lazy(() =>
   import('@/pages/ConsentPage').then((m) => ({ default: m.ConsentPage })),
-)
-const SupportPage = lazy(() =>
-  import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
 )
 const CardTimerPage = lazy(() =>
   import('@/pages/CardTimerPage').then((m) => ({ default: m.CardTimerPage })),
@@ -114,57 +101,68 @@ export const router = createBrowserRouter([
     path: '/',
     errorElement: <ErrorPage />,
     // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다.
-    // 그날 첫 체크인은 화면을 막지 않고 Layout 맨 위의 한 줄(DailyTagBar)로 묻습니다. (#387)
+    // 그날 컨디션(체크인)은 화면을 막지 않고 코치가 채팅에서 칩으로 묻습니다. (2026-10-18, pages/CoachPage.tsx)
     element: (
       <RequireAuth>
         <Layout />
       </RequireAuth>
     ),
     children: [
-      { index: true, element: <HomePage /> },
+      // 첫 화면은 AI 코치 채팅입니다. (2026-10-18 "AI 코치 채팅 중심")
+      { index: true, element: <CoachPage /> },
+      // 오늘 탭: 예전 홈 화면 (오늘 카드 · 숲 · 오늘 한 줄, 다음 PR 에서 학교 시간표 · 급식 · 학사일정)
+      { path: 'today', element: <TodayPage /> },
       // 앱 소개 페이지(/about)는 #417 에서 지웠습니다. (앱 소개는 온보딩 첫 화면이 합니다)
       { path: 'about', element: <Navigate to="/" replace /> },
       // 아래 탭 5개: 홈 · 카드 · 타이머 · 상담 · 분석 (기획서 3장, #386)
       { path: 'cards', element: <CardsPage /> },
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
       { path: 'cards/new', element: <CardEditPage /> },
+      // 시험 범위 사진으로 카드 만들기 (2026-10-18). 사진은 저장하지 않고 AI 가 읽고 버립니다.
+      { path: 'cards/photo', element: <CardsFromPhotoPage /> },
       { path: 'cards/:cardId/edit', element: <CardEditPage /> },
-      // 고정 일정(학교·학원) 입력 (#393)
-      { path: 'cards/fixed', element: <FixedBlocksPage /> },
+      // 고정 일정(학교·학원) 입력(#393)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 카드 탭으로 보냅니다.
+      { path: 'cards/fixed', element: <Navigate to="/cards" replace /> },
       // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
       { path: 'goals/new', element: <GoalNewPage /> },
       // 목표 상세 (진척 · 2주 목표 점검, #403). 카드 탭의 목표 목록에서 들어옵니다.
       { path: 'goals/:goalId', element: <GoalDetailPage /> },
       // 카드 타이머 (최종 기획서 「4.4 타이머」, #395). 옛 계획 타이머(?plan=)는 #417 에서 지웠습니다.
       { path: 'timer', element: <CardTimerPage /> },
-      { path: 'counsel', element: <CounselPage /> },
-      // 상담 채팅: 통화 대본의 글 버전 (#416, BE #238)
-      { path: 'counsel/chat', element: <ChatPage /> },
-      // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
-      { path: 'analysis', element: <AnalysisPage /> },
-      // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (하루 첫 한 줄은 어느 화면에서나 뜹니다)
+      // 상담 탭(/counsel) · 상담 채팅(/counsel/chat)은 2026-10-18 에 첫 화면의 AI 코치로 합쳤습니다. 옛 주소는 코치로 보냅니다.
+      { path: 'counsel', element: <Navigate to="/" replace /> },
+      { path: 'counsel/chat', element: <Navigate to="/" replace /> },
+      // 기록 탭(예전 '분석'). [기록] · [리포트] 는 이 화면 안의 하위 탭입니다. (?tab=)
+      { path: 'records', element: <RecordsPage /> },
+      // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)
       { path: 'check', element: <Navigate to="/" replace /> },
-      // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 상담 탭으로 보냅니다.
-      { path: 'diary', element: <Navigate to="/counsel" replace /> },
-      { path: 'diary/reflection', element: <Navigate to="/counsel" replace /> },
-      { path: 'exams', element: <ExamsPage /> },
+      // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 코치로 보냅니다.
+      { path: 'diary', element: <Navigate to="/" replace /> },
+      { path: 'diary/reflection', element: <Navigate to="/" replace /> },
+      // 시험 기록(/exams · 시험 결과)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 시험 날짜는 학교 학사일정(NEIS)이 알려 줍니다.
+      // 옛 링크는 기록 탭으로 보냅니다.
+      { path: 'exams', element: <Navigate to={RECORDS_PATH} replace /> },
+      { path: 'exams/:examId/result', element: <Navigate to={RECORDS_PATH} replace /> },
       // 휴대폰 집중 모드 안내(/phone-focus)는 #417 에서 지웠습니다. (OS 앱 잠금은 다음 버전)
       { path: 'phone-focus', element: <Navigate to="/settings" replace /> },
-      { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
-      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 자기 실험(가설·실험 탭)으로 보냅니다.
-      { path: 'suggestions', element: <Navigate to="/analysis?tab=experiment" replace /> },
+      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 기록 탭으로 보냅니다. (가설·실험 탭도 2026-10-18 에 지움)
+      { path: 'suggestions', element: <Navigate to={RECORDS_PATH} replace /> },
       { path: 'settings', element: <SettingsPage /> },
       // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
       { path: 'settings/account', element: <AccountPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
       { path: 'messages', element: <Navigate to="/notifications" replace /> },
+      // 도움 연결 안내 화면(/support)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 홈으로 보냅니다.
+      // (AI 채팅에서 위기 표현이 나오면 채팅 안에서 상담 전화 한 줄만 알려 줍니다)
+      { path: 'support', element: <Navigate to="/" replace /> },
       // 탭 이름을 바꾸기 전의 옛 주소들. ?date= 같은 값은 그대로 가져갑니다. (#386)
       { path: 'planner', element: <RedirectWithQuery to="/cards" /> },
-      { path: 'records', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
-      { path: 'report', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="report" /> },
-      { path: 'manual', element: <RedirectWithQuery to={ANALYSIS_PATH} tab="manual" /> },
+      // 탭 이름을 '분석' 에서 '기록' 으로 바꾸기 전 주소(2026-10-18). ?tab= 같은 값은 그대로 가져갑니다.
+      { path: 'analysis', element: <RedirectWithQuery to={RECORDS_PATH} /> },
+      { path: 'report', element: <RedirectWithQuery to={RECORDS_PATH} tab="report" /> },
+      { path: 'manual', element: <RedirectWithQuery to={RECORDS_PATH} /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],
@@ -286,18 +284,8 @@ export const router = createBrowserRouter([
   // 처음 계획(/onboarding/plan) · 옛 온보딩 끝 화면(/onboarding/done)은 #417 에서 지웠습니다. 옛 링크는 설정 · 홈으로 보냅니다.
   { path: '/onboarding/plan', element: <Navigate to="/settings" replace /> },
   { path: '/onboarding/done', element: <Navigate to="/" replace /> },
-  // 처음의 나에게 한마디(목소리·글) 남기기. 온보딩에서는 빠졌고 첫 목표를 만들 때로 옮깁니다(#388 → #391). (#241)
-  {
-    path: '/onboarding/voice',
-    errorElement: <ErrorPage />,
-    element: (
-      <RequireAuth>
-        <PageBoundary fullScreen>
-          <OnboardingVoicePage />
-        </PageBoundary>
-      </RequireAuth>
-    ),
-  },
+  // 처음의 다짐 녹음(/onboarding/voice)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 홈으로 보냅니다.
+  { path: '/onboarding/voice', element: <Navigate to="/" replace /> },
   // 로그인 화면도 메뉴·하단 탭 없이 앱 이름만 있는 틀(PlainLayout)을 써서 Layout 밖에 둡니다.
   // 로그인 없이 열려야 해서 RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
   {
@@ -329,17 +317,6 @@ export const router = createBrowserRouter([
           <ConsentPage />
         </PageBoundary>
       </RequireAuth>
-    ),
-  },
-  // 도움 연결 안내는 헤더·하단 탭 없이 화면 전체를 쓰고, 힘든 순간에 로그인 때문에 막히면 안 돼서
-  // RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
-  {
-    path: '/support',
-    errorElement: <ErrorPage />,
-    element: (
-      <PageBoundary fullScreen>
-        <SupportPage />
-      </PageBoundary>
     ),
   },
 ])

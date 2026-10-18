@@ -1,3 +1,4 @@
+import { getTodayKey, moveDateKey } from '@/lib/date'
 import { getDaysUntil } from '@/lib/exams'
 import { loadData, saveData } from '@/lib/storage'
 
@@ -159,4 +160,34 @@ export function formatPeriodDates(period: SchoolEventPeriod): string {
   if (period.start === period.end) return `${startMonth}월 ${startDay}일`
   if (startMonth === endMonth) return `${startMonth}월 ${startDay}일 ~ ${endDay}일`
   return `${startMonth}월 ${startDay}일 ~ ${endMonth}월 ${endDay}일`
+}
+
+// 학사일정에서 받은 내 학년의 시험 날짜들 (실제 키는 'study-school-exam-dates')
+// 안전 브레이크가 "시험 직전 3일 · 직후 2일" 을 판단할 때 읽습니다. (lib/diarySafety.ts 의 loadExamDates)
+// 시험 기록 화면(/exams)을 지운 뒤(2026-10-18)에는 시험 날짜를 여기서만 얻습니다.
+const EXAM_DATES_KEY = 'school-exam-dates'
+// 서버는 오늘부터의 일정만 주므로, 지난 시험 날짜도 이만큼은 남겨 둡니다. ("직후 2일" 을 판단하려고)
+const KEEP_PAST_EXAM_DAYS = 7
+
+/** 저장해 둔 학사일정 시험 날짜 ('YYYY-MM-DD' 목록). 없거나 깨져 있으면 빈 목록 */
+export function loadSchoolExamDates(): string[] {
+  const saved = loadData<unknown>(EXAM_DATES_KEY, [])
+  return Array.isArray(saved)
+    ? saved.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+/**
+ * 받아온 학사일정에서 내 학년의 시험 날짜만 저장합니다. 지난 7일 안의 시험 날짜는 남겨서 합칩니다.
+ *
+ *   events: [{ date: '2026-12-09', exam: true, grades: [2] }, { date: '2026-12-20', exam: false }] , 학년 2
+ *     -> 저장: ['2026-12-09'] (+ 전에 저장한 것 중 지난 7일 안의 날짜)
+ */
+export function saveSchoolExamDates(events: SchoolEvent[], grade: number | null): void {
+  const keepFrom = moveDateKey(getTodayKey(), -KEEP_PAST_EXAM_DAYS)
+  const recentPast = loadSchoolExamDates().filter((date) => date >= keepFrom)
+  const fetched = filterForGrade(events, grade)
+    .filter((event) => event.exam)
+    .map((event) => event.date)
+  saveData(EXAM_DATES_KEY, [...new Set([...recentPast, ...fetched])].sort())
 }

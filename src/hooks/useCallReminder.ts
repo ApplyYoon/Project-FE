@@ -49,8 +49,8 @@ export function useCallReminder() {
       // 이미 전화 화면이면 다시 띄우지 않습니다.
       if (pathnameRef.current.startsWith('/call')) return
       // 집중 모드 중이거나 글을 쓰는 화면이면 이번 전화는 건너뜁니다. (화면이 넘어가면 집중이 깨지거나 쓰던 글이 사라집니다)
-      // 공부 세션 · 놀기 중(타이머 잠금, #396)에도 집중 모드처럼 이번 전화를 건너뜁니다.
-      if (isBusyForCall(pathnameRef.current, loadFocusMode() !== null || isTimerLocked())) return
+      // 공부 세션 중(타이머 잠금, #396)에도 집중 모드처럼 이번 전화를 건너뜁니다.
+      if (isBusyForCall(loadFocusMode() !== null || isTimerLocked())) return
       // 글을 적는 칸에 커서가 있으면(계획 이름 · 시험 추가 · 건의 · 비밀번호 등) 이번 전화는 건너뜁니다. 화면이 넘어가면 적던 내용이 사라집니다.
       if (isTypingInField(document.activeElement)) return
 
@@ -59,7 +59,7 @@ export function useCallReminder() {
       if (!shouldRingNow(new Date(), savedTime, lastRingAt)) return
 
       // 연락 금지 시간이거나 위기 표현 · 오랜 기분 저하가 감지된 상태면 전화를 걸지 않습니다. (#60, #95)
-      // 설정 화면에 "이 시간에는 메시지도 전화도 안 와요", 도움 화면(/support)에 "독촉이랑 채찍은 모두 멈췄어" 라고 약속했기 때문입니다.
+      // 설정 화면에 "이 시간에는 메시지도 전화도 안 와요" 라고 약속했기 때문입니다.
       // (학생이 상담 탭에서 직접 거는 통화는 막지 않습니다)
       // AI 메시지 알림(useAiMessageNotifications)과 같은 방법으로 판정합니다.
       const { texts, moods } = loadSavedWritings()

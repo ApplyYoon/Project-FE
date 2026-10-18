@@ -18,8 +18,13 @@
     scroll-behavior: smooth;
   }
 
+  /*
+   * 모바일 앱처럼: 바탕은 연회색(slate-100), 내용 묶음(Card)은 흰색으로 올립니다. (2026-10-18 "토스 형식 UI", 색은 brand 그대로)
+   * -webkit-tap-highlight-color: 휴대폰에서 누를 때 생기는 파란 네모를 없앱니다. (누른 느낌은 active:scale 로 줍니다)
+   */
   body {
-    @apply bg-white text-slate-900 antialiased;
+    @apply bg-slate-100 text-slate-900 antialiased;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* 키보드로 이동했을 때 포커스가 잘 보이도록 */

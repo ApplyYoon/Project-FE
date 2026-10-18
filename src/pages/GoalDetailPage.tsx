@@ -1,17 +1,14 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { ExamPredictionPrompt } from '@/components/ui/ExamPredictionPrompt'
 import { GrowthCurveChart } from '@/components/ui/GrowthCurveChart'
 import { Input } from '@/components/ui/Input'
 import { useCards } from '@/hooks/useCards'
-import { useExams } from '@/hooks/useExams'
 import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { cn } from '@/lib/cn'
 import { loadAllSessions } from '@/lib/dailyRecords'
 import { getTodayKey } from '@/lib/date'
-import { getGoalExams, needsGoalPrediction, setGoalPrediction } from '@/lib/examGoal'
-import { formatDday, formatExamDate, getDaysUntil, hasExamResult } from '@/lib/exams'
+import { formatDday, getDaysUntil } from '@/lib/exams'
 import {
   CHECK_REASON_MAX_LENGTH,
   changeGoalOnCheck,
@@ -24,7 +21,7 @@ import {
   type CompletionProgress,
 } from '@/lib/goalProgress'
 import { getGrowthCurve } from '@/lib/growthCurve'
-import type { Exam, Goal } from '@/types'
+import type { Goal } from '@/types'
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
@@ -60,7 +57,6 @@ export function GoalDetailPage() {
   const { goalId } = useParams()
   const { goals, updateGoal } = useGoals()
   const { cards } = useCards()
-  const { exams, updateExam } = useExams()
   const [sessions] = useState(loadAllSessions)
   const [checkParam, setCheckParam] = useQueryParam('check', '')
   const [savedMessage, setSavedMessage] = useState('')
@@ -147,19 +143,7 @@ export function GoalDetailPage() {
           {goal.kind === 'completion' ? (
             <CompletionProgressCard goal={goal} todayKey={todayKey} onSave={updateGoal} />
           ) : (
-            <>
-              <ScoreProgressCard
-                goal={goal}
-                cards={cards}
-                sessions={sessions}
-                todayKey={todayKey}
-              />
-              <GoalExamsCard
-                goal={goal}
-                exams={getGoalExams(exams, goal.id)}
-                onPredict={(exam, prediction) => updateExam(setGoalPrediction(exam, prediction))}
-              />
-            </>
+            <ScoreProgressCard goal={goal} cards={cards} sessions={sessions} todayKey={todayKey} />
           )}
 
           <Card title="처음에 적은 것">
@@ -446,70 +430,6 @@ function ScoreProgressCard({ goal, cards, sessions, todayKey }: ScoreProgressCar
           이 목표에 연결한 카드로 7일 넘게 공부하면, D-day 까지의 예상 성장 곡선을 보여 줄게요.
         </p>
       )}
-    </Card>
-  )
-}
-
-interface GoalExamsCardProps {
-  goal: Goal
-  /** 이 목표에 붙인 시험 (날짜 순) */
-  exams: Exam[]
-  onPredict: (exam: Exam, prediction: string) => void
-}
-
-/**
- * 점수형 목표에 붙인 시험들 (#403). 시험 3일 전부터는 목표 기준 예상을 1탭으로 묻고,
- * 끝난 시험은 내 예상과 결과 화면(실제 점수 · 회고 3문항, ExamResultPage)으로 가는 링크를 보여 줍니다.
- */
-function GoalExamsCard({ goal, exams, onPredict }: GoalExamsCardProps) {
-  return (
-    <Card title="이 목표의 시험">
-      {exams.length === 0 ? (
-        <p className="text-sm break-keep text-slate-500">
-          시험 화면에서 시험을 추가할 때 이 목표에 붙이면 여기에 모여요.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {exams.map((exam) => (
-            <li key={exam.id} className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <p className="font-medium break-keep text-slate-900">{exam.name}</p>
-                <p className="text-sm text-slate-500">
-                  {formatExamDate(exam.date)} · {formatDday(getDaysUntil(exam.date))}
-                </p>
-              </div>
-              {needsGoalPrediction(exam) ? (
-                <ExamPredictionPrompt
-                  exam={exam}
-                  goal={goal}
-                  onPredict={(prediction) => onPredict(exam, prediction)}
-                />
-              ) : (
-                <p className="text-sm text-slate-600">
-                  내 예상: {exam.goalPrediction ?? '—'}
-                  {getDaysUntil(exam.date) < 0 && (
-                    <>
-                      {' · '}
-                      <Link
-                        to={`/exams/${exam.id}/result`}
-                        className="text-brand inline-flex min-h-10 items-center font-medium underline underline-offset-4"
-                      >
-                        {hasExamResult(exam) ? '결과 보기' : '실제 점수 · 회고 적기'}
-                      </Link>
-                    </>
-                  )}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <Link
-        to="/exams"
-        className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
-      >
-        시험 추가 · 고치기
-      </Link>
     </Card>
   )
 }

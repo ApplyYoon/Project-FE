@@ -4,8 +4,11 @@ import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { MyHypothesesCard } from '@/components/ui/MyHypothesesCard'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { loadManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import { buildJudgedCardDays } from '@/lib/cardDays'
@@ -23,7 +26,15 @@ import type { ForestState, ForestTree } from '@/lib/forest'
 import { loadForestState } from '@/lib/forestData'
 import { FIRST_CHECK_DAYS, checkHypotheses, getHypothesisDay } from '@/lib/hypothesisCheck'
 import { loadMyHypotheses } from '@/lib/myHypotheses'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
+import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
+import {
+  loadSchoolClass,
+  saveSchoolClass,
+  schoolTodayQuery,
+  type SchoolClass,
+} from '@/lib/schoolToday'
 import {
   clearSettingChanges,
   describeSettingChange,
@@ -89,15 +100,17 @@ const textLinkClass =
 const INSTANT_CARD_MINUTES = 50
 
 /**
- * 홈 화면입니다. (기획서 「4.2 홈」, #405)
+ * 오늘 탭(/today)입니다. 예전 홈 화면(기획서 「4.2 홈」, #405)이 그대로 옮겨 왔습니다.
+ * 2026-10-18 에 첫 화면("/")이 AI 코치 채팅이 되면서, 홈에 있던 것은 여기서 봅니다.
  *
- *   맨 위: 하루 첫 컨디션·감정 태그(Layout 의 DailyTagBar) · 오른쪽 위 설정 아이콘
+ *   맨 위: 날짜와 제목 (설정 · 알림 · 통화는 코치 화면 머리에만 둡니다. 그날 컨디션은 코치가 채팅에서 묻습니다, 2026-10-18)
+ *   오늘 학교: 우리 반 시간표 · 급식(오늘 · 내일) · 다가오는 학사일정 (SchoolTodaySection)
  *   숲 → 지금/다음 카드와 [시작] · [지금 시작] → 오늘 한 줄 → 지금 관리 모드와 이유 → AI 가 바꾼 설정 알림
  *   내 가설 3일째·7일째에는 기록과 비교한 첫 확인을 띄웁니다.
  *
  * 처음의 나 · 이번 주 목표 · 주간 팩트 · 인사이트 · 개선안(실험) 카드는 홈에서 빠지고 분석 탭에서 봅니다.
  */
-export function HomePage() {
+export function TodayPage() {
   const navigate = useNavigate()
   const todayKey = getTodayKey()
   const yesterdayKey = moveDateKey(todayKey, -1)
@@ -173,40 +186,39 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 sm:gap-8">
-      <section className="flex items-start justify-between gap-3">
+    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -my-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
+    <div className="-mx-4 -my-6 flex flex-col gap-4 bg-slate-100 px-4 py-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
+      <section className="flex items-start justify-between gap-3 px-1">
         <div className="min-w-0">
-          <p className="text-sm text-slate-500">
+          <p className="text-[15px] text-slate-500">
             {formatToday(toDayDate(new Date(now)))}
             {nearestGoal && ` · ${nearestGoal.title} ${formatDday(getDaysUntil(nearestGoal.dDay))}`}
           </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="mt-1 text-[26px] leading-snug font-bold tracking-tight text-slate-900">
             오늘도 같이 시작해 볼까?
           </h1>
         </div>
-        {/* 오른쪽 위에 설정 아이콘, 그 아래에 체크인 글자 링크를 둡니다. */}
-        <div className="flex shrink-0 flex-col items-end">
-          {/* 설정은 아래 탭에서 빠지고 여기로 옵니다. (기획서 3장, #386) 누르기 쉽게 44×44px(h-11 w-11) */}
-          <Link
-            to="/settings"
-            aria-label="설정"
-            className="-mt-2 -mr-2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
-          >
-            <SettingsIcon />
-          </Link>
-        </div>
       </section>
 
-      {/* 숲과 지금 할 카드. PC 에서는 나란히, 모바일에서는 기획서 순서대로 숲 → 카드 */}
+      {/* 오늘 학교: 우리 반 시간표 · 급식 · 다가오는 학사일정 (2026-10-18, BE GET /school/today) */}
+      <SchoolTodaySection todayKey={todayKey} />
+
+      {/* 오늘 할 카드와 숲. 모바일은 카드가 먼저, PC 에서는 나란히 */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+        <div className="flex flex-col gap-1">
+          <NowCardsCard
+            state={todayCards}
+            todayKey={todayKey}
+            onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
+            onStartNow={handleStartNow}
+          />
+          {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
+          <Link to="/cards" className={cn(textLinkClass, 'self-end')}>
+            카드 · 목표 모두 보기 ›
+          </Link>
+        </div>
         {/* 내 숲 (#404): 가운데 전체 나무 + 둘레의 목표 나무 */}
         <ForestCard forest={forest} />
-        <NowCardsCard
-          state={todayCards}
-          todayKey={todayKey}
-          onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
-          onStartNow={handleStartNow}
-        />
       </section>
 
       <Card title="오늘 한 줄">
@@ -225,7 +237,7 @@ export function HomePage() {
           ) : isFirstReportReady ? (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-slate-600">{FIRST_REPORT_DAYS}일치 기록이 다 쌓였어요!</p>
-              <Button onClick={() => navigate('/analysis?tab=report')}>첫 리포트 보기</Button>
+              <Button onClick={() => navigate('/records?tab=report')}>첫 리포트 보기</Button>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -712,21 +724,221 @@ function YesterdayAiLine({ dateKey, fallbackSentence, request }: YesterdayAiLine
   )
 }
 
-/* 톱니바퀴 모양 설정 아이콘 (라이브러리 없이 SVG 를 직접 그립니다) */
-function SettingsIcon() {
+// 흰 묶음 카드 (토스 형식: 테두리 · 그림자 없이 둥근 흰 바탕)
+const sectionCardClass = 'rounded-3xl bg-white p-5'
+
+// 동그란 배경의 이모지 자리 (목록 줄 왼쪽)
+const rowIconClass =
+  'flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg'
+
+interface SchoolTodaySectionProps {
+  todayKey: string
+}
+
+/**
+ * 오늘 학교 묶음입니다. 서버에서 받는 동안은 스켈레톤, 못 받으면 안내를 보여 줍니다. (AsyncBoundary)
+ * 반을 아직 안 정했으면 시간표 자리에 학년 · 반을 고르는 칸이 나옵니다. 고른 반은 이 기기에만 저장합니다.
+ */
+function SchoolTodaySection({ todayKey }: SchoolTodaySectionProps) {
+  const isServerData = useIsServerData()
+  const [schoolClass, setSchoolClass] = useState(loadSchoolClass)
+
+  function handleSaveClass(next: SchoolClass) {
+    saveSchoolClass(next)
+    setSchoolClass(next)
+  }
+
   return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
+    <AsyncBoundary
+      pendingFallback={<SchoolTodaySkeleton />}
+      errorMessage="학교 정보를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
+      resetKeys={[schoolClass?.grade, schoolClass?.classNo]}
     >
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
+      <SchoolTodayView
+        todayKey={todayKey}
+        isServerData={isServerData}
+        schoolClass={schoolClass}
+        onSaveClass={handleSaveClass}
+      />
+    </AsyncBoundary>
   )
+}
+
+function SchoolTodaySkeleton() {
+  return (
+    <div role="status" className="flex flex-col gap-4">
+      <span className="sr-only">학교 정보를 불러오는 중이에요</span>
+      <Skeleton className="h-40 w-full rounded-3xl" />
+      <Skeleton className="h-28 w-full rounded-3xl" />
+    </div>
+  )
+}
+
+interface SchoolTodayViewProps {
+  todayKey: string
+  isServerData: boolean
+  schoolClass: SchoolClass | null
+  onSaveClass: (next: SchoolClass) => void
+}
+
+function SchoolTodayView({
+  todayKey,
+  isServerData,
+  schoolClass,
+  onSaveClass,
+}: SchoolTodayViewProps) {
+  const { data } = useSuspenseQuery(schoolTodayQuery(schoolClass, isServerData, todayKey))
+  // 반을 바꾸는 칸을 열었는지
+  const [isEditingClass, setIsEditingClass] = useState(false)
+
+  if (data.school === null) {
+    return (
+      <section className={sectionCardClass}>
+        <h2 className="text-[17px] font-bold text-slate-900">오늘 학교</h2>
+        <p className="mt-1 text-[15px] break-keep text-slate-500">
+          가입할 때 학교를 고르면 시간표 · 급식 · 학교 일정이 여기에 떠요.
+        </p>
+      </section>
+    )
+  }
+
+  // 시연 예시는 반을 안 골라도 시간표를 보여 줍니다. (서버 없이 바로 시연되게)
+  const showClassPicker = !data.isDemo && (schoolClass === null || isEditingClass)
+  // 같은 이름이 이어지는 날(시험 3일 등)은 한 줄로 묶고, 내 학년 행사만 남깁니다.
+  const periods = groupEventPeriods(
+    filterForGrade(
+      data.events.map((event) => ({ ...event, content: null })),
+      schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
+    ),
+  ).slice(0, 4)
+
+  return (
+    <div className="flex flex-col gap-4">
+      {data.isDemo && (
+        <p className="self-start rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
+          시연용 예시 — 테스트 로그인이라 서버 대신 정해 둔 학교 정보를 보여 줘요
+        </p>
+      )}
+
+      <section className={sectionCardClass}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-[17px] font-bold text-slate-900">오늘 시간표</h2>
+          {schoolClass && !data.isDemo && !isEditingClass && (
+            <button
+              type="button"
+              onClick={() => setIsEditingClass(true)}
+              className="h-10 shrink-0 cursor-pointer rounded-full px-3 text-sm font-medium text-slate-500 hover:bg-slate-100"
+            >
+              {schoolClass.grade}학년 {schoolClass.classNo}반 ›
+            </button>
+          )}
+        </div>
+
+        {showClassPicker ? (
+          <SchoolClassPicker
+            initial={schoolClass}
+            onSave={(next) => {
+              onSaveClass(next)
+              setIsEditingClass(false)
+            }}
+            description="몇 학년 몇 반이야? 알려 주면 오늘 시간표를 보여 줄게."
+            saveLabel="시간표 보기"
+            className="mt-2"
+          />
+        ) : data.timetable === null || data.timetable.length === 0 ? (
+          <p className="mt-2 text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
+        ) : (
+          <>
+            <ol className="mt-3 flex flex-col gap-1">
+              {data.timetable.map((period) => (
+                <li key={period.period} className="flex min-h-11 items-center gap-3">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">
+                    {period.period}
+                  </span>
+                  <span className="min-w-0 truncate text-base text-slate-900">
+                    {period.subject}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-2 text-xs break-keep text-slate-500">
+              반 시간표 기준이에요. 선택과목은 다를 수 있어요.
+              {data.timetablePartial && ' 지금은 5교시까지만 보여요.'}
+            </p>
+          </>
+        )}
+      </section>
+
+      <section className={sectionCardClass}>
+        <h2 className="text-[17px] font-bold text-slate-900">급식</h2>
+        {data.meals.length === 0 ? (
+          <p className="mt-2 text-[15px] text-slate-500">오늘 · 내일 급식 정보가 없어요.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1">
+            {data.meals.map((meal) => (
+              <li key={`${meal.date}-${meal.kind}`} className="flex min-h-14 items-center gap-3">
+                <span aria-hidden className={rowIconClass}>
+                  🍚
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-slate-900">
+                    {meal.date === todayKey ? '오늘' : '내일'} {meal.kind}
+                  </span>
+                  <span className="line-clamp-2 block text-sm break-keep text-slate-500">
+                    {meal.dishes.join(' · ')}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className={sectionCardClass}>
+        <h2 className="text-[17px] font-bold text-slate-900">다가오는 학교 일정</h2>
+        {periods.length === 0 ? (
+          <p className="mt-2 text-[15px] text-slate-500">30일 안에 학교 일정이 없어요.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1">
+            {periods.map((period) => {
+              const dDay = countDays(todayKey, period.start) - 1
+              return (
+                <li
+                  key={`${period.start}-${period.name}`}
+                  className="flex min-h-14 items-center gap-3"
+                >
+                  <span aria-hidden className={rowIconClass}>
+                    {period.exam ? '📝' : '📅'}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold text-slate-900">
+                      {period.name}
+                    </span>
+                    <span className="block text-sm text-slate-500">
+                      {formatMonthDay(period.start)}
+                      {period.end !== period.start && ` ~ ${formatMonthDay(period.end)}`}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      'shrink-0 text-base font-bold',
+                      period.exam ? 'text-brand' : 'text-slate-700',
+                    )}
+                  >
+                    {dDay === 0 ? '오늘' : `D-${dDay}`}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
+}
+
+/** 'YYYY-MM-DD' → '11월 2일' */
+function formatMonthDay(dateKey: string): string {
+  const [, month, day] = dateKey.split('-').map(Number)
+  return `${month}월 ${day}일`
 }

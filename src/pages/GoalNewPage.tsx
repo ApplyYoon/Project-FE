@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
-import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
@@ -52,7 +51,7 @@ function getStepIndex(step: GoalStep): number {
  * - 지금 단계는 주소의 ?step= 에 둡니다. 새로고침하거나 뒤로 가기를 눌러도 자연스럽습니다.
  * - 적던 내용은 이 기기에 임시로 넣어 둡니다('study-goal-draft'). 저장하면 지웁니다.
  * - 마지막에 P 계획을 루틴 카드 2장으로 바꿔 제안하고, 고른 카드는 카드 탭에 들어갑니다.
- * - 첫 목표라면 저장한 뒤 다짐 녹음 화면으로 갑니다. (녹음은 기기에만, lib/voicePledge.ts)
+ * - 저장한 뒤 카드 탭으로 갑니다. (첫 목표 뒤의 다짐 녹음은 2026-10-18 에 지웠습니다)
  * - 진행 중 목표가 이미 3개면 만들 수 없다고 알려 줍니다.
  */
 export function GoalNewPage() {
@@ -73,17 +72,12 @@ export function GoalNewPage() {
   const [aiSuggestions, setAiSuggestions] = useState<RoutineCardSuggestion[] | null>(null)
   // AI 제안을 못 받았을 때의 안내
   const [aiNotice, setAiNotice] = useState<string | null>(null)
-  // 글에 위기 표현이 있어서 서버가 도움 안내를 먼저 보여 주라고 했을 때
-  const [showHelp, setShowHelp] = useState(false)
 
   const routineAi = useMutation({
     mutationFn: () => fetchRoutineCards(buildGoal(draft, 'preview', now)),
     onSuccess: (result) => {
-      if (result.showHelp) {
-        setShowHelp(true)
-        return
-      }
-      if (result.cards === null) {
+      // 글에 위기 표현이 있으면(showHelp) 서버가 AI 를 쓰지 않습니다. 못 받았을 때처럼 기본 제안으로 갑니다.
+      if (result.showHelp || result.cards === null) {
         setAiNotice('AI 가 지금은 카드를 만들지 못해서 기본 제안을 보여 줘요.')
         return
       }
@@ -157,13 +151,10 @@ export function GoalNewPage() {
       return
     }
     const { goal, cards } = createGoalWithCards(draft, picked, todayKey, aiSuggestions)
-    // 이 목표가 첫 목표인지는 저장하기 전에 봐 둡니다.
-    const isFirstGoal = goals.length === 0
     if (!addGoal(goal)) return
     for (const card of cards) addCard(card)
     removeData(GOAL_DRAFT_KEY)
-    // 첫 목표면 다짐을 녹음하러 갑니다. (건너뛰어도 됩니다)
-    navigate(isFirstGoal ? '/onboarding/voice?from=goal' : '/cards')
+    navigate('/cards')
   }
 
   /** [다음] · [목표 저장] (입력칸에서 Enter 를 눌러도 여기로 옵니다) */
@@ -206,7 +197,9 @@ export function GoalNewPage() {
         <Link to="/cards" className="inline-flex h-10 items-center text-sm text-slate-500">
           ← 카드
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">목표 만들기</h1>
+        <h1 className="mt-2 text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+          목표 만들기
+        </h1>
         <p className="mt-2 text-sm text-slate-500">
           {stepIndex + 1} / {GOAL_STEPS.length} · {stepInfo.letter} {stepInfo.label}
         </p>
@@ -439,7 +432,6 @@ export function GoalNewPage() {
           {step === 'plan' ? '목표 저장' : '다음'}
         </Button>
       </div>
-      <CrisisHelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </form>
   )
 }

@@ -144,7 +144,7 @@
 | 화면                          | 데스크톱                                             | 모바일                                              | 관련 이슈                      |
 | ----------------------------- | ---------------------------------------------------- | --------------------------------------------------- | ------------------------------ |
 | 설정                          | <img src="screens/settings-desktop.png" width="360"> | <img src="screens/settings-mobile.png" width="180"> | #39 #59 #60 #90 #96            |
-| 도움 안내 (위기 표현 감지 시) | <img src="screens/support-desktop.png" width="360">  | <img src="screens/support-mobile.png" width="180">  | #96 (#95 안전 브레이크가 띄움) |
+| 도움 안내 (위기 표현 감지 시) | <img src="screens/support-desktop.png" width="360">  | <img src="screens/support-mobile.png" width="180">  | 2026-10-18 삭제 (시연 범위 밖) |
 
 ## 반응형으로 만들 때
 

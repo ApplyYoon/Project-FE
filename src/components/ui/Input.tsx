@@ -16,7 +16,7 @@ export function Input({ label, error, className, id, ...props }: InputProps) {
   return (
     <div className="flex w-full flex-col gap-1.5">
       {label && (
-        <label htmlFor={inputId} className="text-sm font-medium text-slate-700">
+        <label htmlFor={inputId} className="text-sm font-semibold text-slate-700">
           {label}
         </label>
       )}
@@ -26,10 +26,11 @@ export function Input({ label, error, className, id, ...props }: InputProps) {
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
         className={cn(
-          'h-10 w-full rounded-lg border border-slate-300 px-3 text-sm',
+          // 테두리 없이 연회색 칸. 글자는 16px(text-base) — 아이폰은 이보다 작은 칸을 누르면 화면을 확대합니다.
+          'h-12 w-full rounded-2xl border-0 bg-slate-100 px-4 text-base',
           'placeholder:text-slate-400',
-          'focus:border-brand focus:ring-brand/30 focus:ring-2 focus:outline-none',
-          error && 'border-red-500 focus:border-red-500 focus:ring-red-200',
+          'focus:ring-brand/40 focus:bg-white focus:ring-2 focus:outline-none',
+          error && 'bg-red-50 ring-2 ring-red-300 focus:ring-red-300',
           className,
         )}
         {...props}

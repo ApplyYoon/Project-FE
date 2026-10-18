@@ -1,4 +1,4 @@
-import type { GoodReason, PauseTag, PlayTag, ShortfallReason, WithWhat } from '@/types'
+import type { GoodReason, PauseTag, ShortfallReason, WithWhat } from '@/types'
 
 /**
  * 타이머 팝업의 1탭 태그 이름표와 분류를 한 곳에 모아 둡니다. (최종 기획서 「4.4 타이머」, #380)
@@ -53,16 +53,6 @@ export const WITH_WHAT_OPTIONS: { key: WithWhat; label: string }[] = [
   { key: 'music', label: '음악' },
   { key: 'video', label: '영상 틀어둠' },
   { key: 'none', label: '없음' },
-]
-
-/** 놀기 태그 */
-export const PLAY_TAGS: { key: PlayTag; label: string }[] = [
-  { key: 'youtube', label: '유튜브' },
-  { key: 'game', label: '게임' },
-  { key: 'sns', label: 'SNS' },
-  { key: 'webtoon', label: '웹툰' },
-  { key: 'rest', label: '쉬기' },
-  { key: 'etc', label: '기타' },
 ]
 
 /**

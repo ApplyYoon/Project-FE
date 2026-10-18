@@ -659,7 +659,7 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
     { date: dateOf(story.restIndex), reason: 'sick', at: atTime(dateOf(story.restIndex), '08:00') },
   ]
 
-  // ── 체크인 (하루 첫 한 줄). 오늘은 비워서 시연 때 직접 고르게 합니다. 사흘은 깜빡한 날 ──
+  // ── 체크인 (1탭). 오늘은 비워서 시연 때 코치의 컨디션 칩으로 직접 고르게 합니다. 사흘은 깜빡한 날 ──
   const checkins: Record<string, CheckIn> = {}
   for (let dayIndex = 0; dayIndex < DEMO_DAYS - 1; dayIndex++) {
     if ([4, 11, 23].includes(dayIndex)) continue

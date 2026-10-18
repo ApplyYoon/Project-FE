@@ -3,18 +3,13 @@ import { Card } from '@/components/ui/Card'
 import { SchoolEventsCard } from '@/components/ui/SchoolEventsCard'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { useCards } from '@/hooks/useCards'
-import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
-import {
-  CARD_RESULT_LABELS,
-  PATTERN_LOOSE_OVER,
-  PATTERN_MIN_SAMPLES,
-  PATTERN_OVER_UNDER,
-} from '@/lib/cardResult'
+import { CARD_RESULT_LABELS } from '@/lib/cardResult'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { getCardsOnDate } from '@/lib/cards'
+import { NO_FIXED_BLOCKS } from '@/lib/fixedBlocks'
 import {
   formatDayClock,
   formatWeekLabel,
@@ -28,7 +23,6 @@ import { cn } from '@/lib/cn'
 import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
 import { formatDday, getDaysUntil } from '@/lib/exams'
 import { MAX_ACTIVE_GOALS } from '@/lib/goals'
-import { PLAN_PATTERN_TEXT, getGoalPlanPatterns } from '@/lib/planPatternGuide'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { getWeekday, getWeekdayName } from '@/lib/routines'
 import type { Card as CardData, FixedBlock, Goal, StudySession } from '@/types'
@@ -423,138 +417,30 @@ function CardTimeline({
 
       <Link
         to={`/cards/new?date=${dateKey}`}
-        className="bg-brand hover:bg-brand-dark mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg px-4 text-sm font-medium text-white"
+        className="bg-brand hover:bg-brand-dark mt-4 inline-flex h-12 w-full items-center justify-center rounded-2xl px-5 text-[15px] font-semibold text-white active:scale-[0.98]"
       >
         + 카드 만들기
       </Link>
-      {/* 학교·학원은 카드가 아니라 고정 일정으로 넣습니다 (#393) */}
+      {/* 시험 범위표 · 학습지를 찍으면 AI 가 카드 여러 장을 나눠 줍니다. (pages/CardsFromPhotoPage.tsx) */}
       <Link
-        to="/cards/fixed"
-        className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
+        to="/cards/photo"
+        className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-2xl bg-slate-100 px-5 text-[15px] font-semibold text-slate-900 hover:bg-slate-200 active:scale-[0.98]"
       >
-        학교·학원 고정 일정
+        📸 사진으로 만들기
       </Link>
-    </Card>
-  )
-}
-
-interface PlanPatternGuideProps {
-  cards: CardData[]
-  sessions: StudySession[]
-  /** 진행 중인 목표 (타임라인과 같은 색 순서) */
-  goals: Goal[]
-  todayKey: string
-}
-
-/**
- * 계획 패턴 안내 (최종 기획서 「4.3 카드」, #394).
- * 같은 목표 카드의 최근 4주 체크리스트 달성률과 판정(과대 / 적정 / 느슨)을 보여 주고,
- * [상세 보기] 를 누르면 지난 카드마다 예상한 개수와 실제로 한 개수를 보여 줍니다.
- */
-function PlanPatternGuide({ cards, sessions, goals, todayKey }: PlanPatternGuideProps) {
-  // 어느 목표의 상세를 펼쳤는지는 주소에 둡니다. (/cards?pattern=목표id) 새로고침해도 그대로입니다.
-  const [openId, setOpenId] = useQueryParam('pattern', '', { replace: true })
-  const patterns = getGoalPlanPatterns(
-    cards,
-    sessions,
-    goals.map((goal) => goal.id),
-    todayKey,
-  )
-  if (patterns.length === 0) return null
-
-  return (
-    <Card title="계획 패턴">
-      <p className="text-sm break-keep text-slate-500">
-        최근 4주 동안 체크리스트를 계획한 만큼 해낸 비율이에요.{' '}
-        {Math.round(PATTERN_OVER_UNDER * 100)}% 밑이면 계획이 큰 편,{' '}
-        {Math.round(PATTERN_LOOSE_OVER * 100)}% 를 넘으면 느슨한 편이에요.
-      </p>
-      <ul className="mt-3 flex flex-col divide-y divide-slate-100">
-        {patterns.map((group) => {
-          const goalIndex = goals.findIndex((goal) => goal.id === group.goalId)
-          const title = goalIndex >= 0 ? goals[goalIndex].title : '목표 없는 카드'
-          const isOpen = openId === group.goalId
-          return (
-            <li key={group.goalId} className="flex flex-col gap-2 py-3">
-              <div className="flex items-center gap-2">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'h-2.5 w-2.5 shrink-0 rounded-full',
-                    goalIndex >= 0 ? GOAL_DOT_STYLES[goalIndex] : 'bg-slate-300',
-                  )}
-                />
-                <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{title}</span>
-                {group.averageRate !== null && (
-                  <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
-                    {Math.round(group.averageRate * 100)}%
-                  </span>
-                )}
-                {group.pattern && (
-                  <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                    {PLAN_PATTERN_TEXT[group.pattern].label}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm break-keep text-slate-600">
-                {group.pattern
-                  ? PLAN_PATTERN_TEXT[group.pattern].message
-                  : `카드를 ${PATTERN_MIN_SAMPLES}번 끝내면 판정해요. (지금 ${group.days.length}번)`}
-              </p>
-              {group.days.length > 0 && (
-                <Button
-                  variant="ghost"
-                  aria-expanded={isOpen}
-                  onClick={() => setOpenId(isOpen ? '' : group.goalId)}
-                  className="text-brand self-start px-0"
-                >
-                  {isOpen ? '상세 닫기' : '상세 보기'}
-                </Button>
-              )}
-              {isOpen && group.days.length > 0 && (
-                <ul className="flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                  {group.days.map((day) => (
-                    <li
-                      key={`${day.cardId}-${day.dateKey}`}
-                      className="flex min-h-10 items-center gap-2"
-                    >
-                      <span className="w-12 shrink-0 text-slate-500 tabular-nums">
-                        {Number(day.dateKey.slice(5, 7))}/{Number(day.dateKey.slice(8))}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-slate-900">
-                        {day.cardTitle}
-                      </span>
-                      {/* 예상 → 실제. 예상보다 덜 했으면 주황 글자로 씁니다 (빨강은 쓰지 않습니다) */}
-                      <span
-                        className={cn(
-                          'shrink-0 tabular-nums',
-                          day.checked < day.expected ? 'text-amber-700' : 'text-slate-600',
-                        )}
-                      >
-                        예상 {day.expected} → 실제 {day.checked} / {day.total}개
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          )
-        })}
-      </ul>
     </Card>
   )
 }
 
 /**
  * 카드 탭 화면(/cards)입니다. 옛 주소 /planner 로 들어와도 여기로 옵니다. (router.tsx)
- * 목표 목록(#391) → 카드 일·주 타임라인(#394) → 계획 패턴 안내(#394) 순서입니다. (최종 기획서 「3 앱 구조」 카드 탭)
+ * 목표 목록(#391) → 카드 일·주 타임라인(#394) 순서입니다. (최종 기획서 「3 앱 구조」 카드 탭)
+ * 계획 패턴 안내(#394)는 시연 범위 밖이라 2026-10-18 에 지웠습니다.
  */
 export function CardsPage() {
   const todayKey = getTodayKey()
   // 카드 (최종 기획서 「4.3」, #392)
   const { cards } = useCards()
-  // 학교·학원 고정 일정 (#393). 타임라인에 회색 블록으로 그립니다.
-  const { blocks: fixedBlocks } = useFixedBlocks()
   // 목표 (최종 기획서 「4.7」, #391)
   const { activeGoals } = useGoals()
   // 공부 기록. 블록의 "한 시간" · 결과와 계획 패턴에 씁니다.
@@ -586,7 +472,7 @@ export function CardsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">카드</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">카드</h1>
 
         {/* 날짜 이동: ◀ / 날짜(주 보기면 그 주) / ▶ / 오늘로 돌아가기 */}
         <div className="mt-3 flex items-center gap-1">
@@ -629,7 +515,8 @@ export function CardsPage() {
       {/* 카드 일·주 타임라인 (#394). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
       <CardTimeline
         cards={cards}
-        fixedBlocks={fixedBlocks}
+        // 고정 일정 입력은 2026-10-18 에 지웠습니다. 학교 시간표(NEIS)를 붙이면 여기에 넣습니다. (lib/fixedBlocks.ts)
+        fixedBlocks={NO_FIXED_BLOCKS}
         goals={activeGoals}
         sessions={sessions}
         dateKey={selectedDate}
@@ -638,9 +525,6 @@ export function CardsPage() {
         onChangePeriod={setPeriodParam}
         onSelectDate={setSelectedDate}
       />
-
-      {/* 계획 패턴 안내 (#394): 같은 목표 카드의 최근 4주 체크리스트 달성률 */}
-      <PlanPatternGuide cards={cards} sessions={sessions} goals={activeGoals} todayKey={todayKey} />
     </div>
   )
 }

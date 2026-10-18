@@ -25,13 +25,13 @@ import { cn } from '@/lib/cn'
 import { CARD_FAIL_CAUSES, addCardMark, type CardFailCause } from '@/lib/cardMarks'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { isSafetyBrakeOnNow } from '@/lib/focusMode'
-import { SUPPORT_PATH, helpLines } from '@/lib/helpLines'
+import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { loadAutoSettings } from '@/lib/settingsMapping'
 import { getTodayCareLevel } from '@/lib/todayCare'
 import type { Card as CardModel, ChecklistItem } from '@/types'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 /**
  * 통화가 끝난 뒤 "오늘의 결론" 을 보여 주는 화면입니다. (BE 이슈 #28 · #29)
@@ -88,7 +88,9 @@ export function CallResultPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">오늘의 통화 정리</h1>
+      <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+        오늘의 통화 정리
+      </h1>
 
       {resultState === null && (
         <Card>
@@ -127,7 +129,7 @@ export function CallResultPage() {
         <Button
           variant="secondary"
           className="w-full sm:w-auto"
-          onClick={() => navigate('/analysis')}
+          onClick={() => navigate('/records')}
         >
           내 기록 보기
         </Button>
@@ -616,33 +618,23 @@ function HabitCard({ habit }: HabitCardProps) {
   )
 }
 
-/** 위기 표현이 감지된 통화에서 보여 주는 도움 안내 */
+/** 위기 표현이 감지된 통화에서 보여 주는 안내. 상담 전화는 한 줄만 알려 줍니다. */
 function HelpCard() {
   return (
-    <Card title="혼자 힘들어하지 않아도 돼요">
+    <Card title="오늘은 공부 이야기를 쉬어 가요">
       <p className="text-sm break-keep text-slate-700">
-        힘든 이야기를 들려줘서 고마워요. 오늘은 공부 이야기는 잠시 내려놓아도 괜찮아요. 믿을 수 있는
-        어른에게 꼭 이야기해 주고, 이야기할 곳이 필요하면 아래로 언제든 연락해 보세요. 무료이고
-        비밀이 지켜져요.
+        힘든 이야기를 들려줘서 고마워요. 믿을 수 있는 어른에게 꼭 이야기해 주세요.
       </p>
-      {/* 모바일에서는 눌러서 바로 전화가 걸립니다. 누르는 곳은 최소 40px(h-11 = 44px) */}
-      <div className="mt-4 flex flex-col gap-2">
-        {helpLines.map((line) => (
-          <a
-            key={line.number}
-            href={`tel:${line.number}`}
-            className="bg-brand hover:bg-brand-dark flex h-11 items-center justify-center rounded-lg px-4 text-sm font-medium text-white"
-          >
-            {line.name} {line.number}
-          </a>
-        ))}
-      </div>
-      <Link
-        to={SUPPORT_PATH}
-        className="mt-3 flex h-10 items-center justify-center text-sm font-medium text-slate-700 underline"
+      {/* 모바일에서는 눌러서 바로 전화가 걸립니다. 누르는 곳은 최소 40px(min-h-11 = 44px) */}
+      <a
+        href={`tel:${YOUTH_HELP_LINE.number}`}
+        className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm"
       >
-        도움받을 수 있는 곳 더 보기
-      </Link>
+        <span className="break-keep text-slate-700">
+          {YOUTH_HELP_LINE.name} · {YOUTH_HELP_LINE.detail}
+        </span>
+        <span className="text-brand font-semibold">{YOUTH_HELP_LINE.number}</span>
+      </a>
     </Card>
   )
 }

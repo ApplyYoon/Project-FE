@@ -2,18 +2,25 @@ import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { FailCardModal } from '@/components/ui/FailCardModal'
 import { LateEntryModal } from '@/components/ui/LateEntryModal'
 import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
 import { useCardSession } from '@/hooks/useCardSession'
 import { useCards } from '@/hooks/useCards'
 import { useKeepScreenOn } from '@/hooks/useKeepScreenOn'
+import { usePhoneLift } from '@/hooks/usePhoneLift'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { playAlarm } from '@/lib/alarm'
+import {
+  formatPhoneSummary,
+  getLiftStrength,
+  savePhoneSummary,
+  type LiftStrength,
+  type PhoneLiftSummary,
+} from '@/lib/liftAlerts'
+import { getTodayCareLevel } from '@/lib/todayCare'
 import { formatClock } from '@/lib/away'
 import {
   LONG_PAUSE_MINUTES,
@@ -50,7 +57,6 @@ import {
   type RestReason,
 } from '@/lib/restDays'
 import {
-  PLEDGE_GATE_SECONDS,
   isStage4AbsoluteOn,
   isStage4Now,
   loadStage4Absolute,
@@ -58,7 +64,6 @@ import {
   releaseStage4,
   saveStage4Absolute,
 } from '@/lib/stage4'
-import { loadVoicePledge } from '@/lib/voicePledge'
 import { CALL_TIME_STORAGE_KEY, parseCallTime } from '@/lib/callReminder'
 import { buildLateEntrySession, checkLateEntry, makeLateEntryReport } from '@/lib/lateEntry'
 import { loadData } from '@/lib/storage'
@@ -78,24 +83,11 @@ import {
   shouldAskGoodReason,
   splitInstantLine,
 } from '@/lib/endReport'
-import {
-  PLAY_MINUTE_PRESETS,
-  PLAY_WARN_MINUTES,
-  isPlayOver,
-  shouldWarnPlayEnd,
-} from '@/lib/playSession'
-import {
-  GOOD_REASONS,
-  PAUSE_TAGS,
-  PLAY_TAGS,
-  SHORTFALL_REASONS,
-  WITH_WHAT_OPTIONS,
-} from '@/lib/sessionTags'
+import { GOOD_REASONS, PAUSE_TAGS, SHORTFALL_REASONS, WITH_WHAT_OPTIONS } from '@/lib/sessionTags'
 import { loadAutoSettings } from '@/lib/settingsMapping'
 import type {
   Card as CardModel,
   PauseTag,
-  PlayTag,
   SessionEndReport,
   ShortfallReason,
   StudySession,
@@ -133,11 +125,21 @@ export function CardTimerPage() {
   const { active, now, allSessions } = session
   // 방금 끝낸 기록. 있으면 종료 팝업을 띄웁니다. (#398)
   const [endedRecord, setEndedRecord] = useState<StudySession | null>(null)
+  // 방금 끝난 세션의 폰 기록 (앱 안에서만 옴). 종료 팝업에 한 줄로 보여 줍니다.
+  const [endedPhone, setEndedPhone] = useState<PhoneLiftSummary | null>(null)
+  // 끝난 세션과 폰 기록이 둘 다 오면 세션 번호로 저장해 둡니다. (코치 채팅 · 분석이 "폰을 몇 번 들었어" 처럼 씀)
+  const endedRecordId = endedRecord?.id
+  useEffect(() => {
+    if (endedRecordId !== undefined && endedPhone !== null) {
+      savePhoneSummary(endedRecordId, endedPhone)
+    }
+  }, [endedRecordId, endedPhone])
   const [cardParam, setCardParam] = useQueryParam('card', '', { replace: true })
-  // 카드를 시작하기 전에 거치는 화면 — 4단계면 다짐 듣기(#408) → 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
+  // 카드를 시작하기 전에 거치는 화면 — 카운트다운이 켜져 있으면 5초 카운트다운(#399) → 세션
+  // (4단계의 다짐 듣기는 다짐 녹음과 함께 2026-10-18 에 지웠습니다)
   const [startFlow, setStartFlow] = useState<{
     card: CardModel
-    step: 'pledge' | 'countdown'
+    step: 'countdown'
   } | null>(null)
   const [pageSettings] = useState(loadAutoSettings)
 
@@ -195,7 +197,6 @@ export function CardTimerPage() {
     )
   }
   const [notice, setNotice] = useState<string | null>(null)
-  const [isCrisisOpen, setIsCrisisOpen] = useState(false)
   // 대기 화면의 '지금'. 30초마다 바꿔서 시간이 끝난 카드가 '시간이 끝난 카드' 로 옮겨 가게 합니다.
   const [listNow, setListNow] = useState(() => Date.now())
   useEffect(() => {
@@ -254,7 +255,7 @@ export function CardTimerPage() {
     if ('update' in placed) updateCard(card.id, placed.update)
     else addCard(placed.create)
     setMissTarget(null)
-    // 미루기 사유도 안전 브레이크가 봅니다. 위기 표현이 있으면 도움 연결 안내부터. (「4.5」 안전 브레이크)
+    // 미루기 사유도 안전 브레이크가 봅니다. 위기 표현이 있으면 비용을 따지는 말은 하지 않습니다. (「4.5」 안전 브레이크)
     if (
       getSafetyBrakeResult({
         now: new Date(listNow),
@@ -263,7 +264,7 @@ export function CardTimerPage() {
         exams: [],
       }).stopWhip
     ) {
-      setIsCrisisOpen(true)
+      setNotice('미뤘어요. 오늘은 무리하지 말고 쉬어 가도 괜찮아요.')
       return
     }
     // "다들 미뤄" 같은 말이 있으면 보편성은 반박하지 않고 내 비용만 보여 줍니다. (「8.2」 허위 합의)
@@ -292,10 +293,10 @@ export function CardTimerPage() {
     pageSettings.countdown.value,
     loadLocalCheckIn(todayKey)?.emotions,
   )
-  // 관리 4단계(#408): 시작 전 다짐 녹음 10초 · 미루기 잠금 · 다음 반복 카드 1장 절대 · 증빙 필수
+  // 관리 4단계(#408): 미루기 잠금 · 다음 반복 카드 1장 절대 · 증빙 필수
   const isStage4 = isStage4Now(todayKey)
-  const pledge = isStage4 ? loadVoicePledge() : null
-  const hasPledgeAudio = pledge !== null && pledge.audioDataUrl !== null
+  // 폰 들림 경고 세기: 오늘의 관리 강도로 정합니다. (회복 · 당근이면 안내만, 채찍이면 빠르게) (lib/liftAlerts.ts)
+  const liftStrength = getLiftStrength(getTodayCareLevel(), isStage4)
   const storedAbsolute = loadStage4Absolute()
   const stage4Absolute = !isStage4
     ? undefined
@@ -314,8 +315,7 @@ export function CardTimerPage() {
   }, [stage4AbsoluteKey])
 
   /** 시작 전에 처음 거칠 화면. 없으면 null (바로 시작) */
-  function firstStartStep(): 'pledge' | 'countdown' | null {
-    if (isStage4 && hasPledgeAudio) return 'pledge'
+  function firstStartStep(): 'countdown' | null {
     return isCountdownToday ? 'countdown' : null
   }
   const paramStep = paramCard ? firstStartStep() : null
@@ -329,7 +329,7 @@ export function CardTimerPage() {
   }, [cardParam, paramCard, hasParamFlow, session, todayKey, setCardParam])
 
   /**
-   * 카드로 시작합니다. 4단계면 다짐 듣기부터, 5초 카운트다운이 켜져 있으면(설정 또는 오늘 막막함·불안함) 카운트다운부터.
+   * 카드로 시작합니다. 5초 카운트다운이 켜져 있으면(설정 또는 오늘 막막함·불안함) 카운트다운부터.
    * [지금 시작] 즉석 카드는 할 일이 아직 없어서 바로 시작합니다.
    */
   function beginCard(card: CardModel) {
@@ -377,29 +377,17 @@ export function CardTimerPage() {
         card={activeCard}
         now={now}
         experimentRule={experimentRuleOf(active.cardId)}
-        onFinished={setEndedRecord}
+        onFinished={(record) => {
+          setEndedPhone(null)
+          setEndedRecord(record)
+        }}
+        liftStrength={liftStrength}
+        onPhoneSummary={setEndedPhone}
       />
     )
   }
 
   const shownFlow = startFlow ?? paramFlow
-  if (shownFlow?.step === 'pledge' && pledge?.audioDataUrl) {
-    return (
-      <PledgeGate
-        cardTitle={shownFlow.card.title}
-        audioDataUrl={pledge.audioDataUrl}
-        text={pledge.text}
-        onDone={() => {
-          setCardParam('')
-          if (isCountdownToday) setStartFlow({ card: shownFlow.card, step: 'countdown' })
-          else {
-            session.start(shownFlow.card, todayKey)
-            setStartFlow(null)
-          }
-        }}
-      />
-    )
-  }
   if (shownFlow?.step === 'countdown') {
     return (
       <CountdownView
@@ -417,29 +405,12 @@ export function CardTimerPage() {
     )
   }
 
-  if (session.play) {
-    const nextCard = waitingCards[0]
-    return (
-      <PlayView
-        session={session}
-        now={now}
-        nextCard={nextCard}
-        onStartNext={() => {
-          // 놀기를 끝내고(초과 휴식이 기록됨) 바로 다음 카드를 시작합니다.
-          session.finishPlay()
-          if (nextCard) beginCard(nextCard)
-          else handleStartNow(DEFAULT_INSTANT_MINUTES)
-        }}
-      />
-    )
-  }
-
   const endedCard = endedRecord ? cards.find((card) => card.id === endedRecord.cardId) : undefined
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">타이머</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">타이머</h1>
         <p className="mt-2 text-slate-600">
           카드를 누르면 바로 시작해요. 시계는 카드가 끝나는 시각까지 줄어들어요.
         </p>
@@ -464,9 +435,6 @@ export function CardTimerPage() {
               </li>
             )}
             <li>끝날 때 증빙이 있어야 한 것으로 쳐요.</li>
-            {hasPledgeAudio && (
-              <li>카드를 시작하기 전에 내 다짐을 {PLEDGE_GATE_SECONDS}초 들어요.</li>
-            )}
           </ul>
           <p className="mt-2 text-sm font-medium text-red-900">
             증빙이 있는 실행을 한 번 하면 3단계로 내려가요.
@@ -580,7 +548,6 @@ export function CardTimerPage() {
         </Card>
 
         <InstantStart onStart={handleStartNow} />
-        <PlaySetup onStart={session.startPlay} />
       </div>
 
       {missTarget?.action === 'postpone' && (
@@ -620,7 +587,6 @@ export function CardTimerPage() {
           onFail={(cause) => handleFail(missTarget.card, cause)}
         />
       )}
-      <CrisisHelpModal isOpen={isCrisisOpen} onClose={() => setIsCrisisOpen(false)} />
       <Modal
         isOpen={isRestOpen}
         onClose={() => setIsRestOpen(false)}
@@ -652,17 +618,9 @@ export function CardTimerPage() {
           쉬는 날이 이어지고 있어요. 앱은 회복 모드로 계획을 줄여서 갈게요. 혼자 버티기 힘들면 주변
           어른이나 상담에 이야기해 보세요.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <Button variant="secondary" onClick={() => setIsRecoveryCheckOpen(false)}>
+        <div className="mt-4">
+          <Button className="w-full" onClick={() => setIsRecoveryCheckOpen(false)}>
             알겠어요
-          </Button>
-          <Button
-            onClick={() => {
-              setIsRecoveryCheckOpen(false)
-              setIsCrisisOpen(true)
-            }}
-          >
-            도움 연결 보기
           </Button>
         </div>
       </Modal>
@@ -671,15 +629,15 @@ export function CardTimerPage() {
         <EndPopup
           record={endedRecord}
           card={endedCard}
+          phone={endedPhone}
           onSave={(changes) => {
             session.updateSession(endedRecord.id, changes)
             setEndedRecord({ ...endedRecord, ...changes })
           }}
           onRenameCard={(changes) => endedCard && updateCard(endedCard.id, changes)}
-          onClose={() => setEndedRecord(null)}
-          onRest={() => {
+          onClose={() => {
             setEndedRecord(null)
-            document.getElementById(PLAY_SETUP_ID)?.scrollIntoView({ behavior: 'smooth' })
+            setEndedPhone(null)
           }}
           proofRequired={isStage4}
           onProofSaved={() => {
@@ -840,10 +798,22 @@ interface SessionViewProps {
   onFinished: (record: StudySession) => void
   /** 이 카드에 붙은 자기 실험 규칙 (#412) */
   experimentRule?: string
+  /** 폰 들림 경고 세기 (lib/liftAlerts.ts) */
+  liftStrength: LiftStrength
+  /** 세션이 끝나 앱이 잰 폰 기록을 받았을 때 (앱 안에서만) */
+  onPhoneSummary: (summary: PhoneLiftSummary) => void
 }
 
 /** 세션 화면 — 나가는 길은 [일시정지] · [끝내기] 뿐입니다 */
-function SessionView({ session, card, now, onFinished, experimentRule }: SessionViewProps) {
+function SessionView({
+  session,
+  card,
+  now,
+  onFinished,
+  experimentRule,
+  liftStrength,
+  onPhoneSummary,
+}: SessionViewProps) {
   const active = session.active
   const [settings] = useState(loadAutoSettings)
   const [isEndOpen, setIsEndOpen] = useState(false)
@@ -851,6 +821,25 @@ function SessionView({ session, card, now, onFinished, experimentRule }: Session
   const [memo, setMemo] = useState('')
   const remainingMs = active ? getRemainingMs(active, now) : 0
   useKeepScreenOn(active !== null)
+
+  // 앱 안이면 폰을 엎어 뒀는지 재고, 들고 있는 시간에 따라 경고 단계를 정합니다. (hooks/usePhoneLift.ts)
+  const phone = usePhoneLift({
+    isActive: active !== null,
+    isPaused: active?.pausedNow !== undefined,
+    now,
+    strength: liftStrength,
+    onEnd: onPhoneSummary,
+  })
+  // 3단계: 폰을 너무 오래 들고 있으면 세션을 멈추고 '폰 확인' 으로 남깁니다. (돌아와서 [다시 시작])
+  const shouldAutoPause = phone.stage === 3 && active !== null && active.pausedNow === undefined
+  useEffect(() => {
+    if (shouldAutoPause) session.pause('phone', '폰을 오래 들고 있어서 저절로 멈췄어요')
+  }, [shouldAutoPause, session])
+  // 채찍 단계(강)에서는 화면 전체 경고 때 소리도 냅니다.
+  const shouldRing = phone.stage === 2 && liftStrength === 'strong'
+  useEffect(() => {
+    if (shouldRing) playAlarm()
+  }, [shouldRing])
 
   // 예정 종료 시각이 되면 알리고 끝냅니다. (완료 기준은 예정 시간이 끝난 것)
   useEffect(() => {
@@ -914,6 +903,11 @@ function SessionView({ session, card, now, onFinished, experimentRule }: Session
             {LONG_PAUSE_MINUTES}분 넘게 멈춰 있어요. 준비되면 다시 시작해요.
           </p>
         )}
+        {active.pausedNow?.tag === 'phone' && phone.isAvailable && (
+          <p className="text-sm font-medium break-keep text-amber-700">
+            폰을 오래 들고 있어서 잠깐 멈췄어요. 폰을 엎어 두고 다시 시작해요.
+          </p>
+        )}
         <p
           className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl"
           aria-live="off"
@@ -951,7 +945,19 @@ function SessionView({ session, card, now, onFinished, experimentRule }: Session
         <p className="text-xs text-slate-500">
           공부 중에는 화면이 꺼지지 않아요. 일시정지해도 끝나는 시각은 그대로예요.
         </p>
+        {phone.isAvailable && (
+          <p className="text-xs break-keep text-slate-500">
+            폰을 화면이 바닥을 보게 엎어 두면, 들 때마다 코치가 알려 줘요.
+          </p>
+        )}
       </Card>
+
+      {phone.stage === 1 && (
+        <PhoneLiftNotice seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
+      )}
+      {phone.stage === 2 && (
+        <PhoneLiftOverlay seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
+      )}
 
       {showChecklist && checklist.length > 0 && (
         <Card title={`체크리스트 ${checkedCount}/${checklist.length}`}>
@@ -1111,12 +1117,12 @@ interface EndPopupProps {
   /** 즉석 카드의 제목 · 체크리스트를 정했을 때 */
   onRenameCard: (changes: Pick<CardModel, 'title' | 'checklist'>) => void
   onClose: () => void
-  /** [쉬기 → 놀기 타이머] */
-  onRest: () => void
   /** 관리 4단계라 증빙이 꼭 필요한지 — 없으면 실행으로 인정하지 않습니다 (#408) */
   proofRequired: boolean
   /** 증빙을 남겼을 때 */
   onProofSaved: () => void
+  /** 앱이 잰 이번 세션의 폰 기록. 앱 밖이거나 아직 안 왔으면 null */
+  phone: PhoneLiftSummary | null
 }
 
 /**
@@ -1133,9 +1139,9 @@ function EndPopup({
   onSave,
   onRenameCard,
   onClose,
-  onRest,
   proofRequired,
   onProofSaved,
+  phone,
 }: EndPopupProps) {
   const [step, setStep] = useState<EndStep>('checklist')
   const [settings] = useState(loadAutoSettings)
@@ -1228,6 +1234,12 @@ function EndPopup({
 
   return (
     <Modal isOpen onClose={onClose} title="수고했어요! 마무리해요">
+      {/* 앱 안에서 폰을 엎어 두고 공부했으면 폰 기록을 한 줄로 보여 줍니다. (lib/liftAlerts.ts) */}
+      {phone && (
+        <p className="mb-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm break-keep text-slate-700">
+          📱 {formatPhoneSummary(phone)}
+        </p>
+      )}
       {step === 'checklist' && (
         <div className="flex flex-col gap-3">
           {isInstant ? (
@@ -1396,10 +1408,7 @@ function EndPopup({
       {step === 'next' && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-700">다음은 무엇을 할까요?</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Button variant="secondary" onClick={onRest}>
-              쉬기 → 놀기 타이머
-            </Button>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Button onClick={onClose}>다음 카드 보기</Button>
             <Button variant="ghost" onClick={onClose}>
               닫기
@@ -1408,157 +1417,6 @@ function EndPopup({
         </div>
       )}
     </Modal>
-  )
-}
-
-// 종료 팝업의 [쉬기] 가 놀기 고르기 카드로 내려가게 붙이는 이름
-const PLAY_SETUP_ID = 'play-setup'
-const DEFAULT_PLAY_MINUTES = 15
-
-interface PlaySetupProps {
-  onStart: (minutes: number, tag: PlayTag) => void
-}
-
-/** [놀기] — 놀 시간과 무엇을 할지 고르고 시작합니다 (「4.4」 놀기 타이머, #401) */
-function PlaySetup({ onStart }: PlaySetupProps) {
-  const [minutes, setMinutes] = useState(DEFAULT_PLAY_MINUTES)
-  const [tag, setTag] = useState<PlayTag>('rest')
-  return (
-    <Card title="놀기" id={PLAY_SETUP_ID} className="sm:col-span-2">
-      <p className="text-sm text-slate-600">
-        정한 시간이 끝나면 알려 주고 다음 카드로 이어 줘요. 더 쉬면 그 시간도 기록돼요.
-      </p>
-      <MinutesPicker
-        label="놀 시간"
-        presets={PLAY_MINUTE_PRESETS}
-        value={minutes}
-        onChange={setMinutes}
-        max={180}
-        className="mt-3"
-      />
-      <p className="mt-3 text-sm font-medium text-slate-800">무엇을 하며 쉬나요?</p>
-      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {PLAY_TAGS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            aria-pressed={tag === item.key}
-            onClick={() => setTag(item.key)}
-            className={cn(
-              'h-10 rounded-lg border text-sm',
-              tag === item.key
-                ? 'border-brand bg-brand/10 text-brand'
-                : 'border-slate-200 text-slate-700',
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <Button
-        size="lg"
-        variant="secondary"
-        className="mt-4 w-full"
-        onClick={() => onStart(minutes, tag)}
-      >
-        놀기 시작
-      </Button>
-    </Card>
-  )
-}
-
-interface PlayViewProps {
-  session: ReturnType<typeof useCardSession>
-  now: number
-  nextCard: CardModel | undefined
-  onStartNext: () => void
-}
-
-/**
- * 놀기 화면. 끝나기 1분 전에 한 번 알리고, 끝나면 다음 카드 시작 화면이 됩니다.
- * 끝난 뒤 [카드 시작] · [놀기 끝] 을 누를 때까지의 시간이 초과 휴식으로 보입니다.
- */
-function PlayView({ session, now, nextCard, onStartNext }: PlayViewProps) {
-  const play = session.play
-  const isOver = play !== null && isPlayOver(play, now)
-  const isWarnTime = play !== null && shouldWarnPlayEnd(play, now)
-  const needsEndAlert = isOver && !play?.endAlerted
-  useKeepScreenOn(play !== null)
-
-  // 끝나기 1분 전 알림 (한 번)
-  useEffect(() => {
-    if (!isWarnTime) return
-    playAlarm()
-    void showSystemNotification({
-      title: `놀기가 ${PLAY_WARN_MINUTES}분 남았어요`,
-      body: '이제 슬슬 다음 카드를 준비해요.',
-      tag: 'play-warn',
-      url: '/timer',
-    })
-    session.markPlayAlert('warned')
-  }, [isWarnTime, session])
-
-  // 끝났을 때 알림 (한 번)
-  useEffect(() => {
-    if (!needsEndAlert) return
-    playAlarm()
-    void showSystemNotification({
-      title: '놀기 끝!',
-      body: nextCard ? `다음 카드: ${nextCard.title}` : '이제 공부를 시작해요.',
-      tag: 'play-end',
-      url: '/timer',
-    })
-    session.markPlayAlert('endAlerted')
-  }, [needsEndAlert, nextCard, session])
-
-  if (!play) return null
-  const tagLabel = PLAY_TAGS.find((item) => item.key === play.tag)?.label ?? '쉬기'
-
-  return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-      <Card className="flex flex-col items-center gap-4 py-8 text-center">
-        <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-medium text-sky-700">
-          {isOver ? '놀기 끝' : `놀기 중 · ${tagLabel}`}
-        </span>
-        {isOver ? (
-          <>
-            <p className="text-lg font-semibold text-slate-900">이제 다시 시작해요</p>
-            <p className="text-5xl font-bold text-amber-600 tabular-nums">
-              +{formatRemaining(now - play.endAt)}
-            </p>
-            <p className="text-sm text-slate-600">놀기가 끝난 뒤 더 쉰 시간(초과 휴식)이에요.</p>
-            {nextCard && (
-              <p className="max-w-full truncate text-sm text-slate-700">
-                다음 카드: {nextCard.title}
-              </p>
-            )}
-            <div className="grid w-full max-w-sm grid-cols-1 gap-3 sm:grid-cols-2">
-              <Button size="lg" onClick={onStartNext}>
-                {nextCard ? '다음 카드 시작' : '지금 시작'}
-              </Button>
-              <Button size="lg" variant="secondary" onClick={() => session.finishPlay()}>
-                놀기 끝
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl">
-              {formatRemaining(play.endAt - now)}
-            </p>
-            <p className="text-sm text-slate-500">{formatClock(play.endAt)}에 끝나요</p>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="w-full max-w-sm"
-              onClick={() => session.finishPlay()}
-            >
-              그만 놀기
-            </Button>
-          </>
-        )}
-      </Card>
-    </div>
   )
 }
 
@@ -1647,62 +1505,6 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
   )
 }
 
-interface PledgeGateProps {
-  cardTitle: string
-  audioDataUrl: string
-  /** 녹음할 때 적은 다짐 글 (없으면 빈 글자) */
-  text: string
-  onDone: () => void
-}
-
-/**
- * 관리 4단계 — 카드 시작 전에 내 다짐 녹음을 10초 들려줍니다. 건너뛸 수 없습니다. (「5.4」 4단계, #408)
- * 녹음은 기기에만 있고 서버로 보내지 않습니다.
- */
-function PledgeGate({ cardTitle, audioDataUrl, text, onDone }: PledgeGateProps) {
-  const [seconds, setSeconds] = useState(PLEDGE_GATE_SECONDS)
-  const onDoneRef = useRef(onDone)
-  useEffect(() => {
-    onDoneRef.current = onDone
-  })
-
-  // 처음 한 번 재생하고, 10초가 지나면 멈춥니다.
-  useEffect(() => {
-    const audio = new Audio(audioDataUrl)
-    void audio.play().catch(() => {
-      // 브라우저가 소리를 막아도 10초는 기다립니다. (글로 된 다짐이 화면에 있음)
-    })
-    return () => audio.pause()
-  }, [audioDataUrl])
-
-  useEffect(() => {
-    if (seconds <= 0) {
-      onDoneRef.current()
-      return
-    }
-    const id = setTimeout(() => setSeconds((value) => value - 1), 1000)
-    return () => clearTimeout(id)
-  }, [seconds])
-
-  return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-      <Card className="flex flex-col items-center gap-4 py-10 text-center">
-        <p className="text-sm font-medium text-red-700">관리 4단계 · {cardTitle} 시작 전에</p>
-        <p className="text-lg font-semibold text-slate-900">처음에 한 내 다짐을 들어요</p>
-        {text.trim() !== '' && (
-          <p className="max-w-sm text-base break-keep text-slate-700">“{text}”</p>
-        )}
-        <p className="text-6xl font-bold text-red-600 tabular-nums" aria-live="polite">
-          {Math.max(0, seconds)}
-        </p>
-        <p className="text-xs text-slate-500">
-          {PLEDGE_GATE_SECONDS}초가 지나면 바로 시작해요. 건너뛸 수 없어요.
-        </p>
-      </Card>
-    </div>
-  )
-}
-
 // 회복 모드에서 시작하는 즉석 카드 길이 (분)
 const RECOVERY_MINUTES = 15
 
@@ -1741,5 +1543,64 @@ function RecoveryCard({ reason, onStart }: RecoveryCardProps) {
         회복 모드에서는 나무가 시들지 않아요. 내일 다시 볼게요.
       </p>
     </Card>
+  )
+}
+
+interface PhoneLiftAlertProps {
+  /** 폰을 들고 있은 시간 (초) */
+  seconds: number
+  /** [괜찮아] — 이번에 든 것은 더 경고하지 않음 */
+  onDismiss: () => void
+}
+
+/** 폰 들림 1단계: 화면 위에 작게 "다시 엎어 둘까?" (진동은 usePhoneLift 가 앱에 부탁함) */
+function PhoneLiftNotice({ seconds, onDismiss }: PhoneLiftAlertProps) {
+  return (
+    // 하단 탭과 겹치지 않게 화면 위쪽에 띄웁니다. 375px 에서도 양옆 16px 여백을 둡니다.
+    <div
+      role="status"
+      className="fixed inset-x-4 top-4 z-40 mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-white p-4 shadow-lg ring-1 ring-slate-200"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xl">
+        📱
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-slate-900">다시 엎어 둘까?</p>
+        <p className="text-sm text-slate-500">들고 있은 지 {seconds}초</p>
+      </div>
+      <Button variant="secondary" size="sm" className="h-10 shrink-0" onClick={onDismiss}>
+        괜찮아
+      </Button>
+    </div>
+  )
+}
+
+/** 폰 들림 2단계: 코치 말투 경고를 화면 전체에. 폰을 다시 엎으면 저절로 사라집니다. */
+function PhoneLiftOverlay({ seconds, onDismiss }: PhoneLiftAlertProps) {
+  return (
+    <div
+      role="alertdialog"
+      aria-labelledby="phone-lift-title"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-900/95 px-6 text-center text-white"
+    >
+      <span className="text-6xl" aria-hidden>
+        📱
+      </span>
+      <h2 id="phone-lift-title" className="text-[26px] leading-snug font-bold tracking-tight">
+        공부 중이야.
+        <br />폰 내려놓고 다시 엎어 두자
+      </h2>
+      <p className="text-base text-slate-300">
+        들고 있은 지 {seconds}초 · 조금 더 지나면 세션이 멈춰요
+      </p>
+      <p className="text-sm text-slate-400">폰을 다시 엎으면 이 화면은 저절로 사라져요.</p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="mt-4 h-12 rounded-2xl px-5 text-sm font-medium text-slate-300 underline-offset-4 hover:underline"
+      >
+        공부에 필요해서 든 거야 (이번만)
+      </button>
+    </div>
   )
 }

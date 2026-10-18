@@ -8,7 +8,6 @@ import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
-import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
@@ -35,6 +34,7 @@ import {
 } from '@/lib/cardForm'
 import { cn } from '@/lib/cn'
 import { getTodayKey, isDateKey } from '@/lib/date'
+import { NO_FIXED_BLOCKS } from '@/lib/fixedBlocks'
 import { getLatestActiveGoal } from '@/lib/goals'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { PLAN_MAX_MINUTES } from '@/lib/plansApi'
@@ -671,7 +671,6 @@ export function CardEditPage() {
   const [settings] = useState(loadAutoSettings)
   const [now] = useState(() => Date.now())
   const isServerData = useIsServerData()
-  const { blocks: fixedBlocks } = useFixedBlocks()
   // 수면 보호 시간은 온보딩에서 답한 취침 · 기상 시각으로 만듭니다. (화면을 열 때 한 번만 읽습니다)
   const [sleepWindow] = useState(() => {
     const answers = loadOnboardingAnswers()
@@ -707,7 +706,9 @@ export function CardEditPage() {
   if (cardId && !editingCard) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">카드를 찾을 수 없어요</h1>
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+          카드를 찾을 수 없어요
+        </h1>
         <p className="text-slate-600">지워졌거나 주소가 틀렸어요.</p>
         <Link to="/cards" className="text-brand inline-flex h-10 items-center font-medium">
           카드로 돌아가기
@@ -725,7 +726,7 @@ export function CardEditPage() {
         >
           ← 카드
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+        <h1 className="mt-2 text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
           {editingCard ? '카드 고치기' : '새 카드'}
         </h1>
         <p className="mt-2 text-sm break-keep text-slate-600">
@@ -747,7 +748,8 @@ export function CardEditPage() {
         aiChecklist={aiChecklist}
         sleepWindow={sleepWindow}
         allCards={cards}
-        fixedBlocks={fixedBlocks}
+        // 고정 일정 입력은 2026-10-18 에 지웠습니다. 겹침 검사는 앞뒤 카드만 봅니다. (lib/fixedBlocks.ts)
+        fixedBlocks={NO_FIXED_BLOCKS}
         onSave={handleSave}
       />
     </div>
