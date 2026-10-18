@@ -242,7 +242,7 @@ export const mockAiMessages: AiMessage[] = [
     sentAt: minutesAgo(90),
     careLevel: 1,
     kind: 'regular',
-    text: '점심 먹고 20분만 영어 단어 어때? 어제 약속 지킨 거 멋있었어.',
+    text: '점심 먹고 영어 단어 30분 어때? 어제 약속 지킨 거 멋있었어.',
     read: false,
   },
   {
@@ -259,7 +259,7 @@ export const mockAiMessages: AiMessage[] = [
     sentAt: minutesAgo(5),
     careLevel: 2,
     kind: 'regular',
-    text: '지금 25분만 해 보자. 끝나면 칭찬해 줄게.',
+    text: '지금 한 장만, 50분 해 보자. 끝나면 칭찬해 줄게.',
     read: false,
   },
 ]

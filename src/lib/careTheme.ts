@@ -79,7 +79,7 @@ export interface Greeting {
  */
 export const careGreetings: Record<CareLevel, Greeting[]> = {
   0: [
-    { text: '오늘은 10분만 해볼까?', harshness: 1 },
+    { text: '오늘은 딱 한 장만 해볼까?', harshness: 1 },
     { text: '괜찮아, 천천히 시작하자.', harshness: 1 },
     { text: '오늘은 가볍게 한 가지만 해보자.', harshness: 1 },
   ],

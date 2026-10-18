@@ -100,9 +100,9 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
   }
   if (hasAny(text, ['하기 싫', '귀찮', '싫어'])) {
     return {
-      text: '하기 싫은 날이 제일 중요해. 5분만 해 보고 그래도 싫으면 그만둬도 돼. 약속할게.',
+      text: '하기 싫은 날이 제일 중요해. 딱 한 장, 30분만 해 보고 그래도 싫으면 그만둬도 돼. 약속할게.',
       chips: [
-        { kind: 'startMinutes', label: '▷ 5분만 해 볼게', minutes: 5 },
+        { kind: 'startMinutes', label: '▷ 30분만 해 볼게', minutes: 30 },
         ...negotiation.slice(1),
       ],
       showHelp: false,
@@ -111,7 +111,7 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
   if (hasAny(text, ['쉴래', '쉬고', '쉴게'])) {
     return {
       text: '좋아, 쉬는 것도 계획이야. 대신 내일 아침에 내가 먼저 물어볼게. 푹 쉬어!',
-      chips: [{ kind: 'say', label: '아니다, 10분만 할래' }],
+      chips: [{ kind: 'say', label: '아니다, 하나만 할래' }],
       showHelp: false,
     }
   }
@@ -119,7 +119,7 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
     const lunch = context.school?.meals.find((meal) => meal.date === context.school?.date)
     const menu = lunch ? lunch.dishes.slice(0, 3).join(', ') : '오늘 급식 정보는 아직 없어'
     return {
-      text: `오늘 점심은 ${menu}! 든든하게 먹고 와서 15분만 복습하자.`,
+      text: `오늘 점심은 ${menu}! 든든하게 먹고 와서 오늘 배운 거 30분만 복습하자.`,
       chips: [startChip(context.card)],
       showHelp: false,
     }
@@ -155,7 +155,7 @@ export function replyDemo(studentText: string, context: DemoContext): DemoReply 
   }
   if (hasAny(text, ['폰', '어려웠'])) {
     return {
-      text: '알려 줘서 고마워. 다음 세션은 폰을 엎어 두고 10분만 해 보자. 들면 내가 바로 알려 줄게.',
+      text: '알려 줘서 고마워. 다음 세션은 폰을 엎어 두고 한 장만 끝까지 해 보자. 들면 내가 바로 알려 줄게.',
       chips: [startChip(context.card)],
       showHelp: false,
     }

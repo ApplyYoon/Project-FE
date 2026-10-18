@@ -2,20 +2,30 @@ import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { GoogleButton } from '@/components/ui/GoogleButton'
+import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/hooks/useAuth'
-import { getGoogleAuthErrorMessage, startWithGoogle } from '@/lib/authApi'
+import {
+  getDemoLoginErrorMessage,
+  getGoogleAuthErrorMessage,
+  loginWithDemoCode,
+  startWithGoogle,
+  type AuthResult,
+} from '@/lib/authApi'
 import { getAfterLoginPath, getReturnPath } from '@/lib/authRedirect'
+import { isDemoCodeLoginEnabled } from '@/lib/demoLogin'
 import { isGoogleConfigured } from '@/lib/googleClient'
 import { savePendingGoogleSignup } from '@/lib/googleSignup'
 import { markOnboardingDoneOnServer } from '@/lib/onboardingProgress'
 import { hasSignupInfo, markSignupDone } from '@/lib/signup'
 import { TEST_TOKEN, isTestLoginEnabled, testUser } from '@/lib/testLogin'
 import { cn } from '@/lib/cn'
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 // 테스트 로그인을 보여줄지. `.env` 값은 앱이 켜진 뒤에 바뀌지 않아서, 화면 밖에서 한 번만 정합니다.
 const isTestLoginOn = isTestLoginEnabled(import.meta.env.VITE_TEST_LOGIN)
+// 시연 코드 로그인을 보여줄지. 앱용 웹(starflow-app-web)에서만 VITE_DEMO_CODE_LOGIN=true 로 켭니다. (lib/demoLogin.ts)
+const isDemoCodeLoginOn = isDemoCodeLoginEnabled(import.meta.env.VITE_DEMO_CODE_LOGIN)
 
 /* 왼쪽 소개에 나오는 세 줄. 아이콘은 글자를 꾸미는 것이라 화면 읽기 프로그램이 건너뜁니다(aria-hidden). */
 const features: { icon: ReactNode; text: string }[] = [
@@ -80,11 +90,71 @@ function TestLoginPanel({ onStart }: TestLoginPanelProps) {
   )
 }
 
+interface DemoCodeLoginPanelProps {
+  /** 서버에 코드를 확인하는 중인지 */
+  isWorking: boolean
+  /** 실패했을 때 보여줄 한 줄. 없으면 null */
+  error: string | null
+  /** [시연 코드로 로그인] 을 눌렀을 때. 입력한 코드를 넘깁니다 */
+  onSubmit: (code: string) => void
+}
+
+/**
+ * 시연 코드로 로그인하는 영역입니다. (lib/demoLogin.ts, 2026-10-18)
+ * 앱 안의 웹 화면처럼 구글 로그인이 막힌 곳에서, 시연 때 진짜 서버 · AI 를 쓰려고 둡니다.
+ * 코드는 비밀번호처럼 가려서 입력합니다(type="password"). 코드 값은 이 앱 어디에도 저장하지 않습니다.
+ */
+function DemoCodeLoginPanel({ isWorking, error, onSubmit }: DemoCodeLoginPanelProps) {
+  const [code, setCode] = useState('')
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    // form 의 기본 동작(페이지 새로 고침)을 막습니다. 키보드의 Enter 로도 이 함수가 불립니다.
+    event.preventDefault()
+    if (code.trim() === '' || isWorking) return
+    onSubmit(code.trim())
+  }
+
+  return (
+    <Card title="시연 코드로 로그인" className="flex flex-col gap-3">
+      <p className="text-sm break-keep text-slate-500">
+        시연 때 받은 코드를 넣으면 시연 계정으로 들어가요. 진짜 서버와 AI 를 써요.
+      </p>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <Input
+          id="demo-code"
+          name="demo-code"
+          type="password"
+          label="시연 코드"
+          // 비밀번호 저장 창이 뜨지 않게 합니다. (공용 시연 코드라 기기에 남길 필요가 없습니다)
+          autoComplete="off"
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          disabled={isWorking}
+        />
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          disabled={code.trim() === '' || isWorking}
+        >
+          {isWorking ? '확인하는 중…' : '시연 코드로 로그인'}
+        </Button>
+      </form>
+      {error !== null && (
+        <p role="alert" className="text-sm break-keep text-red-600">
+          {error}
+        </p>
+      )}
+    </Card>
+  )
+}
+
 /**
  * 로그인 화면입니다. 시안(docs/design/screens/login-*.png)처럼 왼쪽은 앱 소개, 오른쪽은 "시작하기" 카드입니다.
  *  - [Google로 시작하기] : 가입한 구글 계정이면 바로 로그인, 처음이면 가입 화면으로 이어집니다. (#319)
  *    로그인은 구글 하나뿐입니다. 이메일 가입이 없어서 이메일 로그인도 뺐습니다. (2026-10-17)
- *  - 테스트 모드 (VITE_TEST_LOGIN=false 가 아닐 때만)
+ *  - 시연 코드로 로그인 (VITE_DEMO_CODE_LOGIN=true 일 때만, 앱용 웹) — 진짜 서버 · AI
+ *  - 테스트 모드 (VITE_TEST_LOGIN=false 가 아닐 때만) — 서버 없이 시연 대본
  * 모바일은 소개 → 카드 순서로 위아래로 쌓고, PC(lg)에서 두 칸으로 나눕니다.
  */
 export function LoginPage() {
@@ -103,12 +173,41 @@ export function LoginPage() {
   // 서버 확인을 기다리는 중인지를 ref 로도 들고 있습니다. 구글 창에서 계정을 연달아 고르면 state 는 아직 바뀌기 전일 수 있어서, 두 번째 신분증은 이 값으로 걸러냅니다.
   const isGoogleWorkingRef = useRef(false)
 
+  // 시연 코드를 확인하는 중인지, 실패했을 때 보여줄 안내
+  const [isDemoWorking, setIsDemoWorking] = useState(false)
+  const [demoError, setDemoError] = useState<string | null>(null)
+
   function handleTestLogin() {
     // 테스트 로그인은 앱을 바로 둘러보려는 것이라 가입 화면을 건너뜁니다. "가입 마침" 표시를 해 두면 홈으로 갑니다.
     // ("가입 마침" 표시가 있으면 /signup 을 직접 열어도 홈으로 갑니다. 이미 가입한 사람의 가입 정보를 덮어쓰지 않게 하려는 것입니다)
     markSignupDone()
     login(testUser, TEST_TOKEN)
     setHasJustLoggedIn(true)
+  }
+
+  /**
+   * 서버가 로그인 정보를 줬을 때 (구글로 이미 가입한 사람 · 시연 코드).
+   * 가입 화면을 건너뛰고, 서버가 온보딩을 마쳤다고 하면 이 기기에 기록이 없어도 온보딩을 다시 하지 않습니다.
+   */
+  function finishServerLogin(auth: AuthResult) {
+    markSignupDone()
+    // 다른 기기에서 처음 로그인한 경우를 위한 것입니다. (BE PR #300)
+    if (auth.user.onboarded === true) markOnboardingDoneOnServer()
+    login(auth.user, auth.token)
+    setHasJustLoggedIn(true)
+  }
+
+  /** 시연 코드를 서버에 보냅니다. 맞으면 구글로 로그인한 것과 똑같이 진짜 서버 모드로 들어갑니다. */
+  async function handleDemoCode(code: string) {
+    setIsDemoWorking(true)
+    setDemoError(null)
+    try {
+      finishServerLogin(await loginWithDemoCode(code))
+    } catch (error) {
+      setDemoError(getDemoLoginErrorMessage(error))
+    } finally {
+      setIsDemoWorking(false)
+    }
   }
 
   /** 구글이 신분증을 줬을 때. 서버가 확인해서 "로그인" 또는 "가입 필요" 를 알려 줍니다. (lib/authApi.ts) */
@@ -122,11 +221,7 @@ export function LoginPage() {
       const result = await startWithGoogle(credential)
       if (result.status === 'LOGGED_IN') {
         // 구글로 이미 가입한 사람입니다. 이 기기에 가입 정보가 없어도 가입 화면으로 보내지 않습니다.
-        markSignupDone()
-        // 서버가 온보딩을 마쳤다고 하면, 이 기기에 기록이 없어도 온보딩을 다시 하지 않습니다. (다른 기기에서 처음 로그인한 경우, BE PR #300)
-        if (result.auth.user.onboarded === true) markOnboardingDoneOnServer()
-        login(result.auth.user, result.auth.token)
-        setHasJustLoggedIn(true)
+        finishServerLogin(result.auth)
         return
       }
       // 처음 온 구글 계정입니다. 가입 화면으로 이어 갑니다.
@@ -142,7 +237,7 @@ export function LoginPage() {
   }
 
   // 로그인이 되면 갈 곳으로 보냅니다. 가려던 페이지가 있으면 거기로, 없으면 홈입니다.
-  // (구글 · 테스트 로그인은 모두 위에서 "가입 마침" 표시를 해 두어서 가입 화면으로 가지 않습니다)
+  // (구글 · 시연 코드 · 테스트 로그인은 모두 위에서 "가입 마침" 표시를 해 두어서 가입 화면으로 가지 않습니다)
   // replace: 로그인 화면을 기록에 남기지 않습니다.
   // 가려던 주소 없이 /login 을 직접 연 "이미 로그인한 사람" 은 그대로 둡니다. (로그아웃 버튼을 쓸 수 있어야 하기 때문입니다)
   if (isLoggedIn && (hasJustLoggedIn || returnPath !== null)) {
@@ -225,6 +320,15 @@ export function LoginPage() {
               <p>고등학생만 가입할 수 있어요.</p>
             </div>
           </Card>
+
+          {/* 이미 로그인한 사람에게는 보이지 않습니다. (로그인한 채로 틀린 코드를 넣으면 401 때문에 로그아웃되기 때문입니다) */}
+          {isDemoCodeLoginOn && !isLoggedIn && (
+            <DemoCodeLoginPanel
+              isWorking={isDemoWorking}
+              error={demoError}
+              onSubmit={(code) => void handleDemoCode(code)}
+            />
+          )}
 
           {isTestLoginOn && <TestLoginPanel onStart={handleTestLogin} />}
         </div>

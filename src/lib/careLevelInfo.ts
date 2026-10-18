@@ -29,7 +29,7 @@ export const careLevelInfos: CareLevelInfo[] = [
   {
     level: 0,
     name: '회복',
-    description: '위로만. "오늘은 10분만"',
+    description: '위로만. "오늘은 하나만"',
     defaultReason: '지금은 쉬어 가는 중이야. 오늘은 부담 없이 할 수 있는 만큼만 해 보자.',
     badgeClass: 'bg-teal-700 text-white',
     panelClass: 'border-teal-200 bg-teal-50',
