@@ -26,7 +26,6 @@ export function isServerDataMode(): boolean {
  *
  *   needsSubjectsPath('/cards')             -> true
  *   needsSubjectsPath('/')                  -> true   (홈)
- *   needsSubjectsPath('/exams/abc/result')  -> true
  *   needsSubjectsPath('/settings')          -> false
  */
 export function needsSubjectsPath(pathname: string): boolean {
@@ -34,9 +33,7 @@ export function needsSubjectsPath(pathname: string): boolean {
     pathname === '/' ||
     pathname === '/cards' ||
     pathname === '/timer' ||
-    // 분석 탭(기록 · 리포트 · 사용설명서). 하위 탭은 ?tab= 이라 경로만으로는 나눌 수 없어 셋 다 받아 둡니다.
-    pathname === '/analysis' ||
-    pathname === '/exams' ||
-    /^\/exams\/[^/]+\/result$/.test(pathname)
+    // 분석 탭(기록 · 리포트). 하위 탭은 ?tab= 이라 경로만으로는 나눌 수 없어 둘 다 받아 둡니다.
+    pathname === '/analysis'
   )
 }

@@ -3,13 +3,13 @@ import { Card } from '@/components/ui/Card'
 import { SchoolEventsCard } from '@/components/ui/SchoolEventsCard'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { useCards } from '@/hooks/useCards'
-import { useFixedBlocks } from '@/hooks/useFixedBlocks'
 import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { CARD_RESULT_LABELS } from '@/lib/cardResult'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { getCardsOnDate } from '@/lib/cards'
+import { NO_FIXED_BLOCKS } from '@/lib/fixedBlocks'
 import {
   formatDayClock,
   formatWeekLabel,
@@ -421,13 +421,6 @@ function CardTimeline({
       >
         + 카드 만들기
       </Link>
-      {/* 학교·학원은 카드가 아니라 고정 일정으로 넣습니다 (#393) */}
-      <Link
-        to="/cards/fixed"
-        className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
-      >
-        학교·학원 고정 일정
-      </Link>
     </Card>
   )
 }
@@ -441,8 +434,6 @@ export function CardsPage() {
   const todayKey = getTodayKey()
   // 카드 (최종 기획서 「4.3」, #392)
   const { cards } = useCards()
-  // 학교·학원 고정 일정 (#393). 타임라인에 회색 블록으로 그립니다.
-  const { blocks: fixedBlocks } = useFixedBlocks()
   // 목표 (최종 기획서 「4.7」, #391)
   const { activeGoals } = useGoals()
   // 공부 기록. 블록의 "한 시간" · 결과와 계획 패턴에 씁니다.
@@ -517,7 +508,8 @@ export function CardsPage() {
       {/* 카드 일·주 타임라인 (#394). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
       <CardTimeline
         cards={cards}
-        fixedBlocks={fixedBlocks}
+        // 고정 일정 입력은 2026-10-18 에 지웠습니다. 학교 시간표(NEIS)를 붙이면 여기에 넣습니다. (lib/fixedBlocks.ts)
+        fixedBlocks={NO_FIXED_BLOCKS}
         goals={activeGoals}
         sessions={sessions}
         dateKey={selectedDate}

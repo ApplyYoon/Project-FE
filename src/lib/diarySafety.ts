@@ -6,6 +6,7 @@
  */
 import { loadExams } from '@/lib/exams'
 import type { ExamDateInput, MoodRecordInput } from '@/lib/safetyBrake'
+import { loadSchoolExamDates } from '@/lib/schoolEvents'
 import { loadData } from '@/lib/storage'
 import type { CheckIn, DiaryEntry, ReflectionEntry } from '@/types'
 
@@ -65,9 +66,10 @@ export function loadSavedWritings(): { texts: string[]; moods: MoodRecordInput[]
 }
 
 /**
- * 저장해 둔 시험(#80)에서 날짜만 꺼냅니다. 안전 브레이크가 "시험 직전 3일·직후 2일" 을 판단하는 데 씁니다.
+ * 학교 학사일정(NEIS)에서 받아 둔 시험 날짜를 꺼냅니다. 안전 브레이크가 "시험 직전 3일·직후 2일" 을 판단하는 데 씁니다.
  * (시험 기간이면 examPeriod 가 켜져서 3단계 이상 채찍 메시지가 멈춥니다 — 상한 2단계, #384)
+ * 학생이 직접 적던 시험 기록(#80)은 2026-10-18 에 지웠습니다. 학사일정은 카드 탭의 학교 일정 칸이 받아 옵니다.
  */
 export function loadExamDates(): ExamDateInput[] {
-  return loadExams().map((exam) => ({ date: exam.date }))
+  return loadSchoolExamDates().map((date) => ({ date }))
 }

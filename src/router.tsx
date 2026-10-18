@@ -41,16 +41,9 @@ const CardEditPage = lazy(() =>
   import('@/pages/CardEditPage').then((m) => ({ default: m.CardEditPage })),
 )
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
-const FixedBlocksPage = lazy(() =>
-  import('@/pages/FixedBlocksPage').then((m) => ({ default: m.FixedBlocksPage })),
-)
 const CounselPage = lazy(() =>
   import('@/pages/CounselPage').then((m) => ({ default: m.CounselPage })),
 )
-const ExamResultPage = lazy(() =>
-  import('@/pages/ExamResultPage').then((m) => ({ default: m.ExamResultPage })),
-)
-const ExamsPage = lazy(() => import('@/pages/ExamsPage').then((m) => ({ default: m.ExamsPage })))
 const GoalDetailPage = lazy(() =>
   import('@/pages/GoalDetailPage').then((m) => ({ default: m.GoalDetailPage })),
 )
@@ -123,8 +116,8 @@ export const router = createBrowserRouter([
       // 카드 만들기 · 고치기 (#392). /cards/new?date=2026-10-17 · /cards/카드id/edit
       { path: 'cards/new', element: <CardEditPage /> },
       { path: 'cards/:cardId/edit', element: <CardEditPage /> },
-      // 고정 일정(학교·학원) 입력 (#393)
-      { path: 'cards/fixed', element: <FixedBlocksPage /> },
+      // 고정 일정(학교·학원) 입력(#393)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 카드 탭으로 보냅니다.
+      { path: 'cards/fixed', element: <Navigate to="/cards" replace /> },
       // 목표 만들기 (WOOP, #391). 카드 탭에서 들어옵니다. /goals/new?step=wish
       { path: 'goals/new', element: <GoalNewPage /> },
       // 목표 상세 (진척 · 2주 목표 점검, #403). 카드 탭의 목표 목록에서 들어옵니다.
@@ -141,12 +134,14 @@ export const router = createBrowserRouter([
       // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 상담 탭으로 보냅니다.
       { path: 'diary', element: <Navigate to="/counsel" replace /> },
       { path: 'diary/reflection', element: <Navigate to="/counsel" replace /> },
-      { path: 'exams', element: <ExamsPage /> },
+      // 시험 기록(/exams · 시험 결과)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 시험 날짜는 학교 학사일정(NEIS)이 알려 줍니다.
+      // 옛 링크는 분석 탭으로 보냅니다.
+      { path: 'exams', element: <Navigate to={ANALYSIS_PATH} replace /> },
+      { path: 'exams/:examId/result', element: <Navigate to={ANALYSIS_PATH} replace /> },
       // 휴대폰 집중 모드 안내(/phone-focus)는 #417 에서 지웠습니다. (OS 앱 잠금은 다음 버전)
       { path: 'phone-focus', element: <Navigate to="/settings" replace /> },
-      { path: 'exams/:examId/result', element: <ExamResultPage /> },
       { path: 'call/result', element: <CallResultPage /> },
-      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 자기 실험(가설·실험 탭)으로 보냅니다.
+      // 만약-그러면 처방 카드(/suggestions)는 #417 에서 지웠습니다. 옛 링크는 분석 탭으로 보냅니다. (가설·실험 탭도 2026-10-18 에 지움)
       { path: 'suggestions', element: <Navigate to={ANALYSIS_PATH} replace /> },
       { path: 'settings', element: <SettingsPage /> },
       // 내 계정(내 정보 고치기 · 비밀번호 바꾸기 · 탈퇴). 설정의 계정 카드에서 들어옵니다. (#296)
