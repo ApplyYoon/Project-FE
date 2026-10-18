@@ -86,6 +86,10 @@ const RECORD_KEYS = [
   'ai-message-sent-today',
   // 주간 리포트에서 먼저 맞혀 본 답과 예측 정확도 (#409)
   'predictions',
+  // AI 코치와의 대화방 (이 기기에만 남김, 2026-10-18 lib/coachThread.ts)
+  'coach-thread',
+  // 공부 중 폰을 든 기록 (세션별, lib/liftAlerts.ts)
+  'phone-lifts',
   ...DIARY_KEYS,
 ]
 
