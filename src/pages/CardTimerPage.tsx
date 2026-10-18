@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -34,7 +35,9 @@ import {
 } from '@/lib/cardSession'
 import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
-import { getTodayKey, toDayKey } from '@/lib/date'
+import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
+import { getChatRoom, startTalk, TALK_ROOM_OF } from '@/lib/chatRooms'
+import { cardFailLines, sessionReviewLines } from '@/lib/talkLines'
 import {
   addCardMark,
   getCardDayMark,
@@ -144,6 +147,7 @@ function formatRemaining(ms: number): string {
 }
 
 export function CardTimerPage() {
+  const navigate = useNavigate()
   const { cards, getCards, addCard, updateCard } = useCards()
   const session = useCardSession()
   const { active, now, allSessions } = session
@@ -326,6 +330,48 @@ export function CardTimerPage() {
     )
     setMissTarget(null)
     setNotice('기록했어요. 다음 통화에서 같이 돌아봐요.')
+  }
+
+  /**
+   * 실패 창의 [코치랑 이야기하며 정하기] — 아직 실패로 기록하지 않고 상담 방에서 "왜 못 했는지" 이야기합니다.
+   * AI 가 짐작한 원인을 학생이 [맞아] 로 확인하면 그때 실패로 기록합니다. (pages/ChatRoomPage.tsx, #582)
+   */
+  function handleFailTalk(card: CardModel) {
+    const weekStart = moveDateKey(todayKey, -6)
+    const failsThisWeek = marks.filter(
+      (mark) => mark.cardId === card.id && mark.mark === 'failed' && mark.dateKey >= weekStart,
+    ).length
+    setMissTarget(null)
+    navigate(
+      startTalk({
+        about: { kind: 'CARD_FAIL', lines: cardFailLines(card, todayKey, failsThisWeek) },
+        label: `💬 '${card.title}' 못 한 이야기할래`,
+        target: { type: 'card', cardId: card.id, dateKey: todayKey },
+      }),
+    )
+  }
+
+  /** 종료 팝업의 [코치랑 후기 나누기] — 팝업을 닫고 상담 방에서 방금 공부 후기를 말로 나눕니다. (#582) */
+  function handleReviewTalk(record: StudySession) {
+    const phone = endedPhone
+    setEndedRecord(null)
+    setEndedPhone(null)
+    setEndedHidden(null)
+    navigate(
+      startTalk({
+        about: {
+          kind: 'SESSION_REVIEW',
+          lines: sessionReviewLines({
+            session: record,
+            card: endedCard,
+            focus: endedFocus,
+            phoneText: phone ? formatPhoneSummary(phone) : null,
+          }),
+        },
+        label: '💬 방금 공부 후기 나눌래',
+        target: { type: 'session', sessionId: record.id },
+      }),
+    )
   }
 
   // 알림으로 들어오면(?card=) 사전 질문 없이 바로 시작합니다. (「4.4」 시작)
@@ -657,6 +703,7 @@ export function CardTimerPage() {
           cardTitle={missTarget.card.title}
           onClose={() => setMissTarget(null)}
           onFail={(causes) => handleFail(missTarget.card, causes)}
+          onTalk={() => handleFailTalk(missTarget.card)}
         />
       )}
       <Modal
@@ -706,6 +753,11 @@ export function CardTimerPage() {
           onSave={(changes) => {
             session.updateSession(endedRecord.id, changes)
             setEndedRecord({ ...endedRecord, ...changes })
+          }}
+          onTalk={(changes) => {
+            // 체크한 것까지 저장하고(이유는 대화에서 정함) 후기 대화로 갑니다.
+            session.updateSession(endedRecord.id, changes)
+            handleReviewTalk({ ...endedRecord, ...changes })
           }}
           onRenameCard={(changes) => endedCard && updateCard(endedCard.id, changes)}
           onClose={() => {
@@ -1284,6 +1336,8 @@ interface EndPopupProps {
   card: CardModel | undefined
   /** 기록에 붙일 칸 (endReport) — 단계마다 저장해서, 중간에 닫아도 고른 것은 남습니다 */
   onSave: (changes: Pick<StudySession, 'endReport'>) => void
+  /** [💬 코치랑 후기 나누기] — 체크한 것까지 저장하고 상담 방에서 후기를 말로 나눕니다. (#582) */
+  onTalk: (changes: Pick<StudySession, 'endReport'>) => void
   /** 즉석 카드의 제목 · 체크리스트를 정했을 때 */
   onRenameCard: (changes: Pick<CardModel, 'title' | 'checklist'>) => void
   onClose: () => void
@@ -1309,6 +1363,7 @@ function EndPopup({
   record,
   card,
   onSave,
+  onTalk,
   onRenameCard,
   onClose,
   proofRequired,
@@ -1342,6 +1397,10 @@ function EndPopup({
   // 지금 적힌 한 줄을 정리한 초안만 씁니다. 한 줄을 고치면 예전 초안은 쓰지 않습니다.
   const currentDraft = draft !== null && draft.line === line.trim() ? draft : null
   const [proofText, setProofText] = useState('')
+  // 다 못 했을 때: 이유 칩은 접어 두고 [💬 코치랑 후기 나누기] 를 먼저 보여 줍니다. [이유만 고르기] 를 누르면 펼칩니다. (#582)
+  const [isPickingReasons, setIsPickingReasons] = useState(false)
+  // 후기를 나눌 대화방 (lib/chatRooms.ts — 방 이름이 바뀌어도 여기는 그대로)
+  const talkRoom = getChatRoom(TALK_ROOM_OF.SESSION_REVIEW)
   const isInstant = card !== undefined && isUntitledInstantCard(card)
   const checklist = card?.checklist ?? []
   const isComplete = isInstant || isChecklistComplete(checklist, checked)
@@ -1408,6 +1467,11 @@ function EndPopup({
 
   const needsShortfall = !isInstant && !isComplete && shortfalls.length === 0
   const canFinishChecklist = isInstant ? line.trim() !== '' : !needsShortfall
+
+  /** [💬 코치랑 후기 나누기] — 체크한 것까지 저장하고 대화방으로 갑니다. 다 못 한 이유는 대화에서 AI 가 짐작해 확인받습니다. */
+  function handleTalk() {
+    onTalk({ endReport: { ...report, checked } })
+  }
 
   return (
     <Modal isOpen onClose={onClose} title="수고했어요! 마무리해요">
@@ -1494,24 +1558,41 @@ function EndPopup({
                 ))}
               </ul>
               {!isComplete && (
-                <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    다 못 한 이유는요? <span className="text-slate-500">(여러 개 골라도 돼요)</span>
-                  </p>
-                  <ReasonChips
-                    options={SHORTFALL_REASONS}
-                    selected={shortfalls}
-                    onToggle={(key) => setShortfalls((prev) => toggleReason(prev, key))}
-                    label="다 못 한 이유"
-                    className="mt-2"
-                  />
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium text-slate-800">다 못 한 건 왜 그랬을까요?</p>
+                  {/* 이유를 칩으로 고르는 대신 코치와 말로 나누면, AI 가 이유를 짐작해서 "맞아?" 로 확인받습니다. */}
+                  <Button size="lg" onClick={handleTalk}>
+                    💬 {talkRoom.name} 방에서 후기 나누기
+                  </Button>
+                  <button
+                    type="button"
+                    aria-expanded={isPickingReasons}
+                    onClick={() => setIsPickingReasons((open) => !open)}
+                    className="h-10 cursor-pointer text-sm font-medium text-slate-500 underline-offset-2 hover:underline"
+                  >
+                    {isPickingReasons ? '이유 고르기 접기' : '이유만 고를래'}
+                  </button>
+                  {isPickingReasons && (
+                    <>
+                      <p className="text-xs text-slate-500">여러 개 골라도 돼요</p>
+                      <ReasonChips
+                        options={SHORTFALL_REASONS}
+                        selected={shortfalls}
+                        onToggle={(key) => setShortfalls((prev) => toggleReason(prev, key))}
+                        label="다 못 한 이유"
+                      />
+                    </>
+                  )}
                 </div>
               )}
             </>
           )}
-          <Button size="lg" disabled={!canFinishChecklist} onClick={handleChecklistDone}>
-            다음
-          </Button>
+          {/* 다 했거나 즉석 카드면 바로 [다음], 다 못 했으면 이유를 고를 때만 [다음] 이 보입니다. */}
+          {(isInstant || isComplete || isPickingReasons) && (
+            <Button size="lg" disabled={!canFinishChecklist} onClick={handleChecklistDone}>
+              다음
+            </Button>
+          )}
         </div>
       )}
 
@@ -1591,7 +1672,11 @@ function EndPopup({
           <p className="text-sm text-slate-700">다음은 무엇을 할까요?</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Button onClick={onClose}>다음 카드 보기</Button>
-            <Button variant="ghost" onClick={onClose}>
+            {/* 다 한 공부도 어땠는지 말로 나누면 코치가 다음 계획에 씁니다. (#582) */}
+            <Button variant="secondary" onClick={handleTalk}>
+              💬 {talkRoom.name} 방에서 후기 나누기
+            </Button>
+            <Button variant="ghost" onClick={onClose} className="sm:col-span-2">
               닫기
             </Button>
           </div>

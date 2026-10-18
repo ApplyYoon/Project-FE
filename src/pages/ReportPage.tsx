@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { AnalysisExperimentSuggestion, AnalysisInsight } from '@/components/ui/AiAnalysisCard'
+import { TalkButton } from '@/components/ui/TalkButton'
 import { useCards } from '@/hooks/useCards'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { loadStudySessions } from '@/lib/dailyRecords'
@@ -13,6 +14,7 @@ import {
 } from '@/lib/experiments'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
+import { weeklyReportLines } from '@/lib/talkLines'
 import { findStrategy } from '@/lib/strategyCatalog'
 import { loadRecord } from '@/lib/storage'
 import {
@@ -216,6 +218,12 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
         <>
           {/* ② 숫자 3개 */}
           <NumbersSection weekName={weekName} numbers={numbers} />
+          {/* 이 주 숫자를 들고 계획 방에서 다음 주에 바꿀 것 하나를 같이 정합니다. (#582) */}
+          <TalkButton
+            about={{ kind: 'WEEKLY_REPORT', lines: weeklyReportLines(weekName, numbers) }}
+            label={`📅 ${weekName} 숫자 같이 볼래`}
+            className="self-start"
+          />
 
           {/* ③ 인사이트 1개. 발견은 지금까지의 기록으로 만든 것이라, 지난 주를 볼 때는 제목만 맞게 바꿉니다. */}
           <section>

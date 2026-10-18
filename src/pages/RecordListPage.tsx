@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
+import { TalkButton } from '@/components/ui/TalkButton'
 import { UnderstandingBadge } from '@/components/ui/UnderstandingBadge'
 import { useCards } from '@/hooks/useCards'
 import { loadManualItems } from '@/hooks/useManualItems'
@@ -52,6 +53,7 @@ import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { loadData, loadRecord } from '@/lib/storage'
+import { dayReviewLines } from '@/lib/talkLines'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
 import type { CareLevel, CheckIn, EmotionTag, StudyPlan, StudySession, Subject } from '@/types'
 
@@ -862,6 +864,15 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
             </li>
           )}
         </ul>
+      )}
+
+      {/* 이 날 숫자를 들고 상담 방에서 무엇이 잘 됐고 아쉬웠는지 이야기합니다. (#582) 기록이 있는 날만 */}
+      {(day.cards.length > 0 || studyMinutes !== undefined) && (
+        <TalkButton
+          about={{ kind: 'DAY_REVIEW', lines: dayReviewLines(day, studyMinutes) }}
+          label={`💬 ${formatDateLabel(day.dateKey)} 이야기할래`}
+          className="self-start"
+        />
       )}
     </div>
   )
