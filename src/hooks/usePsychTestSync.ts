@@ -7,7 +7,7 @@ import { useEffect } from 'react'
 /**
  * 아직 서버에 안 간 심리검사 결과를 앱을 열 때 한 번 보냅니다. (lib/psychTestApi.ts)
  * 검사를 끝낸 직후(OnboardingPsychTestPage)에도 보내지만, 그때 못 보냈거나 예전에 이 기기에만 저장한 결과를 여기서 보냅니다.
- * 하루 첫 한 줄(DailyTagBar, Layout 에 늘 있음)에서 한 번만 부릅니다. 실패하면 다음에 앱을 열 때 또 보냅니다.
+ * Layout 에서 한 번만 부릅니다. 실패하면 다음에 앱을 열 때 또 보냅니다.
  */
 export function usePsychTestSync(): void {
   const { token } = useAuth()

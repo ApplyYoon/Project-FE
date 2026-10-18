@@ -1,6 +1,5 @@
 import { BackToTabLink } from '@/components/layout/BackToTabLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
-import { DailyTagBar } from '@/components/layout/DailyTagBar'
 import { Header } from '@/components/layout/Header'
 import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
 import { PageBoundary } from '@/components/layout/PageBoundary'
@@ -13,9 +12,12 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
 import { useCardAlerts } from '@/hooks/useCardAlerts'
 import { useCardSync } from '@/hooks/useCardSync'
+import { useUnsentCheckInRetry } from '@/hooks/useCheckInSync'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useGoalSync } from '@/hooks/useGoalSync'
 import { useMarkSync } from '@/hooks/useMarkSync'
+import { useOnboardingCompletionSync } from '@/hooks/useOnboardingCompletionSync'
+import { usePsychTestSync } from '@/hooks/usePsychTestSync'
 import { useScrollToTopOnPageChange } from '@/hooks/useScrollToTopOnPageChange'
 import { useSessionSync } from '@/hooks/useSessionSync'
 import { useTimerLock } from '@/hooks/useTimerLock'
@@ -47,6 +49,11 @@ export function Layout() {
   useSessionSync()
   // 진짜 로그인이면 미루기 · 실패 · 휴식 · 사후 입력도 서버로 보냅니다. (한도 · 기한은 서버가 다시 봅니다, #516)
   useMarkSync()
+  // 예전에 서버로 못 보낸 체크인 · 심리검사 결과 · 온보딩 마침 표시를 앱을 열 때 다시 보냅니다.
+  // (예전에는 화면 맨 위의 "오늘 컨디션" 한 줄이 맡았는데, 2026-10-18 에 그 한 줄을 없애서 여기로 옮겼습니다)
+  useUnsentCheckInRetry()
+  usePsychTestSync()
+  useOnboardingCompletionSync()
   // 다른 화면으로 옮기면 맨 위부터 보이게 합니다. (같은 화면 안의 탭 · 날짜 바꾸기와 뒤로 가기는 그대로 둡니다)
   useScrollToTopOnPageChange()
   const { pathname } = useLocation()
@@ -90,8 +97,6 @@ export function Layout() {
           isCoach ? 'flex min-h-0 flex-col py-3 sm:py-4' : 'py-6 sm:py-10',
         )}
       >
-        {/* 그날 처음이면 어느 화면이든 맨 위에 "오늘 컨디션 + 감정 태그" 한 줄을 띄웁니다. 화면을 막지 않습니다. (#387) */}
-        <DailyTagBar />
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
         {/* 오늘 탭에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되고, 코치 화면은 채팅 자리가 좁아지기 때문입니다. */}
         {pathname === TODAY_PATH && <IosInstallGuide />}

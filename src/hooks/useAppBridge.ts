@@ -1,7 +1,8 @@
 import { useAuth } from '@/hooks/useAuth'
 import { isInApp, onAppMessage, saveAppNotificationPermission, sendToApp } from '@/lib/appBridge'
 import { CALL_TIME_STORAGE_KEY, isCallTimeInQuietHours, parseCallTime } from '@/lib/callReminder'
-import { loadCardAlarms } from '@/lib/cardAlarms'
+import { loadCardAlarms, MAX_ALARMS } from '@/lib/cardAlarms'
+import { loadMissionAlarms } from '@/lib/dailyMission'
 import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { getMessageSettings } from '@/lib/messageSettings'
 import { toQuietHours } from '@/lib/notifications'
@@ -23,7 +24,8 @@ let isReadySent = false
  * 어느 화면에서든 돌아야 해서 App.tsx 에서 한 번만 부릅니다. (라우터 밖이라 주소 이동은 router.navigate 로 합니다)
  *
  * 1. 다 뜨면 'ready' 를 보내고, 앱이 보내는 'navigate'(알림을 눌렀을 때)로 그 주소에 갑니다.
- * 2. 카드 알림(lib/cardAlarms.ts)과 매일 전화 시각을 10초마다 확인해서, 바뀌었을 때만 앱에 보냅니다.
+ * 2. 카드 알림(lib/cardAlarms.ts) · 오늘의 미션 알림(lib/dailyMission.ts)과 매일 전화 시각을 10초마다 확인해서,
+ *    바뀌었을 때만 앱에 보냅니다. ⚠️ 'alarms.set' 은 앱의 예약을 통째로 바꾸므로 두 목록을 합쳐서 한 번에 보냅니다.
  */
 export function useAppBridge(): void {
   const { isLoggedIn } = useAuth()
@@ -53,7 +55,13 @@ export function useAppBridge(): void {
 
     function sync() {
       // 로그인 전(로그아웃 뒤)에는 빈 목록 · 전화 끔을 보내서, 앞사람의 알림이 오지 않게 합니다.
-      const alarms = isLoggedIn ? loadCardAlarms(Date.now()) : []
+      const now = Date.now()
+      // 카드 알림과 미션 알림을 합쳐 가까운 순서로 48개까지 (앱이 한 번에 예약하는 최대 개수)
+      const alarms = isLoggedIn
+        ? [...loadCardAlarms(now), ...loadMissionAlarms(now)]
+            .sort((a, b) => a.at - b.at)
+            .slice(0, MAX_ALARMS)
+        : []
       const alarmsJson = JSON.stringify(alarms)
       if (alarmsJson !== lastAlarmsJson.current) {
         lastAlarmsJson.current = alarmsJson

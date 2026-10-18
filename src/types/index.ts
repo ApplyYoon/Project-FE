@@ -419,7 +419,7 @@ export type MissReason =
 
 /** 매일 체크인 (하루에 하나) */
 /**
- * 하루 첫 한 줄에서 고르는 감정 태그 (#387, BE#220 과 같은 이름)
+ * 체크인의 감정 태그 (#387, BE#220 과 같은 이름). 지금은 코치의 컨디션 칩 '피곤해' 가 '피곤함' 을 남깁니다.
  * 막막함 · 불안함 · 피곤함 · 짜증남 · 평온함 · 의욕 있음. 글자는 lib/quickCheckIn.ts 의 EMOTION_OPTIONS
  */
 export type EmotionTag = 'STUCK' | 'ANXIOUS' | 'TIRED' | 'ANNOYED' | 'CALM' | 'MOTIVATED'
@@ -429,7 +429,7 @@ export interface CheckIn {
   date: string
   /** 오늘 컨디션 (1 ~ 5) */
   condition: number
-  /** 하루 첫 한 줄에서 고른 감정 태그 (여러 개, #387). 안 골랐거나 옛 기록이면 없습니다. */
+  /** 고른 감정 태그 (여러 개, #387). 안 골랐거나 옛 기록이면 없습니다. */
   emotions?: EmotionTag[]
   /** 오늘 기분 (1 ~ 5) */
   mood: number
@@ -438,7 +438,7 @@ export interface CheckIn {
   /** 미달 원인을 '기타'(etc)로 골랐을 때 적은 한 줄 (최대 50자) */
   missReasonNote?: string
   /**
-   * 하루 첫 한 줄(DailyTagBar)로 만든 1탭 체크인이면 true (#242). 서버에 올릴 때 출처를 정하는 데 씁니다.
+   * 1탭 체크인이면 true (#242). 지금은 코치 채팅의 컨디션 칩이 만듭니다. 서버에 올릴 때 출처를 정하는 데 씁니다.
    * (오늘 예상 순공 · 오늘의 약속 · 약속 지켰어? · 휴대폰 집중 모드 칸은 v2 체크인과 함께 #417 에서 지웠습니다. 옛 기록에는 남아 있어도 읽지 않습니다)
    */
   isQuick?: boolean
