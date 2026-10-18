@@ -441,7 +441,7 @@ export function CallActivePage() {
             goToResult()
             return
           }
-          navigate('/counsel/chat', { replace: true })
+          navigate('/', { replace: true })
         }}
         onPreview={import.meta.env.DEV ? () => setIsPreview(true) : undefined}
       />

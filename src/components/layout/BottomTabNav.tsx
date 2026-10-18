@@ -15,8 +15,8 @@ export function BottomTabNav() {
       aria-label="하단 메뉴"
       className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white sm:hidden"
     >
-      {/* 탭 5개를 같은 너비로 나눕니다. */}
-      <ul className="grid grid-cols-5">
+      {/* 탭 4개를 같은 너비로 나눕니다. */}
+      <ul className="grid grid-cols-4">
         {navItems.map((item) => (
           <li key={item.to}>
             <NavLink
@@ -24,7 +24,7 @@ export function BottomTabNav() {
               // 탭을 누르면 맨 위로 올립니다. 지금 보고 있는 탭을 다시 눌러도 올라갑니다.
               onClick={scrollToTop}
               className={({ isActive }) =>
-                // 분석·상담 아래 화면(시험·일기 등)에서도 그 탭이 선택된 모양이 되게 합니다.
+                // 오늘 · 분석 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
                 tabLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
               }
             >
