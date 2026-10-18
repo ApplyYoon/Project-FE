@@ -12,13 +12,14 @@ import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
-import { failCauseOptionsQuery, requestChecklist } from '@/lib/aiCardApi'
+import { failCauseOptionsQuery, requestCardDefaults, requestChecklist } from '@/lib/aiCardApi'
 import {
   ALERT_MINUTES_OPTIONS,
   ALERT_TEXT_MAX_LENGTH,
   CARD_TITLE_MAX_LENGTH,
   CHECKLIST_ITEM_MAX_LENGTH,
   EXPECTED_DONE_REASONS,
+  applyCardDefaults,
   buildCard,
   cardToForm,
   createEmptyForm,
@@ -29,8 +30,11 @@ import {
   shouldSuggestSelfChecklist,
   splitFailCauses,
   toggleFailCause,
+  undoCardDefaults,
   validateCardForm,
+  type AppliedDefaults,
   type CardFormValues,
+  type DefaultField,
 } from '@/lib/cardForm'
 import { cn } from '@/lib/cn'
 import { getTodayKey, isDateKey } from '@/lib/date'
@@ -176,6 +180,48 @@ function CardForm({
   })
   const goalTitle = goalOptions.find((goal) => goal.id === values.goalId)?.title
 
+  // 카드 기본값 AI 추천 (#419 표 2번, BE POST /ai/card-defaults). 새 카드에서 제목을 적고 나가면
+  // 내가 아직 안 건드린 목표 · 유형 · 길이를 AI 가 먼저 채워 둡니다. 마음에 안 들면 [되돌리기].
+  const [touchedDefaults, setTouchedDefaults] = useState<DefaultField[]>([])
+  const [aiDefaults, setAiDefaults] = useState<(AppliedDefaults & { evidence: string }) | null>(
+    null,
+  )
+  // 같은 제목으로 두 번 묻지 않게, 마지막으로 물어본 제목을 기억합니다.
+  const [defaultsAskedTitle, setDefaultsAskedTitle] = useState('')
+  // 길이 고르기(MinutesPicker)는 처음 값으로 "버튼 / 직접" 을 정해 둡니다. AI 가 길이를 바꾸면
+  // 이 숫자를 올려서 다시 그립니다. 그래야 50분처럼 버튼에 없는 값이 '직접' 칸에 보입니다.
+  const [minutesPickerKey, setMinutesPickerKey] = useState(0)
+  const { mutate: askDefaults } = useMutation({
+    mutationFn: requestCardDefaults,
+    onSuccess: (suggestion) => {
+      // 못 받았으면(AI 꺼짐 · 한도 · 실패) 조용히 넘어갑니다. 칸은 원래 값 그대로입니다.
+      if (!suggestion) return
+      // 서버는 목표를 서버 번호(serverId)로 알려 줍니다. 폼은 이 기기의 목표 id 를 쓰므로 바꿔 줍니다. (#516)
+      const goal = goalOptions.find(
+        (option) => option.serverId === suggestion.goalId || option.id === suggestion.goalId,
+      )
+      const result = applyCardDefaults(
+        values,
+        { ...suggestion, goalId: goal?.id ?? null },
+        {
+          touched: touchedDefaults,
+          goalIds: goalOptions.map((goal) => goal.id),
+          maxMinutes: PLAN_MAX_MINUTES,
+        },
+      )
+      if (Object.keys(result.applied).length === 0) return
+      // AI 가 채운 칸만 덮습니다. 그사이 체크리스트 추천 등으로 바뀐 다른 칸은 그대로 둡니다.
+      setValues((prev) => ({ ...prev, ...result.applied }))
+      if (result.applied.durationMinutes !== undefined) setMinutesPickerKey((key) => key + 1)
+      setAiDefaults((prev) => ({
+        applied: { ...prev?.applied, ...result.applied },
+        // 두 번째 추천이 와도 되돌릴 값은 AI 가 처음 채우기 전의 값입니다.
+        previous: { ...result.previous, ...prev?.previous },
+        evidence: suggestion.evidence,
+      }))
+    },
+  })
+
   // 예상 실패 원인 선지(#419)는 제목 칸에서 나갈 때 정해진 제목으로 묻습니다.
   const [committedTitle, setCommittedTitle] = useState(initialValues.title.trim())
   // 테스트 로그인이면 서버의 AI 를 쓸 수 없습니다.
@@ -184,6 +230,11 @@ function CardForm({
   function handleTitleBlur() {
     const title = values.title.trim()
     setCommittedTitle(title)
+    // 기본값 추천은 새 카드에서만 받습니다. (고치는 카드의 목표 · 유형 · 길이는 내가 이미 정한 값입니다)
+    if (isAiEnabled && !editingCard && title !== '' && title !== defaultsAskedTitle) {
+      setDefaultsAskedTitle(title)
+      askDefaults(title)
+    }
     if (aiChecklist !== 'auto' || title === '' || title === autoAskedTitle) return
     if (getFilledChecklist(values.checklist).length > 0) return
     setAutoAskedTitle(title)
@@ -217,7 +268,47 @@ function CardForm({
   /** 한 칸만 바꿉니다. */
   function change<K extends keyof CardFormValues>(key: K, value: CardFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }))
+    if (key === 'goalId' || key === 'type' || key === 'durationMinutes') {
+      markTouched(key as DefaultField)
+    }
   }
+
+  /** 사람이 목표 · 유형 · 길이를 직접 고쳤습니다. AI 추천이 다시 와도 이 칸은 덮지 않습니다. */
+  function markTouched(field: DefaultField) {
+    setTouchedDefaults((prev) => (prev.includes(field) ? prev : [...prev, field]))
+    setAiDefaults((prev) => {
+      if (!prev || prev.applied[field] === undefined) return prev
+      const applied = { ...prev.applied }
+      delete applied[field]
+      // AI 가 채운 칸이 하나도 안 남으면 안내를 닫습니다.
+      return Object.keys(applied).length === 0 ? null : { ...prev, applied }
+    })
+  }
+
+  function handleKeepDefaults() {
+    setAiDefaults(null)
+  }
+
+  function handleUndoDefaults() {
+    if (!aiDefaults) return
+    setValues((prev) => undoCardDefaults(prev, aiDefaults))
+    if (aiDefaults.applied.durationMinutes !== undefined) setMinutesPickerKey((key) => key + 1)
+    setAiDefaults(null)
+  }
+
+  // 안내에 보여 줄 "AI 가 채운 것" 한 줄. 예) "목표 '수학 내신' · 인강 · 60분"
+  const aiDefaultsSummary = aiDefaults
+    ? [
+        aiDefaults.applied.goalId !== undefined &&
+          `목표 '${goalOptions.find((goal) => goal.id === aiDefaults.applied.goalId)?.title ?? ''}'`,
+        aiDefaults.applied.type !== undefined &&
+          (aiDefaults.applied.type === 'lecture' ? '인강' : '자습'),
+        aiDefaults.applied.durationMinutes !== undefined &&
+          `${aiDefaults.applied.durationMinutes}분`,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
 
   function handleToggleWeekday(weekday: number) {
     setValues((prev) => ({
@@ -336,6 +427,37 @@ function CardForm({
             error={shownErrors.title}
           />
 
+          {/* 카드 기본값 AI 추천 (#419 표 2번). 목표 · 유형은 "더 보기" 안에 있어서, 무엇을 채웠는지 여기서 한 줄로 알려 줍니다. */}
+          {aiDefaults && (
+            <div className="flex flex-col gap-2 rounded-lg bg-violet-50 px-4 py-3">
+              <p className="text-sm break-keep text-slate-700">
+                <span className="font-semibold text-violet-700">AI 추천</span>으로 채워 뒀어요:{' '}
+                <strong className="text-slate-900">{aiDefaultsSummary}</strong>
+              </p>
+              {aiDefaults.evidence && (
+                <p className="text-xs break-keep text-slate-500">{aiDefaults.evidence}</p>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={handleKeepDefaults}
+                >
+                  이대로 할게
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={handleUndoDefaults}
+                >
+                  되돌리기
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* 언제: 1회성 / 반복 */}
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium text-slate-700">언제</p>
@@ -395,6 +517,7 @@ function CardForm({
           </div>
 
           <MinutesPicker
+            key={minutesPickerKey}
             label="길이"
             presets={[30, 60, 90, 120]}
             value={values.durationMinutes}

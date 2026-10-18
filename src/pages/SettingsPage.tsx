@@ -102,7 +102,7 @@ const CONFIRM_CARE_LEVEL = 4
 
 /**
  * 설정 화면(/settings). 코치 화면 머리의 톱니로 들어옵니다. (2026-10-18 "설정은 잡다한 기록이 너무 많아" → 네 묶음만)
- *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내가 준비하는 것 · 내 정보 고치기 · 로그아웃 ·
+ *   ① 계정     — 누구로 로그인했는지 · 학년 반(홈 시간표 칸과 같은 저장소) · 내가 준비하는 것 · 내 정보 고치기 · 로그아웃 ·
  *                탈퇴(테스트 계정은 처음부터 다시 하기) — 숨기지 않고 여기 바로 둡니다 (2026-10-18)
  *   ② 코치 세기 — 약 · 보통 · 강 하나로 고름 (관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 한꺼번에, lib/coachStrength.ts)
  *                하나씩 정하던 예전 칸은 "자세히" 안에 접어 둡니다.
@@ -188,7 +188,7 @@ export function SettingsPage() {
     applyStrength(preset)
   }
 
-  // 학년 · 반 (오늘 탭과 같은 저장소). 저장하면 "저장했어요" 를 잠깐 보여 줍니다.
+  // 학년 · 반 (홈 시간표 칸과 같은 저장소). 저장하면 "저장했어요" 를 잠깐 보여 줍니다.
   const [schoolClass, setSchoolClass] = useState<SchoolClass | null>(loadSchoolClass)
   const [isClassSaved, setIsClassSaved] = useState(false)
 
@@ -314,15 +314,15 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* 학년 · 반은 오늘 탭의 시간표 칸과 같은 저장소(study-school-class)를 씁니다. 서버에는 저장하지 않습니다. */}
+          {/* 학년 · 반은 홈의 시간표 칸과 같은 저장소(study-school-class)를 씁니다. 서버에는 저장하지 않습니다. */}
           <SchoolClassPicker
             key={schoolClass ? `${schoolClass.grade}-${schoolClass.classNo}` : 'none'}
             initial={schoolClass}
             onSave={handleSaveClass}
             description={
               schoolClass
-                ? `지금 ${schoolClass.grade}학년 ${schoolClass.classNo}반이에요. 오늘 탭 시간표와 코치가 이 반 기준으로 말해요.`
-                : '학년 · 반을 알려 주면 오늘 탭에 시간표가 나오고, 코치가 오늘 배운 과목으로 말을 걸어요.'
+                ? `지금 ${schoolClass.grade}학년 ${schoolClass.classNo}반이에요. 홈 시간표와 코치가 이 반 기준으로 말해요.`
+                : '학년 · 반을 알려 주면 홈에 시간표가 나오고, 코치가 오늘 배운 과목으로 말을 걸어요.'
             }
             saveLabel="반 저장"
             className="mt-5"
