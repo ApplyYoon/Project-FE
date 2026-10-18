@@ -1,7 +1,5 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
-import { useAiMessages } from '@/hooks/useAiMessages'
 import { useAuth } from '@/hooks/useAuth'
-import { countUnreadAiMessages } from '@/lib/aiMessages'
 import { cn } from '@/lib/cn'
 import { scrollToTop } from '@/lib/scroll'
 import type { ReactNode } from 'react'
@@ -19,18 +17,13 @@ interface HeaderProps {
  *   hideNav           -> action 만 (온보딩의 "나중에 하기" 등). 없으면 앱 이름만 보입니다.
  *                         로그인·가입·온보딩처럼 탭 없이 뜨는 화면(PlainLayout)이라, 로그인 전이어도 "로그인" 을 띄우지 않습니다.
  *   로그인 전          -> "로그인" 하나만 (처음 온 사람도 로그인 화면에서 시작하면 가입으로 이어지기 때문입니다, #319)
- *   로그인             -> 메뉴와 알림 종
+ *   로그인             -> PC 는 탭 4개(코치 · 오늘 · 타이머 · 기록) 메뉴, 모바일은 비어 있음(하단 탭을 씀)
+ * 알림 종 · 통화 · 설정은 코치 화면 머리에만 둡니다. (2026-10-18 "탭을 명확히", pages/CoachPage.tsx)
  */
 
 export function Header({ hideNav = false, action }: HeaderProps) {
   const { isLoggedIn } = useAuth()
   const { pathname } = useLocation()
-  // 새 알림이 쌓이면 화면을 옮기지 않아도 바로 다시 그려져서 빨간 점이 뜹니다. (hooks/useAiMessages.ts)
-  const messages = useAiMessages()
-  // 알림 화면을 보고 있는 동안은 다 읽은 것이므로 0개로 봅니다. (빨간 점이 사라집니다)
-  const unreadCount = pathname === '/notifications' ? 0 : countUnreadAiMessages(messages)
-  // 화면을 읽어 주는 프로그램이 "알림, 안 읽은 알림 3개" 처럼 개수까지 읽어 줍니다.
-  const bellLabel = unreadCount > 0 ? `알림, 안 읽은 알림 ${unreadCount}개` : '알림'
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
@@ -53,7 +46,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
           </nav>
         ) : (
           <div className="flex items-center gap-2">
-            {/* 데스크톱(sm 이상)에서만 보이는 가로 메뉴. 모바일은 하단 탭(BottomTabNav)을 씁니다. */}
+            {/* 데스크톱(sm 이상)에서만 보이는 가로 메뉴. 모바일은 하단 탭(BottomTabNav)을 씁니다. (같은 4개) */}
             <nav className="hidden gap-1 sm:flex">
               {navItems.map((item) => (
                 <NavLink
@@ -62,7 +55,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
                   // 메뉴를 누르면 맨 위로 올립니다. 지금 보고 있는 메뉴를 다시 눌러도 올라갑니다. (하단 탭과 같은 규칙)
                   onClick={scrollToTop}
                   className={({ isActive }) =>
-                    // 분석·상담 아래 화면(시험·일기 등)에서도 그 탭이 선택된 모양이 되게 합니다.
+                    // 오늘 · 기록 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
                     navLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
                   }
                 >
@@ -70,40 +63,10 @@ export function Header({ hideNav = false, action }: HeaderProps) {
                 </NavLink>
               ))}
             </nav>
-
-            {/* 알림 종 아이콘. 모바일·PC 모두 보입니다. 누르기 쉽게 44×44px(h-11 w-11) 입니다. */}
-            <NavLink to="/notifications" aria-label={bellLabel} className={bellLinkClass}>
-              <BellIcon />
-              {unreadCount > 0 && (
-                <span
-                  aria-hidden
-                  className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
-                />
-              )}
-            </NavLink>
           </div>
         )}
       </div>
     </header>
-  )
-}
-
-/* 종 모양 아이콘 (라이브러리 없이 SVG 를 직접 그립니다) */
-function BellIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
-    >
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-    </svg>
   )
 }
 
@@ -119,14 +82,6 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 function guestLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
     'flex h-10 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors',
-    isActive ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100',
-  )
-}
-
-/* 종 버튼도 메뉴와 같은 방법으로, /notifications 에 있으면 선택된 모양(연보라 배경)이 됩니다. */
-function bellLinkClass({ isActive }: { isActive: boolean }) {
-  return cn(
-    'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors',
     isActive ? 'bg-brand-light text-brand' : 'text-slate-600 hover:bg-slate-100',
   )
 }

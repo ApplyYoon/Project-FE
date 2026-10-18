@@ -91,7 +91,7 @@ function SubjectTag({ subject }: SubjectTagProps) {
   return <SubjectBadge name={subject.name} color={subject.color} />
 }
 
-export function RecordsPage() {
+export function RecordListPage() {
   const navigate = useNavigate()
 
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
@@ -153,10 +153,7 @@ export function RecordsPage() {
 
         <Card title="주간 리포트">
           <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
-          <Button
-            className="mt-4 w-full sm:w-auto"
-            onClick={() => navigate('/analysis?tab=report')}
-          >
+          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/records?tab=report')}>
             주간 리포트 보기
           </Button>
         </Card>
@@ -568,7 +565,7 @@ interface StudyCalendarProps {
 function StudyCalendar({ getDay, records, checkIns }: StudyCalendarProps) {
   const todayKey = getTodayKey()
 
-  // 고른 날짜와 보고 있는 달은 주소에 둡니다. (/analysis?date=2026-10-01 , /analysis?month=2026-09)
+  // 고른 날짜와 보고 있는 달은 주소에 둡니다. (/records?date=2026-10-01 , /records?month=2026-09)
   // 새로고침해도 보던 날이 그대로이고, 주소를 보내면 같은 날의 기록이 열립니다.
   // replace: 날짜를 여러 번 눌러도 뒤로 가기 한 번이면 기록 화면을 떠납니다.
   const [dateParam, setDateParam] = useQueryParam('date', todayKey, { replace: true })

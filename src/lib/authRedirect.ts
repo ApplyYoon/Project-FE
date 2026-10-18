@@ -17,7 +17,7 @@ export function isPublicPath(pathname: string): boolean {
 
 /** 로그인 화면으로 보낼 때 함께 넘겨 두는 쪽지의 모양입니다. (RequireAuth 가 쓰고, LoginPage 가 읽습니다) */
 export interface LoginRedirectState {
-  /** 로그인한 뒤 돌아갈 주소. 예: '/analysis?date=2026-10-01' */
+  /** 로그인한 뒤 돌아갈 주소. 예: '/records?date=2026-10-01' */
   from: string
 }
 
@@ -40,8 +40,8 @@ export function getReturnPath(state: unknown): string | null {
 /**
  * 로그인을 막 마친 사람이 갈 주소를 정합니다.
  *
- *   getAfterLoginPath(false, '/analysis') -> '/signup'   (가입 정보를 아직 안 적은 사람은 가입부터)
- *   getAfterLoginPath(true, '/analysis')  -> '/analysis'  (가려던 곳이 있으면 거기로)
+ *   getAfterLoginPath(false, '/records') -> '/signup'   (가입 정보를 아직 안 적은 사람은 가입부터)
+ *   getAfterLoginPath(true, '/records')  -> '/records'  (가려던 곳이 있으면 거기로)
  *   getAfterLoginPath(true, null)        -> '/'         (없으면 홈)
  */
 export function getAfterLoginPath(hasSignedUp: boolean, returnPath: string | null): string {

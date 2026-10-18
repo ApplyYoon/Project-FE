@@ -6,7 +6,7 @@ interface SettingsLinkProps {
 }
 
 /**
- * 설정 화면으로 가는 톱니 아이콘 버튼입니다. 설정은 아래 탭에 없어서 코치 · 오늘 화면 머리에 둡니다. (#386)
+ * 설정 화면으로 가는 톱니 아이콘 버튼입니다. 설정은 아래 탭에 없어서 코치 화면 머리에만 둡니다. (#386, 2026-10-18)
  * 누르기 쉽게 44×44px(h-11 w-11) 입니다.
  */
 export function SettingsLink({ className }: SettingsLinkProps) {
