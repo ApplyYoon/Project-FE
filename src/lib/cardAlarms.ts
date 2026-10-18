@@ -1,5 +1,10 @@
 import type { Alarm } from '@/lib/appBridge'
 import { getCardsOnDate, loadSavedCards, migratePlansToCards } from '@/lib/cards'
+import {
+  LONG_PAUSE_MINUTES,
+  loadActiveCardSession,
+  type ActiveCardSession,
+} from '@/lib/cardSession'
 import { loadAllSessions } from '@/lib/dailyRecords'
 import { moveDateKey, toDayKey } from '@/lib/date'
 import { getPlannedStartAt } from '@/lib/facts'
@@ -145,6 +150,67 @@ function formatClock(time: number): string {
   return `${hour}시 ${String(date.getMinutes()).padStart(2, '0')}분`
 }
 
+/** 진행 중 세션 알림을 누르면 갈 주소 (타이머 세션 화면) */
+const SESSION_URL = '/timer'
+
+/**
+ * 진행 중인 공부 세션의 예약 알림입니다. (2026-10-18, Project-App 세션 제안)
+ * 공부 끝 · 15분 일시정지 알림은 원래 웹 화면이 돌아야 울려서, 앱이 뒤에 있으면(아이폰은 몇 초 만에 웹이 멈춤)
+ * 폰을 잠그고 공부할 때 아무것도 오지 않았습니다. 앱에 미리 예약해 두면 웹이 멈춰도 휴대폰이 띄웁니다.
+ *
+ *   - 공부 끝: 세션이 끝나는 시각(endAt = 시작 + 카드 길이, 일시정지해도 그대로)
+ *   - 15분 멈춤: 일시정지 중이고 아직 복귀 알림을 안 보냈으면 멈춘 지 15분 뒤 (끝나는 시각보다 앞일 때만)
+ *   - 학생이 스스로 시작한 공부라 연락 금지 시간에도 빼지 않고 보냅니다. 이미 지난 시각은 뺍니다.
+ *
+ *   buildSessionAlarms(null, '수학', now) -> []
+ *   buildSessionAlarms({ startedAt: 19:00, endAt: 19:30, … }, '수학', 19:05)
+ *     -> [ { id: 'session-…-end', at: 19:30, title: '공부 끝! 🎉', body: '수학 30분을 마쳤어요. 들어와서 마무리해요.' } ]
+ */
+export function buildSessionAlarms(
+  active: ActiveCardSession | null,
+  cardTitle: string | undefined,
+  now: number,
+): Alarm[] {
+  if (active === null) return []
+  const title = cardTitle?.trim() || '공부'
+  const idPrefix = `session-${active.startedAt}`
+  const alarms: Alarm[] = [
+    {
+      id: `${idPrefix}-end`,
+      at: active.endAt,
+      title: '공부 끝! 🎉',
+      body: `${title} ${active.plannedMinutes}분을 마쳤어요. 들어와서 마무리해요.`,
+      url: SESSION_URL,
+    },
+  ]
+  const paused = active.pausedNow
+  if (paused && !paused.alerted) {
+    const pauseAlertAt = paused.startedAt + LONG_PAUSE_MINUTES * MINUTE_MS
+    if (pauseAlertAt < active.endAt) {
+      alarms.push({
+        id: `${idPrefix}-pause`,
+        at: pauseAlertAt,
+        title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
+        body: '다시 시작할까요? 끝나는 시각은 그대로예요.',
+        url: SESSION_URL,
+      })
+    }
+  }
+  return alarms.filter((alarm) => alarm.at > now)
+}
+
+/** 저장소의 진행 중 세션으로 세션 알림을 만듭니다. 문제가 생기면 빈 목록입니다. (hooks/useAppBridge.ts 가 부릅니다) */
+export function loadSessionAlarms(now: number): Alarm[] {
+  try {
+    const active = loadActiveCardSession()
+    if (active === null) return []
+    const card = (loadSavedCards() ?? []).find((item) => item.id === active.cardId)
+    return buildSessionAlarms(active, card?.title, now)
+  } catch {
+    return []
+  }
+}
+
 /**
  * 저장소에서 카드 · 기록 · 연락 금지 시간을 읽어 지금의 예약 알림 목록을 만듭니다. (hooks/useAppBridge.ts 가 부릅니다)
  * 저장된 값이 깨져 있어도 앱이 멈추지 않게, 문제가 생기면 빈 목록을 돌려줍니다.
@@ -167,9 +233,11 @@ export function loadCardAlarms(now: number): Alarm[] {
 }
 
 /**
- * 이미 시작한 카드 하루치를 모읍니다.
+ * 이미 시작한 카드 하루치를 모읍니다. 그날은 시작 · 늦음 · 끝 알림을 보내지 않습니다.
  * - 끝낸 기록: 카드 id(cardId)로, 옛 기록은 계획 id(planId)로 찾습니다. 루틴이 만든 계획이면 루틴 id 가 카드 id 입니다.
- * - 지금 재는 중: 타이머 화면이 저장해 둔 'timer-plan'(계획 id)과 'timer'(시작 시각). 타이머를 카드로 바꾸면(#395) 여기도 맞춥니다.
+ * - 지금 재는 중: 카드 타이머(#395)가 저장해 둔 진행 중 세션('card-session')의 카드 id · 날짜.
+ *   (예전에는 옛 타이머 키만 봐서, 카드로 공부하는 중에도 "지금 시작해요" · "카드 시간이 끝났어요" 가 울렸습니다)
+ * - 옛 타이머 키('timer-plan' · 'timer')도 남아 있을 수 있어서 같이 봅니다.
  */
 function loadStartedCardDays(plans: StudyPlan[]): Set<string> {
   function toCardId(planId: string): string {
@@ -191,5 +259,8 @@ function loadStartedCardDays(plans: StudyPlan[]): Set<string> {
   if (typeof runningPlanId === 'string' && typeof runningSince === 'number') {
     started.add(toCardDayKey(toCardId(runningPlanId), toDayKey(runningSince)))
   }
+
+  const active = loadActiveCardSession()
+  if (active !== null) started.add(toCardDayKey(active.cardId, active.dateKey))
   return started
 }

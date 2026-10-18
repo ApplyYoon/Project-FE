@@ -3,26 +3,14 @@ import {
   closePause,
   finishActiveSession,
   getScheduledEndAt,
+  loadActiveCardSession,
   type ActiveCardSession,
 } from '@/lib/cardSession'
-import { loadData, removeData, saveData } from '@/lib/storage'
+import { removeData, saveData } from '@/lib/storage'
 // 진행 중인 세션을 넣어 두는 이름 (새로고침하거나 앱을 닫았다 열어도 세션 화면으로 돌아오기 위해 저장)
 import { CARD_SESSION_KEY, OLD_PLAY_SESSION_KEY, notifyTimerLockChange } from '@/lib/timerLock'
 import type { Card, PauseTag, StudySession } from '@/types'
 import { useEffect, useRef, useState } from 'react'
-
-/** 저장된 진행 중 세션. 없거나 모양이 틀리면 null */
-export function loadActiveCardSession(): ActiveCardSession | null {
-  const saved = loadData<unknown>(CARD_SESSION_KEY, null)
-  if (typeof saved !== 'object' || saved === null) return null
-  const value = saved as Partial<ActiveCardSession>
-  const isValid =
-    typeof value.cardId === 'string' &&
-    typeof value.startedAt === 'number' &&
-    typeof value.endAt === 'number' &&
-    Array.isArray(value.pauses)
-  return isValid ? (saved as ActiveCardSession) : null
-}
 
 /**
  * 카드 세션(타이머 한 번)을 시작 · 일시정지 · 끝냅니다. (#395)

@@ -74,6 +74,7 @@ import { MAX_SHRINK, getPrepStep, isCountdownOn } from '@/lib/cardAlerts'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { playTick } from '@/lib/tick'
 import { showSystemNotification } from '@/lib/notifications'
+import { isInApp } from '@/lib/appBridge'
 import { getSessionCardId } from '@/lib/sessionRecords'
 import {
   countChecklistComplete,
@@ -851,16 +852,20 @@ function SessionView({
   }, [active, remainingMs, session, onFinished])
 
   // 일시정지가 15분을 넘으면 복귀 알림을 한 번 보냅니다. (앱을 뒤로 보내 둔 동안에도 뜨게 시스템 알림도 씁니다)
+  // 휴대폰 앱 안에서는 앱이 같은 알림을 미리 예약해 두므로(lib/cardAlarms.ts 의 buildSessionAlarms) 소리만 냅니다.
+  // (BRIDGE.md 3-1 "앱 안에서는 웹이 같은 일을 하는 자기 알림을 따로 띄우지 않습니다")
   const isLongPause = active !== null && shouldAlertLongPause(active, now)
   useEffect(() => {
     if (!isLongPause) return
     playAlarm()
-    void showSystemNotification({
-      title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
-      body: '다시 시작할까요? 끝나는 시각은 그대로예요.',
-      tag: 'card-pause-long',
-      url: '/timer',
-    })
+    if (!isInApp()) {
+      void showSystemNotification({
+        title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
+        body: '다시 시작할까요? 끝나는 시각은 그대로예요.',
+        tag: 'card-pause-long',
+        url: '/timer',
+      })
+    }
     session.markLongPauseAlerted()
   }, [isLongPause, session])
 

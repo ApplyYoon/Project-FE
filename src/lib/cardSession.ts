@@ -1,4 +1,6 @@
 import { summarizePauses } from '@/lib/sessionRecords'
+import { loadData } from '@/lib/storage'
+import { CARD_SESSION_KEY } from '@/lib/timerLock'
 import type { Card, PauseTag, SessionMemo, SessionMode, SessionPause, StudySession } from '@/types'
 
 /**
@@ -117,6 +119,22 @@ export function closePause(
     tag: pausedNow.tag,
     ...(pausedNow.note ? { note: pausedNow.note } : {}),
   }
+}
+
+/**
+ * 저장된 진행 중 세션. 없거나 모양이 틀리면 null
+ * hooks/useCardSession.ts(화면)와 lib/cardAlarms.ts(앱 예약 알림)가 같이 읽습니다.
+ */
+export function loadActiveCardSession(): ActiveCardSession | null {
+  const saved = loadData<unknown>(CARD_SESSION_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return null
+  const value = saved as Partial<ActiveCardSession>
+  const isValid =
+    typeof value.cardId === 'string' &&
+    typeof value.startedAt === 'number' &&
+    typeof value.endAt === 'number' &&
+    Array.isArray(value.pauses)
+  return isValid ? (saved as ActiveCardSession) : null
 }
 
 /** 일시정지가 이만큼(분) 넘으면 복귀 알림을 한 번 보냅니다 (「4.4」 일시정지) */
