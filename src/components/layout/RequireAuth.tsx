@@ -75,7 +75,6 @@ export function RequireAuth({ children }: RequireAuthProps) {
   // 온보딩 화면(/onboarding…)은 그 단계들 자체라 막지 않습니다.
   // 설정(/settings…)도 막지 않습니다. 로그아웃·탈퇴는 언제나 할 수 있어야 하기 때문입니다.
   // 다시 동의 화면(/consent)도 막지 않습니다. 온보딩 중의 저장도 동의가 필요하면 막히기 때문입니다. (#512)
-  // (도움 연결 안내 /support 는 RequireAuth 로 감싸지 않아서 처음부터 막히지 않습니다)
   const isOnboardingFreePath =
     location.pathname.startsWith('/onboarding') ||
     location.pathname.startsWith('/settings') ||

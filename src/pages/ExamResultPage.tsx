@@ -22,9 +22,7 @@ import {
 import { useSubjects } from '@/hooks/useSubjects'
 import type { Exam, ExamReflection, ExamSubjectScore, StudySession, Subject } from '@/types'
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { shouldShowCrisisHelp } from '@/lib/diarySafety'
-import { SUPPORT_PATH } from '@/lib/helpLines'
+import { Link, useParams } from 'react-router-dom'
 
 /** 준비 정도 버튼 1~5 */
 const PREPAREDNESS_VALUES = [1, 2, 3, 4, 5]
@@ -66,7 +64,6 @@ function ExamResultForm({ exam, subjects, sessions, onSave }: ExamResultFormProp
   const [nextChange, setNextChange] = useState(exam.reflection?.nextChange ?? '')
   const [errorMessage, setErrorMessage] = useState('')
   const [savedMessage, setSavedMessage] = useState('')
-  const navigate = useNavigate()
 
   // 지금 입력칸에 적힌 올바른 점수만 모아서 요약(평균 차이, 차이 큰 과목)을 바로바로 보여줍니다.
   const typedScores: ExamSubjectScore[] = rows.flatMap(({ score }) => {
@@ -140,10 +137,6 @@ function ExamResultForm({ exam, subjects, sessions, onSave }: ExamResultFormProp
 
     setErrorMessage('')
     setSavedMessage('저장했어요. 이 화면에서 다시 보고 고칠 수 있어요.')
-    // 시험 직후 회고는 힘든 마음이 나오기 쉬운 때라, 위기 표현이 있으면 일기처럼 도움 안내로 보냅니다.
-    if (shouldShowCrisisHelp({ texts: [trimmedRegret, trimmedNextChange], diaryMoods: [] })) {
-      navigate(SUPPORT_PATH)
-    }
   }
 
   return (

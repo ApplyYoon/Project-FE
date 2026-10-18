@@ -1,4 +1,3 @@
-import { AI_SHOW_HELP_EVENT } from '@/lib/aiCardApi'
 import { ApiError, api } from '@/lib/api'
 import { isServerDataMode } from '@/lib/dataMode'
 import { DAILY_COUNT_OPTIONS, type MessageSettings } from '@/lib/messageSettings'
@@ -86,11 +85,8 @@ export async function requestSettingsFromText(text: string): Promise<SettingsFro
       string,
       unknown
     >
-    if (record.showHelp === true) {
-      // 어느 화면에서든 같은 도움 연결 안내(components/layout/AiHelpListener)가 뜨게 알립니다.
-      window.dispatchEvent(new Event(AI_SHOW_HELP_EVENT))
-      return { kind: 'help' }
-    }
+    // 글에 위기 표현이 있으면 서버가 AI 를 쓰지 않습니다. 설정은 그대로 둡니다.
+    if (record.showHelp === true) return { kind: 'help' }
     const proposal = readProposal(record.proposal)
     return proposal ? { kind: 'proposal', proposal } : { kind: 'none' }
   } catch (error) {

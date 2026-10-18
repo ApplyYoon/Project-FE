@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
-import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
@@ -73,17 +72,12 @@ export function GoalNewPage() {
   const [aiSuggestions, setAiSuggestions] = useState<RoutineCardSuggestion[] | null>(null)
   // AI 제안을 못 받았을 때의 안내
   const [aiNotice, setAiNotice] = useState<string | null>(null)
-  // 글에 위기 표현이 있어서 서버가 도움 안내를 먼저 보여 주라고 했을 때
-  const [showHelp, setShowHelp] = useState(false)
 
   const routineAi = useMutation({
     mutationFn: () => fetchRoutineCards(buildGoal(draft, 'preview', now)),
     onSuccess: (result) => {
-      if (result.showHelp) {
-        setShowHelp(true)
-        return
-      }
-      if (result.cards === null) {
+      // 글에 위기 표현이 있으면(showHelp) 서버가 AI 를 쓰지 않습니다. 못 받았을 때처럼 기본 제안으로 갑니다.
+      if (result.showHelp || result.cards === null) {
         setAiNotice('AI 가 지금은 카드를 만들지 못해서 기본 제안을 보여 줘요.')
         return
       }
@@ -439,7 +433,6 @@ export function GoalNewPage() {
           {step === 'plan' ? '목표 저장' : '다음'}
         </Button>
       </div>
-      <CrisisHelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </form>
   )
 }
