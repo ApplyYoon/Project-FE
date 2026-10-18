@@ -7,6 +7,7 @@ import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPicke
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
+import { LeaveAccountSection } from '@/components/ui/LeaveAccountSection'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -95,7 +96,8 @@ const CONFIRM_CARE_LEVEL = 4
 
 /**
  * 설정 화면(/settings). 코치 화면 머리의 톱니로 들어옵니다. (2026-10-18 "설정은 잡다한 기록이 너무 많아" → 네 묶음만)
- *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내가 준비하는 것 · 내 계정 관리(정보 고치기 · 탈퇴) · 로그아웃
+ *   ① 계정     — 누구로 로그인했는지 · 학년 반(오늘 탭과 같은 저장소) · 내가 준비하는 것 · 내 정보 고치기 · 로그아웃 ·
+ *                탈퇴(테스트 계정은 처음부터 다시 하기) — 숨기지 않고 여기 바로 둡니다 (2026-10-18)
  *   ② 코치 세기 — 약 · 보통 · 강 하나로 고름 (관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 한꺼번에, lib/coachStrength.ts)
  *                하나씩 정하던 예전 칸은 "자세히" 안에 접어 둡니다.
  *   ③ 알림     — 오늘의 미션 알림 · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
@@ -329,13 +331,13 @@ export function SettingsPage() {
           {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 코치가 오늘 계획을 짤 때 이걸 보고 맞춰요. */}
           <StudyFocusField className="mt-5" />
 
-          {/* 내 정보 고치기 · 탈퇴는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) */}
+          {/* 내 정보 고치기는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) 탈퇴는 아래에 바로 둡니다. */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <Link
               to="/settings/account"
               className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 sm:flex-1"
             >
-              내 계정 관리 (정보 고치기 · 탈퇴)
+              내 정보 고치기
             </Link>
             <Button
               variant="secondary"
@@ -345,6 +347,8 @@ export function SettingsPage() {
               로그아웃
             </Button>
           </div>
+          {/* 탈퇴(테스트 계정은 처음부터 다시 하기). 확인 창 한 번이고, 붙잡는 말 없이 지워지는 것만 알려 줍니다. */}
+          <LeaveAccountSection isTestUser={user?.id === testUser.id} className="mt-5" />
         </Card>
 
         {/* ② 코치 세기: 관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 약 · 보통 · 강 하나로 (lib/coachStrength.ts) */}
@@ -554,6 +558,10 @@ export function SettingsPage() {
             <p className="text-sm text-slate-500">
               이 기기와 서버의 공부 기록 · 체크인 · 코치와의 대화를 모두 지워요. 지우면 되돌릴 수
               없어요.
+            </p>
+            <p className="text-sm break-keep text-slate-500">
+              계정과 설정은 남겨요. 계정까지 지우고 처음부터 시작하려면 위의{' '}
+              {user?.id === testUser.id ? '[처음부터 다시 하기]' : '[탈퇴하기]'} 를 눌러 주세요.
             </p>
             <Button
               variant="danger"
