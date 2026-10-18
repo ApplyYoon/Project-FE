@@ -1,4 +1,3 @@
-import { getPlannedStartAt } from '@/lib/facts'
 import { summarizePauses } from '@/lib/sessionRecords'
 import type { Card, PauseTag, SessionMemo, SessionMode, SessionPause, StudySession } from '@/types'
 
@@ -32,26 +31,18 @@ export interface ActiveCardSession {
 }
 
 /**
- * 세션이 끝나는 시각을 정합니다. 타이머는 **카드의 예정 종료 시각까지** 줄어듭니다 (뒤 일정을 지키기 위해).
- * - 일찍 시작하면 그만큼 길어집니다.
- * - 늦게 시작해도 끝나는 시각은 그대로입니다 (지연 시간만 기록됩니다).
- * - 시작 시각이 없는 카드(옛 계획에서 옮긴 것)이거나, 예정 종료가 이미 지났으면 지금부터 카드 길이만큼입니다.
+ * 세션이 끝나는 시각을 정합니다. 타이머는 **[시작] 을 누른 순간부터 카드 길이만큼** 줄어듭니다. (2026-10-18)
+ * - 10분 카드면 언제 눌러도 10:00 부터 시작합니다.
+ * - 늦게 시작한 것은 여기서 줄이지 않고, 시작 시각과 예정 시각의 차이로 따로 기록됩니다.
  * - 일시정지해도 끝나는 시각은 늘지 않습니다. 일시정지한 시간은 실행 시간에서만 빠집니다.
  *
- *   (10/17 19:00 · 60분 카드)
- *   18:50 시작 -> 20:00 에 끝 (70분)       19:20 시작 -> 20:00 에 끝 (40분)
- *   20:30 시작 -> 21:30 에 끝 (예정이 지나서 60분)   시작 시각 없는 카드, 15:00 시작 -> 16:00
+ * 예전에는 "뒤 일정을 지키려고" 카드의 예정 종료 시각까지만 셌는데, 늦게 누르면 10분 카드가 9분 20초부터
+ * 시작해서 버그처럼 보였습니다. (즉석 카드는 시작 시각이 분 단위라 몇십 초씩 줄었음) 사용자 결정으로 바꿨습니다.
+ *
+ *   (10/17 19:00 · 60분 카드)   18:50 시작 -> 19:50 에 끝   19:20 시작 -> 20:20 에 끝
  */
-export function getScheduledEndAt(
-  card: Pick<Card, 'startTime' | 'durationMinutes'>,
-  dateKey: string,
-  startedAt: number,
-): number {
-  const durationMs = card.durationMinutes * MS_PER_MINUTE
-  const plannedStartAt = getPlannedStartAt({ date: dateKey, startTime: card.startTime })
-  if (plannedStartAt === null) return startedAt + durationMs
-  const plannedEndAt = plannedStartAt + durationMs
-  return plannedEndAt > startedAt ? plannedEndAt : startedAt + durationMs
+export function getScheduledEndAt(card: Pick<Card, 'durationMinutes'>, startedAt: number): number {
+  return startedAt + card.durationMinutes * MS_PER_MINUTE
 }
 
 /** 남은 시간 (밀리초, 0 밑으로는 안 내려감). 일시정지 중에도 시계는 흐릅니다 */
