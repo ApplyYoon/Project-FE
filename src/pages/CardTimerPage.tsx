@@ -1066,7 +1066,11 @@ function SessionView({
         <PhoneLiftNotice seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
       )}
       {phone.stage === 2 && (
-        <PhoneLiftOverlay seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
+        <PhoneLiftOverlay
+          seconds={phone.liftedSeconds}
+          repeatText={phone.repeatText}
+          onDismiss={phone.dismiss}
+        />
       )}
 
       {showChecklist && checklist.length > 0 && (
@@ -1811,8 +1815,13 @@ function PhoneLiftNotice({ seconds, onDismiss }: PhoneLiftAlertProps) {
   )
 }
 
+interface PhoneLiftOverlayProps extends PhoneLiftAlertProps {
+  /** 들림을 반복했을 때 붙이는 한 줄 ('벌써 3번째야. …'). 아니면 null */
+  repeatText: string | null
+}
+
 /** 폰 들림 2단계: 코치 말투 경고를 화면 전체에. 폰을 다시 엎으면 저절로 사라집니다. */
-function PhoneLiftOverlay({ seconds, onDismiss }: PhoneLiftAlertProps) {
+function PhoneLiftOverlay({ seconds, repeatText, onDismiss }: PhoneLiftOverlayProps) {
   return (
     <div
       role="alertdialog"
@@ -1826,6 +1835,12 @@ function PhoneLiftOverlay({ seconds, onDismiss }: PhoneLiftAlertProps) {
         공부 중이야.
         <br />폰 내려놓고 다시 엎어 두자
       </h2>
+      {/* 같은 세션에서 3번째 들림부터: 횟수를 알려 줍니다. (lib/liftAlerts.ts 의 getRepeatLiftText) */}
+      {repeatText && (
+        <p className="rounded-2xl bg-white/10 px-4 py-2 text-lg font-semibold break-keep text-amber-300">
+          {repeatText}
+        </p>
+      )}
       <p className="text-base text-slate-300">
         들고 있은 지 {seconds}초 · 조금 더 지나면 세션이 멈춰요
       </p>

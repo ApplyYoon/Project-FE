@@ -1,7 +1,10 @@
 import { isInApp, onAppMessage, requestFromApp, sendToApp } from '@/lib/appBridge'
 import {
+  escalateLiftStage,
   getLiftNudges,
   getLiftStage,
+  getRepeatLiftText,
+  isRepeatLift,
   readDndState,
   readPhoneSummary,
   shouldTurnOnDnd,
@@ -64,6 +67,7 @@ export function cancelPhoneFocusEarly(): void {
  *   phone.stage        // 0 조용 · 1 안내 · 2 화면 전체 경고 · 3 자동 일시정지 할 때
  *   phone.liftedSeconds
  *   phone.dismiss()    // "잠깐만" — 이번에 든 것은 더 경고하지 않음
+ *   phone.repeatText   // 3번째 들림부터 '벌써 3번째야. …' (아니면 null)
  *
  * 세션이 끝나면(isActive 가 false 가 되거나 화면을 떠나면) 앱에 'focus.end' 를 보내고, 답이 오면 onEnd 를 부릅니다.
  * 진동은 단계가 올라갈 때 한 번씩 이 훅이 앱에 부탁합니다. 화면 표시 · 일시정지는 쓰는 쪽(SessionView)이 합니다.
@@ -74,6 +78,15 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
   const [liftedAt, setLiftedAt] = useState<number | null>(null)
   // "잠깐만" 을 누른 들림의 시각. 같은 들림에는 다시 경고하지 않습니다.
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
+  // 이번 세션에 30초 넘게 든 횟수 ("들림"). 2번 쌓이면 다음부터 경고가 세집니다. (lib/liftAlerts.ts 의 escalateLiftStage)
+  const [longLiftCount, setLongLiftCount] = useState(0)
+  // 아래 쪽지 듣기(useEffect)가 최신 값을 보도록 ref 에도 담아 둡니다. (state 는 그 effect 를 처음 만든 때의 값에 머묾)
+  const liftedAtRef = useRef<number | null>(null)
+  const dismissedAtRef = useRef<number | null>(null)
+  const isPausedRef = useRef(isPaused)
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  })
   // 방해 금지 상태 (앱의 'focus.start' 답). 권한이 없으면 'noPermission' 이라 화면에서 권한 열기를 안내합니다.
   const [dndState, setDndState] = useState<ReturnType<typeof readDndState>>(null)
   // onEnd 는 화면을 다시 그릴 때마다 새로 만들어질 수 있어서, 가장 최근 것을 담아 둡니다.
@@ -91,12 +104,26 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
     earlyStartReply = null
     void startReply.then((reply) => setDndState(readDndState(reply)))
     const stopListening = onAppMessage((message) => {
-      if (message.type === 'focus.lifted') setLiftedAt(message.payload.at)
-      if (message.type === 'focus.down') setLiftedAt(null)
+      if (message.type === 'focus.lifted') {
+        liftedAtRef.current = message.payload.at
+        setLiftedAt(message.payload.at)
+      }
+      if (message.type === 'focus.down') {
+        // 방금 든 것이 "들림" 이면 한 번 셉니다. (쉬는 중 · "공부에 필요해서" 는 빼고)
+        const isDismissed =
+          liftedAtRef.current !== null && dismissedAtRef.current === liftedAtRef.current
+        if (isRepeatLift(message.payload.liftedMs, isPausedRef.current, isDismissed)) {
+          setLongLiftCount((count) => count + 1)
+        }
+        liftedAtRef.current = null
+        setLiftedAt(null)
+      }
     })
     return () => {
       stopListening()
+      liftedAtRef.current = null
       setLiftedAt(null)
+      setLongLiftCount(0)
       setDndState(null)
       // 세션이 끝났거나 화면을 떠났습니다. 앱의 세션을 닫고, 답으로 온 숫자를 넘깁니다.
       void requestFromApp('focus.end', {}, END_TIMEOUT_MS).then((reply) => {
@@ -108,7 +135,10 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
 
   const isDismissed = liftedAt !== null && dismissedAt === liftedAt
   const liftedMs = liftedAt === null || isPaused ? 0 : Math.max(0, now - liftedAt)
-  const stage: LiftStage = isDismissed ? 0 : getLiftStage(liftedMs, strength)
+  // 들림을 반복했으면(3번째부터) 1단계를 건너뛰고 바로 2단계입니다.
+  const stage: LiftStage = isDismissed
+    ? 0
+    : escalateLiftStage(getLiftStage(liftedMs, strength), longLiftCount, strength)
 
   // 단계가 올라갈 때마다 한 번 진동합니다. (1단계는 가볍게, 2단계 이상은 세게)
   const previousStage = useRef<LiftStage>(0)
@@ -120,6 +150,7 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
   }, [stage])
 
   function dismiss() {
+    dismissedAtRef.current = liftedAt
     setDismissedAt(liftedAt)
   }
 
@@ -133,6 +164,8 @@ export function usePhoneLift({ isActive, isPaused, now, strength, onEnd }: UsePh
     openDndSettings: () => sendToApp('focus.openSettings', {}),
     /** 들고 있은 시간 (초). 엎어 둔 상태면 0 */
     liftedSeconds: Math.floor(liftedMs / 1000),
+    /** 들림을 반복했을 때 화면 전체 경고에 붙이는 한 줄 ('벌써 3번째야. …'). 아니면 null */
+    repeatText: getRepeatLiftText(longLiftCount),
     dismiss,
   }
 }

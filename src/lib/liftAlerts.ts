@@ -9,6 +9,7 @@
  *   2  20초 넘음          코치 말투 경고를 화면 전체에
  *   3  60초 넘음          세션을 일시정지하고 '폰 확인' 으로 기록
  * 관리 강도가 약하면 1단계 안내만 하고, 강하면 더 빨리 · 소리까지 냅니다.
+ * 같은 세션에서 30초 넘게 든 것이 2번 쌓이면, 3번째부터는 1단계를 건너뛰고 바로 2단계입니다. (escalateLiftStage)
  */
 import type { FocusNudge } from '@/lib/appBridge'
 import { loadData, saveData } from '@/lib/storage'
@@ -63,6 +64,51 @@ export function getLiftStage(liftedMs: number, strength: LiftStrength): LiftStag
   if (rule.overlay !== null && seconds >= rule.overlay) return 2
   if (seconds >= rule.notice) return 1
   return 0
+}
+
+/** 같은 세션에서 "들림"(30초 넘게 든 것)이 이만큼 쌓이면, 다음에 들 때부터 1단계를 건너뛰고 바로 화면 전체 경고 */
+export const REPEAT_LIFTS_TO_ESCALATE = 2
+
+/**
+ * 들림을 반복했으면 단계를 올립니다. (2026-10-18 "폰 덮고 있는 거 안 지키면 경고")
+ * 이번 세션에 30초 넘게 든 것이 이미 2번 있으면, 3번째부터는 1단계(안내) 대신 바로 2단계(화면 전체)입니다.
+ * 세기가 '약' 이면 화면 전체 경고가 없어서 올리지 않습니다. (힘든 날 몰아붙이지 않게)
+ *
+ *   escalateLiftStage(1, 2, 'normal') -> 2   (3번째 들림: 안내를 건너뛰고 화면 전체)
+ *   escalateLiftStage(1, 1, 'normal') -> 1   (2번째까지는 그대로)
+ *   escalateLiftStage(0, 5, 'normal') -> 0   (10초 안의 시간 확인은 그대로 괜찮음)
+ *   escalateLiftStage(1, 5, 'soft')   -> 1
+ */
+export function escalateLiftStage(
+  stage: LiftStage,
+  earlierLongLifts: number,
+  strength: LiftStrength,
+): LiftStage {
+  if (stage !== 1 || LIFT_STAGE_SECONDS[strength].overlay === null) return stage
+  return earlierLongLifts >= REPEAT_LIFTS_TO_ESCALATE ? 2 : stage
+}
+
+/**
+ * 화면 전체 경고에 붙이는 횟수 한 줄. 반복한 게 아니면(들림이 2번 미만) null
+ *
+ *   getRepeatLiftText(2) -> '벌써 3번째야. 폰을 손 안 닿는 곳에 둘까?'
+ *   getRepeatLiftText(1) -> null
+ */
+export function getRepeatLiftText(earlierLongLifts: number): string | null {
+  if (earlierLongLifts < REPEAT_LIFTS_TO_ESCALATE) return null
+  return `벌써 ${earlierLongLifts + 1}번째야. 폰을 손 안 닿는 곳에 둘까?`
+}
+
+/**
+ * 다시 엎었을 때, 방금 든 것을 "들림" 한 번으로 셀지. 30초 넘게 들었어야 하고,
+ * 일시정지 중(쉬는 시간)이었거나 "공부에 필요해서 든 거야" 를 누른 것은 세지 않습니다.
+ *
+ *   isRepeatLift(45_000, false, false) -> true
+ *   isRepeatLift(12_000, false, false) -> false  (잠깐 확인)
+ *   isRepeatLift(45_000, true, false)  -> false  (쉬는 중)
+ */
+export function isRepeatLift(liftedMs: number, isPaused: boolean, isDismissed: boolean): boolean {
+  return liftedMs >= LONG_LIFT_MS && !isPaused && !isDismissed
 }
 
 /**
