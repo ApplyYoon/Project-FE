@@ -70,7 +70,7 @@ export function useCardSession() {
       cardId: card.id,
       dateKey,
       startedAt,
-      endAt: getScheduledEndAt(card, dateKey, startedAt),
+      endAt: getScheduledEndAt(card, startedAt),
       plannedMinutes: card.durationMinutes,
       pauses: [],
       checked: {},
