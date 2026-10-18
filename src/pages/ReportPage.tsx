@@ -36,7 +36,6 @@ import {
 } from '@/lib/weeklyPrediction'
 import type { StudyPlan, StudySession } from '@/types'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 
 const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -77,16 +76,7 @@ export function ReportPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        {/* h-10: 글자는 작아도 누르는 영역은 40px 로 둡니다. */}
-        <Link
-          to="/records"
-          className="inline-flex h-10 items-center text-sm text-slate-500 hover:text-slate-700"
-        >
-          ‹ 기록
-        </Link>
-      </div>
-
+      {/* 리포트는 기록 탭의 하위 탭이라, 위의 [기록 | 리포트] 막대로 오갑니다. 따로 "‹ 기록" 링크를 두지 않습니다. (2026-10-18) */}
       <WeeklyReport sessions={sessions} />
     </div>
   )
