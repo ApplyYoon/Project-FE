@@ -426,7 +426,8 @@ interface SchoolTodaySectionProps {
 
 /**
  * ③ 오늘 시간표 · 급식과 ④ 다가오는 일정입니다. 서버에서 받는 동안은 스켈레톤, 못 받으면 안내를 보여 줍니다. (AsyncBoundary)
- * 반을 아직 안 정했으면 시간표 자리에 학년 · 반을 고르는 칸이 나옵니다. 고른 반은 이 기기에만 저장합니다.
+ * 반을 아직 안 정했으면 시간표 자리에 반을 고르는 칸이 나옵니다. 학년은 온보딩에서 고른 학년이 미리 골라져 있고 바꿀 수도 있습니다.
+ * 고른 반은 이 기기에만 저장합니다. (온보딩은 학년만 묻습니다 — 시간표는 반마다 달라서 보고 싶은 학생만 여기서 고릅니다)
  */
 function SchoolTodaySection({ todayKey }: SchoolTodaySectionProps) {
   const isServerData = useIsServerData()
@@ -562,7 +563,7 @@ function SchoolTodayView({
                 onSaveClass(next)
                 setIsEditingClass(false)
               }}
-              description="몇 학년 몇 반이야? 알려 주면 오늘 시간표를 보여 줄게."
+              description="몇 반이야? 알려 주면 오늘 시간표를 보여 줄게."
               saveLabel="시간표 보기"
               className="mt-2"
             />

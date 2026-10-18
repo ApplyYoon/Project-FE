@@ -14,9 +14,9 @@
  */
 import { ApiError, api } from '@/lib/api'
 import { moveDateKey } from '@/lib/date'
-import { CLASS_NO_KEY, loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { gradeNumberOf } from '@/lib/schoolEvents'
-import { loadData, saveData } from '@/lib/storage'
+import { loadData, removeData, saveData } from '@/lib/storage'
 import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 NEIS 를 부르는 동안 조금 넉넉히 기다립니다. */
@@ -95,18 +95,11 @@ export function saveSchoolClass(schoolClass: SchoolClass): void {
 }
 
 /**
- * 온보딩의 학년 · 반 답을 학년 · 반으로 바꿉니다. 학년이 고1 ~ 고3 이 아니거나 반이 1 ~ 30 이 아니면 null 입니다.
- *
- *   schoolClassFromAnswers({ grade: '고2', classNo: '3' })  -> { grade: 2, classNo: 3 }
- *   schoolClassFromAnswers({ grade: '고2' })                -> null  (반을 아직 안 고름)
- *   schoolClassFromAnswers({ grade: 'N수', classNo: '3' })  -> null
+ * 저장해 둔 학년 · 반을 지웁니다. 온보딩에서 학년을 다르게 고르면, 다른 학년의 반 번호는 쓸 수 없어서 지웁니다.
+ * 그러면 홈 시간표 칸이 반을 다시 묻습니다.
  */
-export function schoolClassFromAnswers(answers: Record<string, string>): SchoolClass | null {
-  const grade = gradeNumberOf(answers.grade)
-  // 답은 글자라서 숫자로 바꿉니다. 빈 글자('')는 0 이 되어 아래에서 걸러집니다.
-  const classNo = Number(answers[CLASS_NO_KEY])
-  if (grade === null || !isWholeNumberBetween(classNo, 1, MAX_CLASS_NO)) return null
-  return { grade, classNo }
+export function clearSchoolClass(): void {
+  removeData(CLASS_STORAGE_KEY)
 }
 
 /**

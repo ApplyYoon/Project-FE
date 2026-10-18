@@ -10,11 +10,11 @@ import { loadData } from '@/lib/storage'
  * ■ 질문을 더하는 방법
  *   1. onboardingSteps 에 객체를 하나 더합니다. (group 을 새 이름으로 쓰면 새 묶음이 됩니다)
  *   2. key 는 #78 의 OnboardingAnswers 필드 이름과 똑같이 씁니다. 답이 그 이름으로 저장됩니다.
- *   3. 모양은 보기 중 하나 고르기(choice)와 학년 · 반 고르기(schoolClass)가 있습니다.
+ *   3. 모양은 지금 보기 중 하나 고르기(choice)뿐입니다.
  *      다른 모양이 필요하면 Step 모양을 더하고 OnboardingPage 의 StepInput 에도 더하세요.
  *
  * ■ 묻는 질문 (최종 기획서 「4.1 온보딩」)
- *   앱 소개 → 학년 · 반(basic) → 심리검사 → 자기 인식 4문항(hypotheses) → 관리 설정 → 결과 순서입니다. 순서는 lib/onboardingProgress.ts 의 STAGES 가 정합니다.
+ *   앱 소개 → 학년(basic) → 심리검사 → 자기 인식 4문항(hypotheses) → 관리 설정 → 결과 순서입니다. 순서는 lib/onboardingProgress.ts 의 STAGES 가 정합니다.
  *   두 묶음 사이에 심리검사가 있어서 묶음을 나눴습니다.
  *   예전에 설정의 "내 정보 더 알려주기" 에서 묻던 질문 13개(시험 · 과목별 성적 · 생활 리듬 · 공부 장소 · 실패 경험 · 동기)와
  *   생각 습관 테스트는 최종 기획서에 없어서 #417 에서 지웠습니다. (수면 보호 시각은 관리 설정 화면이 묻습니다)
@@ -34,7 +34,7 @@ interface BaseStep {
   optional?: boolean
   /**
    * 처음 온보딩의 어느 묶음에서 묻는지. (#239, #388)
-   *   basic: 학년 · 반 (심리검사 앞)
+   *   basic: 학년 (심리검사 앞)
    * (자기 인식 4문항 'hypotheses' 묶음은 2026-10-18 사용자 결정 "주관적이라 쓸데가 없어, 객관적 데이터만" 으로 지웠습니다)
    */
   firstStage?: FirstStage
@@ -60,20 +60,8 @@ interface ChoiceStep extends BaseStep {
   options: ChoiceOption[]
 }
 
-/**
- * 학년 · 반 고르기 (2026-10-18). 홈의 시간표 칸에서 따로 묻던 반을 여기서 학년과 같이 한 번에 묻습니다.
- * 학년은 key(grade)에 '고1' ~ '고3' 으로, 반은 CLASS_NO_KEY 에 '1' ~ '30' 글자로 답에 넣습니다.
- * 끝낼 때 반은 학년 · 반 저장소(study-school-class)로 옮기고 온보딩 답에는 학년만 남깁니다. (OnboardingPage)
- */
-interface SchoolClassStep extends BaseStep {
-  type: 'schoolClass'
-}
-
-/** 질문 한 개. 지금 남은 질문은 학년 · 반 하나입니다. (보기 고르기 모양은 질문을 더할 때 쓰려고 남겨 둡니다) */
-export type OnboardingStep = ChoiceStep | SchoolClassStep
-
-/** 학년 · 반 질문에서 반을 넣어 두는 답 이름 */
-export const CLASS_NO_KEY = 'classNo'
+/** 질문 한 개. 지금 남은 질문은 학년 하나입니다. */
+export type OnboardingStep = ChoiceStep
 
 /**
  * 고를 수 있는 학년. 고등학생만 가입해서 고1 ~ 고3 만 둡니다. (2026-10-18 사용자: "애초에 고딩용인데")
@@ -88,9 +76,11 @@ export const onboardingSteps: OnboardingStep[] = [
     key: 'grade',
     group: '기본 정보',
     firstStage: 'basic',
-    type: 'schoolClass',
-    title: '몇 학년 몇 반이야?',
-    description: '시간표 · 급식 · 시험 날짜를 내 반에 맞춰서 보여 줄게.',
+    type: 'choice',
+    title: '지금 몇 학년이야?',
+    // 반은 묻지 않습니다. 시간표를 보고 싶은 학생만 홈의 시간표 칸에서 반을 고릅니다. (2026-10-18 사용자: "학년 정도만 받으면 되지 않나")
+    description: '급식 · 시험 날짜를 학년에 맞춰 보여 줄게. 시간표는 홈에서 반을 고르면 나와.',
+    options: GRADE_OPTIONS,
   },
 ]
 
@@ -112,7 +102,7 @@ export function getFirstSteps(stage: FirstStage): OnboardingStep[] {
 /**
  * 처음 온보딩의 한 묶음을 끝냈는지. 그 묶음의 질문이 모두 저장된 답에 있으면 끝낸 것입니다.
  * 묶음을 끝낼 때 답을 한꺼번에 저장해서, 하나라도 없으면 아직 안 끝낸 것입니다.
- * 학년 · 반 질문은 학년(grade)만 봅니다. 예전 온보딩에서 학년만 답한 사람도 끝낸 것이고, 반은 홈의 시간표 칸에서 고릅니다.
+ * 예전에 'N수' · '대학생' 으로 답한 사람도 답이 있으니 끝낸 것입니다. (학년은 모르는 것으로 봅니다)
  *
  *   isFirstStageDone({ grade: '고2' }, 'basic')   -> true
  *   isFirstStageDone({}, 'basic')                -> false
@@ -154,7 +144,6 @@ export function getDaysUntil(dateText: string, now: Date = new Date()): number {
  *
  * - 비어 있으면: 선택 질문(optional)일 때만 통과합니다.
  * - 그 밖에는 골랐으면 통과합니다.
- * (보기 고르기 질문용입니다. 학년 · 반 질문은 OnboardingPage 가 schoolClassFromAnswers 로 확인합니다)
  */
 export function isAnswerValid(step: OnboardingStep, value: string): boolean {
   if (value.trim() === '') return step.optional === true
