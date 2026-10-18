@@ -1,20 +1,36 @@
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { MissionBar } from '@/components/ui/MissionBar'
+import { NotificationsBell } from '@/components/ui/NotificationsBell'
 import { PlanCard } from '@/components/ui/PlanCard'
+import { ReasonChips } from '@/components/ui/ReasonChips'
 import { SettingsLink } from '@/components/ui/SettingsLink'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { useAiMessages } from '@/hooks/useAiMessages'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
 import { useSendCheckIn } from '@/hooks/useCheckInSync'
 import { useQueryParam } from '@/hooks/useQueryParam'
-import { countUnreadAiMessages } from '@/lib/aiMessages'
+import { useStudySessions } from '@/hooks/useStudySessions'
 import { ApiError, getApiErrorMessage } from '@/lib/api'
 import { finishCall, type CallLine } from '@/lib/callReview'
-import { loadCardMarks } from '@/lib/cardMarks'
+import { addCardMark, CARD_FAIL_CAUSES, loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { countsForCheckCall } from '@/lib/checkCall'
 import { MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat, type ChatReply } from '@/lib/chatApi'
+import {
+  clearTalkRequest,
+  getChatRoom,
+  handOffPlanChip,
+  isChatAboutKind,
+  markRoomSeen,
+  peekTalkRequest,
+  startTalk,
+  takePlanHandoff,
+  toChatRoomId,
+  type ChatAbout,
+  type ChatRoomId,
+  type PlanHandoffChip,
+  type TalkRequest,
+} from '@/lib/chatRooms'
 import { canSyncCheckIns, todayCheckInForCoachQuery } from '@/lib/checkInsApi'
 import {
   SKIP_FOCUS_NAME_LABEL,
@@ -36,7 +52,9 @@ import {
   type CoachChip,
   type CoachMessage,
 } from '@/lib/coachBriefing'
+import { revealSchedule, splitReply, visibleLength, type RevealSchedule } from '@/lib/chatReveal'
 import { loadFocusScore } from '@/lib/focusScore'
+import { formatPhoneSummary } from '@/lib/liftAlerts'
 import {
   DAILY_MINUTES_OPTIONS,
   DEFAULT_DAILY_MINUTES,
@@ -70,6 +88,7 @@ import {
   saveCoachThread,
   sessionLines,
   type CoachThread,
+  type ReasonCheck,
   type ThreadBubble,
 } from '@/lib/coachThread'
 import { cn } from '@/lib/cn'
@@ -85,15 +104,17 @@ import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getPlannedStartAt } from '@/lib/facts'
-import { replyDemo } from '@/lib/demoCoach'
+import { demoTopicOpener, replyDemoInRoom } from '@/lib/demoCoach'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { getUpcomingMyEvents, saveMyEvent } from '@/lib/myEvents'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { shrinkPhoto } from '@/lib/photoCards'
 import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quickCheckIn'
+import { toggleReason } from '@/lib/reasons'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
 import { loadSchoolClass, schoolTodayOrNullQuery, type SchoolToday } from '@/lib/schoolToday'
+import { SHORTFALL_REASONS } from '@/lib/sessionTags'
 import { loadData, saveData } from '@/lib/storage'
 import {
   FOCUS_NAME_MAX,
@@ -133,10 +154,28 @@ import {
   loadNudgeDay,
   loadStopWhip,
 } from '@/lib/coachNudges'
+import {
+  failCauseLabels,
+  quizWrongLines,
+  sessionReviewLines,
+  shortfallLabels,
+  toFailCauses,
+  toShortfallReasons,
+  validReasonValues,
+} from '@/lib/talkLines'
+import { CHAT_PATH } from '@/lib/tabMenu'
 import { getTodayCardsState } from '@/lib/todayCards'
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
-import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 // 코치가 결과를 먼저 물어본 마지막 공부 기록 번호. 같은 기록을 두 번 묻지 않으려고 저장합니다. (대화 내용이 아니라 번호만)
 const RECAPPED_SESSION_KEY = 'coach-recapped-session'
@@ -179,9 +218,16 @@ function getChatErrorMessage(error: unknown): string {
 }
 
 /**
- * 코치 탭("/coach", 두 번째 탭) — AI 코치(멘토)와 이어서 이야기하는 대화방 하나입니다. (2026-10-18, BE #238 · #307)
- * 사용자 결정: "채팅 탭은 무조건 하나", "멘토와 연속적인 대화를 한다는 느낌으로".
+ * 대화방 화면("/chat/plan" · "/chat/counsel" · "/chat/tutor") — AI 와 이어서 이야기하는 방입니다. (2026-10-18, BE #238 · #307 · #330)
+ * 사용자 결정: "채팅 탭은 무조건 하나", "멘토와 연속적인 대화를 한다는 느낌으로",
+ * 저녁에 "📞 매일 통화 + 채팅방 3개 📅 계획 · 💬 상담 · 📚 과목 쌤", "다양한 세션에서 채팅 가능해야" (lib/chatRooms.ts, #582)
+ * 방마다 기록이 따로 남고, 서버에는 어느 방인지(room)를 같이 보냅니다. 아래 1~6 은 매일 코치(💬 상담) 방 기준이고,
+ * 📅 계획 · 📚 과목 쌤 방은 브리핑 · 미션 · 알림 대신 그 방의 첫 인사(코드가 정한 말)로 시작합니다.
+ * 계획(5번)은 📅 계획 방에서 합니다. 다른 방에서 계획 칩을 누르면 계획 방으로 넘어가서 짭니다.
  *
+ *   0. [새 대화] 를 누르면 구분선을 긋고 서버 세션을 새로 엽니다. 다른 화면의 [이야기하기] 로 오면(?talk=)
+ *      그 주제(후기 · 못 한 카드 · 주간 숫자 · 틀린 문제 · 검사 결과 · 하루)로 새 세션을 열어 AI 가 먼저 말합니다.
+ *      후기 · 못 한 카드 대화에서 AI 가 이유를 짐작하면 "이유: 폰 · 피곤함 — 맞아?" 로 확인받아 기록에 저장합니다.
  *   1. 지난 대화가 이 기기에 남아 있어서 다시 열면 이어서 보입니다. 날이 바뀌면 날짜 구분선이 생깁니다. (lib/coachThread.ts)
  *   2. 그날 처음 열면 코치가 먼저 말을 겁니다. (아침 브리핑: 시간표 · 급식 · 시험 D-day · 오늘 카드 · 컨디션 묻기)
  *      이 첫 말은 코드가 만듭니다(lib/coachBriefing.ts). 그래서 열기만 해서는 AI 사용량을 쓰지 않습니다.
@@ -200,89 +246,61 @@ function getChatErrorMessage(error: unknown): string {
  * 모바일에서는 화면 높이를 꽉 채웁니다. 말풍선 목록만 스크롤되고, 입력창은 아래(하단 탭 위)에 붙어 있습니다.
  * ⚠️ 대화는 서버에 저장하지 않고 이 기기에만 남깁니다(최근 14일 · 300개). console.log 로 찍지 않습니다.
  */
-export function CoachPage() {
+export function ChatRoomPage() {
   // 하루 1번 관리 단계를 판정해 저장합니다. ("통화가 없으면 다음 날 첫 진입 때", 기획서 5.4)
   // 홈과 코치 중 어디로 먼저 들어와도 판정되게 여기서도 부릅니다. 오늘 이미 판정했으면 아무것도 바꾸지 않습니다.
   useState(() => runDailyCareStage(getTodayKey(), Date.now()))
+  // 주소의 방 이름(/chat/tutor 의 tutor). 모르는 이름이면 대화방 목록으로 보냅니다.
+  const room = toChatRoomId(useParams().room)
+  if (room === null) return <Navigate to={CHAT_PATH} replace />
+  const roomInfo = getChatRoom(room)
 
   return (
     // flex-1 · min-h-0: Layout 이 잡아 준 높이를 꽉 채우고, 안의 목록만 스크롤되게 합니다.
     // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -my-3 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
     <div className="-mx-4 -my-3 flex min-h-0 flex-1 flex-col gap-3 bg-slate-100 px-4 py-3 sm:mx-0 sm:my-0 sm:rounded-3xl sm:p-4">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-1">
-        <div className="min-w-0">
-          <h1 className="text-[26px] leading-snug font-bold tracking-tight text-slate-900">
-            AI 코치
-          </h1>
-          <p className="truncate text-[15px] text-slate-500">오늘 공부, 같이 잡아 볼까?</p>
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1">
+          {/* 대화방 목록(채팅 탭)으로 돌아가기. 누르기 쉽게 44px */}
+          <Link
+            to={CHAT_PATH}
+            aria-label="대화방 목록으로"
+            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-2xl text-slate-500 hover:bg-slate-200"
+          >
+            ‹
+          </Link>
+          <div className="min-w-0">
+            <h1 className="truncate text-[22px] leading-snug font-bold tracking-tight text-slate-900 sm:text-[26px]">
+              <span aria-hidden>{roomInfo.emoji}</span> {roomInfo.name}
+            </h1>
+            <p className="truncate text-sm text-slate-500">{roomInfo.role}</p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {/* 통화 · 알림 · 설정은 탭 없이 여기(코치 머리)에만 둡니다. (2026-10-18 "탭을 명확히") */}
-          <Link to="/call" className={chipClass}>
-            <span aria-hidden>📞</span> 통화
-          </Link>
+          {/* 통화 · 알림 · 설정은 탭 없이 대화방 머리에 둡니다. 통화는 매일 코치(상담) 방에만. (2026-10-18 "탭을 명확히") */}
+          {roomInfo.isDailyCoach && (
+            <Link to="/call" className={chipClass}>
+              <span aria-hidden>📞</span> 통화
+            </Link>
+          )}
           <NotificationsBell />
           <SettingsLink />
         </div>
       </div>
 
       {/* 첫 말(브리핑)에 쓸 오늘 학교 정보를 받는 동안만 자리 표시를 보여 줍니다. 못 받아도 대화는 열립니다. */}
+      {/* key: 다른 방으로 옮기면 대화방을 처음부터 다시 그립니다. (방마다 기록 · 입력 중인 글이 따로) */}
       <AsyncBoundary pendingFallback={<ChatSkeleton />}>
-        <CoachChat />
+        <RoomChat key={room} room={room} />
       </AsyncBoundary>
     </div>
-  )
-}
-
-/* 종 모양 아이콘 (라이브러리 없이 SVG 를 직접 그립니다) */
-function BellIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5"
-    >
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-    </svg>
-  )
-}
-
-/**
- * 알림 화면(/notifications)으로 가는 종 버튼. 안 읽은 알림이 있으면 빨간 점이 뜹니다. (예전에는 모든 화면 헤더에 있었음)
- * 누르기 쉽게 44×44px(h-11 w-11) 입니다.
- */
-function NotificationsBell() {
-  // 새 알림이 쌓이면 화면을 옮기지 않아도 바로 다시 그려져서 빨간 점이 뜹니다. (hooks/useAiMessages.ts)
-  const unreadCount = countUnreadAiMessages(useAiMessages())
-  // 화면을 읽어 주는 프로그램이 "알림, 안 읽은 알림 3개" 처럼 개수까지 읽어 줍니다.
-  const label = unreadCount > 0 ? `알림, 안 읽은 알림 ${unreadCount}개` : '알림'
-  return (
-    <Link
-      to="/notifications"
-      aria-label={label}
-      className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
-    >
-      <BellIcon />
-      {unreadCount > 0 && (
-        <span
-          aria-hidden
-          className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
-        />
-      )}
-    </Link>
   )
 }
 
 function ChatSkeleton() {
   return (
     <div role="status" className="flex min-h-0 flex-1 flex-col gap-3 rounded-3xl bg-white p-4">
-      <span className="sr-only">코치를 부르는 중이에요</span>
+      <span className="sr-only">대화방을 여는 중이에요</span>
       <Skeleton className="h-4 w-16" />
       <Skeleton className="h-24 w-4/5 rounded-[20px]" />
     </div>
@@ -357,7 +375,12 @@ function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanReq
       if (bubble.plan?.status !== 'open') return null
       return request.type === 'revise' && bubble.id === request.bubbleId ? 'replaced' : 'closed'
     })
-    return withBubble(closed, { speaker: 'ai', text: result.reply, plan: result.plan })
+    return withBubble(closed, {
+      speaker: 'ai',
+      text: result.reply,
+      plan: result.plan,
+      typing: true,
+    })
   }
   // 새 계획이 없으면 코치의 한 줄만 붙입니다. "다 빼 줘" 로 계획이 비었으면 그 계획은 닫습니다.
   const next =
@@ -367,6 +390,7 @@ function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanReq
   return withBubble(next, {
     speaker: 'ai',
     text: result.reply,
+    typing: true,
     ...(result.isDemo ? { isDemo: true } : {}),
   })
 }
@@ -428,7 +452,7 @@ function withNewQuiz(
   quiz: { topic: string; cardId: string | null; questions: QuizQuestion[]; isDemo: boolean },
 ): CoachThread {
   const made = newQuiz({ ...quiz, now: Date.now() })
-  return withBubble(closeOpenQuizzes(thread), { speaker: 'ai', text, quiz: made })
+  return withBubble(closeOpenQuizzes(thread), { speaker: 'ai', text, quiz: made, typing: true })
 }
 
 /** 문제를 받은 결과를 대화방 끝에 붙입니다. */
@@ -462,17 +486,71 @@ function applyQuizReply(thread: CoachThread, result: QuizReply, input: QuizInput
   })
 }
 
-function CoachChat() {
+/**
+ * [이야기하기] 로 연 후기 · 못 한 카드 대화에서 AI 가 짐작한 이유가 오면 "맞아?" 칸을 만듭니다. 아니면 null
+ * (주제와 저장할 곳이 맞을 때만: 후기 → 그 공부 기록, 못 한 카드 → 그 카드 하루치)
+ */
+function reasonCheckOf(thread: CoachThread, tags: string[]): ReasonCheck | null {
+  const topic = thread.topic
+  if (!topic?.target) return null
+  const kind = topic.about.kind
+  const fits =
+    (kind === 'SESSION_REVIEW' && topic.target.type === 'session') ||
+    (kind === 'CARD_FAIL' && topic.target.type === 'card')
+  if (!fits) return null
+  const values = validReasonValues(kind, tags)
+  return values.length > 0 ? { kind, values, target: topic.target, status: 'open' } : null
+}
+
+/** 대화방에서 bubbleId 말풍선의 이유 확인 칸을 change 로 바꾼 새 대화방 */
+function withReasonCheck(
+  thread: CoachThread,
+  bubbleId: number,
+  change: (check: ReasonCheck) => ReasonCheck,
+): CoachThread {
+  return {
+    ...thread,
+    bubbles: thread.bubbles.map((bubble) =>
+      bubble.id === bubbleId && bubble.reasonCheck
+        ? { ...bubble, reasonCheck: change(bubble.reasonCheck) }
+        : bubble,
+    ),
+  }
+}
+
+/** 계획 이야기인지 (매일 코치 방 등에서 누르면 계획 방으로 넘깁니다) */
+function isPlanChip(chip: CoachChip): chip is PlanHandoffChip {
+  return chip.kind === 'dayPlan' || chip.kind === 'longPlan' || chip.kind === 'makePlan'
+}
+
+interface RoomChatProps {
+  room: ChatRoomId
+}
+
+/**
+ * 대화방 하나의 대화. 방마다 하는 일이 조금 다릅니다. (lib/chatRooms.ts 의 CHAT_ROOMS)
+ *   매일 코치 방(💬 상담): 아침 브리핑 · 미션 · 코치 알림 첫 말 · 공부 끝 회고
+ *   계획 방(📅 계획): 오늘 계획 · 시험 날까지 계획 핑퐁. 다른 방의 계획 칩은 이 방으로 넘어와서 짭니다.
+ *   그 밖의 방(📚 과목 쌤 등): 방의 첫 인사로 시작. 사진 질문 · 확인 문제
+ */
+function RoomChat({ room }: RoomChatProps) {
   const navigate = useNavigate()
   const { token, user } = useAuth()
   const isServerData = isServerDataToken(token)
   const [todayKey] = useState(getTodayKey)
   const [now] = useState(() => Date.now())
   const sendCheckIn = useSendCheckIn()
+  const roomInfo = getChatRoom(room)
+  // 매일 코치 방만 브리핑 · 미션 · 코치 알림 · 공부 끝 회고를 합니다.
+  const isDailyCoach = roomInfo.isDailyCoach
   // 미션 알림을 누르고 들어오면 ?mission=morning 처럼 옵니다. 코치가 그 미션 이야기를 먼저 합니다.
   const [missionParam, setMissionParam] = useQueryParam('mission', '')
   // 코치 알림을 누르고 들어오면 ?nudge=evening 처럼 옵니다. 코치의 첫 말이 그 알림 글입니다. (lib/coachNudges.ts)
   const [nudgeParam, setNudgeParam] = useQueryParam('nudge', '')
+  // 다른 화면의 [이야기하기] 로 들어오면 ?talk=SESSION_REVIEW 처럼 옵니다. 맡겨 둔 사실 줄로 그 주제의 새 대화를 엽니다.
+  const [talkParam, setTalkParam] = useQueryParam('talk', '')
+  // 후기 · 못 한 카드 대화에서 AI 가 짐작한 이유를 확인받으면 그 공부 기록에 저장합니다. (lib/talkLines.ts)
+  const { updateSession } = useStudySessions()
 
   // 첫 말의 재료: 오늘 학교 정보(못 받으면 null) · 오늘 카드 · 오늘 체크인
   const [schoolClass] = useState(loadSchoolClass)
@@ -520,19 +598,24 @@ function CoachChat() {
   const [quizForm, setQuizForm] = useState<QuizForm | null>(null)
   // 확인 문제 칸에서 [📄 글 붙여 넣기] 를 눌러 글칸을 열었는지
   const [isMaterialOpen, setIsMaterialOpen] = useState(false)
-  // 입력창의 📎 로 고른 사진 (줄인 data URL). 문제 · 계획 중 무엇에 쓸지 고를 때까지 이 화면의 기억에만 둡니다.
+  // 입력창의 📎 로 고른 사진 (줄인 data URL). 물어볼지 · 문제 · 계획 중 무엇에 쓸지 고를 때까지 이 화면의 기억에만 둡니다.
   const [chatPhoto, setChatPhoto] = useState<string | null>(null)
   const [chatPhotoError, setChatPhotoError] = useState<string | null>(null)
+  // [💬 이 사진으로 물어보기] 를 고른 사진. 다음에 보내는 말에 붙여서 보내고 바로 비웁니다. (어디에도 저장하지 않음)
+  const [attachedPhoto, setAttachedPhoto] = useState<string | null>(null)
+  // 📎 사진 고르기 창 (과목 쌤 방의 [📎 문제 사진 보내기] 칩이 대신 눌러 엽니다)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   // 처음 그릴 때 한 번만 정합니다:
   //   이 기기의 대화방을 꺼내고 → 날이 바뀌었으면 지난 서버 세션을 정리할 준비 + 오늘의 첫 말(브리핑)
   //   → 끝난 공부가 있으면 결과 묻기 → 미션 알림으로 들어왔으면 미션 이야기, 미션을 새로 끝냈으면 몇 개 끝냈는지
   const [initial] = useState(() => {
-    let thread = loadCoachThread(user?.id ?? 'unknown')
+    let thread = loadCoachThread(user?.id ?? 'unknown', room)
     let staleSession: { chatId: string; lines: CallLine[] } | null = null
     if (thread.chatId !== null && needsNewSession(thread, now)) {
       staleSession = { chatId: thread.chatId, lines: sessionLines(thread) }
-      thread = { ...thread, chatId: null, lastServerAt: null }
+      // 지난 세션의 주제([이야기하기])도 그 세션과 같이 끝납니다.
+      thread = { ...thread, chatId: null, lastServerAt: null, topic: null }
     }
     const add = (message: CoachMessage) => {
       const bubble = toCoachBubble(nextBubbleId(thread.bubbles), message, now)
@@ -540,8 +623,11 @@ function CoachChat() {
       return bubble
     }
 
-    // 코치 알림으로 들어왔으면 그 알림 글이 코치의 첫 말입니다. (lib/coachNudges.ts)
-    const nudgeKind = isNudgeKind(nudgeParam) ? nudgeParam : null
+    // [이야기하기] 로 들어왔는지 (그 주제 대화는 그리고 난 뒤 effect 가 엽니다. 여기서는 보기만 함)
+    const pendingTalk = isChatAboutKind(talkParam) ? peekTalkRequest(room, talkParam, now) : null
+
+    // 코치 알림으로 들어왔으면 그 알림 글이 코치의 첫 말입니다. (lib/coachNudges.ts — 매일 코치 방만)
+    const nudgeKind = isDailyCoach && isNudgeKind(nudgeParam) ? nudgeParam : null
     const nudgeMessage = nudgeKind
       ? buildNudgeCoachMessage(
           nudgeKind,
@@ -554,7 +640,13 @@ function CoachChat() {
 
     const lastBubble = thread.bubbles[thread.bubbles.length - 1]
     const isFirstToday = !lastBubble || toDayKey(lastBubble.at) !== todayKey
-    if (isFirstToday) {
+    if (isFirstToday && !isDailyCoach && !pendingTalk) {
+      // 매일 코치 방이 아니면 그 방의 첫 인사(코드가 정한 말)로 하루를 엽니다. (lib/chatRooms.ts)
+      const greeting = add(roomInfo.greeting)
+      if (thread.chatId === null)
+        thread = { ...thread, sessionFrom: greeting.id, isHelpShown: false }
+    }
+    if (isFirstToday && isDailyCoach) {
       const morning = buildMorningBriefing({
         hour: new Date(now).getHours(),
         school,
@@ -574,16 +666,23 @@ function CoachChat() {
     }
 
     const lastRecapped = loadData<unknown>(RECAPPED_SESSION_KEY, null)
-    const recapSession = findRecapSession(
-      loadStudySessions(),
-      now,
-      typeof lastRecapped === 'string' ? lastRecapped : null,
-    )
-    const missionSlot = isMissionSlot(missionParam) ? missionParam : null
+    const recapSession = isDailyCoach
+      ? findRecapSession(
+          loadStudySessions(),
+          now,
+          typeof lastRecapped === 'string' ? lastRecapped : null,
+        )
+      : null
+    // 그 공부의 [코치랑 후기 나누기] 로 들어왔으면 결과 묻기 말풍선은 건너뜁니다. (후기 대화가 같은 이야기를 함)
+    const isRecapInTalk =
+      recapSession !== null &&
+      pendingTalk?.target?.type === 'session' &&
+      pendingTalk.target.sessionId === recapSession.id
+    const missionSlot = isDailyCoach && isMissionSlot(missionParam) ? missionParam : null
     const doneMissions = countDoneMissions(missions)
     const lastProgress = loadMissionProgress(todayKey)
-    const hasNewMissionDone = lastProgress !== null && doneMissions > lastProgress
-    if (recapSession) {
+    const hasNewMissionDone = isDailyCoach && lastProgress !== null && doneMissions > lastProgress
+    if (recapSession && !isRecapInTalk) {
       const recap = buildSessionRecap(
         recapSession,
         loadPhoneLift(recapSession.id),
@@ -600,6 +699,11 @@ function CoachChat() {
       if (countsForCheckCall(recapSession)) {
         recap.chips = [...recap.chips, { kind: 'checkCall', label: '📞 코치한테 3분 설명하기' }]
       }
+      // 어땠는지 말로 나누면 AI 가 이유를 짐작해 기록에 남겨 줍니다. (후기 대화, #582)
+      recap.chips = [
+        ...recap.chips,
+        { kind: 'reviewTalk', label: '💬 후기 나누기', sessionId: recapSession.id },
+      ]
       add(recap)
     }
     // 오늘 첫 말이 이미 컨디션을 묻고 있으면(미션 ①), 미션 말풍선으로 같은 걸 또 묻지 않습니다.
@@ -627,11 +731,22 @@ function CoachChat() {
   const [thread, setThread] = useState<CoachThread>(initial.thread)
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+  // 메신저처럼 보이는 효과(lib/chatReveal.ts)를 위한 시계. 글자가 나오는 동안만 50ms 마다 움직입니다.
+  const [clock, setClock] = useState(() => Date.now())
+  // 이 시각까지 받은 답은 효과 없이 바로 전체를 보여 줍니다. 처음엔 화면을 연 때라서, 새로고침 · 예전 기록 · 방을 다시 열 때는
+  // 효과가 없습니다. 말풍선 목록을 누르면 지금 시각으로 바뀌어 남은 글이 바로 다 보입니다(건너뛰기).
+  // 움직임 줄이기(prefers-reduced-motion)를 켠 사람은 효과를 아예 끕니다.
+  const [skipBefore, setSkipBefore] = useState(() =>
+    prefersReducedMotion() ? Number.POSITIVE_INFINITY : now,
+  )
+  // 휴대폰처럼 손가락으로 누르는 화면인지. 터치 키보드에는 Shift 가 없어서 Enter 를 줄바꿈으로 남겨 둡니다.
+  const [isTouchKeyboard] = useState(isCoarsePointer)
 
-  // 대화방이 바뀔 때마다 이 기기에 저장합니다. (다시 열면 이어서 보이게)
+  // 대화방이 바뀔 때마다 이 기기에 저장합니다. (다시 열면 이어서 보이게) 지금 보고 있으니 "새 말" 점도 지웁니다.
   useEffect(() => {
-    saveCoachThread(thread, Date.now())
-  }, [thread])
+    saveCoachThread(thread, Date.now(), room)
+    markRoomSeen(room, Date.now())
+  }, [thread, room])
 
   // 날이 바뀌어 닫은 지난 서버 세션을 조용히 정리합니다. (진짜 로그인만)
   const staleSession = initial.staleSession
@@ -645,35 +760,50 @@ function CoachChat() {
   }, [initial.recapSessionId])
 
   // 미션 알림으로 들어왔으면 이야기를 꺼냈으니 주소의 ?mission= 을 지웁니다. (새로고침해도 또 말하지 않게)
-  const hasMissionParam = initial.missionSlot !== null
+  // 주소에 아직 값이 남아 있을 때만 지웁니다. (지우는 함수는 그릴 때마다 새로 만들어져서, 이렇게 안 하면
+  // 다른 방으로 옮기는 순간에도 다시 불려 지금 주소로 되돌려 버립니다)
+  const hasMissionParam = initial.missionSlot !== null && missionParam !== ''
   useEffect(() => {
     if (hasMissionParam) setMissionParam('')
   }, [hasMissionParam, setMissionParam])
 
   // 코치 알림으로 들어왔을 때도 같은 이유로 ?nudge= 를 지웁니다.
-  const hasNudgeParam = initial.nudgeKind !== null
+  const hasNudgeParam = initial.nudgeKind !== null && nudgeParam !== ''
   useEffect(() => {
     if (hasNudgeParam) setNudgeParam('')
   }, [hasNudgeParam, setNudgeParam])
 
-  // 코치가 알아챈 미션 진행을 적어 둡니다. 다음에 더 끝내고 돌아오면 그때 말을 겁니다.
+  // 코치가 알아챈 미션 진행을 적어 둡니다. 다음에 더 끝내고 돌아오면 그때 말을 겁니다. (매일 코치 방만)
   const doneMissionCount = countDoneMissions(missions)
   useEffect(() => {
-    saveData(MISSION_PROGRESS_KEY, `${todayKey}:${doneMissionCount}`)
-  }, [todayKey, doneMissionCount])
+    if (isDailyCoach) saveData(MISSION_PROGRESS_KEY, `${todayKey}:${doneMissionCount}`)
+  }, [isDailyCoach, todayKey, doneMissionCount])
 
   // 진짜 로그인일 때 AI 의 답을 받습니다. 세션이 없으면 그때 처음 열고,
   // 서버가 대본을 잊었으면(409 — 서버가 다시 켜짐 등) 새로 열어서 한 번 더 보냅니다.
+  // 서버 채팅은 이 방(room)과, [이야기하기] 로 연 세션이면 그 주제(about)로 엽니다. (BE #330)
+  // image: 이번 말에 붙인 사진 (그 한 번만 보냄)
   const talk = useMutation({
-    mutationFn: async ({ id, lines }: { id: string | null; lines: CallLine[] }) => {
-      let openId = id ?? (await startChat()).chatId
+    mutationFn: async ({
+      id,
+      lines,
+      image,
+      about,
+    }: {
+      id: string | null
+      lines: CallLine[]
+      image: string | null
+      about: ChatAbout | null
+    }) => {
+      const open = async () => (await startChat({ room: roomInfo.serverRoom, about })).chatId
+      let openId = id ?? (await open())
       let reply: ChatReply
       try {
-        reply = await sendChatMessage(openId, lines)
+        reply = await sendChatMessage(openId, lines, image)
       } catch (error) {
         if (!(error instanceof ApiError && error.status === 409)) throw error
-        openId = (await startChat()).chatId
-        reply = await sendChatMessage(openId, lines)
+        openId = await open()
+        reply = await sendChatMessage(openId, lines, image)
       }
       return { openId, reply }
     },
@@ -682,12 +812,46 @@ function CoachChat() {
       const studentText = variables.lines[variables.lines.length - 1]?.text ?? ''
       const serverChips = chipsFromServer(reply, nowCard)
       const chips = serverChips.length > 0 ? serverChips : codeChipsFor(studentText)
-      setThread((current) => ({
-        ...withBubble(current, { speaker: 'ai', text: reply.reply, chips }),
-        chatId: openId,
-        lastServerAt: Date.now(),
-        isHelpShown: current.isHelpShown || reply.showHelp,
-      }))
+      setThread((current) => {
+        const reasonCheck = reasonCheckOf(current, reply.tags)
+        return {
+          ...withBubble(current, {
+            speaker: 'ai',
+            text: reply.reply,
+            chips,
+            // 위기 안내는 효과 없이 바로 전체로 보여 줍니다.
+            ...(reply.showHelp ? {} : { typing: true }),
+            ...(reasonCheck ? { reasonCheck } : {}),
+          }),
+          chatId: openId,
+          lastServerAt: Date.now(),
+          isHelpShown: current.isHelpShown || reply.showHelp,
+        }
+      })
+    },
+  })
+
+  // [이야기하기] 로 연 주제 대화: 서버가 사실 줄을 보고 첫 말을 씁니다. 그 첫 말부터가 이 세션의 대화입니다.
+  const topicTalk = useMutation({
+    mutationFn: (about: ChatAbout) => startChat({ room: roomInfo.serverRoom, about }),
+    onSuccess: (reply) => {
+      setThread((current) => {
+        const reasonCheck = reasonCheckOf(current, reply.tags)
+        const opened = withBubble(current, {
+          speaker: 'ai',
+          text: reply.reply,
+          chips: chipsFromServer(reply, nowCard),
+          ...(reply.showHelp ? {} : { typing: true }),
+          ...(reasonCheck ? { reasonCheck } : {}),
+        })
+        return {
+          ...opened,
+          chatId: reply.chatId,
+          lastServerAt: Date.now(),
+          sessionFrom: opened.bubbles[opened.bubbles.length - 1].id,
+          isHelpShown: current.isHelpShown || reply.showHelp,
+        }
+      })
     },
   })
 
@@ -786,10 +950,29 @@ function CoachChat() {
     },
   })
   // AI 의 답이나 계획 · 문제를 기다리는 중인지 (그동안은 새 말 · 칩을 막습니다)
-  const isBusy = talk.isPending || planTalk.isPending || quizTalk.isPending
+  const isBusy = talk.isPending || topicTalk.isPending || planTalk.isPending || quizTalk.isPending
 
   const bubbles = thread.bubbles
   const lastBubble = bubbles[bubbles.length - 1]
+
+  /** 이 말풍선이 지금 "글자가 나오는 중" 이면 그 시간표, 아니면(다 나왔거나 효과 없음) null */
+  function revealOf(bubble: ThreadBubble): ActiveReveal | null {
+    if (!bubble.typing || bubble.at <= skipBefore) return null
+    const parts = splitReply(bubble.text)
+    const schedule = revealSchedule(parts)
+    const elapsed = clock - bubble.at
+    return elapsed >= schedule.totalMs ? null : { parts, schedule, elapsed }
+  }
+  const isRevealing = bubbles.slice(-3).some((bubble) => revealOf(bubble) !== null)
+
+  // 글자가 나오는 동안만 시계를 움직이고, 글이 늘어나는 만큼 목록을 아래로 따라 내립니다.
+  useEffect(() => {
+    if (!isRevealing) return
+    const list = listRef.current
+    if (list) list.scrollTop = list.scrollHeight
+    const timerId = setTimeout(() => setClock(Date.now()), 50)
+    return () => clearTimeout(timerId)
+  }, [isRevealing, clock])
   // 지금 고치는 중인 계획 말풍선. 있으면 학생이 쓰는 말은 이 계획을 고치는 요청이 됩니다.
   const openPlanBubble = bubbles.findLast((bubble) => bubble.plan?.status === 'open')
   // 가장 최근 문제 말풍선. 이것만 펼쳐 보이고, 앞의 문제 말풍선은 결과 한 줄로 접습니다.
@@ -803,18 +986,78 @@ function CoachChat() {
     if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
   }, [bubbles, isBusy])
 
-  // 홈에서 ?plan=today 로 들어왔으면 오늘 계획을 한 번 짜 줍니다. (주소의 값은 지워서 새로고침해도 또 짜지 않게)
+  // 계획 방에 이렇게 들어오면 한 번 짜 줍니다. (주소의 값은 지워서 새로고침해도 또 짜지 않게)
+  //   ?plan=today — 홈의 [코치와 계획 짜기]: 오늘 계획
+  //   ?plan=chip  — 다른 방에서 누른 계획 칩(내일 계획 · 긴 계획 등): 맡겨 둔 칩을 대신 눌러 줌 (lib/chatRooms.ts)
   // 개발 모드(StrictMode)는 effect 를 두 번 돌려서, 한 번만 짜려고 ref 로 표시해 둡니다.
-  const mutatePlan = planTalk.mutate
-  const hasPlanParam = planParam === 'today'
+  const planRequestParam =
+    roomInfo.isPlanner && (planParam === 'today' || planParam === 'chip') ? planParam : null
   const autoPlanStarted = useRef(false)
+  // 칩을 누르는 함수 · 주제 대화를 여는 함수. 화면을 그릴 때마다 새로 만들어져서, 가장 최근 것을 ref 에 둡니다.
+  // (주소를 보고 한 번만 하는 일이라 effect 에서 부르는데, 함수를 effect 의 의존 목록에 넣으면 매번 다시 돌아서)
+  const handleChipRef = useRef<(chip: CoachChip) => void>(() => {})
+  const openTalkRef = useRef<(request: TalkRequest) => void>(() => {})
   useEffect(() => {
-    if (!hasPlanParam || autoPlanStarted.current) return
+    handleChipRef.current = handleChip
+    openTalkRef.current = openTalk
+  })
+  useEffect(() => {
+    if (planRequestParam === null || autoPlanStarted.current) return
     autoPlanStarted.current = true
     setPlanParam('')
-    setThread((current) => withBubble(current, { speaker: 'me', text: PLAN_CHIP.label }))
-    mutatePlan({ type: 'day', light: false })
-  }, [hasPlanParam, setPlanParam, mutatePlan])
+    // ?plan=today 는 [▷ 오늘 계획 짜 줘] 칩을, ?plan=chip 은 다른 방에서 맡긴 칩을 대신 누릅니다.
+    const chip = planRequestParam === 'today' ? PLAN_CHIP : takePlanHandoff(Date.now())
+    if (chip) handleChipRef.current(chip)
+  }, [planRequestParam, setPlanParam])
+
+  // 다른 화면의 [이야기하기] 로 들어오면(?talk=) 맡겨 둔 주제로 새 대화를 엽니다. (lib/chatRooms.ts 의 startTalk)
+  //   열려 있던 서버 세션은 조용히 정리하고, "새 대화" 구분선 아래에 내 말(예: '💬 방금 공부 후기 나눌래')을 붙인 뒤
+  //   진짜 로그인은 서버 AI 가 사실 줄을 보고 첫 말을 쓰고, 테스트 로그인은 시연용 첫 말을 씁니다.
+  const handledTalkAt = useRef<number | null>(null)
+  useEffect(() => {
+    if (!isChatAboutKind(talkParam)) return
+    setTalkParam('')
+    const request: TalkRequest | null = peekTalkRequest(room, talkParam, Date.now())
+    if (!request || handledTalkAt.current === request.at) return
+    handledTalkAt.current = request.at
+    clearTalkRequest()
+    openTalkRef.current(request)
+  }, [talkParam, setTalkParam, room])
+
+  /** 맡겨 둔 [이야기하기] 요청으로 새 대화를 엽니다. (위 effect 가 부름) */
+  function openTalk(request: TalkRequest) {
+    const lines = sessionLines(thread)
+    if (thread.chatId !== null && isServerData && hasStudentLine(lines)) {
+      finishQuietly(thread.chatId, lines)
+    }
+    let next = closeOpenQuizzes(
+      withPlanStatus(thread, (bubble) => (bubble.plan?.status === 'open' ? 'closed' : null)),
+    )
+    next = withBubble(next, { speaker: 'ai', text: '새 대화', isDivider: true })
+    next = withBubble(next, { speaker: 'me', text: request.label })
+    next = {
+      ...next,
+      chatId: null,
+      lastServerAt: null,
+      sessionFrom: nextBubbleId(next.bubbles),
+      topic: { about: request.about, target: request.target },
+    }
+    if (!isServerData) {
+      const opener = demoTopicOpener(request.about.kind)
+      setThread(
+        withBubble(next, {
+          speaker: 'ai',
+          text: opener.text,
+          chips: opener.chips,
+          isDemo: true,
+          typing: true,
+        }),
+      )
+      return
+    }
+    setThread(next)
+    topicTalk.mutate(request.about)
+  }
 
   /**
    * 준비하는 것을 다 정했을 때 코치의 한 줄 반응 (테스트 로그인에서 씀). 날짜를 받았으면 D-day 를 말하고,
@@ -832,9 +1075,13 @@ function CoachChat() {
 
   /** 학생의 말을 보냅니다. 진짜 로그인은 서버 AI, 테스트 로그인은 시연용 정해진 답이 답합니다. */
   function sendText(raw: string) {
-    const text = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
+    // [💬 이 사진으로 물어보기] 로 붙인 사진이 있으면 이번 말에 같이 보냅니다. 글이 없으면 정해 둔 한 줄로.
+    const photo = attachedPhoto
+    const typed = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
+    const text = typed === '' && photo ? '이 사진 봐 줘' : typed
     if (text === '' || isBusy) return
-    if (focusStep === null) {
+    // 사진을 붙인 말은 계획 · 문제 부탁으로 알아듣지 않고 바로 AI 에게 보냅니다.
+    if (focusStep === null && photo === null) {
       // 계획 말풍선이 열려 있으면 학생이 쓴 말은 그 계획을 고치는 요청입니다. (계획 핑퐁)
       if (openPlanBubble?.plan) {
         revisePlan(openPlanBubble, text)
@@ -843,6 +1090,18 @@ function CoachChat() {
       // "11월 2일 중간고사 미적분 계획 짜 줘" 처럼 긴 계획을 부탁하면 바로 짜 줍니다.
       // 날짜를 못 알아들었으면 긴 계획 칸을 열어 날짜를 고르게 합니다.
       const longRequest = parseLongPlanText(text, todayKey)
+      if (longRequest && !roomInfo.isPlanner) {
+        // 계획 방이 아니면 계획 방으로 넘어가서 짭니다. (그 방에서 내가 쓴 말 대신 칩 글자가 보임)
+        navigate(
+          handOffPlanChip({
+            kind: 'makePlan',
+            label: `📅 ${text.slice(0, 40)}`,
+            goal: longRequest.goal || suggestedGoal(),
+            endDate: longRequest.endDate,
+          }),
+        )
+        return
+      }
       if (longRequest) {
         const goal = longRequest.goal || suggestedGoal()
         let notice: string | null = null
@@ -920,7 +1179,8 @@ function CoachChat() {
       setIsPickingDate(false)
       focusReaction = focusReactionNow()
     }
-    let next = withBubble(thread, { speaker: 'me', text })
+    setAttachedPhoto(null)
+    let next = withBubble(thread, { speaker: 'me', text, ...(photo ? { hasPhoto: true } : {}) })
     if (!isServerData && focusReaction) {
       // 테스트 로그인: 준비하는 것에 대한 답이면 코드가 바뀐 미션으로 반응합니다.
       setThread(
@@ -929,8 +1189,23 @@ function CoachChat() {
       return
     }
     if (!isServerData) {
-      const reply = replyDemo(text, { school, card: nowCard })
-      next = withBubble(next, { speaker: 'ai', text: reply.text, chips: reply.chips, isDemo: true })
+      // 테스트 로그인: 방 · 주제에 맞는 시연용 정해진 답 (lib/demoCoach.ts). 위기 표현이면 효과 없이 바로 보여 줍니다.
+      const reply = replyDemoInRoom({
+        room,
+        topicKind: next.topic?.about.kind ?? null,
+        text,
+        hasPhoto: photo !== null,
+        context: { school, card: nowCard },
+      })
+      const reasonCheck = reasonCheckOf(next, reply.tags ?? [])
+      next = withBubble(next, {
+        speaker: 'ai',
+        text: reply.text,
+        chips: reply.chips,
+        isDemo: true,
+        ...(reply.showHelp ? {} : { typing: true }),
+        ...(reasonCheck ? { reasonCheck } : {}),
+      })
       setThread({ ...next, isHelpShown: next.isHelpShown || reply.showHelp })
       return
     }
@@ -942,10 +1217,16 @@ function CoachChat() {
         chatId: null,
         lastServerAt: null,
         sessionFrom: newSessionStart(next.bubbles),
+        topic: null,
       }
     }
     setThread(next)
-    talk.mutate({ id: next.chatId, lines: sessionLines(next) })
+    talk.mutate({
+      id: next.chatId,
+      lines: sessionLines(next),
+      image: photo,
+      about: next.topic?.about ?? null,
+    })
   }
 
   // ---- 계획 말풍선 ----
@@ -1317,8 +1598,37 @@ function CoachChat() {
     setDraft('')
   }
 
+  /**
+   * 입력칸의 Enter: PC 는 Enter = 보내기, Shift+Enter = 줄바꿈 (사용자 요청 2026-10-18)
+   * - 한글은 글자를 조합하는 중에도 Enter 가 한 번 들어옵니다. 조합 중에 보내면 마지막 글자가 따로 한 번 더 보내져서,
+   *   조합이 끝난 Enter 에만 보냅니다. (components/ui/SchoolField.tsx 와 같은 방식)
+   * - 휴대폰(터치 키보드)은 Shift 가 없어서 Enter 를 줄바꿈으로 둡니다. 보내기는 [보내기] 버튼으로.
+   */
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+    if (isTouchKeyboard) return
+    event.preventDefault()
+    if (isBusy || (draft.trim() === '' && attachedPhoto === null)) return
+    sendText(draft)
+    setDraft('')
+  }
+
   /** 칩을 누르면: 말 칩은 그 말을 보내고, 행동 칩은 그 일을 합니다. (누를 때만 실행) */
   function handleChip(chip: CoachChip) {
+    // 계획 이야기는 계획 방에서 합니다. 다른 방에서 누르면 계획 방으로 넘어가서 그 칩을 대신 눌러 줍니다.
+    if (!roomInfo.isPlanner && isPlanChip(chip)) {
+      navigate(handOffPlanChip(chip))
+      return
+    }
+    if (chip.kind === 'pickPhoto') {
+      // 📎 사진 고르기 창을 엽니다. (고른 뒤 물어볼지 · 문제 · 계획 중 고름)
+      photoInputRef.current?.click()
+      return
+    }
+    if (chip.kind === 'reviewTalk') {
+      startReviewTalk(chip.sessionId)
+      return
+    }
     if (chip.kind === 'say') {
       sendText(chip.label)
       return
@@ -1462,6 +1772,125 @@ function CoachChat() {
     navigate(`/cards/new?date=${todayKey}`)
   }
 
+  // ---- 대화방 3개 · [이야기하기] (#582) ----
+
+  /** 공부 끝 회고의 [💬 후기 나누기] — 그 공부의 사실 줄로 후기 대화를 엽니다. (?talk= 로 같은 방이 다시 받음) */
+  function startReviewTalk(sessionId: string) {
+    if (isBusy) return
+    const session = loadStudySessions().find((item) => item.id === sessionId)
+    if (!session) return
+    const phone = loadPhoneLift(session.id)
+    navigate(
+      startTalk({
+        about: {
+          kind: 'SESSION_REVIEW',
+          lines: sessionReviewLines({
+            session,
+            card: cards.find((card) => card.id === session.cardId),
+            focus: loadFocusScore(session.id),
+            phoneText: phone ? formatPhoneSummary(phone) : null,
+          }),
+        },
+        label: '💬 방금 공부 후기 나눌래',
+        target: { type: 'session', sessionId: session.id },
+      }),
+    )
+  }
+
+  /** [＋ 새 대화] — 지금 서버 세션을 정리하고 "새 대화" 구분선 아래에서 방의 첫 인사로 다시 시작합니다. */
+  function handleNewChat() {
+    if (isBusy) return
+    const lines = sessionLines(thread)
+    if (thread.chatId !== null && isServerData && hasStudentLine(lines)) {
+      finishQuietly(thread.chatId, lines)
+    }
+    let next = closeOpenQuizzes(
+      withPlanStatus(thread, (bubble) => (bubble.plan?.status === 'open' ? 'closed' : null)),
+    )
+    next = withBubble(next, { speaker: 'ai', text: '새 대화', isDivider: true })
+    next = withBubble(next, {
+      speaker: 'ai',
+      text: roomInfo.greeting.text,
+      chips: roomInfo.greeting.chips,
+    })
+    // 방의 첫 인사부터가 새 서버 세션의 대화입니다. (주제도 없앰)
+    setThread({
+      ...next,
+      chatId: null,
+      lastServerAt: null,
+      sessionFrom: next.bubbles[next.bubbles.length - 1].id,
+      topic: null,
+    })
+    setFocusStep(null)
+    setLongForm(null)
+    setQuizForm(null)
+    setIsPickingTime(false)
+    setAttachedPhoto(null)
+  }
+
+  /** "이유: … — 맞아?" 에서 [맞아] · 고친 뒤 [저장] — 그 공부 기록 · 그 카드 하루치에 이유를 저장합니다. */
+  function saveReasons(bubble: ThreadBubble, values: string[]) {
+    const check = bubble.reasonCheck
+    if (!check) return
+    const target = check.target
+    if (target.type === 'session') {
+      const reasons = toShortfallReasons(values)
+      const session = loadAllSessions().find((item) => item.id === target.sessionId)
+      if (reasons.length === 0 || !session) return
+      // 서버 칸은 하나라서 대표 이유(shortfallReason)만 서버로 갑니다. 이 기기에는 모두(shortfallReasons) 남깁니다. (#562)
+      updateSession(session.id, {
+        endReport: {
+          ...(session.endReport ?? { checked: {} }),
+          shortfallReason: reasons[0],
+          shortfallReasons: reasons,
+        },
+      })
+    } else {
+      const causes = toFailCauses(values)
+      if (causes.length === 0) return
+      // 카드의 [코치랑 이야기하기] 로 왔으면 아직 실패로 기록하지 않았습니다. 확인받은 원인으로 이제 기록합니다. (#400)
+      addCardMark({
+        cardId: target.cardId,
+        dateKey: target.dateKey,
+        mark: 'failed',
+        cause: causes[0],
+        causes,
+      })
+    }
+    setThread((current) =>
+      withReasonCheck(current, bubble.id, (item) => ({ ...item, values, status: 'saved' })),
+    )
+  }
+
+  /** 이유 확인 칸의 상태만 바꿉니다. ([고칠래] → 칩으로 고르기 · [넘어갈래]) */
+  function changeReasonCheck(bubbleId: number, change: (check: ReasonCheck) => ReasonCheck) {
+    setThread((current) => withReasonCheck(current, bubbleId, change))
+  }
+
+  /** 문제 결과의 [📚 과목 쌤한테 물어보기] — 틀린 문제를 들고 과목 쌤 방에서 새 대화를 엽니다. */
+  function handleAskTutor(bubble: ThreadBubble) {
+    const quiz = bubble.quiz
+    if (!quiz || isBusy) return
+    const wrong = quiz.questions
+      .map((question, index) => ({ question, answer: quiz.answers[index] }))
+      .filter(({ question, answer }) => answer && answer.choiceIndex !== question.answerIndex)
+    if (wrong.length === 0) return
+    navigate(
+      startTalk({
+        about: { kind: 'QUIZ_WRONG', lines: quizWrongLines(quiz.topic, wrong) },
+        label: `📚 '${quiz.topic}' 틀린 문제 물어볼래`,
+        target: null,
+      }),
+    )
+  }
+
+  /** 📎 사진 → [💬 이 사진으로 물어보기] (다음에 보내는 말에 붙여서 보냄) */
+  function handlePhotoAsk() {
+    if (!chatPhoto || isBusy) return
+    setAttachedPhoto(chatPhoto)
+    setChatPhoto(null)
+  }
+
   /** 날짜 고르기 칸에서 [넣기] 를 누르면: 내 일정으로 저장하고, 그 날짜를 내 말로 보냅니다. */
   function handlePickDate(event: FormEvent) {
     event.preventDefault()
@@ -1486,12 +1915,27 @@ function CoachChat() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <MissionBar missions={missions} onOpen={handleShowMissions} />
-      {/* role="log": 새 말이 생기면 화면을 읽어 주는 프로그램이 알려 줍니다. */}
+      <div className="flex shrink-0 items-center gap-2">
+        {/* 오늘의 미션은 매일 코치 방에만 보입니다. */}
+        {isDailyCoach && (
+          <MissionBar missions={missions} onOpen={handleShowMissions} className="min-w-0 flex-1" />
+        )}
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={handleNewChat}
+          className={cn(chipClass, 'ml-auto disabled:opacity-40')}
+        >
+          ＋ 새 대화
+        </button>
+      </div>
+      {/* role="log": 새 말이 생기면 화면을 읽어 주는 프로그램이 알려 줍니다.
+          글자가 나오는 중에 목록을 누르면 남은 글이 바로 다 보입니다. (건너뛰기) */}
       <div
         ref={listRef}
         role="log"
-        aria-label="AI 코치와의 대화"
+        aria-label={`${roomInfo.name}와의 대화`}
+        onClick={() => isRevealing && setSkipBefore(Date.now())}
         className="min-h-0 flex-1 overflow-y-auto rounded-3xl bg-white p-4"
       >
         <ul className="flex flex-col gap-3">
@@ -1499,6 +1943,8 @@ function CoachChat() {
             // 날이 바뀌는 곳에 날짜 구분선을 그립니다. (하루의 기준은 새벽 4시)
             const previous = bubbles[index - 1]
             const isNewDay = !previous || toDayKey(previous.at) !== toDayKey(bubble.at)
+            // 글자가 나오는 중이면 시간표, 다 나왔으면 null. 칩 · 계획 · 문제 · 이유 확인은 다 나온 뒤에 보입니다.
+            const reveal = revealOf(bubble)
             return (
               <Fragment key={bubble.id}>
                 {isNewDay && (
@@ -1508,11 +1954,39 @@ function CoachChat() {
                     </span>
                   </li>
                 )}
-                {bubble.speaker === 'ai' ? (
-                  <li>
-                    <CoachBubble text={bubble.text} isDemo={bubble.isDemo} />
-                    {bubble.plan && <PlanCard plan={bubble.plan} />}
-                    {bubble.quiz && (
+                {bubble.isDivider ? (
+                  // [새 대화] · [이야기하기] 로 새 서버 세션을 연 곳의 구분선
+                  <li className="flex items-center gap-2 py-1" aria-label="새 대화">
+                    <span aria-hidden className="h-px flex-1 bg-slate-200" />
+                    <span className="text-xs font-medium text-slate-400">새 대화</span>
+                    <span aria-hidden className="h-px flex-1 bg-slate-200" />
+                  </li>
+                ) : bubble.speaker === 'ai' ? (
+                  <li className="flex flex-col gap-2">
+                    <ReplyParts
+                      bubble={bubble}
+                      reveal={reveal}
+                      roomName={roomInfo.name}
+                      roomEmoji={roomInfo.emoji}
+                    />
+                    {!reveal && bubble.reasonCheck && (
+                      <ReasonCheckBox
+                        check={bubble.reasonCheck}
+                        onConfirm={() => saveReasons(bubble, bubble.reasonCheck?.values ?? [])}
+                        onEdit={() =>
+                          changeReasonCheck(bubble.id, (check) => ({ ...check, status: 'editing' }))
+                        }
+                        onSave={(values) => saveReasons(bubble, values)}
+                        onDismiss={() =>
+                          changeReasonCheck(bubble.id, (check) => ({
+                            ...check,
+                            status: 'dismissed',
+                          }))
+                        }
+                      />
+                    )}
+                    {!reveal && bubble.plan && <PlanCard plan={bubble.plan} />}
+                    {!reveal && bubble.quiz && (
                       <QuizCard
                         quiz={bubble.quiz}
                         isLatest={bubble.id === latestQuizId}
@@ -1529,6 +2003,7 @@ function CoachChat() {
                           changeQuiz(bubble.id, (quiz) => ({ ...quiz, status: 'done' }))
                         }
                         onReviewWrong={() => handleReviewWrong(bubble)}
+                        onAskTutor={() => handleAskTutor(bubble)}
                         onOtherTopic={() => !isBusy && openQuizForm({}, '다른 주제로 낼래')}
                       />
                     )}
@@ -1537,6 +2012,7 @@ function CoachChat() {
                         문제를 푸는 중이면 문제 말풍선 안의 버튼만 씁니다. */}
                     {bubble === lastBubble &&
                       !isBusy &&
+                      !reveal &&
                       !isQuizActive(bubble.quiz) &&
                       (openPlanBubble?.plan ? (
                         <PlanChips
@@ -1555,6 +2031,10 @@ function CoachChat() {
                   <li className="flex justify-end">
                     {/* max-w-[80%] + break-words: 긴 말풍선도 화면 폭을 넘지 않고 안에서 줄바꿈됩니다. */}
                     <p className="bg-brand max-w-[80%] rounded-[20px] px-4 py-2.5 text-[15px] break-words whitespace-pre-wrap text-white">
+                      {/* 사진은 저장하지 않아서, 보냈다는 표시만 남깁니다. */}
+                      {bubble.hasPhoto && (
+                        <span className="block text-sm text-white/80">📎 사진 1장</span>
+                      )}
                       {bubble.text}
                     </p>
                   </li>
@@ -1562,14 +2042,20 @@ function CoachChat() {
               </Fragment>
             )
           })}
-          {talk.isPending && (
+          {(talk.isPending || topicTalk.isPending) && (
             <li>
-              <CoachBubble text="쓰는 중…" isStatus />
+              <TypingBubble
+                roomName={roomInfo.name}
+                roomEmoji={roomInfo.emoji}
+                label={talk.variables?.image ? '사진을 보고 쓰는 중' : '쓰는 중'}
+              />
             </li>
           )}
           {planTalk.isPending && (
             <li>
               <CoachBubble
+                name={roomInfo.name}
+                emoji={roomInfo.emoji}
                 text={
                   planTalk.variables?.type === 'long' && planTalk.variables.input.image
                     ? '사진을 읽고 계획 짜는 중…'
@@ -1582,6 +2068,8 @@ function CoachChat() {
           {quizTalk.isPending && (
             <li>
               <CoachBubble
+                name={roomInfo.name}
+                emoji={roomInfo.emoji}
                 text={quizTalk.variables?.image ? '사진을 읽고 문제 만드는 중…' : '문제 만드는 중…'}
                 isStatus
               />
@@ -1897,6 +2385,15 @@ function CoachChat() {
             ✕
           </button>
           <div className="flex w-full flex-wrap gap-2">
+            {/* 사진을 붙여서 이 방의 AI 에게 바로 물어봅니다. (과목 쌤: "이 문제 모르겠어") */}
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={handlePhotoAsk}
+              className={cn(chipClass, 'bg-brand-light text-brand border-transparent')}
+            >
+              💬 이 사진으로 물어보기
+            </button>
             <button
               type="button"
               disabled={isBusy}
@@ -1988,13 +2485,48 @@ function CoachChat() {
             </button>
           </div>
         )}
+        {topicTalk.isError && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 px-2 pt-1">
+            <p className="text-sm break-keep text-red-600">
+              {getChatErrorMessage(topicTalk.error)}
+            </p>
+            <button
+              type="button"
+              onClick={() => topicTalk.variables && topicTalk.mutate(topicTalk.variables)}
+              className={chipClass}
+            >
+              다시 보내기
+            </button>
+          </div>
+        )}
         {chatPhotoError && (
           <p role="alert" className="px-2 pt-1 text-sm break-keep text-red-600">
             {chatPhotoError}
           </p>
         )}
+        {/* [💬 이 사진으로 물어보기] 로 붙인 사진. 다음 말과 같이 보냅니다. (저장하지 않음) */}
+        {attachedPhoto && (
+          <div className="flex items-center gap-2 px-2 pt-1">
+            <img
+              src={attachedPhoto}
+              alt="같이 보낼 사진"
+              className="h-10 w-10 max-w-full shrink-0 rounded-lg object-cover"
+            />
+            <p className="min-w-0 flex-1 text-sm break-keep text-slate-600">
+              이 사진을 다음 말과 같이 보내요
+            </p>
+            <button
+              type="button"
+              aria-label="같이 보낼 사진 빼기"
+              onClick={() => setAttachedPhoto(null)}
+              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2">
-          {/* 📎 사진 넣기: 교과서 · 필기 · 시험 범위 사진으로 문제를 내거나 계획을 짭니다. (저장하지 않음) */}
+          {/* 📎 사진 넣기: 물어보기 · 교과서 · 필기 · 시험 범위 사진으로 문제를 내거나 계획을 짭니다. (저장하지 않음) */}
           <label
             aria-label="사진 넣기"
             className={cn(
@@ -2004,6 +2536,7 @@ function CoachChat() {
           >
             📎
             <input
+              ref={photoInputRef}
               type="file"
               accept="image/*"
               disabled={isBusy}
@@ -2012,30 +2545,43 @@ function CoachChat() {
             />
           </label>
           <label htmlFor="chat-input" className="sr-only">
-            AI 코치에게 보낼 말
+            {roomInfo.name}에게 보낼 말
           </label>
           <textarea
             id="chat-input"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleDraftKeyDown}
             // 키보드가 올라왔을 때 입력창이 가려지지 않게 화면 안으로 끌어옵니다.
             onFocus={(event) => event.currentTarget.scrollIntoView({ block: 'nearest' })}
             maxLength={MAX_CHAT_TEXT_LENGTH}
             rows={1}
             disabled={isBusy}
+            // PC 키보드는 Enter 가 "보내기" 라서 보내기 모양 키로, 휴대폰은 줄바꿈 그대로
+            enterKeyHint={isTouchKeyboard ? 'enter' : 'send'}
             // 계획을 고치는 중이면 쓰는 말이 고치는 요청이 된다고 알려 줍니다.
-            placeholder={openPlanBubble ? '계획 고칠 곳을 말해 줘' : '코치에게 말하기'}
+            placeholder={
+              openPlanBubble
+                ? '계획 고칠 곳을 말해 줘'
+                : attachedPhoto
+                  ? '사진에 대해 물어볼 말 (그냥 보내도 돼)'
+                  : roomInfo.placeholder
+            }
             // text-base: 아이폰은 16px 보다 작은 입력칸을 누르면 화면을 확대해서 16px 로 둡니다.
             className="focus:ring-brand/30 max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-2xl bg-slate-100 px-4 py-2.5 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
           />
           <button
             type="submit"
-            disabled={draft.trim() === '' || isBusy}
+            disabled={(draft.trim() === '' && attachedPhoto === null) || isBusy}
             className="bg-brand h-11 shrink-0 cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             보내기
           </button>
         </div>
+        {/* PC 에서만 키 안내. 휴대폰은 Enter 가 줄바꿈이고 보내기는 버튼입니다. */}
+        {!isTouchKeyboard && (
+          <p className="px-2 text-xs text-slate-400">Enter 보내기 · Shift+Enter 줄바꿈</p>
+        )}
       </form>
     </div>
   )
@@ -2076,25 +2622,39 @@ function ChipRow({ chips, onPick }: ChipRowProps) {
 
 interface CoachBubbleProps {
   text: string
+  /** 말풍선 위의 방 이름 · 아이콘 (lib/chatRooms.ts) */
+  name: string
+  emoji: string
+  /** false 면 위의 이름 줄을 빼고 말풍선만 그립니다. (한 답을 여러 말풍선으로 나눴을 때 두 번째부터) */
+  showName?: boolean
   /** true 면 "쓰는 중…" 처럼 상태를 알리는 말풍선입니다. (화면 읽기 프로그램이 읽어 줌) */
   isStatus?: boolean
   /** true 면 시연용 정해진 답이라고 아래에 붙입니다. */
   isDemo?: boolean
 }
 
-/** AI 코치의 말풍선. 위에 작은 코치 이름과 동그란 아이콘을 둡니다. */
-function CoachBubble({ text, isStatus = false, isDemo = false }: CoachBubbleProps) {
+/** AI 의 말풍선. 위에 작은 방 이름과 동그란 아이콘을 둡니다. */
+function CoachBubble({
+  text,
+  name,
+  emoji,
+  showName = true,
+  isStatus = false,
+  isDemo = false,
+}: CoachBubbleProps) {
   return (
     <div className="flex flex-col items-start gap-1">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-        <span
-          aria-hidden
-          className="bg-brand-light flex size-6 items-center justify-center rounded-full text-[13px]"
-        >
-          🧑‍🏫
-        </span>
-        코치
-      </p>
+      {showName && (
+        <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          <span
+            aria-hidden
+            className="bg-brand-light flex size-6 items-center justify-center rounded-full text-[13px]"
+          >
+            {emoji}
+          </span>
+          {name}
+        </p>
+      )}
       <p
         role={isStatus ? 'status' : undefined}
         className={cn(
@@ -2107,6 +2667,222 @@ function CoachBubble({ text, isStatus = false, isDemo = false }: CoachBubbleProp
       {isDemo && <p className="text-xs text-amber-700">시연용 정해진 답 (AI 아님)</p>}
     </div>
   )
+}
+
+/** 글자가 나오는 중인 답 하나 (lib/chatReveal.ts) */
+interface ActiveReveal {
+  parts: string[]
+  schedule: RevealSchedule
+  /** 답을 받은 뒤 지난 시간 (밀리초) */
+  elapsed: number
+}
+
+interface ReplyPartsProps {
+  bubble: ThreadBubble
+  /** 글자가 나오는 중이면 그 시간표, 다 나왔거나 효과가 없으면 null */
+  reveal: ActiveReveal | null
+  roomName: string
+  roomEmoji: string
+}
+
+/**
+ * AI 의 답 하나. 방금 받은 답(typing)은 메신저처럼 문장마다 말풍선 2~3개로 나눠 보여 주고,
+ * 글자가 나오는 중이면 타자 치듯 보여 줍니다. 다음 말풍선을 기다리는 동안은 "입력 중" 점 세 개가 보입니다.
+ */
+function ReplyParts({ bubble, reveal, roomName, roomEmoji }: ReplyPartsProps) {
+  const parts = bubble.typing ? splitReply(bubble.text) : [bubble.text]
+  return (
+    <>
+      {parts.map((part, index) => {
+        const isFirst = index === 0
+        const isLast = index === parts.length - 1
+        if (!reveal) {
+          return (
+            <CoachBubble
+              key={index}
+              name={roomName}
+              emoji={roomEmoji}
+              text={part}
+              showName={isFirst}
+              isDemo={isLast && bubble.isDemo}
+            />
+          )
+        }
+        const start = reveal.schedule.starts[index]
+        if (reveal.elapsed < start) {
+          // 아직 차례가 아닌 말풍선: 바로 앞 말풍선이 다 나왔으면 "입력 중" 점을, 아니면 아무것도 그리지 않습니다.
+          const previousEnd =
+            index > 0 ? reveal.schedule.starts[index - 1] + reveal.schedule.durations[index - 1] : 0
+          return reveal.elapsed >= previousEnd ? (
+            <TypingBubble
+              key={index}
+              roomName={roomName}
+              roomEmoji={roomEmoji}
+              showName={isFirst}
+              label="쓰는 중"
+            />
+          ) : null
+        }
+        const shown = visibleLength(
+          part.length,
+          reveal.elapsed - start,
+          reveal.schedule.durations[index],
+        )
+        return (
+          <CoachBubble
+            key={index}
+            name={roomName}
+            emoji={roomEmoji}
+            text={part.slice(0, Math.max(1, shown))}
+            showName={isFirst}
+          />
+        )
+      })}
+    </>
+  )
+}
+
+interface TypingBubbleProps {
+  roomName: string
+  roomEmoji: string
+  /** 화면 읽기 프로그램이 읽을 글 (예: '쓰는 중') */
+  label: string
+  showName?: boolean
+}
+
+/** "입력 중" 점 세 개 말풍선. 움직임 줄이기를 켠 사람에게는 점이 움직이지 않습니다. (motion-safe) */
+function TypingBubble({ roomName, roomEmoji, label, showName = true }: TypingBubbleProps) {
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {showName && (
+        <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          <span
+            aria-hidden
+            className="bg-brand-light flex size-6 items-center justify-center rounded-full text-[13px]"
+          >
+            {roomEmoji}
+          </span>
+          {roomName}
+        </p>
+      )}
+      <p role="status" className="flex h-10 items-center gap-1 rounded-[20px] bg-slate-100 px-4">
+        <span className="sr-only">{label}</span>
+        <span aria-hidden className="size-2 rounded-full bg-slate-400 motion-safe:animate-bounce" />
+        <span
+          aria-hidden
+          className="size-2 rounded-full bg-slate-400 motion-safe:animate-bounce motion-safe:[animation-delay:150ms]"
+        />
+        <span
+          aria-hidden
+          className="size-2 rounded-full bg-slate-400 motion-safe:animate-bounce motion-safe:[animation-delay:300ms]"
+        />
+      </p>
+    </div>
+  )
+}
+
+interface ReasonCheckBoxProps {
+  check: ReasonCheck
+  /** [맞아] — AI 가 짐작한 그대로 저장 */
+  onConfirm: () => void
+  /** [고칠래] — 칩으로 고르기 */
+  onEdit: () => void
+  /** 칩으로 고른 뒤 [저장] */
+  onSave: (values: string[]) => void
+  /** [넘어갈래] — 저장하지 않음 */
+  onDismiss: () => void
+}
+
+/**
+ * AI 가 학생 말로 짐작한 이유를 확인받는 칸. "이유: 폰 · 피곤함 — 맞아?" [맞아] [고칠래] [넘어갈래]
+ * 학생이 누를 때만 기록에 저장합니다. (AI 가 정한 걸 그대로 남기지 않음)
+ */
+function ReasonCheckBox({ check, onConfirm, onEdit, onSave, onDismiss }: ReasonCheckBoxProps) {
+  const isReview = check.kind === 'SESSION_REVIEW'
+  const labels = isReview ? shortfallLabels(check.values) : failCauseLabels(check.values)
+  const [picked, setPicked] = useState<string[]>(check.values)
+
+  if (check.status === 'dismissed') return null
+  if (check.status === 'saved') {
+    return (
+      <p className="w-full rounded-[20px] bg-emerald-50 px-3 py-2 text-sm break-keep text-emerald-800 sm:max-w-md">
+        ✅ {isReview ? '다 못 한 이유를' : '못 한 원인을'} 기록했어: {labels.join(' · ')}
+      </p>
+    )
+  }
+  if (check.status === 'editing') {
+    return (
+      <div className="flex w-full flex-col gap-2 rounded-[20px] border border-slate-200 bg-white p-3 sm:max-w-md">
+        <p className="text-sm font-medium text-slate-800">이유를 골라 줘. 여러 개 골라도 돼.</p>
+        {isReview ? (
+          <ReasonChips
+            options={SHORTFALL_REASONS}
+            selected={toShortfallReasons(picked)}
+            onToggle={(key) => setPicked((prev) => toggleReason(prev, key))}
+            label="다 못 한 이유"
+          />
+        ) : (
+          <ReasonChips
+            options={CARD_FAIL_CAUSES}
+            selected={toFailCauses(picked)}
+            onToggle={(key) => setPicked((prev) => toggleReason(prev, key))}
+            label="못 한 원인"
+          />
+        )}
+        <button
+          type="button"
+          disabled={picked.length === 0}
+          onClick={() => onSave(picked)}
+          className="bg-brand h-10 w-full cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          저장
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="flex w-full flex-col gap-2 rounded-[20px] border border-slate-200 bg-white p-3 sm:max-w-md">
+      <p className="text-[15px] break-keep text-slate-800">
+        이유: <span className="font-semibold">{labels.join(' · ')}</span> — 맞아?
+      </p>
+      {/* 세 버튼은 같은 모양 · 같은 크기 (어느 쪽으로도 몰지 않음) */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onConfirm}
+          className={cn(chipClass, 'flex-1 justify-center')}
+        >
+          맞아
+        </button>
+        <button type="button" onClick={onEdit} className={cn(chipClass, 'flex-1 justify-center')}>
+          고칠래
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className={cn(chipClass, 'flex-1 justify-center')}
+        >
+          넘어갈래
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** 움직임 줄이기(prefers-reduced-motion)를 켰는지. 켰으면 타자 효과를 끕니다. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  )
+}
+
+/**
+ * 손가락으로 누르는 화면(휴대폰 · 태블릿)인지. 이런 화면의 터치 키보드에는 Shift 가 없어서,
+ * Enter 를 "보내기" 로 바꾸면 줄바꿈을 할 수 없게 됩니다. 그래서 휴대폰은 Enter = 줄바꿈, 보내기는 버튼입니다.
+ */
+function isCoarsePointer(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true
 }
 
 // ---- 계획 말풍선 ----
@@ -2178,6 +2954,8 @@ interface QuizCardProps {
   /** 찍은 것 같을 때 [괜찮아] — 그대로 결과 보기 */
   onKeepResult: () => void
   onReviewWrong: () => void
+  /** [📚 과목 쌤한테 물어보기] — 틀린 문제를 들고 과목 쌤 방에서 대화 (#582) */
+  onAskTutor: () => void
   onOtherTopic: () => void
 }
 
@@ -2193,6 +2971,7 @@ function QuizCard({
   onRetry,
   onKeepResult,
   onReviewWrong,
+  onAskTutor,
   onOtherTopic,
 }: QuizCardProps) {
   const total = quiz.questions.length
@@ -2342,6 +3121,11 @@ function QuizCard({
                 className={cn(chipClass, 'bg-brand-light text-brand border-transparent')}
               >
                 틀린 것 다시 보기
+              </button>
+            )}
+            {wrongCount > 0 && (
+              <button type="button" onClick={onAskTutor} className={chipClass}>
+                📚 과목 쌤한테 물어보기
               </button>
             )}
             <button type="button" onClick={onOtherTopic} className={chipClass}>

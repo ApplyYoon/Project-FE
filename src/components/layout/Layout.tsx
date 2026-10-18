@@ -23,7 +23,7 @@ import { useSessionSync } from '@/hooks/useSessionSync'
 import { useTimerLock } from '@/hooks/useTimerLock'
 import { cn } from '@/lib/cn'
 import { needsSubjectsPath } from '@/lib/dataMode'
-import { COACH_PATH, getBackToTabLink, HOME_PATH } from '@/lib/tabMenu'
+import { CHAT_PATH, getBackToTabLink, HOME_PATH } from '@/lib/tabMenu'
 import { TIMER_PATH } from '@/lib/timerLock'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -75,9 +75,10 @@ export function Layout() {
   // (뒤로 가기 · 주소 직접 입력 · 알림 눌러 들어오기 모두 여기서 막힙니다)
   const isTimerLocked = useTimerLock()
   const isOutsideTimer = isTimerLocked && pathname !== TIMER_PATH
-  // 코치(채팅) 화면은 화면 높이를 꽉 채우고, 말풍선 목록만 스크롤되게 합니다. (입력창이 늘 아래에 보이게)
+  // 대화방(/chat/plan 등) 화면은 화면 높이를 꽉 채우고, 말풍선 목록만 스크롤되게 합니다. (입력창이 늘 아래에 보이게)
   // h-dvh: 모바일 주소창 · 키보드에 맞춰 바뀌는 "지금 보이는 높이" 입니다. 그 밖의 화면은 내용만큼 길어집니다(min-h-screen).
-  const isCoach = pathname === COACH_PATH
+  // 대화방 목록(/chat)은 보통 화면처럼 내용만큼 길어집니다.
+  const isCoach = pathname.startsWith(`${CHAT_PATH}/`)
 
   return (
     // 모바일에서 하단 탭이 마지막 내용을 가리지 않도록 아래 여백을 줍니다. (하단 탭이 있을 때만)

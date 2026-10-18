@@ -75,6 +75,10 @@ export type CoachChip =
   | { kind: 'makePlan'; label: string; goal: string; endDate: string | null }
   /** 공부 끝 확인 통화 걸기 (2026-10-18 "공부를 하게 하고 완료한 조건으로 통화") */
   | { kind: 'checkCall'; label: string }
+  /** 📎 사진 고르기 창을 엽니다. 과목 쌤 방에서 문제 사진을 보낼 때 (2026-10-18 대화방 3개, #582) */
+  | { kind: 'pickPhoto'; label: string }
+  /** 방금 공부의 후기를 코치와 말로 나눕니다. AI 가 이유를 짐작하면 "맞아?" 로 확인받아 기록에 남김 (#582) */
+  | { kind: 'reviewTalk'; label: string; sessionId: string }
 
 /**
  * 계획 칩. 코치가 먼저 계획을 짜 주고, 학생이 고칠 곳을 말하며 핑퐁합니다. (lib/coachPlan.ts)

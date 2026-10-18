@@ -1,7 +1,7 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
 import { cn } from '@/lib/cn'
 import { scrollToTop } from '@/lib/scroll'
-import { COACH_PATH, HOME_PATH, RECORDS_PATH } from '@/lib/tabMenu'
+import { CHAT_PATH, HOME_PATH, RECORDS_PATH } from '@/lib/tabMenu'
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
@@ -23,14 +23,14 @@ function TabIcon({ children }: { children: ReactNode }) {
   )
 }
 
-/** 탭 주소 → 아이콘. 홈(집) · 코치(말풍선) · 타이머(시계) · 기록(막대그래프) */
+/** 탭 주소 → 아이콘. 홈(집) · 채팅(말풍선) · 타이머(시계) · 기록(막대그래프) */
 const TAB_ICONS: Record<string, ReactNode> = {
   [HOME_PATH]: (
     <TabIcon>
       <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
     </TabIcon>
   ),
-  [COACH_PATH]: (
+  [CHAT_PATH]: (
     <TabIcon>
       <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
     </TabIcon>
@@ -49,7 +49,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
 }
 
 /**
- * 모바일 화면 아래에 고정되는 탭 메뉴입니다. (홈 · 코치 · 타이머 · 기록)
+ * 모바일 화면 아래에 고정되는 탭 메뉴입니다. (홈 · 채팅 · 타이머 · 기록)
  * 아이콘 + 작은 글자이고, 지금 있는 탭은 진한 글자로 보여 줍니다. (2026-10-18 모바일 UI)
  * PC(sm 이상)에서는 숨기고, 대신 헤더 메뉴를 보여줍니다.
  */

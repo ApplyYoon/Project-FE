@@ -1,6 +1,7 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { TalkButton } from '@/components/ui/TalkButton'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { AUTO_SETTING_ROWS } from '@/lib/autoSettingOptions'
 import { getCareLevelInfo } from '@/lib/careLevelInfo'
@@ -14,6 +15,7 @@ import {
 import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import { isPsychTestReliable, loadPsychTest } from '@/lib/psychTest'
 import { profileLinesQuery, signatureOf } from '@/lib/psychTestApi'
+import { psychResultLines } from '@/lib/talkLines'
 import { loadAutoSettings, proposeCareLimits } from '@/lib/settingsMapping'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { Suspense, useState } from 'react'
@@ -185,9 +187,24 @@ export function OnboardingResultPage() {
           </p>
         </Card>
 
-        <Button size="lg" className="w-full sm:w-auto sm:self-start" onClick={handleStart}>
-          시작하기
-        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Button size="lg" className="w-full sm:w-auto" onClick={handleStart}>
+            시작하기
+          </Button>
+          {/* 결과를 들고 상담 방에서 "이건 진짜 나다 / 아닌데" 를 코치와 이야기합니다. (#582)
+              온보딩이 아직 남았으면 남은 자리로 먼저 갑니다. (대화는 10분 안에 상담 방을 열면 이어짐) */}
+          <TalkButton
+            about={{
+              kind: 'PSYCH_RESULT',
+              lines: psychResultLines(psychTest.scores, isReliable),
+            }}
+            label="💬 검사 결과 이야기할래"
+            onBeforeTalk={() => {
+              markOnboardingResultSeen()
+              return getOnboardingResumePath()
+            }}
+          />
+        </div>
       </div>
     </PlainLayout>
   )
