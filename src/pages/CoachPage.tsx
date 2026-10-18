@@ -19,6 +19,7 @@ import { runDailyCareStage } from '@/lib/dailyCareRun'
 import { loadAllSessions } from '@/lib/dailyRecords'
 import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey } from '@/lib/date'
+import { replyDemo } from '@/lib/demoCoach'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
@@ -37,6 +38,8 @@ interface ChatBubble {
   text: string
   /** 코치 말풍선 아래의 빠른 답 칩. 가장 마지막 코치 말풍선의 칩만 보입니다. */
   chips?: CoachChip[]
+  /** true 면 테스트 로그인용 "시연용 정해진 답" 입니다. (AI 가 쓴 말이 아님) */
+  isDemo?: boolean
 }
 
 /** 탭을 옮겼다 돌아와도 이어지게 들고 있는 대화 */
@@ -61,7 +64,7 @@ function toLines(bubbles: ChatBubble[]): CallLine[] {
 
 /**
  * 서버가 거절한 이유를 학생이 이해할 수 있는 문장으로 바꿉니다.
- * 테스트 로그인은 서버가 모르는 사람이라 401 이 오는데, 그때는 로그인 화면으로 보내지 않고 안내만 합니다.
+ * (테스트 로그인은 서버를 안 부르고 시연용 정해진 답을 쓰므로 여기까지 오지 않습니다)
  */
 function getChatErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 401) {
@@ -77,7 +80,8 @@ function getChatErrorMessage(error: unknown): string {
  *   1. 화면을 열면 코치가 먼저 말을 겁니다. (아침 브리핑: 시간표 · 급식 · 시험 D-day · 오늘 카드 · 오늘 컨디션)
  *      이 첫 말은 코드가 만듭니다(lib/coachBriefing.ts). 그래서 열기만 해서는 AI 사용량을 쓰지 않습니다.
  *   2. 말풍선 아래 칩을 누르거나 말을 쓰면 AI 가 답합니다.
- *      그때 처음 서버 채팅을 열고, 지금까지의 대화를 모두 보내 AI 의 답을 받습니다.
+ *      - 진짜 로그인: 그때 처음 서버 채팅을 열고, 지금까지의 대화를 모두 보내 AI 의 답을 받습니다.
+ *      - 테스트 로그인: 서버를 못 써서 시연용 정해진 답(lib/demoCoach.ts)을 쓰고 "시연용 정해진 답" 이라고 붙입니다.
  *   3. "피곤해 · 시간 없어" 같은 핑계에는 AI 답 아래에 [▷ 10분으로 줄여서 시작] 칩을 붙입니다. (핑계 협상)
  *      행동 칩(시작 · 카드 만들기)은 누를 때만 실행합니다.
  *   4. 위기 표현이 나오면 상담 전화 한 줄을 보여 줍니다. 입력창은 닫지 않습니다. 서버가 대화를 끝냈으면(409) [새로 시작]
@@ -158,6 +162,7 @@ function CoachChat() {
     todayKey,
     now,
   })
+  const nowCard = todayCards.current ?? todayCards.next
 
   // 처음 그릴 때 한 번만 정합니다: 들고 있던 대화(없으면 코치의 첫 말)
   const [initial] = useState(() => {
@@ -241,11 +246,19 @@ function CoachChat() {
     if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
   }, [bubbles, talk.isPending])
 
-  /** 학생의 말을 보내고 AI 의 답을 받습니다. */
+  /** 학생의 말을 보냅니다. 진짜 로그인은 서버 AI, 테스트 로그인은 시연용 정해진 답이 답합니다. */
   function sendText(raw: string) {
     const text = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
     if (text === '' || talk.isPending || isTooLong) return
     const next = addBubble({ speaker: 'me', text }, bubbles)
+    if (!isServerData) {
+      const reply = replyDemo(text, { school, card: nowCard })
+      setBubbles(
+        addBubble({ speaker: 'ai', text: reply.text, chips: reply.chips, isDemo: true }, next),
+      )
+      if (reply.showHelp) setIsHelpShown(true)
+      return
+    }
     setBubbles(next)
     talk.mutate({ id: chatId, lines: toLines(next) })
   }
@@ -316,7 +329,7 @@ function CoachChat() {
           {bubbles.map((bubble) =>
             bubble.speaker === 'ai' ? (
               <li key={bubble.id}>
-                <CoachBubble text={bubble.text} />
+                <CoachBubble text={bubble.text} isDemo={bubble.isDemo} />
                 {/* 칩은 가장 마지막 코치 말풍선 아래에만 보입니다. 답을 받는 중에는 숨깁니다. */}
                 {bubble === lastBubble && !talk.isPending && bubble.chips && (
                   <ChipRow chips={bubble.chips} onPick={handleChip} />
@@ -466,10 +479,12 @@ interface CoachBubbleProps {
   text: string
   /** true 면 "쓰는 중…" 처럼 상태를 알리는 말풍선입니다. (화면 읽기 프로그램이 읽어 줌) */
   isStatus?: boolean
+  /** true 면 시연용 정해진 답이라고 아래에 붙입니다. */
+  isDemo?: boolean
 }
 
 /** AI 코치의 말풍선. 위에 작은 코치 이름과 동그란 아이콘을 둡니다. */
-function CoachBubble({ text, isStatus = false }: CoachBubbleProps) {
+function CoachBubble({ text, isStatus = false, isDemo = false }: CoachBubbleProps) {
   return (
     <div className="flex flex-col items-start gap-1">
       <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
@@ -490,6 +505,7 @@ function CoachBubble({ text, isStatus = false }: CoachBubbleProps) {
       >
         {text}
       </p>
+      {isDemo && <p className="text-xs text-amber-700">시연용 정해진 답 (AI 아님)</p>}
     </div>
   )
 }
