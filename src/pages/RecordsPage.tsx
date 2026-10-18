@@ -1,14 +1,11 @@
 import { useQueryParam } from '@/hooks/useQueryParam'
-import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AiAnalysisCard } from '@/components/ui/AiAnalysisCard'
-import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { Skeleton } from '@/components/ui/Skeleton'
 import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { useCards } from '@/hooks/useCards'
 import { usePlans } from '@/hooks/usePlans'
@@ -47,7 +44,6 @@ import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { loadData, loadRecord } from '@/lib/storage'
-import { thinkingHabitsQuery } from '@/lib/thinkingHabits'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
 import type { CareLevel, CheckIn, EmotionTag, StudyPlan, StudySession, Subject } from '@/types'
 
@@ -278,73 +274,6 @@ export function RecordsPage() {
       </div>
 
       <CallSummaryCard summaries={callSummaries} />
-
-      <Card title="자주 보이는 내 생각 습관">
-        {/* 서버에서 받아오는 부분만 AsyncBoundary 로 감쌉니다. 받아오는 동안 스켈레톤, 실패하면 안내와 다시 시도 버튼 */}
-        <AsyncBoundary
-          pendingFallback={<ThinkingHabitsSkeleton />}
-          errorMessage="생각 습관을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
-        >
-          <ThinkingHabitList />
-        </AsyncBoundary>
-      </Card>
-    </div>
-  )
-}
-
-/** 생각 습관을 받아오는 동안 보여 주는 자리 (진짜 목록과 비슷한 크기) */
-function ThinkingHabitsSkeleton() {
-  return (
-    <div role="status" className="flex flex-col gap-3">
-      <span className="sr-only">생각 습관을 불러오는 중이에요</span>
-      <Skeleton className="h-28 w-full rounded-lg" />
-    </div>
-  )
-}
-
-/**
- * 통화에서 최근 2주 중 3일 넘게 보인 생각 습관(인지편향) 목록입니다. (서버가 골라 줍니다)
- * 이름은 "생각" 에 붙입니다. "너는 ~형" 처럼 사람에게 붙이지 않습니다.
- */
-function ThinkingHabitList() {
-  const { data: habits } = useSuspenseQuery(thinkingHabitsQuery())
-
-  if (habits.length === 0) {
-    return (
-      <p className="py-6 text-center text-sm break-keep text-slate-500">
-        통화에서 같은 생각 습관이 최근 2주 중 3일 넘게 보이면 여기에 알려 줄게요.
-      </p>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <ul className="flex flex-col gap-3">
-        {habits.map((habit) => (
-          <li key={habit.key} className="rounded-lg border border-slate-200 p-4">
-            {/* 이름과 보인 날 수. 좁은 화면에서는 줄을 바꿉니다. */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-base font-semibold text-slate-900">{habit.label}</p>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                최근 2주 중 {habit.days}일
-              </span>
-            </div>
-            <p className="mt-1 text-sm break-keep text-slate-600">{habit.description}</p>
-            {habit.lastEvidence !== null && (
-              <p className="mt-2 text-sm break-keep text-slate-700">
-                최근 통화에서: {habit.lastEvidence}
-              </p>
-            )}
-            <div className="bg-brand/10 mt-3 rounded-lg px-3 py-2">
-              <p className="text-brand-dark text-xs font-semibold">이렇게 해 볼까요?</p>
-              <p className="mt-0.5 text-sm break-keep text-slate-900">{habit.solution}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <p className="text-xs break-keep text-slate-500">
-        생각 습관은 성격이 아니라, 알아차리면 바꿀 수 있는 버릇이에요.
-      </p>
     </div>
   )
 }

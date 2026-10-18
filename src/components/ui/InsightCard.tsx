@@ -9,9 +9,7 @@ import {
 } from '@/lib/insightResponses'
 import type { Insight, InsightResponse, StudySession } from '@/types'
 import { loadInsightDisputes, saveInsightDispute } from '@/lib/insightDisputes'
-import { getAnalysisTabPath } from '@/lib/tabMenu'
 import { useId, useState } from 'react'
-import { Link } from 'react-router-dom'
 
 interface InsightCardProps {
   insight: Insight
@@ -32,8 +30,8 @@ interface InsightCardProps {
  * - 근거 보기 (#84): 누르면 이 결론이 나온 날짜마다 그날의 순공시간과 컨디션이 펼쳐집니다.
  * - 반응 버튼 3개 (#84): [몰랐는데 맞아] [이미 알던 거야] [틀렸어] 중 하나만 고를 수 있고,
  *   다시 눌러 바꿀 수 있습니다. 고른 반응은 저장됩니다.
- * - [틀렸어] 를 눌러도 **숨기지 않습니다** (#411). "그럼 2주 확인해볼래?" 로 자기 실험을 제안하고,
- *   실험 결과 사용자가 맞으면 "AI가 틀렸어요" 를 붙여 철회합니다. (lib/insightDisputes.ts)
+ * - [틀렸어] 를 눌러도 **숨기지 않습니다** (#411). 예전에 자기 실험으로 확인한 결과가 있으면
+ *   "AI가 틀렸어요" / "맞았어요" 를 붙입니다. (lib/insightDisputes.ts, 가설·실험 탭은 2026-10-18 에 지웠습니다)
  *
  * <InsightCard insight={insight} sessions={sessions} />
  * <InsightCard insight={insight} sessions={sessions} isExample />   // 예시일 때
@@ -164,19 +162,6 @@ export function InsightCard({
           )
         })}
       </div>
-
-      {/* [틀렸어] → 숨기지 않고 2주 실험을 제안합니다. 이미 확인했으면 띄우지 않습니다. */}
-      {response === 'wrong' && !dispute?.outcome && !isExample && (
-        <div className="mt-3 rounded-lg bg-violet-50 p-3 text-sm text-violet-900">
-          <p className="break-keep">그럼 2주 확인해 볼래요? 기록으로 누가 맞는지 볼게요.</p>
-          <Link
-            to={`${getAnalysisTabPath('experiment')}&from=${encodeURIComponent(insight.id)}`}
-            className="mt-2 inline-flex h-10 items-center rounded-lg bg-violet-600 px-3 font-medium text-white"
-          >
-            실험으로 확인하기
-          </Link>
-        </div>
-      )}
     </Card>
   )
 }

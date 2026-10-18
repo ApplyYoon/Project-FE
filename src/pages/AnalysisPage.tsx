@@ -6,21 +6,18 @@ import { lazy } from 'react'
 
 /*
  * 하위 탭 화면도 router.tsx 처럼 그 탭을 처음 열 때 받아옵니다. (Lazy Load)
- * 분석 탭을 열 때 기록 화면만 받고, 리포트 · 사용설명서는 그 탭을 누를 때 받습니다.
+ * 분석 탭을 열 때 기록 화면만 받고, 리포트는 그 탭을 누를 때 받습니다.
  */
-const ManualPage = lazy(() => import('@/pages/ManualPage').then((m) => ({ default: m.ManualPage })))
 const RecordsPage = lazy(() =>
   import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
 )
 const ReportPage = lazy(() => import('@/pages/ReportPage').then((m) => ({ default: m.ReportPage })))
-const ExperimentPage = lazy(() =>
-  import('@/pages/ExperimentPage').then((m) => ({ default: m.ExperimentPage })),
-)
 
 /**
- * 분석 탭 화면(/analysis)입니다. 위의 하위 탭 막대로 [기록 | 리포트 | 사용설명서 | 자기 실험] 을 오갑니다. (#386, #412)
- * 보고 있는 하위 탭은 주소에 둡니다. (/analysis = 기록, /analysis?tab=report = 리포트, ?tab=manual = 사용설명서)
+ * 분석 탭 화면(/analysis)입니다. 위의 하위 탭 막대로 [기록 | 리포트] 를 오갑니다. (#386)
+ * 보고 있는 하위 탭은 주소에 둡니다. (/analysis = 기록, /analysis?tab=report = 리포트)
  * 옛 주소 /records · /report · /manual 로 들어와도 여기로 옵니다. (router.tsx)
+ * 사용설명서 · 가설·실험 하위 탭은 2026-10-18 에 지웠습니다. 옛 ?tab=manual · ?tab=experiment 는 기록 탭으로 보입니다.
  */
 export function AnalysisPage() {
   const [tabParam] = useQueryParam('tab', 'records')
@@ -35,8 +32,6 @@ export function AnalysisPage() {
       <PageBoundary key={tab}>
         {tab === 'records' && <RecordsPage />}
         {tab === 'report' && <ReportPage />}
-        {tab === 'manual' && <ManualPage />}
-        {tab === 'experiment' && <ExperimentPage />}
       </PageBoundary>
     </>
   )

@@ -240,10 +240,9 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
             <LatestExperimentLine />
           </section>
 
-          {/* ⑤ 다음 실험 제안. 고르는 일은 가설·실험 탭에서 합니다. 여기서는 그리로 안내만 합니다. */}
+          {/* ⑤ 다음 실험 제안. AI 분석이 고른 실험 하나를 보여 줍니다. (가설·실험 탭은 2026-10-18 에 지웠습니다) */}
           <section>
             <h2 className="text-lg font-bold text-slate-900">다음 실험 제안</h2>
-            {/* AI 분석이 고른 실험 하나를 보여 주고, 고르는 일은 가설·실험 탭으로 안내합니다. (#419) */}
             <AnalysisExperimentSuggestion className="mt-2" />
           </section>
         </>

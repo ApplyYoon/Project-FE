@@ -51,7 +51,7 @@ function getStepIndex(step: GoalStep): number {
  * - 지금 단계는 주소의 ?step= 에 둡니다. 새로고침하거나 뒤로 가기를 눌러도 자연스럽습니다.
  * - 적던 내용은 이 기기에 임시로 넣어 둡니다('study-goal-draft'). 저장하면 지웁니다.
  * - 마지막에 P 계획을 루틴 카드 2장으로 바꿔 제안하고, 고른 카드는 카드 탭에 들어갑니다.
- * - 첫 목표라면 저장한 뒤 다짐 녹음 화면으로 갑니다. (녹음은 기기에만, lib/voicePledge.ts)
+ * - 저장한 뒤 카드 탭으로 갑니다. (첫 목표 뒤의 다짐 녹음은 2026-10-18 에 지웠습니다)
  * - 진행 중 목표가 이미 3개면 만들 수 없다고 알려 줍니다.
  */
 export function GoalNewPage() {
@@ -151,13 +151,10 @@ export function GoalNewPage() {
       return
     }
     const { goal, cards } = createGoalWithCards(draft, picked, todayKey, aiSuggestions)
-    // 이 목표가 첫 목표인지는 저장하기 전에 봐 둡니다.
-    const isFirstGoal = goals.length === 0
     if (!addGoal(goal)) return
     for (const card of cards) addCard(card)
     removeData(GOAL_DRAFT_KEY)
-    // 첫 목표면 다짐을 녹음하러 갑니다. (건너뛰어도 됩니다)
-    navigate(isFirstGoal ? '/onboarding/voice?from=goal' : '/cards')
+    navigate('/cards')
   }
 
   /** [다음] · [목표 저장] (입력칸에서 Enter 를 눌러도 여기로 옵니다) */
