@@ -340,6 +340,75 @@ export function isSavedPsychTestComplete(answers: Record<string, number>): boole
   return isPsychTestComplete(answers) || LEGACY_ITEM_IDS.every((id) => isValidAnswer(answers[id]))
 }
 
+// ---- 답이 믿을 만한지 (2026-10-18) ----
+// 사용자: "응답 보고 다 똑같은 거 하면 막 의심하고" → AI 가 아니라 코드 규칙으로 봅니다.
+// ⚠️ 서버 BE 의 PsychAnswerCheck · AnswerPattern 과 같은 규칙입니다. 한쪽을 고치면 다른 쪽도 같이 고쳐 주세요.
+
+/**
+ * 가장 많은 답이 이 비율 이상이면 믿기 어렵습니다. (35문항이면 32개 이상이 같은 숫자)
+ * "대부분 보통(4)" 인 학생(30개, 86%)은 진짜로 있을 수 있어서, 너무 쉽게 의심하지 않게 90% 로 잡았습니다.
+ */
+const SAME_ANSWER_LIMIT = 0.9
+/** 되풀이로 볼 묶음의 최대 칸 수. 문장이 척도 7개를 돌아가며 나와서, 7칸마다 같은 답은 진짜 생각일 수 있어 보지 않습니다. */
+const MAX_CYCLE = 4
+/** 묶음을 이 비율 이상 되풀이하면 믿기 어렵습니다. (몇 개는 실수로 다르게 눌렀을 수 있어서 100% 가 아님) */
+const REPEAT_LIMIT = 0.9
+/** 되풀이로 보려면 묶음이 몇 번은 돌아야 하는지. 두 번(1-2-1-2)은 우연히도 나와서 세 번부터 봅니다. */
+const MIN_ROUNDS = 3
+
+/** 가장 많이 나온 답이 전체에서 차지하는 비율 (0 ~ 1).   [4, 4, 4, 5] → 0.75 */
+function getTopShare(values: number[]): number {
+  if (values.length === 0) return 0
+  const counts = new Map<number, number>()
+  let top = 0
+  for (const value of values) {
+    const count = (counts.get(value) ?? 0) + 1
+    counts.set(value, count)
+    top = Math.max(top, count)
+  }
+  return top / values.length
+}
+
+/** gap 칸 앞의 답과 같은 답의 비율 (0 ~ 1).   [1, 2, 1, 2] 는 gap 2 에서 1 */
+function getRepeatShare(values: number[], gap: number): number {
+  const pairs = values.length - gap
+  if (gap < 1 || pairs < 1) return 0
+  let same = 0
+  for (let i = gap; i < values.length; i++) {
+    if (values[i] === values[i - gap]) same++
+  }
+  return same / pairs
+}
+
+/** 짧은 묶음(2 ~ 4칸)을 되풀이해 누른 것 같은지. 바로 앞과 같은 답이 대부분이면(4-4-4…) "다 같음" 이라 여기서는 false */
+function isRepeating(values: number[]): boolean {
+  if (getRepeatShare(values, 1) >= REPEAT_LIMIT) return false
+  for (let gap = 2; gap <= MAX_CYCLE; gap++) {
+    if (values.length >= gap * MIN_ROUNDS && getRepeatShare(values, gap) >= REPEAT_LIMIT) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * 성향 검사의 답이 믿을 만한지. 화면에 나온 순서(S1 A1 P1 … → S2 …)대로 늘어놓고, 둘 중 하나면 false 입니다.
+ *   1. 가장 많은 답이 90% 이상
+ *   2. 2 ~ 4칸 묶음을 90% 이상 되풀이 (1-7-1-7 · 1-4-7-1-4-7)
+ * 믿기 어려워도 결과는 그대로 저장합니다. 결과 화면이 "다시 해 볼래?" 를 한 번 물을 뿐입니다.
+ *
+ *   35개 모두 4                         -> false
+ *   4 가 32개, 나머지 3개는 다른 숫자      -> false
+ *   4 가 31개                            -> true
+ *   1, 7, 1, 7, … (35개)                 -> false
+ *   척도마다 다른 답 (S 는 6 · A 는 2 · …) -> true  (7칸마다 같은 답은 의심하지 않음)
+ */
+export function isPsychTestReliable(answers: Record<string, number>): boolean {
+  const shown = psychTestItems.map((item) => answers[item.id]).filter(isValidAnswer)
+  if (shown.length === 0) return true
+  return getTopShare(shown) < SAME_ANSWER_LIMIT && !isRepeating(shown)
+}
+
 // ---- 저장 ----
 
 // 저장 이름. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여 'study-psych-test' 가 됩니다)
