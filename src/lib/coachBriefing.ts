@@ -8,9 +8,11 @@
  *   buildMorningBriefing({ hour: 8, school, grade: 2, cards, checkIn })
  *   -> { text: '좋은 아침! 오늘은 미적분Ⅰ · 문학 · 영어Ⅰ 수업이 있는 날이야. …', chips: [...] }
  */
+import { sessionMinutes } from '@/lib/dailyRecords'
 import type { SchoolToday } from '@/lib/schoolToday'
+import { loadData } from '@/lib/storage'
 import type { TodayCardsState } from '@/lib/todayCards'
-import type { CheckIn } from '@/types'
+import type { CheckIn, StudySession } from '@/types'
 
 /**
  * 말풍선 아래의 빠른 답 칩 하나.
@@ -194,3 +196,97 @@ export const EXCUSE_WORDS = [
   '쉴래',
   '10분만',
 ]
+
+/** 공부 중에 폰을 든 기록 (앱이 세션마다 저장. 키 'study-phone-lifts', 세션 번호별) */
+export interface PhoneLiftRecord {
+  /** 폰을 들고 있던 시간 합계 (밀리초) */
+  liftedMs: number
+  /** 잠깐 확인(5~30초) 횟수 */
+  checks: number
+  /** 30초 넘게 든 횟수 */
+  longLifts: number
+  /** 들고 앱 밖으로 나간 횟수 */
+  outsideLifts: number
+  /** 앱 밖에 있던 시간 합계 (밀리초) */
+  outsideMs: number
+}
+
+function isPhoneLiftRecord(value: unknown): value is PhoneLiftRecord {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return ['liftedMs', 'checks', 'longLifts', 'outsideLifts', 'outsideMs'].every(
+    (key) => typeof record[key] === 'number' && (record[key] as number) >= 0,
+  )
+}
+
+/** 그 세션의 폰 기록. 앱이 아니거나(웹) 기록이 없으면 null 입니다. */
+export function loadPhoneLift(sessionId: string): PhoneLiftRecord | null {
+  const saved = loadData<unknown>('phone-lifts', {})
+  if (typeof saved !== 'object' || saved === null) return null
+  const record = (saved as Record<string, unknown>)[sessionId]
+  return isPhoneLiftRecord(record) ? record : null
+}
+
+/** 공부가 끝난 지 이만큼 안이면 코치가 먼저 결과를 물어봅니다. (3시간) */
+export const RECAP_WITHIN_MS = 3 * 60 * 60 * 1000
+
+/**
+ * 코치가 먼저 결과를 물어볼 공부 기록. 3시간 안에 끝났고, 아직 물어보지 않은 가장 최근 것 하나입니다. 없으면 null
+ *
+ *   findRecapSession(기록들, 지금, '지난번에 물어본 기록 번호')
+ */
+export function findRecapSession(
+  sessions: StudySession[],
+  now: number,
+  lastRecappedId: string | null,
+): StudySession | null {
+  const recent = sessions
+    .filter((session) => session.endedAt <= now && now - session.endedAt <= RECAP_WITHIN_MS)
+    .sort((a, b) => b.endedAt - a.endedAt)[0]
+  if (!recent || recent.id === lastRecappedId) return null
+  return recent
+}
+
+/** 밀리초 → '1분 40초' · '40초' */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}초`
+  return seconds === 0 ? `${minutes}분` : `${minutes}분 ${seconds}초`
+}
+
+/**
+ * 타이머가 끝나고 코치 탭에 오면 코치가 먼저 거는 말. 숫자는 기록으로 계산한 것만 씁니다.
+ *
+ *   buildSessionRecap(25분 기록, { checks: 1, longLifts: 1, outsideMs: 100000, … })
+ *   -> '25분 했네! 폰은 2번 들었고, 그중 앱 밖에 1분 40초 있었어. 어땠어?'
+ */
+export function buildSessionRecap(
+  session: StudySession,
+  phone: PhoneLiftRecord | null,
+): CoachMessage {
+  const minutes = sessionMinutes(session)
+  let text = `${minutes}분 했네!`
+  if (phone) {
+    const lifts = phone.checks + phone.longLifts
+    if (lifts === 0) {
+      text += ' 폰은 한 번도 안 들었어. 대단한데?'
+    } else {
+      text += ` 폰은 ${lifts}번 들었어`
+      text +=
+        phone.outsideMs > 0
+          ? `, 그중 앱 밖에 ${formatDuration(phone.outsideMs)} 있었어.`
+          : '. 앱 밖으로는 안 나갔고.'
+    }
+  }
+  text += ' 어땠어?'
+  return {
+    text,
+    chips: [
+      { kind: 'say', label: '다 했어' },
+      { kind: 'say', label: '일부만 했어' },
+      { kind: 'say', label: '못 했어' },
+    ],
+  }
+}

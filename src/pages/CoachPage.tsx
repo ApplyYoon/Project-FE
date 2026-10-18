@@ -10,13 +10,16 @@ import { createInstantCardNow } from '@/lib/cardSession'
 import { MAX_CHAT_LINES, MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat } from '@/lib/chatApi'
 import {
   buildMorningBriefing,
+  buildSessionRecap,
+  findRecapSession,
+  loadPhoneLift,
   negotiationChipsFor,
   type CoachChip,
   type CoachMessage,
 } from '@/lib/coachBriefing'
 import { cn } from '@/lib/cn'
 import { runDailyCareStage } from '@/lib/dailyCareRun'
-import { loadAllSessions } from '@/lib/dailyRecords'
+import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey } from '@/lib/date'
 import { replyDemo } from '@/lib/demoCoach'
@@ -26,6 +29,7 @@ import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
 import { loadSchoolClass, schoolTodayOrNullQuery } from '@/lib/schoolToday'
+import { loadData, saveData } from '@/lib/storage'
 import { getTodayCardsState } from '@/lib/todayCards'
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
@@ -57,6 +61,9 @@ const EMPTY_CHAT: KeptChat = { token: null, chatId: null, bubbles: [], isHelpSho
 // ⚠️ 브라우저 저장소에는 넣지 않습니다. 그래서 새로고침하거나 앱을 다시 열면 사라집니다. (대화는 학생의 마음 이야기라서)
 let keptChat: KeptChat = EMPTY_CHAT
 
+// 코치가 결과를 먼저 물어본 마지막 공부 기록 번호. 같은 기록을 두 번 묻지 않으려고 저장합니다. (대화 내용이 아니라 번호만)
+const RECAPPED_SESSION_KEY = 'coach-recapped-session'
+
 /** 말풍선 목록을 서버에 보내는 대화 줄로 바꿉니다. (말풍선 번호 · 칩은 화면에서만 씁니다) */
 function toLines(bubbles: ChatBubble[]): CallLine[] {
   return bubbles.map(({ speaker, text }) => ({ speaker, text }))
@@ -79,13 +86,14 @@ function getChatErrorMessage(error: unknown): string {
  *
  *   1. 화면을 열면 코치가 먼저 말을 겁니다. (아침 브리핑: 시간표 · 급식 · 시험 D-day · 오늘 카드 · 오늘 컨디션)
  *      이 첫 말은 코드가 만듭니다(lib/coachBriefing.ts). 그래서 열기만 해서는 AI 사용량을 쓰지 않습니다.
- *   2. 말풍선 아래 칩을 누르거나 말을 쓰면 AI 가 답합니다.
+ *   2. 공부가 끝난 지 3시간 안이면 코치가 결과도 먼저 물어봅니다. ("25분 했네! 폰은 2번 들었어. 어땠어?")
+ *   3. 말풍선 아래 칩을 누르거나 말을 쓰면 AI 가 답합니다.
  *      - 진짜 로그인: 그때 처음 서버 채팅을 열고, 지금까지의 대화를 모두 보내 AI 의 답을 받습니다.
  *      - 테스트 로그인: 서버를 못 써서 시연용 정해진 답(lib/demoCoach.ts)을 쓰고 "시연용 정해진 답" 이라고 붙입니다.
- *   3. "피곤해 · 시간 없어" 같은 핑계에는 AI 답 아래에 [▷ 10분으로 줄여서 시작] 칩을 붙입니다. (핑계 협상)
+ *   4. "피곤해 · 시간 없어" 같은 핑계에는 AI 답 아래에 [▷ 10분으로 줄여서 시작] 칩을 붙입니다. (핑계 협상)
  *      행동 칩(시작 · 카드 만들기)은 누를 때만 실행합니다.
- *   4. 위기 표현이 나오면 상담 전화 한 줄을 보여 줍니다. 입력창은 닫지 않습니다. 서버가 대화를 끝냈으면(409) [새로 시작]
- *   5. [대화 끝내고 정리하기] → 통화 결과 화면(/call/result)이 통화와 똑같이 정리합니다. (진짜 로그인만)
+ *   5. 위기 표현이 나오면 상담 전화 한 줄을 보여 줍니다. 입력창은 닫지 않습니다. 서버가 대화를 끝냈으면(409) [새로 시작]
+ *   6. [대화 끝내고 정리하기] → 통화 결과 화면(/call/result)이 통화와 똑같이 정리합니다. (진짜 로그인만)
  *
  * 모바일에서는 화면 높이를 꽉 채웁니다. 말풍선 목록만 스크롤되고, 입력창은 아래(하단 탭 위)에 붙어 있습니다.
  * ⚠️ 대화는 메모리(위의 keptChat)에만 있습니다. 브라우저 저장소에 넣지 않고, console.log 로 찍지 않습니다.
@@ -133,7 +141,7 @@ function ChatSkeleton() {
   )
 }
 
-/** 코치의 첫 말을 말풍선으로 만듭니다. */
+/** 코치의 첫 말 · 결과 묻기를 말풍선으로 만듭니다. */
 function toCoachBubble(id: number, message: CoachMessage): ChatBubble {
   return { id, speaker: 'ai', text: message.text, chips: message.chips }
 }
@@ -164,7 +172,7 @@ function CoachChat() {
   })
   const nowCard = todayCards.current ?? todayCards.next
 
-  // 처음 그릴 때 한 번만 정합니다: 들고 있던 대화(없으면 코치의 첫 말)
+  // 처음 그릴 때 한 번만 정합니다: 들고 있던 대화(없으면 코치의 첫 말) + 끝난 공부가 있으면 결과 묻기
   const [initial] = useState(() => {
     const base = keptChat.token === token ? keptChat : EMPTY_CHAT
     let bubbles = base.bubbles
@@ -182,7 +190,18 @@ function CoachChat() {
         ),
       ]
     }
-    return { ...base, bubbles }
+    const lastRecapped = loadData<unknown>(RECAPPED_SESSION_KEY, null)
+    const recapSession = findRecapSession(
+      loadStudySessions(),
+      now,
+      typeof lastRecapped === 'string' ? lastRecapped : null,
+    )
+    if (recapSession) {
+      const nextId = bubbles.reduce((max, bubble) => Math.max(max, bubble.id), 0) + 1
+      const recap = buildSessionRecap(recapSession, loadPhoneLift(recapSession.id))
+      bubbles = [...bubbles, toCoachBubble(nextId, recap)]
+    }
+    return { ...base, bubbles, recapSessionId: recapSession?.id ?? null }
   })
 
   const [chatId, setChatId] = useState<string | null>(initial.chatId)
@@ -193,6 +212,11 @@ function CoachChat() {
   // 다음 말풍선 번호
   const nextId = useRef(initial.bubbles.reduce((max, bubble) => Math.max(max, bubble.id), 0) + 1)
   const listRef = useRef<HTMLDivElement>(null)
+
+  // 결과를 물어본 공부 기록 번호를 적어 둡니다. (다음에 같은 기록을 또 묻지 않게)
+  useEffect(() => {
+    if (initial.recapSessionId) saveData(RECAPPED_SESSION_KEY, initial.recapSessionId)
+  }, [initial.recapSessionId])
 
   // 대화가 바뀔 때마다 메모리에 적어 둡니다. (탭을 옮겼다 돌아오면 이어서 보여 주려고)
   useEffect(() => {
