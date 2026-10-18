@@ -95,7 +95,23 @@ window.dispatchEvent(
 누르면 `auth.googleSignIn` 으로 휴대폰 구글 로그인을 부탁합니다. 받은 ID 토큰은 브라우저 구글 버튼과 똑같이 `onCredential` 로 넘어가서
 로그인 화면·탈퇴 확인 화면은 바꿀 것이 없습니다. BE 도 그대로입니다. (앱이 `webClientId` 로 로그인하면 토큰의 aud 가 같음)
 
-## 6. 약속 요약 (Project-App `docs/BRIDGE.md` v1)
+## 5-2. 공부 중 폰 들림 경고 (v1.3, 2026-10-18)
+
+타이머 세션이 열리면 `hooks/usePhoneLift.ts` 가 앱에 `focus.start` 를 보냅니다. 앱은 폰을 엎어 뒀는지 재다가,
+들 때마다 `focus.lifted`, 다시 엎으면 `focus.down` 을 보냅니다. 경고 단계는 **웹이** 정합니다(`lib/liftAlerts.ts`, 오늘의 관리 강도로 세기 결정).
+
+| 세기 (관리 강도)  | 1단계 안내 + 진동 | 2단계 화면 전체 경고 | 3단계 자동 일시정지 |
+| ----------------- | ----------------- | -------------------- | ------------------- |
+| 약 (회복 · 당근)  | 15초              | 없음                 | 없음                |
+| 보통 (넛지)       | 10초              | 20초                 | 60초                |
+| 강 (채찍 · 4단계) | 5초               | 15초 + 소리          | 45초                |
+
+- 폰을 든 채 앱을 나가면(홈 · 다른 앱) 앱이 `nudges` 문구로 휴대폰 알림을 예약하고, 돌아오면 지웁니다.
+- 세션이 끝나면 `focus.end` 의 답(들린 것 하나하나 · 앱 밖 시간)을 정리해 종료 팝업에 한 줄로 보여 주고 `study-phone-lifts` 에 세션별로 남깁니다.
+  5초 미만은 버리고, 5~30초는 "잠깐 확인", 30초 넘으면 "오래 든 것" 입니다. (팀 회의안)
+- 앱 밖(컴퓨터 · 모바일 웹)에서는 아무것도 하지 않습니다.
+
+## 6. 약속 요약 (Project-App `docs/BRIDGE.md` v1.3)
 
 **웹 → 앱** `window.ReactNativeWebView.postMessage(JSON.stringify({ id?, type, payload }))`
 
@@ -111,14 +127,18 @@ window.dispatchEvent(
 | `screen.keepOn`            | `{ on }`                                                | -                              |
 | `haptics`                  | `{ kind }`                                              | -                              |
 | `auth.googleSignIn`        | `{ webClientId }` (사람이 고를 때까지라 2분까지 기다림) | `{ idToken }` 또는 `{ error }` |
+| `focus.start`              | `{ dnd?, pin?, nudges?, url? }`                         | `{ faceDown, dnd, pin }`       |
+| `focus.end`                | `{}`                                                    | `{ lifts, outsideMs, … }`      |
 
 **앱 → 웹** `window.dispatchEvent(new CustomEvent('starflow-app', { detail }))`
 
-| detail                                            | 언제                       |
-| ------------------------------------------------- | -------------------------- |
-| `{ type: 'reply', replyTo, payload }`             | 답이 필요한 요청에 대한 답 |
-| `{ type: 'navigate', payload: { url } }`          | 알림·알림 버튼을 눌렀을 때 |
-| `{ type: 'appState', payload: { state } }`        | 앱이 앞·뒤로 갈 때         |
-| `{ type: 'notify.permission', payload: { ... } }` | 알림 권한이 바뀌었을 때    |
+| detail                                              | 언제                        |
+| --------------------------------------------------- | --------------------------- |
+| `{ type: 'reply', replyTo, payload }`               | 답이 필요한 요청에 대한 답  |
+| `{ type: 'navigate', payload: { url } }`            | 알림·알림 버튼을 눌렀을 때  |
+| `{ type: 'appState', payload: { state } }`          | 앱이 앞·뒤로 갈 때          |
+| `{ type: 'notify.permission', payload: { ... } }`   | 알림 권한이 바뀌었을 때     |
+| `{ type: 'focus.lifted', payload: { at } }`         | 공부 중 폰을 집어 들었을 때 |
+| `{ type: 'focus.down', payload: { at, liftedMs } }` | 다시 엎어 뒀을 때           |
 
 주소(`url`)는 우리 웹 안의 경로(`/` 로 시작, `//` 는 안 됨)만 씁니다.
