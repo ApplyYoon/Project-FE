@@ -76,6 +76,8 @@ const CHIP_KINDS = [
   'longPlan',
   'quiz',
   'quizReview',
+  'makePlan',
+  'checkCall',
 ]
 
 /** 빈 대화방 */
@@ -106,6 +108,12 @@ function isChip(value: unknown): value is CoachChip {
     const isOptionalText = (field: unknown) => field === undefined || typeof field === 'string'
     const isOptionalList = chip.checklist === undefined || Array.isArray(chip.checklist)
     return isOptionalText(chip.topic) && isOptionalText(chip.cardId) && isOptionalList
+  }
+  if (chip.kind === 'makePlan') {
+    // 목표 한 줄은 꼭 있고, 날짜는 없어도 됩니다. (없으면 긴 계획 칸이 열림)
+    return (
+      typeof chip.goal === 'string' && (chip.endDate === null || typeof chip.endDate === 'string')
+    )
   }
   if (chip.kind === 'quizReview') {
     // 며칠 전 문제인지는 없어도 됩니다. (없으면 어제 것)
