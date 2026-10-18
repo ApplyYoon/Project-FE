@@ -8,11 +8,19 @@
  *   buildMorningBriefing({ hour: 8, school, grade: 2, cards, checkIn })
  *   -> { text: '좋은 아침! 오늘은 미적분Ⅰ · 문학 · 영어Ⅰ 수업이 있는 날이야. …', chips: [...] }
  */
+import {
+  DAILY_GOAL_MINUTES,
+  REVIEW_MINUTES,
+  countDoneMissions,
+  nextMission,
+  type Mission,
+  type MissionSlot,
+} from '@/lib/dailyMission'
 import { sessionMinutes } from '@/lib/dailyRecords'
 import type { SchoolToday } from '@/lib/schoolToday'
 import { loadData } from '@/lib/storage'
 import type { TodayCardsState } from '@/lib/todayCards'
-import type { CheckIn, StudySession } from '@/types'
+import type { Card, CheckIn, EmotionTag, StudySession } from '@/types'
 
 /**
  * 말풍선 아래의 빠른 답 칩 하나.
@@ -20,13 +28,27 @@ import type { CheckIn, StudySession } from '@/types'
  *   startCard    — 그 카드로 타이머를 엽니다 (/timer?card=…)
  *   startMinutes — 그 길이의 즉석 카드를 만들어 바로 시작합니다
  *   newCard      — 카드 만들기 화면으로 갑니다
- * 행동 칩(say 가 아닌 것)은 누를 때만 실행합니다. 자동으로 하지 않습니다.
+ *   checkIn      — 오늘 컨디션으로 저장하고(그날의 체크인), 그 말을 내 말풍선으로 보냅니다 (2026-10-18)
+ *   startTitled  — 그 제목 · 길이의 카드를 만들어 바로 시작합니다 (예: '미적분Ⅰ 복습' 10분)
+ * 행동 칩(say · checkIn 이 아닌 것)은 누를 때만 실행합니다. 자동으로 하지 않습니다.
  */
 export type CoachChip =
   | { kind: 'say'; label: string }
   | { kind: 'startCard'; label: string; cardId: string }
   | { kind: 'startMinutes'; label: string; minutes: number }
   | { kind: 'newCard'; label: string }
+  | { kind: 'checkIn'; label: string; condition: number; emotions: EmotionTag[] }
+  | { kind: 'startTitled'; label: string; title: string; minutes: number }
+
+/**
+ * 오늘 컨디션을 묻는 칩 3개. 누르면 그날의 체크인이 됩니다. (예전의 "하루 첫 한 줄" 대신)
+ * 컨디션은 1 ~ 5 중 4 · 3 · 2 로, '피곤해' 는 감정 태그 '피곤함' 도 같이 남깁니다.
+ */
+export const CONDITION_CHIPS: CoachChip[] = [
+  { kind: 'checkIn', label: '😄 좋아', condition: 4, emotions: [] },
+  { kind: 'checkIn', label: '😐 그냥 그래', condition: 3, emotions: [] },
+  { kind: 'checkIn', label: '😩 피곤해', condition: 2, emotions: ['TIRED'] },
+]
 
 /** 코치가 하는 말 하나와 그 아래 칩들 */
 export interface CoachMessage {
@@ -118,6 +140,11 @@ export function buildMorningBriefing(input: BriefingInput): CoachMessage {
   }
 
   const card = input.cards.current ?? input.cards.next
+  // 오늘 컨디션을 아직 모르면 그것부터 묻습니다. 칩을 누르면 그날의 체크인이 되고, 그다음은 AI 와 이야기합니다.
+  if (input.checkIn === undefined) {
+    lines.push('먼저, 오늘 컨디션은 어때? 하나만 골라 줘.')
+    return { text: lines.join('\n'), chips: CONDITION_CHIPS }
+  }
   const isTired = isTiredToday(input.checkIn)
   if (isTired) {
     lines.push(`피곤하다고 했지? 오늘은 ${SMALL_START_MINUTES}분만 해 보자.`)
@@ -288,5 +315,118 @@ export function buildSessionRecap(
       { kind: 'say', label: '일부만 했어' },
       { kind: 'say', label: '못 했어' },
     ],
+  }
+}
+
+// ---- 오늘의 미션 (lib/dailyMission.ts) ----
+
+/** 미션 알림을 누르고 들어왔을 때 코치의 첫 줄 */
+const MISSION_SLOT_GREETINGS: Record<MissionSlot, string> = {
+  morning: '☀️ 오늘의 미션이야!',
+  afterSchool: '🎒 하교했지? 미션 확인하자.',
+  evening: '🌙 오늘 마무리 전에 미션 보자.',
+}
+
+/**
+ * 미션 하나를 하자고 권하는 코치의 말과 칩. 칩을 누르면 그 미션을 바로 할 수 있습니다.
+ *
+ *   buildMissionPrompt({ kind: 'review', subject: '미적분Ⅰ', … }, undefined)
+ *   -> { text: '오늘 미적분Ⅰ 수업 있었지? 잊기 전에 10분만 복습하자.', chips: [▷ 미적분Ⅰ 복습 10분, 이따 할게] }
+ */
+export function buildMissionPrompt(mission: Mission, nowCard: Card | undefined): CoachMessage {
+  const laterChip: CoachChip = { kind: 'say', label: '이따 할게' }
+  if (mission.kind === 'checkIn') {
+    return { text: '오늘 컨디션은 어때? 하나만 골라 줘.', chips: CONDITION_CHIPS }
+  }
+  if (mission.kind === 'firstStudy') {
+    const startChip: CoachChip = nowCard
+      ? { kind: 'startCard', label: `▷ ${shorten(nowCard.title, 10)} 시작`, cardId: nowCard.id }
+      : {
+          kind: 'startMinutes',
+          label: `▷ ${DAILY_GOAL_MINUTES}분 시작`,
+          minutes: DAILY_GOAL_MINUTES,
+        }
+    return {
+      text: '폰을 화면이 바닥을 보게 엎어 두고 시작해 보자. 폰을 들면 내가 알려 줄게 📱',
+      chips: [startChip, laterChip],
+    }
+  }
+  if (mission.subject) {
+    return {
+      text: `오늘 ${mission.subject} 수업 있었지? 잊기 전에 ${REVIEW_MINUTES}분만 복습하자.`,
+      chips: [
+        {
+          kind: 'startTitled',
+          label: `▷ ${shorten(mission.subject, 8)} 복습 ${REVIEW_MINUTES}분`,
+          title: `${mission.subject} 복습`,
+          minutes: REVIEW_MINUTES,
+        },
+        laterChip,
+      ],
+    }
+  }
+  return {
+    text: `오늘 공부 ${DAILY_GOAL_MINUTES}분 채우기가 남았어. 지금 시작해 볼까?`,
+    chips: [
+      {
+        kind: 'startMinutes',
+        label: `▷ ${DAILY_GOAL_MINUTES}분 시작`,
+        minutes: DAILY_GOAL_MINUTES,
+      },
+      laterChip,
+    ],
+  }
+}
+
+/** '① ✅ 컨디션 알려 주기' 처럼 미션 목록을 줄로 만듭니다. */
+function missionListText(missions: Mission[]): string {
+  const numbers = ['①', '②', '③']
+  return missions
+    .map(
+      (mission, index) => `${numbers[index] ?? '·'} ${mission.done ? '✅' : '⬜'} ${mission.title}`,
+    )
+    .join('\n')
+}
+
+/**
+ * 오늘의 미션 전체를 보여 주고 다음 미션을 권하는 말. 미션 알림을 누르고 들어왔거나(slot) 미션 줄을 눌렀을 때 씁니다.
+ * 다 끝냈으면 칭찬하고 칩은 [고마워!] 하나입니다.
+ */
+export function buildMissionBriefing(
+  missions: Mission[],
+  slot: MissionSlot | null,
+  nowCard: Card | undefined,
+): CoachMessage {
+  const head = slot ? MISSION_SLOT_GREETINGS[slot] : '오늘의 미션이야.'
+  const list = missionListText(missions)
+  const next = nextMission(missions)
+  if (!next) {
+    return {
+      text: `${head}\n${list}\n오늘 미션 다 끝냈어. 대단해 👏`,
+      chips: [{ kind: 'say', label: '고마워!' }],
+    }
+  }
+  const prompt = buildMissionPrompt(next, nowCard)
+  return { text: `${head}\n${list}\n${prompt.text}`, chips: prompt.chips }
+}
+
+/**
+ * 미션을 끝내고 코치 화면에 돌아왔을 때 코치가 먼저 거는 한 줄. (몇 개 끝냈는지 + 다음 미션)
+ *
+ *   -> '✅ 오늘의 미션 2/3 끝! 남은 건 '오늘 배운 미적분Ⅰ 10분 복습' 하나야.'
+ */
+export function buildMissionProgress(missions: Mission[], nowCard: Card | undefined): CoachMessage {
+  const done = countDoneMissions(missions)
+  const next = nextMission(missions)
+  if (!next) {
+    return {
+      text: `✅ 오늘의 미션 ${done}/${missions.length} 다 끝냈어! 오늘 정말 잘했어 👏`,
+      chips: [{ kind: 'say', label: '고마워!' }],
+    }
+  }
+  const prompt = buildMissionPrompt(next, nowCard)
+  return {
+    text: `✅ 오늘의 미션 ${done}/${missions.length} 끝! 남은 건 '${next.title}'.\n${prompt.text}`,
+    chips: prompt.chips,
   }
 }

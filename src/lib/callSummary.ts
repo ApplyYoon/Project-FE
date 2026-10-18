@@ -50,7 +50,7 @@ function dayBefore(dateKey: string): string {
 /**
  * 체크인 하나가 우리가 아는 모양인지 확인합니다. (저장된 값이 깨져 있어도 화면이 멈추지 않게)
  * 날짜만 봅니다. 예전에는 '오늘 예상 순공' 도 꼭 있어야 했지만 그 칸은 #417 에서 지웠습니다.
- * (하루 첫 한 줄의 체크인에도 그 칸이 없어서, 그 칸까지 보면 모든 체크인이 버려집니다)
+ * (1탭 체크인에도 그 칸이 없어서, 그 칸까지 보면 모든 체크인이 버려집니다)
  */
 function isCheckIn(value: unknown): value is CheckIn {
   if (typeof value !== 'object' || value === null) return false

@@ -3,12 +3,17 @@ import { SettingsLink } from '@/components/ui/SettingsLink'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
+import { useSendCheckIn } from '@/hooks/useCheckInSync'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { ApiError, getApiErrorMessage } from '@/lib/api'
 import type { CallLine, CallResultState } from '@/lib/callReview'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { createInstantCardNow } from '@/lib/cardSession'
 import { MAX_CHAT_LINES, MAX_CHAT_TEXT_LENGTH, sendChatMessage, startChat } from '@/lib/chatApi'
+import { canSyncCheckIns, todayCheckInForCoachQuery } from '@/lib/checkInsApi'
 import {
+  buildMissionBriefing,
+  buildMissionProgress,
   buildMorningBriefing,
   buildSessionRecap,
   findRecapSession,
@@ -19,13 +24,20 @@ import {
 } from '@/lib/coachBriefing'
 import { cn } from '@/lib/cn'
 import { runDailyCareStage } from '@/lib/dailyCareRun'
+import {
+  countDoneMissions,
+  isMissionSlot,
+  loadDailyMissions,
+  nextMission,
+  type Mission,
+} from '@/lib/dailyMission'
 import { loadAllSessions, loadStudySessions } from '@/lib/dailyRecords'
 import { isServerDataToken } from '@/lib/dataMode'
 import { getTodayKey } from '@/lib/date'
 import { replyDemo } from '@/lib/demoCoach'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
-import { loadLocalCheckIn } from '@/lib/quickCheckIn'
+import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quickCheckIn'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
 import { loadSchoolClass, schoolTodayOrNullQuery } from '@/lib/schoolToday'
@@ -63,6 +75,18 @@ let keptChat: KeptChat = EMPTY_CHAT
 
 // 코치가 결과를 먼저 물어본 마지막 공부 기록 번호. 같은 기록을 두 번 묻지 않으려고 저장합니다. (대화 내용이 아니라 번호만)
 const RECAPPED_SESSION_KEY = 'coach-recapped-session'
+
+// 코치가 마지막으로 알아챈 "오늘의 미션 몇 개 끝" ('2026-10-18:2' 모양). 미션을 끝내고 돌아오면 코치가 먼저 말을 겁니다.
+const MISSION_PROGRESS_KEY = 'coach-mission-progress'
+
+/** 저장해 둔 미션 진행이 오늘 몇 개였는지. 오늘 것이 아니면 null */
+function loadMissionProgress(todayKey: string): number | null {
+  const saved = loadData<unknown>(MISSION_PROGRESS_KEY, null)
+  if (typeof saved !== 'string') return null
+  const [date, done] = saved.split(':')
+  const count = Number(done)
+  return date === todayKey && Number.isInteger(count) ? count : null
+}
 
 /** 말풍선 목록을 서버에 보내는 대화 줄로 바꿉니다. (말풍선 번호 · 칩은 화면에서만 씁니다) */
 function toLines(bubbles: ChatBubble[]): CallLine[] {
@@ -152,12 +176,19 @@ function CoachChat() {
   const isServerData = isServerDataToken(token)
   const [todayKey] = useState(getTodayKey)
   const [now] = useState(() => Date.now())
+  const sendCheckIn = useSendCheckIn()
+  // 미션 알림을 누르고 들어오면 ?mission=morning 처럼 옵니다. 코치가 그 미션 이야기를 먼저 합니다.
+  const [missionParam, setMissionParam] = useQueryParam('mission', '')
 
   // 첫 말의 재료: 오늘 학교 정보(못 받으면 null) · 오늘 카드 · 오늘 체크인
   const [schoolClass] = useState(loadSchoolClass)
   const { data: school } = useSuspenseQuery(
     schoolTodayOrNullQuery(schoolClass, isServerData, todayKey),
   )
+  // 다른 기기에서 이미 오늘 컨디션을 알려 줬으면 이 기기에 옮겨 적습니다. (그러면 코치가 다시 묻지 않음)
+  useSuspenseQuery(todayCheckInForCoachQuery(todayKey, canSyncCheckIns(token)))
+  // 오늘의 미션 (체크인 · 공부 기록 · 시간표로 끝났는지 봄). 컨디션 칩을 누르면 다시 계산합니다.
+  const [missions, setMissions] = useState<Mission[]>(() => loadDailyMissions(todayKey))
   const { cards, addCard } = useCards()
   const [allSessions] = useState(loadAllSessions)
   const [marks] = useState(loadCardMarks)
@@ -173,6 +204,7 @@ function CoachChat() {
   const nowCard = todayCards.current ?? todayCards.next
 
   // 처음 그릴 때 한 번만 정합니다: 들고 있던 대화(없으면 코치의 첫 말) + 끝난 공부가 있으면 결과 묻기
+  // + 미션 알림으로 들어왔으면 미션 이야기, 미션을 새로 끝냈으면 몇 개 끝냈는지
   const [initial] = useState(() => {
     const base = keptChat.token === token ? keptChat : EMPTY_CHAT
     let bubbles = base.bubbles
@@ -196,12 +228,37 @@ function CoachChat() {
       now,
       typeof lastRecapped === 'string' ? lastRecapped : null,
     )
-    if (recapSession) {
-      const nextId = bubbles.reduce((max, bubble) => Math.max(max, bubble.id), 0) + 1
-      const recap = buildSessionRecap(recapSession, loadPhoneLift(recapSession.id))
-      bubbles = [...bubbles, toCoachBubble(nextId, recap)]
+    const missionSlot = isMissionSlot(missionParam) ? missionParam : null
+    const doneMissions = countDoneMissions(missions)
+    const lastProgress = loadMissionProgress(todayKey)
+    const hasNewMissionDone = lastProgress !== null && doneMissions > lastProgress
+    function nextBubbleId() {
+      return bubbles.reduce((max, bubble) => Math.max(max, bubble.id), 0) + 1
     }
-    return { ...base, bubbles, recapSessionId: recapSession?.id ?? null }
+    if (recapSession) {
+      const recap = buildSessionRecap(recapSession, loadPhoneLift(recapSession.id))
+      // 공부를 끝내서 미션이 늘었으면 같은 말풍선에 한 줄로 붙입니다. (말풍선이 너무 많아지지 않게)
+      if (hasNewMissionDone && !missionSlot) {
+        recap.text += `\n✅ 오늘의 미션 ${doneMissions}/${missions.length} 끝!`
+      }
+      bubbles = [...bubbles, toCoachBubble(nextBubbleId(), recap)]
+    }
+    // 새로 연 대화의 첫 말이 이미 컨디션을 묻고 있으면(미션 ①), 미션 말풍선으로 같은 걸 또 묻지 않습니다.
+    const isAskingCheckIn = base.bubbles.length === 0 && nextMission(missions)?.kind === 'checkIn'
+    if (missionSlot && !isAskingCheckIn) {
+      bubbles = [
+        ...bubbles,
+        toCoachBubble(nextBubbleId(), buildMissionBriefing(missions, missionSlot, nowCard)),
+      ]
+    } else if (hasNewMissionDone && !recapSession) {
+      bubbles = [...bubbles, toCoachBubble(nextBubbleId(), buildMissionProgress(missions, nowCard))]
+    }
+    return {
+      ...base,
+      bubbles,
+      recapSessionId: recapSession?.id ?? null,
+      missionSlot,
+    }
   })
 
   const [chatId, setChatId] = useState<string | null>(initial.chatId)
@@ -217,6 +274,18 @@ function CoachChat() {
   useEffect(() => {
     if (initial.recapSessionId) saveData(RECAPPED_SESSION_KEY, initial.recapSessionId)
   }, [initial.recapSessionId])
+
+  // 미션 알림으로 들어왔으면 이야기를 꺼냈으니 주소의 ?mission= 을 지웁니다. (새로고침해도 또 말하지 않게)
+  const hasMissionParam = initial.missionSlot !== null
+  useEffect(() => {
+    if (hasMissionParam) setMissionParam('')
+  }, [hasMissionParam, setMissionParam])
+
+  // 코치가 알아챈 미션 진행을 적어 둡니다. 다음에 더 끝내고 돌아오면 그때 말을 겁니다.
+  const doneMissionCount = countDoneMissions(missions)
+  useEffect(() => {
+    saveData(MISSION_PROGRESS_KEY, `${todayKey}:${doneMissionCount}`)
+  }, [todayKey, doneMissionCount])
 
   // 대화가 바뀔 때마다 메모리에 적어 둡니다. (탭을 옮겼다 돌아오면 이어서 보여 주려고)
   useEffect(() => {
@@ -299,6 +368,25 @@ function CoachChat() {
       sendText(chip.label)
       return
     }
+    if (chip.kind === 'checkIn') {
+      // 오늘의 체크인으로 저장하고(서버로도), 그 말을 보내서 AI 와 이야기를 이어 갑니다. (미션 ① 끝)
+      const checkIn = saveQuickCheckIn(chip.condition, chip.emotions)
+      if (sendCheckIn.canSync) sendCheckIn.mutate(checkIn, { onSuccess: saveLocalCheckIn })
+      setMissions(loadDailyMissions(todayKey))
+      sendText(chip.label)
+      return
+    }
+    if (chip.kind === 'startTitled') {
+      // 제목을 붙인 카드(예: '미적분Ⅰ 복습' 10분)를 만들어 바로 시작합니다. 제목으로 복습 미션이 끝났는지 봅니다.
+      const card = createInstantCardNow(todayKey, chip.minutes)
+      addCard({
+        ...card,
+        title: chip.title,
+        checklist: [{ id: `${card.id}-item-0`, text: chip.title }],
+      })
+      navigate(`/timer?card=${encodeURIComponent(card.id)}`)
+      return
+    }
     if (chip.kind === 'startCard') {
       navigate(`/timer?card=${encodeURIComponent(chip.cardId)}`)
       return
@@ -311,6 +399,13 @@ function CoachChat() {
       return
     }
     navigate(`/cards/new?date=${todayKey}`)
+  }
+
+  /** 미션 줄을 누르면 코치가 오늘의 미션을 보여 주고 다음 미션을 권합니다. */
+  function handleShowMissions() {
+    if (talk.isPending) return
+    const message = buildMissionBriefing(missions, null, nowCard)
+    setBubbles(addBubble({ speaker: 'ai', text: message.text, chips: message.chips }, bubbles))
   }
 
   /** 대화를 비우고 코치의 첫 말부터 다시 보여 줍니다. 메모리에 들고 있던 것도 같이 비웁니다. */
@@ -342,6 +437,7 @@ function CoachChat() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <MissionBar missions={missions} onOpen={handleShowMissions} />
       {/* role="log": 새 말이 생기면 화면을 읽어 주는 프로그램이 알려 줍니다. */}
       <div
         ref={listRef}
@@ -473,6 +569,48 @@ function CoachChat() {
 const chipClass =
   'flex h-10 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-transform active:scale-[0.98]'
 
+interface MissionBarProps {
+  missions: Mission[]
+  /** 누르면 코치가 미션 전체를 보여 줍니다. */
+  onOpen: () => void
+}
+
+/**
+ * 코치 화면 맨 위의 "오늘의 미션" 한 줄. 몇 개 끝냈는지와 다음 미션 이름을 보여 줍니다.
+ * 채팅 자리를 덜 차지하려고 한 줄(높이 56px)로만 둡니다. 누르면 코치가 미션을 말풍선으로 보여 줍니다.
+ */
+function MissionBar({ missions, onOpen }: MissionBarProps) {
+  const done = countDoneMissions(missions)
+  const next = nextMission(missions)
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`오늘의 미션 ${missions.length}개 중 ${done}개 끝. 눌러서 코치에게 보기`}
+      className="flex min-h-14 w-full shrink-0 cursor-pointer items-center gap-3 rounded-3xl bg-white px-4 py-2 text-left transition-transform active:scale-[0.99]"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+          next ? 'bg-brand-light text-brand' : 'bg-emerald-50 text-emerald-700',
+        )}
+      >
+        {done}/{missions.length}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-medium text-slate-500">오늘의 미션</span>
+        <span className="block truncate text-[15px] font-semibold text-slate-900">
+          {next ? next.title : '오늘 미션 다 끝냈어요 👏'}
+        </span>
+      </span>
+      <span aria-hidden className="text-slate-400">
+        ›
+      </span>
+    </button>
+  )
+}
+
 interface ChipRowProps {
   chips: CoachChip[]
   onPick: (chip: CoachChip) => void
@@ -489,7 +627,9 @@ function ChipRow({ chips, onPick }: ChipRowProps) {
           onClick={() => onPick(chip)}
           className={cn(
             chipClass,
-            chip.kind !== 'say' && 'bg-brand-light text-brand border-transparent',
+            chip.kind !== 'say' &&
+              chip.kind !== 'checkIn' &&
+              'bg-brand-light text-brand border-transparent',
           )}
         >
           {chip.label}

@@ -98,7 +98,7 @@ export const router = createBrowserRouter([
     path: '/',
     errorElement: <ErrorPage />,
     // Layout 안의 모든 주소를 RequireAuth 가 지켜 줍니다.
-    // 그날 첫 체크인은 화면을 막지 않고 Layout 맨 위의 한 줄(DailyTagBar)로 묻습니다. (#387)
+    // 그날 컨디션(체크인)은 화면을 막지 않고 코치가 채팅에서 칩으로 묻습니다. (2026-10-18, pages/CoachPage.tsx)
     element: (
       <RequireAuth>
         <Layout />
@@ -129,7 +129,7 @@ export const router = createBrowserRouter([
       { path: 'counsel/chat', element: <Navigate to="/" replace /> },
       // 분석 탭. 기록 · 리포트 · 사용설명서는 이 화면 안의 하위 탭입니다. (?tab=)
       { path: 'analysis', element: <AnalysisPage /> },
-      // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (하루 첫 한 줄은 어느 화면에서나 뜹니다)
+      // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)
       { path: 'check', element: <Navigate to="/" replace /> },
       // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 코치로 보냅니다.
       { path: 'diary', element: <Navigate to="/" replace /> },

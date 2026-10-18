@@ -745,7 +745,7 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
         {day.status && <StatusBadge status={day.status} />}
       </div>
 
-      {/* 하루 첫 한 줄에서 고른 감정 태그 (#387). 안 골랐으면 줄을 비웁니다. */}
+      {/* 체크인에서 고른 감정 태그 (#387). 안 골랐으면 줄을 비웁니다. */}
       {emotions.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-500">감정</span>

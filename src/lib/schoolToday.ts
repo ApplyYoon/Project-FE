@@ -94,6 +94,45 @@ export function saveSchoolClass(schoolClass: SchoolClass): void {
   saveData(CLASS_STORAGE_KEY, schoolClass)
 }
 
+/** 오늘의 미션 · 미션 알림이 쓰는 하루 시간표 요약 (lib/dailyMission.ts) */
+export interface SchoolDay {
+  /** 'YYYY-MM-DD' */
+  date: string
+  /** 그날 과목 (교시 순서, 겹치지 않게) */
+  subjects: string[]
+  /** 마지막 교시. 시간표를 모르면 null */
+  lastPeriod: number | null
+}
+
+// 저장소에 넣는 이름입니다. (실제 키는 'study-school-day')
+const SCHOOL_DAY_STORAGE_KEY = 'school-day'
+
+/**
+ * 받아 온 오늘 학교 정보에서 과목 · 마지막 교시만 이 기기에 적어 둡니다.
+ * 미션 알림은 화면 밖(hooks/useAppBridge.ts 의 10초 확인)에서 만들어서, 쿼리 대신 저장소에서 읽습니다.
+ */
+function saveSchoolDay(today: SchoolToday): void {
+  const subjects: string[] = []
+  for (const period of today.timetable ?? []) {
+    if (!subjects.includes(period.subject)) subjects.push(period.subject)
+  }
+  const lastPeriod = (today.timetable ?? []).reduce<number | null>(
+    (last, period) => (last === null || period.period > last ? period.period : last),
+    null,
+  )
+  saveData(SCHOOL_DAY_STORAGE_KEY, { date: today.date, subjects, lastPeriod })
+}
+
+/** 적어 둔 하루 시간표 요약. 다른 날 것이거나 없으면 null */
+export function loadSchoolDay(dateKey: string): SchoolDay | null {
+  const saved = loadData<unknown>(SCHOOL_DAY_STORAGE_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return null
+  const record = saved as Record<string, unknown>
+  if (record.date !== dateKey || !isStringArray(record.subjects)) return null
+  const lastPeriod = typeof record.lastPeriod === 'number' ? record.lastPeriod : null
+  return { date: dateKey, subjects: record.subjects, lastPeriod }
+}
+
 /** 반을 고르는 칸에 처음 넣어 둘 학년. 온보딩에서 고른 학년(고1~고3)이 있으면 그 값, 없으면 2학년입니다. */
 export function getDefaultGrade(): number {
   return gradeNumberOf(loadOnboardingAnswers()?.grade) ?? 2
@@ -245,10 +284,14 @@ export function schoolTodayQuery(
       schoolClass?.classNo ?? null,
       isServerData,
     ],
-    queryFn: () =>
-      isServerData
-        ? fetchSchoolToday(schoolClass)
-        : Promise.resolve(buildDemoSchoolToday(todayKey)),
+    queryFn: async () => {
+      const today = isServerData
+        ? await fetchSchoolToday(schoolClass)
+        : buildDemoSchoolToday(todayKey)
+      // 오늘의 미션(복습 과목 · 하교 알림 시각)이 쓰도록 과목과 마지막 교시를 적어 둡니다.
+      saveSchoolDay(today)
+      return today
+    },
     // 서버가 6시간마다 새로 받아서, 화면에서는 30분 동안 다시 받지 않습니다.
     staleTime: 30 * 60 * 1000,
   })
@@ -268,7 +311,11 @@ export function schoolTodayOrNullQuery(
     queryKey: ['school-today-or-null', ...base.queryKey.slice(1)],
     queryFn: async (): Promise<SchoolToday | null> => {
       try {
-        return isServerData ? await fetchSchoolToday(schoolClass) : buildDemoSchoolToday(todayKey)
+        const today = isServerData
+          ? await fetchSchoolToday(schoolClass)
+          : buildDemoSchoolToday(todayKey)
+        saveSchoolDay(today)
+        return today
       } catch {
         return null
       }

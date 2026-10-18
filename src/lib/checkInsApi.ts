@@ -12,7 +12,7 @@
  *   그래서 서버에 못 보내도 방금 고른 기분은 사라지지 않습니다. 못 보낸 날은 적어 두었다가 다음에 다시 보냅니다.
  *
  * ■ 서버에서 읽어 오는 것은 두 가지뿐입니다.
- *   1. 앱을 열 때 "오늘 체크인을 했는지" (다른 기기에서 했으면 다시 묻지 않으려고. components/layout/DailyTagBar.tsx)
+ *   1. 코치 화면을 열 때 "오늘 체크인을 했는지" (다른 기기에서 했으면 다시 묻지 않으려고. pages/CoachPage.tsx)
  *   2. 보내기 직전에 서버에 있는 그날의 체크인.
  *      - 1탭 체크인은 AI 통화가 채운 칸(어제 못 채운 이유 등)이 덮어쓰기로 지워지지 않게, 비어 있는 칸만 서버 값으로 채워 보냅니다.
  *      - 자세히 체크인(/check)은 학생이 화면에서 보고 고친 그대로 보냅니다. 약속을 일부러 지웠는데 서버의 옛 약속이
@@ -39,7 +39,7 @@ const REQUEST_TIMEOUT_MS = 10000
 /** 서버에 못 보낸 체크인의 날짜들을 적어 두는 저장 키. "모든 기록 지우기" 로 같이 지워집니다. (lib/myData.ts) */
 export const UNSENT_CHECKINS_KEY = 'checkins-unsent'
 
-/** 어디서 한 체크인인지. manual: 자세히 체크인(/check) · quick: 하루 첫 한 줄(컨디션·감정 태그) · call: AI 통화가 만든 것 */
+/** 어디서 한 체크인인지. manual: 자세히 체크인(/check) · quick: 1탭 체크인(코치의 컨디션 칩) · call: AI 통화가 만든 것 */
 type CheckInSource = 'manual' | 'quick' | 'call'
 
 const MISS_REASONS: MissReason[] = [
@@ -165,7 +165,7 @@ export function toServerBody(checkIn: CheckIn, server: ServerCheckIn | null): Ch
     missReason: checkIn.missReason ?? null,
     // 서버는 '기타' 가 아닐 때 이유 글을 받지 않습니다.
     missReasonNote: checkIn.missReason === 'etc' ? (checkIn.missReasonNote ?? null) : null,
-    // 하루 첫 한 줄에서 고른 감정 태그. 자세히 체크인처럼 태그를 묻지 않은 체크인은 null("모름")로 보냅니다.
+    // 1탭 체크인에서 고른 감정 태그. 자세히 체크인처럼 태그를 묻지 않은 체크인은 null("모름")로 보냅니다.
     emotions: checkIn.emotions ?? null,
   }
 }
@@ -216,15 +216,17 @@ async function copyTodayFromServer(todayKey: string): Promise<ServerCheckIn | nu
 }
 
 /**
- * 서버에 있는 오늘의 체크인 쿼리 설정입니다. 하루 첫 한 줄(DailyTagBar)이 씁니다.
- * 받아오면서 이 기기에 오늘 체크인이 없으면 서버 것을 적어 둡니다. (copyTodayFromServer)
- * 그래서 화면은 받아온 뒤에 이 기기의 저장소(hasCheckIn)만 보면 됩니다.
- * 서버에 닿지 못하거나 서버가 거절하면 에러 대신 null 입니다. 그러면 이 기기의 값으로만 확인합니다.
+ * 코치 화면이 첫 말을 만들기 전에 쓰는 "오늘 체크인" 쿼리입니다.
+ * 진짜 로그인이면(canSync) 서버의 오늘 체크인을 받아서, 이 기기에 오늘 체크인이 없으면 서버 것을 적어 둡니다. (copyTodayFromServer)
+ * 다른 기기에서 이미 컨디션을 알려 줬으면 코치가 다시 묻지 않게 하려는 것입니다. (#321)
+ * 그래서 화면은 받아온 뒤에 이 기기의 저장소(loadLocalCheckIn)만 보면 됩니다.
+ * 테스트 로그인이면 서버를 부르지 않고 바로 null, 서버에 닿지 못하거나 거절하면 에러 대신 null 입니다.
  */
-export function todayServerCheckInQuery(todayKey: string) {
+export function todayCheckInForCoachQuery(todayKey: string, canSync: boolean) {
   return queryOptions({
-    queryKey: ['checkins', 'today', todayKey],
+    queryKey: ['checkins', 'today', todayKey, canSync],
     queryFn: async (): Promise<ServerCheckIn | null> => {
+      if (!canSync) return null
       try {
         return await copyTodayFromServer(todayKey)
       } catch {
