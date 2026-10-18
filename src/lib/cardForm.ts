@@ -197,6 +197,97 @@ export function splitFailCauses(text: string): string[] {
     .filter((cause) => cause !== '')
 }
 
+/** 카드 기본값 AI 추천이 먼저 채우는 칸 (#419 표 2번) */
+export type DefaultField = 'goalId' | 'type' | 'durationMinutes'
+
+/** 기본값 추천으로 받은 값. 고르지 못한 칸은 null 입니다. (lib/aiCardApi.ts 의 CardDefaults) */
+export interface DefaultsSuggestion {
+  goalId: string | null
+  type: CardType | null
+  durationMinutes: number | null
+}
+
+/** AI 가 채운 칸의 값과, 채우기 전의 값 (되돌리기에 씁니다) */
+export interface AppliedDefaults {
+  applied: Partial<Pick<CardFormValues, DefaultField>>
+  previous: Partial<Pick<CardFormValues, DefaultField>>
+}
+
+/**
+ * 카드 기본값 추천(목표 연결 · 유형 · 길이)을 폼 값에 넣습니다. (#419 표 2번)
+ * - 사람이 이미 고친 칸(touched)은 덮지 않습니다.
+ * - 고를 수 없는 목표, 1 ~ maxMinutes 밖의 길이, 지금과 같은 값은 넣지 않습니다.
+ * - applied 가 빈 객체면 바뀐 칸이 없다는 뜻입니다.
+ *
+ *   applyCardDefaults({ goalId: '1', type: 'self', durationMinutes: 60, … },
+ *     { goalId: '4', type: 'lecture', durationMinutes: 50 },
+ *     { touched: ['durationMinutes'], goalIds: ['1', '4'], maxMinutes: 600 })
+ *     -> values 의 goalId '4' · type 'lecture' (길이는 사람이 고쳐서 60 그대로)
+ *        applied { goalId: '4', type: 'lecture' }, previous { goalId: '1', type: 'self' }
+ */
+export function applyCardDefaults(
+  values: CardFormValues,
+  suggestion: DefaultsSuggestion,
+  options: { touched: DefaultField[]; goalIds: string[]; maxMinutes: number },
+): { values: CardFormValues } & AppliedDefaults {
+  const next = { ...values }
+  const applied: AppliedDefaults['applied'] = {}
+  const previous: AppliedDefaults['previous'] = {}
+  const canFill = (field: DefaultField) => !options.touched.includes(field)
+
+  const { goalId, type, durationMinutes } = suggestion
+  if (canFill('goalId') && goalId !== null && options.goalIds.includes(goalId)) {
+    if (goalId !== values.goalId) {
+      previous.goalId = values.goalId
+      applied.goalId = goalId
+      next.goalId = goalId
+    }
+  }
+  if (canFill('type') && type !== null && type !== values.type) {
+    previous.type = values.type
+    applied.type = type
+    next.type = type
+  }
+  if (
+    canFill('durationMinutes') &&
+    durationMinutes !== null &&
+    durationMinutes >= 1 &&
+    durationMinutes <= options.maxMinutes &&
+    durationMinutes !== values.durationMinutes
+  ) {
+    previous.durationMinutes = values.durationMinutes
+    applied.durationMinutes = durationMinutes
+    next.durationMinutes = durationMinutes
+  }
+  return { values: next, applied, previous }
+}
+
+/**
+ * AI 가 채운 칸을 채우기 전 값으로 되돌립니다. 그 뒤에 사람이 또 고친 칸(지금 값이 AI 값과 다름)은 그대로 둡니다.
+ *
+ *   undoCardDefaults({ goalId: '4', type: 'self', … }, { applied: { goalId: '4', type: 'lecture' }, previous: { goalId: '1', type: 'self' } })
+ *     -> goalId 는 '1' 로 돌아가고, type 은 사람이 'self' 로 고쳐 둔 그대로
+ */
+export function undoCardDefaults(
+  values: CardFormValues,
+  defaults: AppliedDefaults,
+): CardFormValues {
+  const next = { ...values }
+  if (defaults.applied.goalId !== undefined && values.goalId === defaults.applied.goalId) {
+    next.goalId = defaults.previous.goalId ?? values.goalId
+  }
+  if (defaults.applied.type !== undefined && values.type === defaults.applied.type) {
+    next.type = defaults.previous.type ?? values.type
+  }
+  if (
+    defaults.applied.durationMinutes !== undefined &&
+    values.durationMinutes === defaults.applied.durationMinutes
+  ) {
+    next.durationMinutes = defaults.previous.durationMinutes ?? values.durationMinutes
+  }
+  return next
+}
+
 /**
  * 저장 전에 틀린 칸을 찾습니다. 빈 객체면 저장해도 됩니다.
  * 필수는 제목 · 시작 시각(+ 반복이면 요일)뿐입니다. 체크리스트는 비어 있으면 제목으로 채웁니다.

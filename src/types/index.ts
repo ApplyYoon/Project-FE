@@ -461,7 +461,7 @@ export type InsightResponse =
 export interface Insight {
   /** 인사이트를 구분하는 고유 값 */
   id: string
-  /** 카드에 보여줄 한 문장 (예: "스스로 밤형이라고 했지만...") */
+  /** 카드에 보여줄 한 문장 (예: "스스로 저녁형이라고 했지만...") */
   sentence: string
   /** 이 결론의 근거가 된 날짜 목록 */
   evidenceDates: string[]
