@@ -29,6 +29,8 @@ import {
   findRecapSession,
   loadPhoneLift,
   PLAN_CHIP,
+  QUIZ_CHIP,
+  quizChipForCard,
   type CoachChip,
   type CoachMessage,
 } from '@/lib/coachBriefing'
@@ -100,6 +102,27 @@ import {
   needsFocusName,
   saveStudyFocus,
 } from '@/lib/studyFocus'
+import {
+  MAX_QUIZ_MATERIAL_LENGTH,
+  MAX_QUIZ_TOPIC_LENGTH,
+  PHOTO_QUIZ_TOPIC,
+  answerQuiz,
+  countCorrect,
+  loadYesterdayWrong,
+  makeDemoQuiz,
+  newQuiz,
+  nextQuizStep,
+  parseQuizText,
+  requestQuizOrDemo,
+  retryOneQuestion,
+  saveQuizResult,
+  toQuizResult,
+  wrongQuestionsOf,
+  type CoachQuiz,
+  type QuizInput,
+  type QuizQuestion,
+  type QuizReply,
+} from '@/lib/studyQuiz'
 import { getTodayCardsState } from '@/lib/todayCards'
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
@@ -340,6 +363,88 @@ function todaySubjectsOf(school: SchoolToday | null): string[] {
   return subjects
 }
 
+// ---- 문제 말풍선 (lib/studyQuiz.ts, 2026-10-18 확인 문제) ----
+
+/** 확인 문제 칸에 적는 것 */
+interface QuizForm {
+  /** 무엇에 대한 문제인지. 오늘 카드를 고르면 그 카드 제목이 들어갑니다. */
+  topic: string
+  /** 고른 오늘 카드 번호. 직접 적었으면 null */
+  cardId: string | null
+  /** 고른 카드의 체크리스트 */
+  checklist: string[]
+  /** 붙여 넣은 필기 · 교과서 글 (선택) */
+  material: string
+  /** 줄인 사진(data URL). 이 화면의 기억에만 두고 어디에도 저장하지 않습니다. */
+  photo: string | null
+}
+
+/** 위기 표현이 감지돼서 문제 대신 하는 말 (아래에 상담 전화 한 줄이 같이 보임) */
+const QUIZ_HELP_REPLY = '문제는 잠깐 미뤄 두자. 마음이 힘들면 아래 번호로 언제든 이야기해도 돼.'
+
+/** 대화방에서 bubbleId 말풍선의 문제를 change 로 바꾼 새 대화방 */
+function withQuiz(
+  thread: CoachThread,
+  bubbleId: number,
+  change: (quiz: CoachQuiz) => CoachQuiz,
+): CoachThread {
+  const bubbles = thread.bubbles.map((bubble) =>
+    bubble.id === bubbleId && bubble.quiz ? { ...bubble, quiz: change(bubble.quiz) } : bubble,
+  )
+  return { ...thread, bubbles }
+}
+
+/** 새 문제를 내기 전에, 풀다 만 문제 말풍선은 접습니다. (결과는 다 푼 것만 남음) */
+function closeOpenQuizzes(thread: CoachThread): CoachThread {
+  const bubbles = thread.bubbles.map((bubble) =>
+    bubble.quiz && (bubble.quiz.status === 'open' || bubble.quiz.status === 'guessCheck')
+      ? { ...bubble, quiz: { ...bubble.quiz, status: 'closed' as const } }
+      : bubble,
+  )
+  return { ...thread, bubbles }
+}
+
+/** 문제 말풍선을 대화방 끝에 붙입니다. (서버를 부르지 않는 "틀린 문제 다시" 도 이걸로) */
+function withNewQuiz(
+  thread: CoachThread,
+  text: string,
+  quiz: { topic: string; cardId: string | null; questions: QuizQuestion[]; isDemo: boolean },
+): CoachThread {
+  const made = newQuiz({ ...quiz, now: Date.now() })
+  return withBubble(closeOpenQuizzes(thread), { speaker: 'ai', text, quiz: made })
+}
+
+/** 문제를 받은 결과를 대화방 끝에 붙입니다. */
+function applyQuizReply(thread: CoachThread, result: QuizReply, input: QuizInput): CoachThread {
+  if (result.showHelp) {
+    return withBubble({ ...thread, isHelpShown: true }, { speaker: 'ai', text: QUIZ_HELP_REPLY })
+  }
+  if (result.notStudy) {
+    return withBubble(thread, {
+      speaker: 'ai',
+      text: '공부 자료가 아닌 것 같아. 교과서나 필기 사진으로 다시 해 볼래?',
+      chips: [QUIZ_CHIP],
+    })
+  }
+  if (result.questions === null) {
+    return withBubble(thread, {
+      speaker: 'ai',
+      text: '이번엔 문제를 못 만들었어. 주제를 조금 더 자세히 적어 줄래?',
+      chips: [QUIZ_CHIP],
+    })
+  }
+  const lines = [
+    ...(result.notice ? [result.notice] : []),
+    `'${input.topic}' 문제 ${result.questions.length}개 낼게. 천천히 풀어 봐!`,
+  ]
+  return withNewQuiz(thread, lines.join('\n'), {
+    topic: input.topic,
+    cardId: input.cardId,
+    questions: result.questions,
+    isDemo: result.isDemo,
+  })
+}
+
 function CoachChat() {
   const navigate = useNavigate()
   const { token, user } = useAuth()
@@ -392,6 +497,13 @@ function CoachChat() {
   // [🕖 시간 바꿔 줘] 를 눌러 시각 고르기 칸을 열었는지
   const [isPickingTime, setIsPickingTime] = useState(false)
   const [pickedTime, setPickedTime] = useState('')
+  // 확인 문제 칸 (주제 · 오늘 카드 · 글 · 사진). null 이면 닫혀 있습니다.
+  const [quizForm, setQuizForm] = useState<QuizForm | null>(null)
+  // 확인 문제 칸에서 [📄 글 붙여 넣기] 를 눌러 글칸을 열었는지
+  const [isMaterialOpen, setIsMaterialOpen] = useState(false)
+  // 입력창의 📎 로 고른 사진 (줄인 data URL). 문제 · 계획 중 무엇에 쓸지 고를 때까지 이 화면의 기억에만 둡니다.
+  const [chatPhoto, setChatPhoto] = useState<string | null>(null)
+  const [chatPhotoError, setChatPhotoError] = useState<string | null>(null)
 
   // 처음 그릴 때 한 번만 정합니다:
   //   이 기기의 대화방을 꺼내고 → 날이 바뀌었으면 지난 서버 세션을 정리할 준비 + 오늘의 첫 말(브리핑)
@@ -419,6 +531,7 @@ function CoachChat() {
           grade: schoolClass?.grade ?? gradeNumberOf(loadOnboardingAnswers()?.grade),
           cards: todayCards,
           checkIn: loadLocalCheckIn(todayKey),
+          yesterdayWrongCount: loadYesterdayWrong(todayKey).length,
         }),
       )
       // 오늘의 서버 세션은 오늘의 첫 말부터 보냅니다. (어제 대화는 요약으로만 넘어감)
@@ -446,6 +559,9 @@ function CoachChat() {
       if (hasNewMissionDone && !missionSlot) {
         recap.text += `\n✅ 오늘의 미션 ${doneMissions}/${missions.length} 끝!`
       }
+      // 카드로 공부했으면 그 카드로 확인 문제를 내자고 권합니다. (누를 때만 문제를 냄)
+      const recapCard = cards.find((card) => card.id === recapSession.cardId)
+      if (recapCard) recap.chips = [...recap.chips, quizChipForCard(recapCard)]
       add(recap)
     }
     // 오늘 첫 말이 이미 컨디션을 묻고 있으면(미션 ①), 미션 말풍선으로 같은 걸 또 묻지 않습니다.
@@ -590,13 +706,28 @@ function CoachChat() {
       setThread((current) => applyPlanReply(current, result, request))
     },
   })
-  // AI 의 답이나 계획을 기다리는 중인지 (그동안은 새 말 · 칩을 막습니다)
-  const isBusy = talk.isPending || planTalk.isPending
+
+  // 확인 문제를 받습니다. (lib/studyQuiz.ts)
+  //   진짜 로그인: 서버 AI. 서버가 아직 준비 안 됐으면(404 · 503 · 429) 시연용 예시 문제로 대신합니다.
+  //   테스트 로그인: 시연용 예시 문제
+  const quizTalk = useMutation({
+    mutationFn: async (input: QuizInput): Promise<QuizReply> =>
+      isServerData ? requestQuizOrDemo(input) : makeDemoQuiz(input),
+    onSuccess: (result, input) => {
+      setThread((current) => applyQuizReply(current, result, input))
+    },
+  })
+  // AI 의 답이나 계획 · 문제를 기다리는 중인지 (그동안은 새 말 · 칩을 막습니다)
+  const isBusy = talk.isPending || planTalk.isPending || quizTalk.isPending
 
   const bubbles = thread.bubbles
   const lastBubble = bubbles[bubbles.length - 1]
   // 지금 고치는 중인 계획 말풍선. 있으면 학생이 쓰는 말은 이 계획을 고치는 요청이 됩니다.
   const openPlanBubble = bubbles.findLast((bubble) => bubble.plan?.status === 'open')
+  // 가장 최근 문제 말풍선. 이것만 펼쳐 보이고, 앞의 문제 말풍선은 결과 한 줄로 접습니다.
+  const latestQuizId = bubbles.findLast((bubble) => bubble.quiz)?.id ?? null
+  // 확인 문제 칸에서 고를 수 있는 오늘 카드 (다 한 카드 · 지금 카드 · 다음 카드, 5개까지)
+  const quizCardOptions = todayCards.items.map((item) => item.card).slice(0, 5)
 
   // 새 말풍선이 생기면 맨 아래로 내립니다.
   useEffect(() => {
@@ -674,6 +805,25 @@ function CoachChat() {
           )
         } else {
           openLongForm(goal, text, longRequest.endDate)
+        }
+        return
+      }
+      // "미적분 3단원 문제 내 줘" 처럼 문제를 부탁하면 바로 냅니다. 주제를 안 말했으면 주제 칸을 엽니다.
+      const quizRequest = parseQuizText(text)
+      if (quizRequest) {
+        if (quizRequest.topic !== '') {
+          startQuiz(
+            {
+              topic: quizRequest.topic,
+              checklist: [],
+              material: null,
+              image: null,
+              cardId: null,
+            },
+            text,
+          )
+        } else {
+          openQuizForm({}, text)
         }
         return
       }
@@ -788,13 +938,18 @@ function CoachChat() {
    * 긴 계획 칸을 엽니다. 코치가 무엇을 적으면 되는지 한 줄로 알려 줍니다.
    * endDate 를 주면(채팅에서 날짜를 알아들음) 그 날로, 아니면 가까운 일정 · 시험 날로 미리 채웁니다.
    */
-  function openLongForm(goal: string, myText: string, endDate: string | null = null) {
+  function openLongForm(
+    goal: string,
+    myText: string,
+    endDate: string | null = null,
+    photo: string | null = null,
+  ) {
     setPhotoError(null)
     setLongForm({
       goal,
       endDate: endDate ?? suggestedEndDate(goal),
       dailyMinutes: DEFAULT_DAILY_MINUTES,
-      photo: null,
+      photo,
     })
     const withAnswer = withBubble(thread, { speaker: 'me', text: myText })
     setThread(
@@ -927,6 +1082,161 @@ function CoachChat() {
     setPickedTime('')
   }
 
+  // ---- 문제 말풍선 ----
+
+  /** 확인 문제를 내 달라고 합니다. myText 가 있으면 그 말을 내 말풍선으로 먼저 붙입니다. */
+  function startQuiz(input: QuizInput, myText: string | null) {
+    if (isBusy) return
+    if (myText) setThread((current) => withBubble(current, { speaker: 'me', text: myText }))
+    quizTalk.mutate(input)
+  }
+
+  /** 확인 문제 칸을 엽니다. 코치가 무엇을 고르면 되는지 한 줄로 알려 줍니다. */
+  function openQuizForm(prefill: Partial<QuizForm>, myText: string) {
+    setIsMaterialOpen(false)
+    setQuizForm({ topic: '', cardId: null, checklist: [], material: '', photo: null, ...prefill })
+    const withAnswer = withBubble(thread, { speaker: 'me', text: myText })
+    setThread(
+      withBubble(withAnswer, {
+        speaker: 'ai',
+        text: prefill.photo
+          ? '사진으로 문제 낼게! 무슨 과목 · 단원인지 적어 주면 더 잘 맞춰 낼 수 있어.'
+          : '뭘 확인해 볼까? 오늘 카드를 고르거나 주제를 적어 줘. 교과서 · 필기 사진을 넣으면 그 내용으로 낼게.',
+      }),
+    )
+  }
+
+  /** 확인 문제 칸에서 사진을 고르면 줄여서 이 화면의 기억에만 둡니다. (저장하지 않음) */
+  async function handleQuizPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    // 같은 사진을 다시 골라도 다시 읽게 비워 둡니다.
+    event.target.value = ''
+    if (!file) return
+    setPhotoError(null)
+    try {
+      const photo = await shrinkPhoto(file)
+      setQuizForm((current) => (current ? { ...current, photo } : current))
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : '사진을 읽지 못했어요.')
+    }
+  }
+
+  // 주제를 적었거나 사진을 넣었으면 문제를 낼 수 있습니다. (사진만 있으면 '사진 속 공부 내용')
+  const isQuizFormReady =
+    quizForm !== null && (quizForm.topic.trim() !== '' || quizForm.photo !== null)
+
+  /** 확인 문제 칸에서 [문제 내 줘] 를 누르면: 고른 것을 내 말풍선으로 붙이고 문제를 내 달라고 합니다. */
+  function handleQuizSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!quizForm || !isQuizFormReady) return
+    const topic = (quizForm.topic.trim() || PHOTO_QUIZ_TOPIC).slice(0, MAX_QUIZ_TOPIC_LENGTH)
+    const material = quizForm.material.trim()
+    const extras = [quizForm.photo ? '📎 사진 1장' : null, material ? '📄 글' : null].filter(
+      Boolean,
+    )
+    const myText = `📝 ${topic} 문제 내 줘${extras.length > 0 ? ` · ${extras.join(' · ')}` : ''}`
+    startQuiz(
+      {
+        topic,
+        checklist: quizForm.checklist,
+        material: material === '' ? null : material.slice(0, MAX_QUIZ_MATERIAL_LENGTH),
+        image: quizForm.photo,
+        cardId: quizForm.cardId,
+      },
+      myText,
+    )
+    setQuizForm(null)
+  }
+
+  /**
+   * 문제 말풍선의 문제를 바꿉니다. 다 풀어서 처음 '끝(done)' 이 되는 순간에 결과를 이 기기에 남깁니다.
+   * (학생이 누를 때만 바뀌어서, 결과는 한 번만 남습니다)
+   */
+  function changeQuiz(bubbleId: number, change: (quiz: CoachQuiz) => CoachQuiz) {
+    const before = thread.bubbles.find((bubble) => bubble.id === bubbleId)?.quiz
+    if (!before) return
+    const after = change(before)
+    if (before.status !== 'done' && after.status === 'done') {
+      const now = Date.now()
+      saveQuizResult(toQuizResult(after, now, toDayKey(now)))
+    }
+    setThread((current) => withQuiz(current, bubbleId, () => after))
+  }
+
+  /** [틀린 것 다시 보기] — 그 문제 말풍선에서 틀린 문제만 다시 냅니다. (서버를 부르지 않음) */
+  function handleReviewWrong(bubble: ThreadBubble) {
+    const quiz = bubble.quiz
+    if (!quiz || isBusy) return
+    const wrong = wrongQuestionsOf(quiz)
+    if (wrong.length === 0) return
+    const withAnswer = withBubble(thread, { speaker: 'me', text: '틀린 것 다시 볼래' })
+    setThread(
+      withNewQuiz(
+        withAnswer,
+        `틀린 ${wrong.length}문제 다시 풀어 보자. 이번엔 해설을 떠올리면서!`,
+        {
+          topic: quiz.topic,
+          cardId: quiz.cardId,
+          questions: wrong,
+          isDemo: quiz.isDemo,
+        },
+      ),
+    )
+  }
+
+  /** [📝 틀린 문제 다시] — 어제 틀린 문제를 다시 냅니다. (이 기기의 결과에서 꺼냄, 서버를 부르지 않음) */
+  function startYesterdayReview(label: string) {
+    const wrong = loadYesterdayWrong(todayKey).slice(0, 5)
+    const withAnswer = withBubble(thread, { speaker: 'me', text: label })
+    if (wrong.length === 0) {
+      setThread(
+        withBubble(withAnswer, {
+          speaker: 'ai',
+          text: '어제 틀린 문제는 이미 다 다시 풀었어. 오늘 공부한 걸로 새로 내 볼까?',
+          chips: [QUIZ_CHIP],
+        }),
+      )
+      return
+    }
+    setThread(
+      withNewQuiz(withAnswer, `어제 틀린 ${wrong.length}문제야. 이번엔 맞혀 보자!`, {
+        topic: '어제 틀린 문제',
+        cardId: null,
+        questions: wrong,
+        isDemo: false,
+      }),
+    )
+  }
+
+  /** 입력창의 📎 로 사진을 고르면 줄여서 기억해 두고, 문제 · 계획 중 무엇에 쓸지 묻습니다. (저장하지 않음) */
+  async function handleChatPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setChatPhotoError(null)
+    try {
+      setChatPhoto(await shrinkPhoto(file))
+    } catch (error) {
+      setChatPhotoError(error instanceof Error ? error.message : '사진을 읽지 못했어요.')
+    }
+  }
+
+  /** 📎 사진 → [📝 이걸로 문제 내기] */
+  function handlePhotoQuiz() {
+    if (!chatPhoto || isBusy) return
+    setLongForm(null)
+    openQuizForm({ photo: chatPhoto }, '📎 이 사진으로 문제 내 줘')
+    setChatPhoto(null)
+  }
+
+  /** 📎 사진 → [📅 이걸로 계획 짜기] (긴 계획 칸에 사진을 넣어 엽니다) */
+  function handlePhotoPlan() {
+    if (!chatPhoto || isBusy) return
+    setQuizForm(null)
+    openLongForm(suggestedGoal(), '📎 이 사진으로 계획 짜 줘', null, chatPhoto)
+    setChatPhoto(null)
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     sendText(draft)
@@ -996,6 +1306,29 @@ function CoachChat() {
     }
     if (chip.kind === 'longPlan') {
       if (!isBusy) openLongForm(suggestedGoal(), chip.label)
+      return
+    }
+    if (chip.kind === 'quiz') {
+      if (isBusy) return
+      // 카드로 내는 칩(공부 끝 회고)이면 바로 내고, 아니면 주제를 고르는 칸을 엽니다.
+      if (chip.topic) {
+        startQuiz(
+          {
+            topic: chip.topic,
+            checklist: chip.checklist ?? [],
+            material: null,
+            image: null,
+            cardId: chip.cardId ?? null,
+          },
+          chip.label,
+        )
+      } else {
+        openQuizForm({}, chip.label)
+      }
+      return
+    }
+    if (chip.kind === 'quizReview') {
+      if (!isBusy) startYesterdayReview(chip.label)
       return
     }
     if (chip.kind === 'startCard') {
@@ -1073,10 +1406,32 @@ function CoachChat() {
                   <li>
                     <CoachBubble text={bubble.text} isDemo={bubble.isDemo} />
                     {bubble.plan && <PlanCard plan={bubble.plan} />}
+                    {bubble.quiz && (
+                      <QuizCard
+                        quiz={bubble.quiz}
+                        isLatest={bubble.id === latestQuizId}
+                        onAnswer={(choiceIndex) =>
+                          changeQuiz(bubble.id, (quiz) => answerQuiz(quiz, choiceIndex, Date.now()))
+                        }
+                        onNext={() =>
+                          changeQuiz(bubble.id, (quiz) => nextQuizStep(quiz, Date.now()))
+                        }
+                        onRetry={() =>
+                          changeQuiz(bubble.id, (quiz) => retryOneQuestion(quiz, Date.now()))
+                        }
+                        onKeepResult={() =>
+                          changeQuiz(bubble.id, (quiz) => ({ ...quiz, status: 'done' }))
+                        }
+                        onReviewWrong={() => handleReviewWrong(bubble)}
+                        onOtherTopic={() => !isBusy && openQuizForm({}, '다른 주제로 낼래')}
+                      />
+                    )}
                     {/* 칩은 가장 마지막 코치 말풍선 아래에만 보입니다. 답을 받는 중에는 숨깁니다.
-                        계획을 고치는 중이면 그 계획의 칩([이대로 할게] · [줄여 줘] …)을 보여 줍니다. */}
+                        계획을 고치는 중이면 그 계획의 칩([이대로 할게] · [줄여 줘] …)을 보여 줍니다.
+                        문제를 푸는 중이면 문제 말풍선 안의 버튼만 씁니다. */}
                     {bubble === lastBubble &&
                       !isBusy &&
+                      !isQuizActive(bubble.quiz) &&
                       (openPlanBubble?.plan ? (
                         <PlanChips
                           bubble={openPlanBubble}
@@ -1114,6 +1469,14 @@ function CoachChat() {
                     ? '사진을 읽고 계획 짜는 중…'
                     : '계획 짜는 중…'
                 }
+                isStatus
+              />
+            </li>
+          )}
+          {quizTalk.isPending && (
+            <li>
+              <CoachBubble
+                text={quizTalk.variables?.image ? '사진을 읽고 문제 만드는 중…' : '문제 만드는 중…'}
                 isStatus
               />
             </li>
@@ -1282,6 +1645,172 @@ function CoachChat() {
         </form>
       )}
 
+      {/* 확인 문제 칸: 오늘 카드 고르기 또는 주제 적기 · (선택) 글 붙여 넣기 · 교과서 · 필기 사진 */}
+      {quizForm !== null && (
+        <form
+          onSubmit={handleQuizSubmit}
+          aria-label="확인 문제 내기"
+          className="flex shrink-0 flex-col gap-2 rounded-3xl bg-white p-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[15px] font-semibold text-slate-900">📝 확인 문제</p>
+            <button
+              type="button"
+              aria-label="문제 칸 닫기"
+              onClick={() => setQuizForm(null)}
+              className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+            >
+              ✕
+            </button>
+          </div>
+          {quizCardOptions.length > 0 && (
+            <div role="group" aria-label="오늘 카드로 내기" className="flex flex-wrap gap-2">
+              {quizCardOptions.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  aria-pressed={quizForm.cardId === card.id}
+                  onClick={() =>
+                    setQuizForm({
+                      ...quizForm,
+                      topic: card.title,
+                      cardId: card.id,
+                      checklist: card.checklist
+                        .map((item) => item.text)
+                        .filter((text) => text.trim() !== ''),
+                    })
+                  }
+                  className={cn(
+                    chipClass,
+                    'max-w-full',
+                    quizForm.cardId === card.id &&
+                      'bg-brand-light text-brand border-transparent font-semibold',
+                  )}
+                >
+                  <span className="truncate">{card.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <label htmlFor="quiz-topic" className="text-sm font-medium text-slate-600">
+            {quizCardOptions.length > 0 ? '또는 주제를 적어 줘' : '뭘 확인할까?'}
+          </label>
+          <input
+            id="quiz-topic"
+            value={quizForm.topic}
+            maxLength={MAX_QUIZ_TOPIC_LENGTH}
+            // 직접 고쳐 적으면 카드로 내는 게 아니게 됩니다.
+            onChange={(event) =>
+              setQuizForm({ ...quizForm, topic: event.target.value, cardId: null, checklist: [] })
+            }
+            placeholder="예: 미적분 3단원 수열의 극한"
+            className="focus:ring-brand/30 h-11 w-full min-w-0 rounded-2xl bg-slate-100 px-3 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
+          />
+          {isMaterialOpen && (
+            <>
+              <label htmlFor="quiz-material" className="text-sm font-medium text-slate-600">
+                필기 · 교과서 글 (이 안에서만 문제를 내)
+              </label>
+              <textarea
+                id="quiz-material"
+                value={quizForm.material}
+                maxLength={MAX_QUIZ_MATERIAL_LENGTH}
+                rows={3}
+                onChange={(event) => setQuizForm({ ...quizForm, material: event.target.value })}
+                placeholder="공부한 내용을 붙여 넣어 줘"
+                className="focus:ring-brand/30 w-full min-w-0 resize-none rounded-2xl bg-slate-100 px-3 py-2 text-base placeholder:text-slate-400 focus:ring-2 focus:outline-none"
+              />
+            </>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {!isMaterialOpen && (
+              <button type="button" onClick={() => setIsMaterialOpen(true)} className={chipClass}>
+                📄 글 붙여 넣기
+              </button>
+            )}
+            {/* 사진은 줄여서 이 화면의 기억에만 둡니다. 문제를 내는 데만 서버에 보내고 저장하지 않습니다. */}
+            <label className={cn(chipClass, 'focus-within:ring-brand/30 focus-within:ring-2')}>
+              📎 교과서·필기 사진
+              <input type="file" accept="image/*" onChange={handleQuizPhoto} className="sr-only" />
+            </label>
+            {quizForm.photo && (
+              <span className="flex items-center gap-1">
+                <img
+                  src={quizForm.photo}
+                  alt="넣은 사진"
+                  className="h-10 w-10 max-w-full rounded-lg object-cover"
+                />
+                <button
+                  type="button"
+                  aria-label="사진 빼기"
+                  onClick={() => setQuizForm({ ...quizForm, photo: null })}
+                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
+          {photoError && (
+            <p role="alert" className="text-sm break-keep text-red-600">
+              {photoError}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={!isQuizFormReady || isBusy}
+            className="bg-brand h-11 w-full cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            문제 내 줘 (3문제)
+          </button>
+          <p className="text-xs break-keep text-slate-400">
+            푼 결과는 이 기기에만 남아. 사진은 저장하지 않아.
+          </p>
+        </form>
+      )}
+
+      {/* 입력창의 📎 로 고른 사진: 문제를 낼지 · 계획을 짤지 고릅니다. (고르기 전에는 아무 데도 보내지 않음) */}
+      {chatPhoto && (
+        <div
+          role="group"
+          aria-label="고른 사진으로 할 일"
+          className="flex shrink-0 flex-wrap items-center gap-2 rounded-3xl bg-white p-3"
+        >
+          <img
+            src={chatPhoto}
+            alt="고른 사진"
+            className="h-10 w-10 max-w-full shrink-0 rounded-lg object-cover"
+          />
+          <p className="min-w-0 flex-1 text-sm break-keep text-slate-600">이 사진으로 뭘 할까?</p>
+          <button
+            type="button"
+            aria-label="사진 빼기"
+            onClick={() => setChatPhoto(null)}
+            className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+          >
+            ✕
+          </button>
+          <div className="flex w-full flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={handlePhotoQuiz}
+              className={cn(chipClass, 'bg-brand-light text-brand border-transparent')}
+            >
+              📝 이걸로 문제 내기
+            </button>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={handlePhotoPlan}
+              className={cn(chipClass, 'bg-brand-light text-brand border-transparent')}
+            >
+              📅 이걸로 계획 짜기
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 위기 표현이 감지됐을 때 상담 전화 한 줄. 대화는 막지 않습니다. (누르면 바로 전화가 걸립니다) */}
       {thread.isHelpShown && (
         <a
@@ -1339,7 +1868,43 @@ function CoachChat() {
             </button>
           </div>
         )}
+        {quizTalk.isError && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 px-2 pt-1">
+            <p className="text-sm break-keep text-red-600">
+              문제를 못 만들었어요. {getChatErrorMessage(quizTalk.error)}
+            </p>
+            <button
+              type="button"
+              onClick={() => quizTalk.variables && quizTalk.mutate(quizTalk.variables)}
+              className={chipClass}
+            >
+              다시 보내기
+            </button>
+          </div>
+        )}
+        {chatPhotoError && (
+          <p role="alert" className="px-2 pt-1 text-sm break-keep text-red-600">
+            {chatPhotoError}
+          </p>
+        )}
         <div className="flex items-end gap-2">
+          {/* 📎 사진 넣기: 교과서 · 필기 · 시험 범위 사진으로 문제를 내거나 계획을 짭니다. (저장하지 않음) */}
+          <label
+            aria-label="사진 넣기"
+            className={cn(
+              'focus-within:ring-brand/30 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-2xl bg-slate-100 text-lg focus-within:ring-2',
+              isBusy && 'pointer-events-none opacity-40',
+            )}
+          >
+            📎
+            <input
+              type="file"
+              accept="image/*"
+              disabled={isBusy}
+              onChange={handleChatPhoto}
+              className="sr-only"
+            />
+          </label>
           <label htmlFor="chat-input" className="sr-only">
             AI 코치에게 보낼 말
           </label>
@@ -1577,6 +2142,206 @@ function PlanChips({ bubble, plan, onAccept, onRevise, onPickTime, onClose }: Pl
       <button type="button" onClick={() => onClose(bubble)} className={chipClass}>
         나중에 할래
       </button>
+    </div>
+  )
+}
+
+// ---- 문제 말풍선 ----
+// 지금은 코치 화면에서만 써서 이 파일에 둡니다. AI 통화 화면에서도 쓰게 되면 components/ui/ 로 뺍니다.
+
+/** 푸는 중인 문제인지 (푸는 중 · 찍기 확인 중) */
+function isQuizActive(quiz: CoachQuiz | undefined): boolean {
+  return quiz !== undefined && (quiz.status === 'open' || quiz.status === 'guessCheck')
+}
+
+/** 보기 번호 글자 */
+const CHOICE_MARKS = ['①', '②', '③', '④']
+
+interface QuizCardProps {
+  quiz: CoachQuiz
+  /** true 면 가장 최근 문제 말풍선입니다. 아니면 결과 한 줄로 접습니다. */
+  isLatest: boolean
+  onAnswer: (choiceIndex: number) => void
+  /** [다음] · [결과 보기] */
+  onNext: () => void
+  /** 찍은 것 같을 때 [다시 풀기] — 한 문제만 다시 */
+  onRetry: () => void
+  /** 찍은 것 같을 때 [괜찮아] — 그대로 결과 보기 */
+  onKeepResult: () => void
+  onReviewWrong: () => void
+  onOtherTopic: () => void
+}
+
+/**
+ * 코치 말풍선 아래의 문제 카드. 한 문제씩 보여 주고, 고르면 정답 · 오답 색과 해설을 보여 줍니다.
+ * 다 풀면 "3개 중 2개 맞았어" 와 [틀린 것 다시 보기] · [다른 주제로] 를 보여 줍니다.
+ */
+function QuizCard({
+  quiz,
+  isLatest,
+  onAnswer,
+  onNext,
+  onRetry,
+  onKeepResult,
+  onReviewWrong,
+  onOtherTopic,
+}: QuizCardProps) {
+  const total = quiz.questions.length
+  const correct = countCorrect(quiz)
+  const wrongCount = wrongQuestionsOf(quiz).length
+  const isDone = quiz.status === 'done'
+
+  // 지난 문제 말풍선 · 풀다 만 문제는 결과 한 줄로 접습니다.
+  if (!isLatest || quiz.status === 'closed') {
+    return (
+      <p className="mt-2 w-full rounded-[20px] border border-slate-200 bg-white px-3 py-2 text-sm break-words text-slate-500 sm:max-w-md">
+        📝 {quiz.topic} · {isDone ? `${total}개 중 ${correct}개 맞음` : '풀다 말았어'}
+      </p>
+    )
+  }
+
+  const question = quiz.questions[quiz.current]
+  const answer = quiz.answers[quiz.current]
+  const isLastStep = quiz.retryIndex !== null || quiz.current === total - 1
+
+  return (
+    <div className="mt-2 w-full rounded-[20px] border border-slate-200 bg-white p-3 sm:max-w-md">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 text-[15px] font-bold break-words text-slate-900">📝 {quiz.topic}</p>
+        {quiz.status === 'open' && (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 tabular-nums">
+            {quiz.current + 1}/{total}
+          </span>
+        )}
+      </div>
+
+      {quiz.status === 'open' && (
+        <div className="mt-2 flex flex-col gap-2">
+          <p className="text-[15px] break-words whitespace-pre-wrap text-slate-900">
+            {question.question}
+          </p>
+          <div role="group" aria-label="보기" className="flex flex-col gap-2">
+            {question.choices.map((choice, index) => {
+              const isAnswer = index === question.answerIndex
+              const isPicked = answer?.choiceIndex === index
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  disabled={answer !== null}
+                  onClick={() => onAnswer(index)}
+                  className={cn(
+                    'flex min-h-10 w-full cursor-pointer items-start gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-left text-[15px] break-words text-slate-800 disabled:cursor-default',
+                    // 고른 뒤: 정답은 초록, 내가 고른 오답은 빨강, 나머지는 흐리게
+                    answer !== null &&
+                      isAnswer &&
+                      'border-emerald-300 bg-emerald-50 text-emerald-800',
+                    answer !== null &&
+                      isPicked &&
+                      !isAnswer &&
+                      'border-red-300 bg-red-50 text-red-700',
+                    answer !== null && !isAnswer && !isPicked && 'opacity-60',
+                  )}
+                >
+                  <span aria-hidden className="shrink-0">
+                    {CHOICE_MARKS[index]}
+                  </span>
+                  <span className="min-w-0 flex-1">{choice}</span>
+                </button>
+              )
+            })}
+          </div>
+          {answer !== null && (
+            <>
+              <p
+                role="status"
+                className={cn(
+                  'text-[15px] font-semibold',
+                  answer.choiceIndex === question.answerIndex ? 'text-emerald-700' : 'text-red-600',
+                )}
+              >
+                {answer.choiceIndex === question.answerIndex ? '⭕ 맞았어!' : '❌ 아쉽다'}
+              </p>
+              {question.explanation && (
+                <p className="text-sm break-words text-slate-600">{question.explanation}</p>
+              )}
+              <button
+                type="button"
+                onClick={onNext}
+                className="bg-brand h-10 w-full cursor-pointer rounded-2xl px-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.98]"
+              >
+                {isLastStep ? '결과 보기' : '다음'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* 찍은 것 같을 때: 혼내지 않고 한 문제만 다시 볼지 묻습니다. 두 버튼은 같은 모양 · 같은 크기 */}
+      {quiz.status === 'guessCheck' && (
+        <div className="mt-2 flex flex-col gap-2">
+          <p className="text-[15px] break-keep text-slate-800">
+            찍은 것 같은데? 한 문제만 다시 볼까?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onRetry}
+              className={cn(chipClass, 'flex-1 justify-center')}
+            >
+              다시 풀기
+            </button>
+            <button
+              type="button"
+              onClick={onKeepResult}
+              className={cn(chipClass, 'flex-1 justify-center')}
+            >
+              괜찮아
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isDone && (
+        <div className="mt-2 flex flex-col gap-2">
+          <p className="text-[15px] font-semibold text-slate-900">
+            {total}개 중 {correct}개 맞았어{correct === total ? '! 👏' : '.'}
+          </p>
+          <ul className="flex flex-col gap-1">
+            {quiz.questions.map((item, index) => {
+              const isRight = quiz.answers[index]?.choiceIndex === item.answerIndex
+              return (
+                <li key={index} className="flex gap-2 text-sm text-slate-600">
+                  <span aria-label={isRight ? '맞음' : '틀림'} className="shrink-0">
+                    {isRight ? '⭕' : '❌'}
+                  </span>
+                  <span className="min-w-0 flex-1 break-words">{item.question}</span>
+                </li>
+              )
+            })}
+          </ul>
+          {wrongCount > 0 && (
+            <p className="text-xs break-keep text-slate-400">
+              틀린 문제는 내일 코치가 한 번 더 물어볼게.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {wrongCount > 0 && (
+              <button
+                type="button"
+                onClick={onReviewWrong}
+                className={cn(chipClass, 'bg-brand-light text-brand border-transparent')}
+              >
+                틀린 것 다시 보기
+              </button>
+            )}
+            <button type="button" onClick={onOtherTopic} className={chipClass}>
+              다른 주제로
+            </button>
+          </div>
+        </div>
+      )}
+      {quiz.isDemo && <p className="mt-1 text-xs text-amber-700">시연용 예시 문제 (AI 아님)</p>}
     </div>
   )
 }

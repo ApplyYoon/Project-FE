@@ -93,6 +93,8 @@ const RECORD_KEYS = [
   // 세션별 집중도 점수와, 진행 중인 세션에서 화면을 떠난 기록 (lib/focusScore.ts)
   'focus-scores',
   'session-away',
+  // 확인 문제를 푼 결과 (틀린 문제를 다음 날 다시 내려고 남김, lib/studyQuiz.ts)
+  'quiz-results',
   // 내가 준비하는 것(lib/studyFocus.ts) · 내 일정(lib/myEvents.ts)
   'focus',
   'my-events',
