@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { ApiError, api } from '@/lib/api'
 import { isServerDataMode } from '@/lib/dataMode'
+import type { CardType } from '@/types'
 
 /**
  * 카드에 쓰는 작은 AI 기능을 서버에 부탁합니다. (#413, BE `POST /ai/checklist` · `POST /ai/first-step`)
@@ -199,6 +200,64 @@ export async function requestQuickCard(text: string): Promise<QuickCardDraft | n
     )
     if (items.length === 0) return null
     return { title: card.title.trim(), items: items.map((item) => item.trim()) }
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) throw error
+    return null
+  }
+}
+
+/** 카드 폼 기본값 추천 하나 (BE `POST /ai/card-defaults`) */
+export interface CardDefaults {
+  /** 연결할 목표의 id. 서버가 고르지 못했으면 null */
+  goalId: string | null
+  /** 유형(자습 · 인강). 고르지 못했으면 null */
+  type: CardType | null
+  /** 길이(분). 모양이 틀리면 null */
+  durationMinutes: number | null
+  /** 왜 이렇게 채웠는지 한 줄. 없으면 빈 글자 */
+  evidence: string
+}
+
+/**
+ * 카드 제목으로 목표 연결 · 유형 · 길이 추천을 받습니다. (#419 표 2번) 못 받으면 null.
+ * 같은 제목의 지난 카드가 있으면 서버가 AI 없이 그 카드를 따르고, 처음 보는 제목이면 AI 가 내 진행 중 목표에서 고릅니다.
+ *
+ *   await requestCardDefaults('수학 인강 3강')
+ *     -> { goalId: '4', type: 'lecture', durationMinutes: 60, evidence: '지난번 같은 제목의 카드와 같게 채웠어요' }
+ */
+export async function requestCardDefaults(title: string): Promise<CardDefaults | null> {
+  if (!isServerDataMode()) return null
+  const trimmed = title.trim().slice(0, 100)
+  if (trimmed === '') return null
+  try {
+    const result = await api<unknown>('/ai/card-defaults', {
+      method: 'POST',
+      body: JSON.stringify({ title: trimmed }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    const record = (typeof result === 'object' && result !== null ? result : {}) as Record<
+      string,
+      unknown
+    >
+    if (isShowHelp(record)) return null
+    // 목표 id 는 서버가 글자로 줍니다. 숫자로 와도 글자로 맞춥니다.
+    const goalId =
+      typeof record.goalId === 'string' || typeof record.goalId === 'number'
+        ? String(record.goalId)
+        : null
+    const type = record.type === 'self' || record.type === 'lecture' ? record.type : null
+    const durationMinutes =
+      typeof record.durationMinutes === 'number' &&
+      Number.isInteger(record.durationMinutes) &&
+      record.durationMinutes > 0
+        ? record.durationMinutes
+        : null
+    const evidence =
+      Array.isArray(record.evidence) && typeof record.evidence[0] === 'string'
+        ? record.evidence[0].trim()
+        : ''
+    if (goalId === null && type === null && durationMinutes === null) return null
+    return { goalId, type, durationMinutes, evidence }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) throw error
     return null
