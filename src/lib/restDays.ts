@@ -1,5 +1,6 @@
 import {
   getCardDayMark,
+  getMarkCauses,
   loadCardMarks,
   type CardDayMarkRecord,
   type CardFailCause,
@@ -84,14 +85,17 @@ export function needsRecoveryCheck(restDays: RestDay[], dateKey: string): boolea
 /** 카드 하루치에 남은 표시 — 휴식한 날이면 rest, 아니면 미루기 · 실패 표시 (달력 · 판정이 같이 씁니다) */
 export interface CardDayMarkInfo {
   mark: 'rest' | 'postponed' | 'failed'
+  /** 실패의 대표 원인 (처음 고른 것) */
   reason?: CardFailCause
+  /** 실패에 고른 원인 모두 (여러 개 고르기, 2026-10-18) */
+  reasons?: CardFailCause[]
 }
 
 /**
  * 그 카드 · 그 날짜의 표시를 하나로 돌려줍니다. 휴식한 날이 먼저입니다. (분석 탭 달력의 getMark 로 넘기면 됩니다)
  *
  *   10/17 을 쉰 날로 처리함                    -> { mark: 'rest' }
- *   10/17 에 그 카드를 '폰·SNS' 로 실패 기록함  -> { mark: 'failed', reason: 'phone' }
+ *   10/17 에 그 카드를 '폰·SNS' 로 실패 기록함  -> { mark: 'failed', reason: 'phone', reasons: ['phone'] }
  *   아무 표시 없음                             -> undefined
  */
 export function getCardDayMarkInfo(
@@ -103,7 +107,8 @@ export function getCardDayMarkInfo(
   if (restDays.some((day) => day.date === dateKey)) return { mark: 'rest' }
   const mark = getCardDayMark(marks, cardId, dateKey)
   if (!mark) return undefined
-  return mark.mark === 'failed' ? { mark: 'failed', reason: mark.cause } : { mark: 'postponed' }
+  if (mark.mark !== 'failed') return { mark: 'postponed' }
+  return { mark: 'failed', reason: mark.cause, reasons: getMarkCauses(mark) }
 }
 
 // ── 저장 ── (실제 키는 'study-rest-days')

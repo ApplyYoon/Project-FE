@@ -1,6 +1,7 @@
 import { isMissResult, type CardResult } from '@/lib/cardResult'
 import { moveDateKey } from '@/lib/date'
 import type { CardFailCause } from '@/lib/cardMarks'
+import { toReasonList } from '@/lib/reasons'
 import type { CardPriority } from '@/types'
 
 /**
@@ -29,8 +30,10 @@ export interface JudgedCardDay {
   result: CardResult
   /** getRunRate 의 값 (0 ~ 1). 미실행이면 0 */
   runRate: number
-  /** 미실행일 때 고른 원인 태그. 아직 안 골랐으면 없음 */
+  /** 미실행일 때 고른 대표 원인 (처음 고른 것). 아직 안 골랐으면 없음 */
   missReason?: CardFailCause
+  /** 미실행일 때 고른 원인 모두 (여러 개 고르기, 2026-10-18). 읽을 때는 getMissReasons */
+  missReasons?: CardFailCause[]
   /** cardResult.ts 의 isStartedOnTime 값. 시작하지 않았으면 없음 (의지력의 정시 시작 비율에 씀) */
   startedOnTime?: boolean
   /** 그 카드 · 그날 체크리스트 달성률 (0 ~ 1). 세션이 없으면 없음 (관리 단계의 '성공' 판정에 씀) */
@@ -69,16 +72,32 @@ function averageRunRate(days: JudgedCardDay[], from: string, to: string): number
   return inRange.reduce((sum, day) => sum + day.runRate, 0) / inRange.length
 }
 
-/** 가장 많이 나온 원인. 수가 같으면 더 최근에 나온 것 */
+/**
+ * 카드 하루치에 고른 미실행 원인 모두. 예전 판정(missReason 하나)도 [하나] 로 돌려줍니다.
+ *
+ *   getMissReasons({ missReason: 'tired', missReasons: ['tired', 'phone'] }) -> ['tired', 'phone']
+ *   getMissReasons({ missReason: 'phone' }) -> ['phone']     getMissReasons({}) -> []
+ */
+export function getMissReasons(
+  day: Pick<JudgedCardDay, 'missReason' | 'missReasons'>,
+): CardFailCause[] {
+  return toReasonList(day.missReasons, day.missReason)
+}
+
+/**
+ * 가장 많이 나온 원인. 수가 같으면 더 최근에 나온 것.
+ * 하루에 원인을 여러 개 골랐으면 하나하나 셉니다. (피곤 + 폰 → 피곤 1번, 폰 1번)
+ */
 function findMainCause(days: JudgedCardDay[]): CardFailCause | undefined {
   const counts = new Map<CardFailCause, { count: number; lastDate: string }>()
   for (const day of days) {
-    if (!day.missReason) continue
-    const prev = counts.get(day.missReason) ?? { count: 0, lastDate: '' }
-    counts.set(day.missReason, {
-      count: prev.count + 1,
-      lastDate: day.dateKey > prev.lastDate ? day.dateKey : prev.lastDate,
-    })
+    for (const cause of getMissReasons(day)) {
+      const prev = counts.get(cause) ?? { count: 0, lastDate: '' }
+      counts.set(cause, {
+        count: prev.count + 1,
+        lastDate: day.dateKey > prev.lastDate ? day.dateKey : prev.lastDate,
+      })
+    }
   }
   let best: { cause: CardFailCause; count: number; lastDate: string } | undefined
   for (const [cause, value] of counts) {

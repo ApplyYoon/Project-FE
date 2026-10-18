@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { ReasonChips } from '@/components/ui/ReasonChips'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { ApiError } from '@/lib/api'
@@ -25,6 +26,7 @@ import { cn } from '@/lib/cn'
 import { CARD_FAIL_CAUSES, addCardMark, type CardFailCause } from '@/lib/cardMarks'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { isSafetyBrakeOnNow } from '@/lib/focusMode'
+import { toggleReason } from '@/lib/reasons'
 import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { loadAutoSettings } from '@/lib/settingsMapping'
 import { getTodayCareLevel } from '@/lib/todayCare'
@@ -194,15 +196,22 @@ interface UnhandledCardRowProps {
 function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) {
   // pending: 원인 고르는 중 · split: 나눠 넣을지 묻는 중 · done: 끝
   const [step, setStep] = useState<'pending' | 'split' | 'done'>('pending')
-  const [cause, setCause] = useState<CardFailCause | null>(null)
+  // 고른 원인들 (여러 개 가능, 맨 앞이 대표 원인)
+  const [causes, setCauses] = useState<CardFailCause[]>([])
   const [splitDate, setSplitDate] = useState(() => moveDateKey(getTodayKey(), 1))
   const minuteOptions = getSplitMinuteOptions(item.card.durationMinutes)
   const [splitMinutes, setSplitMinutes] = useState(minuteOptions[0])
   const [message, setMessage] = useState('')
 
-  function handleFail(nextCause: CardFailCause) {
-    addCardMark({ cardId: item.card.id, dateKey: item.dateKey, mark: 'failed', cause: nextCause })
-    setCause(nextCause)
+  // 서버 칸은 하나라서 대표 원인(cause)만 서버로 갑니다. 이 기기에는 모두(causes) 남깁니다.
+  function handleFail() {
+    addCardMark({
+      cardId: item.card.id,
+      dateKey: item.dateKey,
+      mark: 'failed',
+      cause: causes[0],
+      causes,
+    })
     setStep(askSplit ? 'split' : 'done')
     setMessage('실패로 기록했어요.')
   }
@@ -213,7 +222,9 @@ function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) 
     setMessage(`실패로 기록하고, ${shortDate(splitDate)} 에 ${splitMinutes}분으로 다시 넣었어요.`)
   }
 
-  const causeLabel = CARD_FAIL_CAUSES.find((option) => option.key === cause)?.label
+  const causeLabel = causes
+    .map((key) => CARD_FAIL_CAUSES.find((option) => option.key === key)?.label ?? '기타')
+    .join(' · ')
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -222,22 +233,18 @@ function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) 
       </div>
 
       {step === 'pending' && (
-        // 375px 에서도 버튼이 줄을 바꿔 들어가고, 누르는 곳은 40px(h-10) 입니다.
-        <div
-          role="group"
-          aria-label={`${item.card.title} 못 한 원인`}
-          className="flex flex-wrap gap-1.5"
-        >
-          {CARD_FAIL_CAUSES.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => handleFail(option.key)}
-              className="h-10 cursor-pointer rounded-full border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              {option.label}
-            </button>
-          ))}
+        // 원인을 여러 개 고른 뒤 [실패로 기록] 을 누릅니다. 375px 에서는 두 줄로 나란히, 누르는 곳은 40px(h-10) 입니다.
+        <div className="flex flex-col gap-2">
+          <ReasonChips
+            options={CARD_FAIL_CAUSES}
+            selected={causes}
+            onToggle={(key) => setCauses((prev) => toggleReason(prev, key))}
+            label={`${item.card.title} 못 한 원인`}
+            className="sm:grid-cols-4"
+          />
+          <Button size="sm" disabled={causes.length === 0} onClick={handleFail}>
+            실패로 기록
+          </Button>
         </div>
       )}
 

@@ -1,4 +1,12 @@
-import type { GoodReason, PauseTag, ShortfallReason, WithWhat } from '@/types'
+import { toReasonList } from '@/lib/reasons'
+import type {
+  GoodReason,
+  PauseTag,
+  SessionEndReport,
+  SessionPause,
+  ShortfallReason,
+  WithWhat,
+} from '@/types'
 
 /**
  * 타이머 팝업의 1탭 태그 이름표와 분류를 한 곳에 모아 둡니다. (최종 기획서 「4.4 타이머」, #380)
@@ -65,4 +73,27 @@ export const WITH_WHAT_OPTIONS: { key: WithWhat; label: string }[] = [
  */
 export function getPauseSource(tag: PauseTag): CauseSource | 'unknown' {
   return PAUSE_TAGS.find((item) => item.key === tag)?.source ?? 'unknown'
+}
+
+/**
+ * 일시정지 한 번에 고른 이유 모두. 예전 기록(tag 하나)도 [하나] 로 돌려줍니다. (lib/reasons.ts)
+ *
+ *   getPauseTags({ tag: 'phone', tags: ['phone', 'mindWander'] }) -> ['phone', 'mindWander']
+ *   getPauseTags({ tag: 'toilet' })                               -> ['toilet']
+ */
+export function getPauseTags(pause: Pick<SessionPause, 'tag' | 'tags'>): PauseTag[] {
+  return toReasonList(pause.tags, pause.tag)
+}
+
+/**
+ * 종료 팝업에서 고른 "다 못 한 이유" 모두. 예전 기록(하나)도 [하나] 로, 없으면 빈 목록입니다.
+ *
+ *   getShortfallReasons({ checked: {}, shortfallReason: 'stuck', shortfallReasons: ['stuck', 'tired'] }) -> ['stuck', 'tired']
+ *   getShortfallReasons({ checked: {}, shortfallReason: 'phone' }) -> ['phone']
+ *   getShortfallReasons(undefined) -> []
+ */
+export function getShortfallReasons(
+  report: Pick<SessionEndReport, 'shortfallReason' | 'shortfallReasons'> | undefined,
+): ShortfallReason[] {
+  return toReasonList(report?.shortfallReasons, report?.shortfallReason)
 }

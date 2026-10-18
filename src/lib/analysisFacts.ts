@@ -5,10 +5,16 @@ import { formatMinutes } from '@/lib/dailyRecords'
 import { moveDateKey, toDayKey } from '@/lib/date'
 import { EXPERIMENT_STATUS_LABELS, type Experiment } from '@/lib/experiments'
 import { getFixedBlocksOnDate } from '@/lib/fixedBlocks'
-import type { JudgedCardDay } from '@/lib/relapseSignal'
+import { getMissReasons, type JudgedCardDay } from '@/lib/relapseSignal'
 import { getWeekday, getWeekdayName } from '@/lib/routines'
 import { getSessionCardId } from '@/lib/sessionRecords'
-import { GOOD_REASONS, PAUSE_TAGS, SHORTFALL_REASONS } from '@/lib/sessionTags'
+import {
+  GOOD_REASONS,
+  PAUSE_TAGS,
+  SHORTFALL_REASONS,
+  getPauseTags,
+  getShortfallReasons,
+} from '@/lib/sessionTags'
 import { findStrategy, getStrategiesFor } from '@/lib/strategyCatalog'
 import { getStudyMs } from '@/lib/studyTime'
 import { PREDICTION_OPTIONS, type WeeklyPrediction } from '@/lib/weeklyPrediction'
@@ -343,9 +349,11 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
   let expectedHit = 0
   for (const day of days) {
     const expected = cardById.get(day.cardId)?.expectedFailCauses ?? []
-    if (!day.missReason || expected.length === 0) continue
+    const causes = getMissReasons(day)
+    if (causes.length === 0 || expected.length === 0) continue
     expectedTotal++
-    const words = CAUSE_WORDS[day.missReason] ?? []
+    // 원인을 여러 개 골랐으면 그중 하나라도 미리 적은 원인과 맞으면 적중입니다.
+    const words = causes.flatMap((cause) => CAUSE_WORDS[cause] ?? [])
     if (expected.some((text) => words.some((word) => text.includes(word)))) expectedHit++
   }
   if (expectedTotal >= MIN_SAMPLES) {
@@ -364,7 +372,8 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
       (reason) => GOOD_REASONS.find((item) => item.key === reason)?.source,
     ),
   )
-  const failCauses = days.flatMap((day) => (day.missReason ? [day.missReason] : []))
+  // 하루에 원인을 여러 개 골랐으면 하나하나 셉니다. (2026-10-18 여러 개 고르기)
+  const failCauses = days.flatMap((day) => getMissReasons(day))
   const knownFailCauses = failCauses.filter((cause) => getCauseKind(cause) !== 'unknown')
   if (goodSources.length >= MIN_SAMPLES && knownFailCauses.length >= MIN_SAMPLES) {
     const goodInner = goodSources.filter((source) => source === 'internal').length
@@ -486,9 +495,10 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
   }
 
   // 일시정지 — 세션당 횟수와 가장 많은 이유
+  // 한 번 멈출 때 이유를 여러 개 골랐으면 모두 셉니다. 비율은 "그 이유가 들어간 일시정지 / 전체 일시정지" 입니다.
   const pauses = measured.flatMap((session) => session.pauses ?? [])
   if (measured.length >= MIN_SAMPLES && pauses.length > 0) {
-    const [topTag, topCount] = countTop(pauses.map((pause) => pause.tag))[0]
+    const [topTag, topCount] = countTop(pauses.flatMap((pause) => getPauseTags(pause)))[0]
     const tagLabel = PAUSE_TAGS.find((item) => item.key === topTag)?.label ?? '기타'
     add({
       key: 'pauses',
@@ -519,11 +529,12 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
     })
   }
 
-  // 체크리스트를 다 못 한 이유 (종료 팝업)
-  const shortfalls = sessions.flatMap((session) =>
-    session.endReport?.shortfallReason ? [session.endReport.shortfallReason] : [],
+  // 체크리스트를 다 못 한 이유 (종료 팝업). 여러 개 골랐으면 모두 세고, 기준은 이유를 고른 세션 수입니다.
+  const shortfallSessions = sessions.filter(
+    (session) => getShortfallReasons(session.endReport).length > 0,
   )
-  if (shortfalls.length >= MIN_SAMPLES) {
+  const shortfalls = shortfallSessions.flatMap((session) => getShortfallReasons(session.endReport))
+  if (shortfallSessions.length >= MIN_SAMPLES) {
     add({
       key: 'shortfallReasons',
       group: 'efficiency',
@@ -535,7 +546,7 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
             `${SHORTFALL_REASONS.find((item) => item.key === reason)?.label ?? '기타'} ${count}번`,
         )
         .join(' · '),
-      basis: `${shortfalls.length}번`,
+      basis: `세션 ${shortfallSessions.length}번`,
     })
   }
 
@@ -557,7 +568,9 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
 
   // 못 한 이유 순위 (실패로 기록하며 고른 원인)
   const failTop = countTop(failCauses) as [CardFailCause, number][]
-  if (failCauses.length >= 2) {
+  // 원인을 여러 개 고른 카드도 한 장으로 셉니다. (순위는 원인마다, 기준은 카드 수)
+  const failCauseDayCount = days.filter((day) => getMissReasons(day).length > 0).length
+  if (failCauseDayCount >= 2) {
     add({
       key: 'failCauses',
       group: 'failure',
@@ -566,7 +579,7 @@ export function buildAnalysisFacts(input: AnalysisInput): AnalysisMaterial {
         .slice(0, 3)
         .map(([cause, count]) => `${causeLabel(cause)} ${count}번`)
         .join(' · '),
-      basis: `원인을 고른 카드 ${failCauses.length}개`,
+      basis: `원인을 고른 카드 ${failCauseDayCount}개`,
     })
   }
 

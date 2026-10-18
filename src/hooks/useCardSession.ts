@@ -67,13 +67,35 @@ export function useCardSession() {
     })
   }
 
-  /** 일시정지합니다. 이유(tag)는 1탭으로 받습니다 (#397). */
-  function pause(tag: PauseTag, note?: string) {
+  /**
+   * 일시정지합니다. 첫 이유를 누르는 순간 멈춥니다 (#397).
+   * tags 의 맨 앞이 대표 이유(tag)가 됩니다. 멈춘 뒤 더 고른 이유는 setPauseReasons 로 바꿉니다.
+   */
+  function pause(tags: PauseTag[], note?: string) {
+    const [first] = tags
+    if (first === undefined) return
     setActive((prev) =>
       prev && !prev.pausedNow
-        ? { ...prev, pausedNow: { startedAt: Date.now(), tag, ...(note ? { note } : {}) } }
+        ? {
+            ...prev,
+            pausedNow: { startedAt: Date.now(), tag: first, tags, ...(note ? { note } : {}) },
+          }
         : prev,
     )
+  }
+
+  /**
+   * 멈춰 있는 동안 이유를 바꿉니다. (여러 개 고르기, 2026-10-18)
+   * 하나도 없으면 바꾸지 않습니다 — 이유는 최소 하나가 있어야 합니다.
+   */
+  function setPauseReasons(tags: PauseTag[], note?: string) {
+    const [first] = tags
+    if (first === undefined) return
+    setActive((prev) => {
+      if (!prev?.pausedNow) return prev
+      const { note: _oldNote, ...pausedNow } = prev.pausedNow
+      return { ...prev, pausedNow: { ...pausedNow, tag: first, tags, ...(note ? { note } : {}) } }
+    })
   }
 
   /** 다시 시작합니다. 방금 일시정지는 끝난 일시정지 목록으로 옮깁니다. */
@@ -128,6 +150,7 @@ export function useCardSession() {
     allSessions,
     start,
     pause,
+    setPauseReasons,
     resume,
     markLongPauseAlerted,
     updateSession,

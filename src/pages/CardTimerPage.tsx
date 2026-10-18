@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { FailCardModal } from '@/components/ui/FailCardModal'
+import { ReasonChips } from '@/components/ui/ReasonChips'
 import { LateEntryModal } from '@/components/ui/LateEntryModal'
 import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
 import { useCardSession } from '@/hooks/useCardSession'
@@ -98,10 +99,18 @@ import {
   shouldAskGoodReason,
   splitInstantLine,
 } from '@/lib/endReport'
-import { GOOD_REASONS, PAUSE_TAGS, SHORTFALL_REASONS, WITH_WHAT_OPTIONS } from '@/lib/sessionTags'
+import { toReasonList, toggleReason } from '@/lib/reasons'
+import {
+  GOOD_REASONS,
+  PAUSE_TAGS,
+  SHORTFALL_REASONS,
+  WITH_WHAT_OPTIONS,
+  getShortfallReasons,
+} from '@/lib/sessionTags'
 import { loadAutoSettings } from '@/lib/settingsMapping'
 import type {
   Card as CardModel,
+  GoodReason,
   PauseTag,
   SessionEndReport,
   ShortfallReason,
@@ -304,8 +313,17 @@ export function CardTimerPage() {
     }
   }
 
-  function handleFail(card: CardModel, cause: CardFailCause) {
-    setMarks(addCardMark({ cardId: card.id, dateKey: todayKey, mark: 'failed', cause }))
+  // 원인은 여러 개 고를 수 있습니다. 처음 고른 것이 대표 원인(cause)이고, 서버에는 대표 원인만 갑니다. (lib/reasons.ts)
+  function handleFail(card: CardModel, causes: CardFailCause[]) {
+    setMarks(
+      addCardMark({
+        cardId: card.id,
+        dateKey: todayKey,
+        mark: 'failed',
+        cause: causes[0],
+        causes,
+      }),
+    )
     setMissTarget(null)
     setNotice('기록했어요. 다음 통화에서 같이 돌아봐요.')
   }
@@ -638,7 +656,7 @@ export function CardTimerPage() {
           isOpen
           cardTitle={missTarget.card.title}
           onClose={() => setMissTarget(null)}
-          onFail={(cause) => handleFail(missTarget.card, cause)}
+          onFail={(causes) => handleFail(missTarget.card, causes)}
         />
       )}
       <Modal
@@ -936,7 +954,7 @@ function SessionView({
   // 3단계: 폰을 너무 오래 들고 있으면 세션을 멈추고 '폰 확인' 으로 남깁니다. (돌아와서 [다시 시작])
   const shouldAutoPause = phone.stage === 3 && active !== null && active.pausedNow === undefined
   useEffect(() => {
-    if (shouldAutoPause) session.pause('phone', '폰을 오래 들고 있어서 저절로 멈췄어요')
+    if (shouldAutoPause) session.pause(['phone'], '폰을 오래 들고 있어서 저절로 멈췄어요')
   }, [shouldAutoPause, session])
   // 채찍 단계(강)에서는 화면 전체 경고 때 소리도 냅니다.
   const shouldRing = phone.stage === 2 && liftStrength === 'strong'
@@ -1028,11 +1046,13 @@ function SessionView({
             </button>
           </div>
         )}
-        {active.pausedNow?.tag === 'phone' && phone.isAvailable && (
-          <p className="text-sm font-medium break-keep text-amber-700">
-            폰을 오래 들고 있어서 잠깐 멈췄어요. 폰을 엎어 두고 다시 시작해요.
-          </p>
-        )}
+        {active.pausedNow &&
+          toReasonList(active.pausedNow.tags, active.pausedNow.tag).includes('phone') &&
+          phone.isAvailable && (
+            <p className="text-sm font-medium break-keep text-amber-700">
+              폰을 오래 들고 있어서 잠깐 멈췄어요. 폰을 엎어 두고 다시 시작해요.
+            </p>
+          )}
         <p
           className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl"
           aria-live="off"
@@ -1152,10 +1172,8 @@ function SessionView({
       <PausePicker
         isOpen={isPauseOpen}
         onClose={() => setIsPauseOpen(false)}
-        onPick={(tag, note) => {
-          setIsPauseOpen(false)
-          session.pause(tag, note)
-        }}
+        onFirstPick={(tag) => session.pause([tag])}
+        onChange={(tags, note) => session.setPauseReasons(tags, note)}
       />
 
       <Modal isOpen={isEndOpen} onClose={() => setIsEndOpen(false)} title="지금 끝낼까요?">
@@ -1185,61 +1203,71 @@ function SessionView({
 interface PausePickerProps {
   isOpen: boolean
   onClose: () => void
-  onPick: (tag: PauseTag, note?: string) => void
+  /** 첫 이유를 누른 순간 — 여기서 바로 멈춥니다 */
+  onFirstPick: (tag: PauseTag) => void
+  /** 멈춘 뒤 이유를 더 고르거나 '기타' 글을 쓰고 창을 닫을 때 — 고른 이유 모두(맨 앞이 대표)와 글 */
+  onChange: (tags: PauseTag[], note?: string) => void
 }
 
 /**
- * 일시정지 이유 1탭 (「4.4 타이머」 일시정지, #397)
- * 누르는 순간 멈춥니다. '기타' 만 한 줄을 받고(빈칸 허용) [멈추기] 를 누릅니다.
- * 이유는 귀인(내 쪽 / 바깥)과 주의 분산을 보는 재료라서 꼭 하나를 고르게 합니다.
+ * 일시정지 이유 (「4.4 타이머」 일시정지, #397 · 여러 개 고르기 2026-10-18)
+ * 1. 처음 고르는 이유를 누르는 순간 멈춥니다. (멈추기는 지금처럼 1탭)
+ * 2. 멈춘 뒤 "이유가 더 있으면 더 골라요" — 칩을 더 누르거나 뺄 수 있고, '기타' 를 고르면 한 줄을 받습니다(빈칸 허용).
+ * 이유는 귀인(내 쪽 / 바깥)과 주의 분산을 보는 재료라서 꼭 하나 이상 남깁니다. (마지막 하나는 뺄 수 없음)
  */
-function PausePicker({ isOpen, onClose, onPick }: PausePickerProps) {
-  const [isOther, setIsOther] = useState(false)
+function PausePicker({ isOpen, onClose, onFirstPick, onChange }: PausePickerProps) {
+  const [tags, setTags] = useState<PauseTag[]>([])
   const [note, setNote] = useState('')
 
+  // 창을 닫을 때(확인 · 바깥 누르기 모두) 고른 이유와 글을 세션에 남기고 처음 모양으로 되돌립니다.
   function handleClose() {
-    setIsOther(false)
+    if (tags.length > 0) {
+      const text = tags.includes('other') ? note.trim() : ''
+      onChange(tags, text || undefined)
+    }
+    setTags([])
     setNote('')
     onClose()
   }
 
-  function pick(tag: PauseTag, text?: string) {
-    setIsOther(false)
-    setNote('')
-    onPick(tag, text?.trim() || undefined)
+  function handleToggle(tag: PauseTag) {
+    if (tags.length === 0) {
+      setTags([tag])
+      onFirstPick(tag)
+      return
+    }
+    const next = toggleReason(tags, tag)
+    if (next.length > 0) setTags(next)
   }
 
+  const isPaused = tags.length > 0
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="왜 멈추나요?">
-      {isOther ? (
-        <div className="flex flex-col gap-3">
-          <input
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            maxLength={100}
-            placeholder="한 줄로 적어요 (안 적어도 돼요)"
-            className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="secondary" onClick={() => setIsOther(false)}>
-              뒤로
-            </Button>
-            <Button onClick={() => pick('other', note)}>멈추기</Button>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {PAUSE_TAGS.map((item) => (
-            <Button
-              key={item.key}
-              variant="secondary"
-              className="h-12"
-              onClick={() => (item.key === 'other' ? setIsOther(true) : pick(item.key))}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
+    <Modal isOpen={isOpen} onClose={handleClose} title={isPaused ? '멈췄어요 ⏸' : '왜 멈추나요?'}>
+      {isPaused && (
+        <p className="mb-3 text-sm break-keep text-slate-700">
+          이유가 더 있으면 더 골라요. 여러 개 골라도 돼요.
+        </p>
+      )}
+      <ReasonChips
+        options={PAUSE_TAGS}
+        selected={tags}
+        onToggle={handleToggle}
+        label="일시정지 이유"
+      />
+      {tags.includes('other') && (
+        <input
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          maxLength={100}
+          placeholder="기타 이유를 한 줄로 적어요 (안 적어도 돼요)"
+          aria-label="기타 이유"
+          className="mt-3 h-10 w-full rounded-lg border border-slate-300 px-3 text-base sm:text-sm"
+        />
+      )}
+      {isPaused && (
+        <Button className="mt-4 w-full" onClick={handleClose}>
+          확인
+        </Button>
       )}
       <p className="mt-3 text-xs text-slate-500">
         멈춘 시간은 한 시간에서 빠지고, 끝나는 시각은 그대로예요.
@@ -1270,8 +1298,8 @@ interface EndPopupProps {
 }
 
 /**
- * 종료 팝업 (최종 기획서 「4.4 타이머」 종료, #398) — 산출물 말고는 모두 1탭입니다.
- * 1. 체크리스트 최종 확인 (다 못 했으면 미달 사유 1탭) · 즉석 카드면 "무엇을 했나요?" 한 줄
+ * 종료 팝업 (최종 기획서 「4.4 타이머」 종료, #398) — 이유는 여러 개 고를 수 있고, 나머지는 1탭입니다.
+ * 1. 체크리스트 최종 확인 (다 못 했으면 미달 사유, 여러 개 가능) · 즉석 카드면 "무엇을 했나요?" 한 줄
  * 2. 같이 한 것: 음악 / 영상 틀어둠 / 없음
  * 3. 산출물 증빙: 링크나 2~3줄 요약 (선택 — 남기면 나무가 더 자람)
  * 4. 잘 된 이유: 체크리스트를 다 했을 때 N번에 1번만
@@ -1292,7 +1320,10 @@ function EndPopup({
   const [settings] = useState(loadAutoSettings)
   const report: SessionEndReport = record.endReport ?? { checked: {} }
   const [checked, setChecked] = useState<Record<string, number>>(report.checked)
-  const [shortfall, setShortfall] = useState<ShortfallReason | undefined>(report.shortfallReason)
+  // 다 못 한 이유 — 여러 개 고를 수 있고, 맨 앞(처음 고른 것)이 대표 이유입니다.
+  const [shortfalls, setShortfalls] = useState<ShortfallReason[]>(() => getShortfallReasons(report))
+  // 잘 된 이유 — 여러 개 고를 수 있습니다.
+  const [goodPicks, setGoodPicks] = useState<GoodReason[]>([])
   const [line, setLine] = useState('')
   // 즉석 카드: AI 가 한 줄을 제목 + 체크리스트로 정리한 초안 (#419 표 7번, BE /ai/quick-card)
   const isServerData = useIsServerData()
@@ -1349,7 +1380,8 @@ function EndPopup({
       endReport: {
         ...report,
         checked: finalChecked,
-        ...(isComplete ? {} : { shortfallReason: shortfall }),
+        // 서버 칸은 하나라서 대표 이유(shortfallReason)만 서버로 갑니다. 이 기기에는 모두(shortfallReasons) 남깁니다.
+        ...(isComplete ? {} : { shortfallReason: shortfalls[0], shortfallReasons: shortfalls }),
       },
     })
     setStep('with')
@@ -1374,7 +1406,7 @@ function EndPopup({
     setStep(askGood ? 'good' : 'next')
   }
 
-  const needsShortfall = !isInstant && !isComplete && shortfall === undefined
+  const needsShortfall = !isInstant && !isComplete && shortfalls.length === 0
   const canFinishChecklist = isInstant ? line.trim() !== '' : !needsShortfall
 
   return (
@@ -1463,25 +1495,16 @@ function EndPopup({
               </ul>
               {!isComplete && (
                 <div>
-                  <p className="text-sm font-medium text-slate-800">다 못 한 이유는요?</p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    {SHORTFALL_REASONS.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        aria-pressed={shortfall === item.key}
-                        onClick={() => setShortfall(item.key)}
-                        className={cn(
-                          'h-10 rounded-lg border text-sm',
-                          shortfall === item.key
-                            ? 'border-brand bg-brand/10 text-brand'
-                            : 'border-slate-200 text-slate-700',
-                        )}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="text-sm font-medium text-slate-800">
+                    다 못 한 이유는요? <span className="text-slate-500">(여러 개 골라도 돼요)</span>
+                  </p>
+                  <ReasonChips
+                    options={SHORTFALL_REASONS}
+                    selected={shortfalls}
+                    onToggle={(key) => setShortfalls((prev) => toggleReason(prev, key))}
+                    label="다 못 한 이유"
+                    className="mt-2"
+                  />
                 </div>
               )}
             </>
@@ -1541,22 +1564,25 @@ function EndPopup({
 
       {step === 'good' && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-slate-700">다 해냈어요! 잘 된 이유는 뭐였을까요?</p>
-          <div className="grid grid-cols-2 gap-2">
-            {GOOD_REASONS.map((item) => (
-              <Button
-                key={item.key}
-                variant="secondary"
-                className="h-12"
-                onClick={() => {
-                  save({ goodReasons: [item.key] })
-                  setStep('next')
-                }}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
+          <p className="text-sm text-slate-700">
+            다 해냈어요! 잘 된 이유는 뭐였을까요?{' '}
+            <span className="text-slate-500">(여러 개 골라도 돼요)</span>
+          </p>
+          <ReasonChips
+            options={GOOD_REASONS}
+            selected={goodPicks}
+            onToggle={(key) => setGoodPicks((prev) => toggleReason(prev, key))}
+            label="잘 된 이유"
+          />
+          <Button
+            disabled={goodPicks.length === 0}
+            onClick={() => {
+              save({ goodReasons: goodPicks })
+              setStep('next')
+            }}
+          >
+            다음
+          </Button>
         </div>
       )}
 

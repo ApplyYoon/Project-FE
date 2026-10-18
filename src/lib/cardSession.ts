@@ -23,8 +23,17 @@ export interface ActiveCardSession {
   plannedMinutes: number
   /** 끝난 일시정지들 */
   pauses: SessionPause[]
-  /** 지금 일시정지 중이면 시작한 시각과 이유. alerted: 15분 복귀 알림을 이미 보냈는지 */
-  pausedNow?: { startedAt: number; tag: PauseTag; note?: string; alerted?: boolean }
+  /**
+   * 지금 일시정지 중이면 시작한 시각과 이유. alerted: 15분 복귀 알림을 이미 보냈는지
+   * tag 는 처음 고른 대표 이유, tags 는 멈춘 뒤 더 고른 것까지 모두입니다. (여러 개 고르기, 2026-10-18)
+   */
+  pausedNow?: {
+    startedAt: number
+    tag: PauseTag
+    tags?: PauseTag[]
+    note?: string
+    alerted?: boolean
+  }
   /** 체크한 체크리스트 항목 (항목 id → 체크한 시각) */
   checked: Record<string, number>
   /** 딴생각 주차장 메모 */
@@ -117,6 +126,7 @@ export function closePause(
     startedAt: pausedNow.startedAt,
     endedAt,
     tag: pausedNow.tag,
+    ...(pausedNow.tags && pausedNow.tags.length > 0 ? { tags: pausedNow.tags } : {}),
     ...(pausedNow.note ? { note: pausedNow.note } : {}),
   }
 }
