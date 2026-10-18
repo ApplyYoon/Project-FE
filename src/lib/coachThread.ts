@@ -14,7 +14,12 @@
  * 요약을 남기고, 그 요약이 다음 세션 대본의 [지난 통화] 가 되어 AI 가 이어서 기억합니다. (pages/CoachPage.tsx)
  */
 import type { CallLine } from '@/lib/callReview'
-import { MAX_CHAT_LINES, MAX_CHAT_TEXT_LENGTH } from '@/lib/chatApi'
+import {
+  MAX_CHAT_LINES,
+  MAX_CHAT_TEXT_LENGTH,
+  readChatSources,
+  type ChatSource,
+} from '@/lib/chatApi'
 import {
   cleanAboutLines,
   isChatAboutKind,
@@ -50,6 +55,8 @@ export interface ThreadBubble {
   isDivider?: boolean
   /** AI 가 짐작한 이유를 "맞아?" 로 확인받는 칸 (후기 · 못 한 카드 대화) */
   reasonCheck?: ReasonCheck
+  /** 과목 쌤이 웹 검색으로 찾은 출처. 답 아래에 작은 링크로 보여 줍니다. (BE #342) */
+  sources?: ChatSource[]
   /**
    * true 면 방금 받은 AI 의 답이라 메신저처럼 문장마다 나눠 타자 치듯 보여 줍니다. (lib/chatReveal.ts)
    * 효과는 받은 때(at)부터 몇 초 동안만이라, 새로고침하거나 다시 열면 바로 전체가 보입니다.
@@ -186,6 +193,8 @@ function toBubble(value: unknown): ThreadBubble | null {
   if (item.isDivider === true) bubble.isDivider = true
   const reasonCheck = toReasonCheck(item.reasonCheck)
   if (reasonCheck) bubble.reasonCheck = reasonCheck
+  const sources = readChatSources(item.sources)
+  if (sources.length > 0) bubble.sources = sources
   return bubble
 }
 
