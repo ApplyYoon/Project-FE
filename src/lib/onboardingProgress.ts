@@ -2,7 +2,8 @@
  * 온보딩(가입 직후 처음 한 번 하는 설정)이 어디까지 됐는지 계산하고, 처음부터 다시 하게 지웁니다.
  * React 없이 저장된 값만 봅니다.
  *
- *   순서: 앱 소개 → 학년 → 심리검사 → 자기 인식 4문항(내 가설) → 관리 설정 동의 → 결과
+ *   순서: 앱 소개 → 학년 → 심리검사 → 관리 설정 동의 → 결과
+ *   (자기 인식 4문항(내 가설)은 2026-10-18 사용자 결정 "주관적이라 쓸데가 없어, 객관적 데이터만" 으로 지웠습니다)
  *   (기획서 4.1 · #388 · #389. 생각 습관 테스트는 다시 넣었다가 2026-10-17 사용자 결정으로 온보딩 · 기록 · 시험 결과에서 모두 뺐습니다, #417)
  *   첫 목표 만들기(#391, 건너뛰기 가능)는 그 이슈에서 이 목록에 더합니다.
  *   (처음 다짐 녹음은 첫 목표를 만들 때로, 처음 계획은 온보딩에서 빠졌습니다)
@@ -14,7 +15,6 @@
  * 서버가 "이 사람은 온보딩을 마쳤다" 고 알려 준 기기는 단계를 보지 않고 다 끝난 것으로 봅니다. (markOnboardingDoneOnServer)
  * 단계 기록은 이 기기에만 있어서, 이미 가입한 사람도 다른 기기에서 로그인하면 처음부터 다시 했기 때문입니다. (BE PR #300)
  */
-import { loadMyHypotheses } from '@/lib/myHypotheses'
 import { hasCareConsent, hasSeenOnboardingResult, resetOnboardingCare } from '@/lib/onboardingCare'
 import { getFirstSteps, isFirstStageDone, loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { PSYCH_TEST_PATH, hasPsychTest } from '@/lib/psychTest'
@@ -25,9 +25,6 @@ export const ONBOARDING_RESUME_PATH = '/onboarding/resume'
 
 /** 앱 소개 화면의 주소 */
 export const ONBOARDING_INTRO_PATH = '/onboarding/intro'
-
-/** 자기 인식 4문항(내 가설) 화면의 주소. OnboardingPage 를 mode="hypotheses" 로 씁니다. */
-export const ONBOARDING_HYPOTHESES_PATH = '/onboarding/hypotheses'
 
 /** 관리 설정 동의 화면의 주소 (#389) */
 export const ONBOARDING_CARE_PATH = '/onboarding/care'
@@ -67,12 +64,6 @@ const STAGES: OnboardingStage[] = [
   },
   // 답하다 만 문장이 있으면 OnboardingPsychTestPage 가 그 문장부터 보여 줍니다.
   { label: '심리검사', path: PSYCH_TEST_PATH, isDone: hasPsychTest },
-  // 하다 만 질문이 있으면 OnboardingPage 가 그 질문부터 보여 줍니다.
-  {
-    label: '나에 대한 4문항',
-    path: ONBOARDING_HYPOTHESES_PATH,
-    isDone: () => loadMyHypotheses() !== undefined,
-  },
   // [이대로 할게요] 를 눌러 동의해야 끝납니다. (명시적 동의)
   { label: '관리 설정', path: ONBOARDING_CARE_PATH, isDone: hasCareConsent },
   { label: '결과', path: ONBOARDING_RESULT_PATH, isDone: hasSeenOnboardingResult },
@@ -112,8 +103,8 @@ export function hasFinishedAllStages(): boolean {
 }
 
 // 하다 만 답을 임시로 넣어 두는 이름들입니다.
-// (OnboardingPage 의 묶음별 DRAFT_KEY · OnboardingPsychTestPage 의 DRAFT_KEY)
-const DRAFT_KEYS = ['onboarding-draft', 'onboarding-hypotheses-draft', 'psych-test-draft']
+// (OnboardingPage 의 DRAFT_KEY · OnboardingPsychTestPage 의 DRAFT_KEY)
+const DRAFT_KEYS = ['onboarding-draft', 'psych-test-draft']
 
 /** 온보딩을 조금이라도 해 둔 게 있는지. 끝낸 단계나 하다 만 답이 하나라도 있으면 true 입니다. */
 export function hasOnboardingProgress(): boolean {
@@ -124,7 +115,7 @@ export function hasOnboardingProgress(): boolean {
 
 /**
  * 온보딩을 처음부터 다시 하도록 지금까지의 답을 지웁니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙입니다)
- * - 온보딩 질문의 답은 처음 온보딩에서 묻는 칸(학년 · 자기 인식 4문항)만 지웁니다.
+ * - 온보딩 질문의 답은 처음 온보딩에서 묻는 칸(학년)만 지웁니다.
  *   관리 설정의 취침 · 기상 시각과 옛 "내 정보 더 알려주기" 의 답(시험 날짜 등)은 남깁니다.
  * - 옛 온보딩에서 한 처음 다짐 녹음 · 처음 계획은 지금 온보딩의 단계가 아니라서 지우지 않습니다.
  */
@@ -134,9 +125,7 @@ export function resetOnboarding(): void {
   removeData(SERVER_DONE_KEY)
   const answers = loadOnboardingAnswers()
   if (answers !== null) {
-    const firstKeys = new Set(
-      [...getFirstSteps('basic'), ...getFirstSteps('hypotheses')].map((step) => step.key),
-    )
+    const firstKeys = new Set(getFirstSteps('basic').map((step) => step.key))
     const kept: Record<string, string> = {}
     for (const [key, value] of Object.entries(answers)) {
       if (!firstKeys.has(key)) kept[key] = value
@@ -151,7 +140,9 @@ export function resetOnboarding(): void {
   removeData('psych-test')
   removeData('thinking-test')
   removeData('thinking-test-draft')
+  // 지운 자기 인식 4문항(내 가설)의 옛 답과 하다 만 답도 같이 지웁니다. (2026-10-18 에 온보딩에서 뺌)
   removeData('my-hypotheses')
+  removeData('onboarding-hypotheses-draft')
   resetOnboardingCare()
   for (const key of DRAFT_KEYS) removeData(key)
 }

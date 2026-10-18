@@ -34,17 +34,13 @@ interface BaseStep {
   /**
    * 처음 온보딩의 어느 묶음에서 묻는지. (#239, #388)
    *   basic: 학년 (심리검사 앞)
-   *   hypotheses: 자기 인식 4문항 (심리검사 뒤). 답은 '내 가설' 로도 저장해서 나중에 기록으로 확인합니다. (lib/myHypotheses.ts)
+   * (자기 인식 4문항 'hypotheses' 묶음은 2026-10-18 사용자 결정 "주관적이라 쓸데가 없어, 객관적 데이터만" 으로 지웠습니다)
    */
   firstStage?: FirstStage
 }
 
 /** 처음 온보딩의 질문 묶음 이름 */
-export type FirstStage = 'basic' | 'hypotheses'
-
-/** '잘 모르겠음' 보기의 값. 자기 인식 4문항은 모두 이 보기를 고를 수 있습니다. (기획서 4.1, BE#219 의 UNKNOWN) */
-export const UNKNOWN_ANSWER = 'unknown'
-const UNKNOWN_OPTION = { value: UNKNOWN_ANSWER, label: '잘 모르겠음' }
+export type FirstStage = 'basic'
 
 /**
  * 보기 하나. 글자(string)로 적으면 보이는 글자와 저장되는 값이 같습니다. (예: '고2')
@@ -63,7 +59,7 @@ interface ChoiceStep extends BaseStep {
   options: ChoiceOption[]
 }
 
-/** 질문 한 개. 지금 남은 질문(학년 · 자기 인식 4문항)은 모두 보기 중 하나 고르기입니다. */
+/** 질문 한 개. 지금 남은 질문(학년)은 보기 중 하나 고르기입니다. */
 export type OnboardingStep = ChoiceStep
 
 /** 질문 목록. 위에서부터 차례로 보입니다. */
@@ -77,62 +73,6 @@ export const onboardingSteps: OnboardingStep[] = [
     title: '지금 몇 학년이야?',
     description: '학년에 맞춰서 공부 시간을 추천해 줄게요.',
     options: ['고1', '고2', '고3', 'N수', '대학생', '기타'],
-  },
-
-  /* ---------- 자기 인식 (#89 → #388) ---------- */
-  // 처음 온보딩의 마지막 묶음입니다. 답은 '내 가설' 로 저장해서, 나중에 기록으로 확인하거나 반박합니다. (#411)
-  // "나보다 나를 더 잘 아네?" 를 만드는 재료라, 모르면 '잘 모르겠음' 을 골라도 됩니다.
-  // 숫자 답(분)은 글자로 저장되고, 값은 OnboardingAnswers 의 단위(분)와 같습니다.
-  {
-    key: 'chronotype',
-    group: '내 가설',
-    firstStage: 'hypotheses',
-    type: 'choice',
-    title: '나는 아침형일까, 밤형일까?',
-    description: '정답은 없어요. 2주 동안 기록으로 같이 확인해 볼게요.',
-    options: [
-      { value: 'morning', label: '아침형이야' },
-      { value: 'night', label: '밤형이야' },
-      UNKNOWN_OPTION,
-    ],
-  },
-  {
-    key: 'maxFocusMinutes',
-    group: '내 가설',
-    firstStage: 'hypotheses',
-    type: 'choice',
-    title: '한 번 앉으면 얼마나 집중할 수 있어?',
-    options: [
-      { value: '30', label: '30분 안팎' },
-      { value: '50', label: '50분 안팎' },
-      { value: '90', label: '1시간 반 안팎' },
-      { value: '120', label: '2시간 이상' },
-      UNKNOWN_OPTION,
-    ],
-  },
-  {
-    key: 'biggestDistraction',
-    group: '내 가설',
-    firstStage: 'hypotheses',
-    type: 'choice',
-    title: '공부할 때 가장 큰 방해 요소는?',
-    options: ['폰·SNS', '졸림', '잡생각', '친구·가족', '소음·주변 환경', '기타', UNKNOWN_OPTION],
-  },
-  {
-    key: 'dailyAvailableMinutes',
-    group: '내 가설',
-    firstStage: 'hypotheses',
-    type: 'choice',
-    title: '평일 하루에 공부할 수 있는 시간은?',
-    description: '학교·학원 시간을 뺀, 내가 쓸 수 있는 시간이에요.',
-    options: [
-      { value: '60', label: '1시간' },
-      { value: '120', label: '2시간' },
-      { value: '180', label: '3시간' },
-      { value: '240', label: '4시간' },
-      { value: '300', label: '5시간 이상' },
-      UNKNOWN_OPTION,
-    ],
   },
 ]
 
@@ -155,8 +95,8 @@ export function getFirstSteps(stage: FirstStage): OnboardingStep[] {
  * 처음 온보딩의 한 묶음을 끝냈는지. 그 묶음의 질문이 모두 저장된 답에 있으면 끝낸 것입니다.
  * 묶음을 끝낼 때 답을 한꺼번에 저장해서, 하나라도 없으면 아직 안 끝낸 것입니다.
  *
- *   isFirstStageDone({ grade: '고2' }, 'basic')        -> true
- *   isFirstStageDone({ grade: '고2' }, 'hypotheses')   -> false
+ *   isFirstStageDone({ grade: '고2' }, 'basic')   -> true
+ *   isFirstStageDone({}, 'basic')                -> false
  */
 export function isFirstStageDone(
   answers: Record<string, string> | null,
