@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/Card'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { Modal } from '@/components/ui/Modal'
 import { ProgressBar } from '@/components/ui/ProgressBar'
-import { CrisisHelpModal } from '@/components/ui/CrisisHelpModal'
 import { FailCardModal } from '@/components/ui/FailCardModal'
 import { LateEntryModal } from '@/components/ui/LateEntryModal'
 import { PostponeCardModal } from '@/components/ui/PostponeCardModal'
@@ -195,7 +194,6 @@ export function CardTimerPage() {
     )
   }
   const [notice, setNotice] = useState<string | null>(null)
-  const [isCrisisOpen, setIsCrisisOpen] = useState(false)
   // 대기 화면의 '지금'. 30초마다 바꿔서 시간이 끝난 카드가 '시간이 끝난 카드' 로 옮겨 가게 합니다.
   const [listNow, setListNow] = useState(() => Date.now())
   useEffect(() => {
@@ -254,7 +252,7 @@ export function CardTimerPage() {
     if ('update' in placed) updateCard(card.id, placed.update)
     else addCard(placed.create)
     setMissTarget(null)
-    // 미루기 사유도 안전 브레이크가 봅니다. 위기 표현이 있으면 도움 연결 안내부터. (「4.5」 안전 브레이크)
+    // 미루기 사유도 안전 브레이크가 봅니다. 위기 표현이 있으면 비용을 따지는 말은 하지 않습니다. (「4.5」 안전 브레이크)
     if (
       getSafetyBrakeResult({
         now: new Date(listNow),
@@ -263,7 +261,7 @@ export function CardTimerPage() {
         exams: [],
       }).stopWhip
     ) {
-      setIsCrisisOpen(true)
+      setNotice('미뤘어요. 오늘은 무리하지 말고 쉬어 가도 괜찮아요.')
       return
     }
     // "다들 미뤄" 같은 말이 있으면 보편성은 반박하지 않고 내 비용만 보여 줍니다. (「8.2」 허위 합의)
@@ -620,7 +618,6 @@ export function CardTimerPage() {
           onFail={(cause) => handleFail(missTarget.card, cause)}
         />
       )}
-      <CrisisHelpModal isOpen={isCrisisOpen} onClose={() => setIsCrisisOpen(false)} />
       <Modal
         isOpen={isRestOpen}
         onClose={() => setIsRestOpen(false)}
@@ -652,17 +649,9 @@ export function CardTimerPage() {
           쉬는 날이 이어지고 있어요. 앱은 회복 모드로 계획을 줄여서 갈게요. 혼자 버티기 힘들면 주변
           어른이나 상담에 이야기해 보세요.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <Button variant="secondary" onClick={() => setIsRecoveryCheckOpen(false)}>
+        <div className="mt-4">
+          <Button className="w-full" onClick={() => setIsRecoveryCheckOpen(false)}>
             알겠어요
-          </Button>
-          <Button
-            onClick={() => {
-              setIsRecoveryCheckOpen(false)
-              setIsCrisisOpen(true)
-            }}
-          >
-            도움 연결 보기
           </Button>
         </div>
       </Modal>

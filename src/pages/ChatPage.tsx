@@ -7,11 +7,10 @@ import {
   MAX_CHAT_TEXT_LENGTH,
   sendChatMessage,
   startChat,
-  type ChatHelpLine,
   type ChatReply,
 } from '@/lib/chatApi'
 import { cn } from '@/lib/cn'
-import { SUPPORT_PATH } from '@/lib/helpLines'
+import { YOUTH_HELP_LINE } from '@/lib/helpLines'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -45,7 +44,7 @@ function getChatErrorMessage(error: unknown): string {
  *   1. [채팅 시작] → 서버가 통화와 같은 대본으로 AI 선생님의 첫 인사를 줍니다.
  *      (화면을 열자마자 자동으로 시작하지 않습니다. 실수로 열어도 AI 사용량을 쓰지 않게, 그리고 채팅이 두 번 열리지 않게)
  *   2. 말을 보내면 지금까지의 대화를 모두 보내고 AI 의 다음 말을 받습니다. (서버는 대화를 저장하지 않습니다)
- *   3. 위기 표현이 감지되면 서버가 정해 둔 안내와 도움받을 곳을 주고, 채팅은 거기서 끝납니다.
+ *   3. 위기 표현이 감지되면 서버가 정해 둔 안내를 주고, 채팅은 거기서 끝납니다. 화면은 상담 전화 한 줄만 더 보여 줍니다.
  *   4. [끝내기] → 통화 결과 화면(/call/result)이 통화와 똑같이 정리합니다. (요약 · 생각 습관 · 약속)
  *
  * ⚠️ 대화는 이 화면의 메모리에만 있습니다. 브라우저 저장소에 넣지 않고, console.log 로 찍지 않습니다.
@@ -56,8 +55,8 @@ export function ChatPage() {
   const [chatId, setChatId] = useState<string | null>(null)
   const [bubbles, setBubbles] = useState<ChatBubble[]>([])
   const [draft, setDraft] = useState('')
-  // 위기 표현이 감지됐을 때 받은 도움받을 곳. null 이면 평소처럼 이야기하는 중입니다.
-  const [helpLines, setHelpLines] = useState<ChatHelpLine[] | null>(null)
+  // 위기 표현이 감지돼서 상담 전화 한 줄을 보여 주는 중인지. false 면 평소처럼 이야기하는 중입니다.
+  const [isHelpShown, setIsHelpShown] = useState(false)
   const nextId = useRef(1)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -70,7 +69,7 @@ export function ChatPage() {
   /** AI 의 말을 말풍선으로 더합니다. 위기 표현이면 도움 안내로 바꿉니다. */
   function receive(reply: ChatReply, base: ChatBubble[]) {
     setBubbles(addBubble('ai', reply.reply, base))
-    if (reply.showHelp) setHelpLines(reply.helpLines)
+    if (reply.showHelp) setIsHelpShown(true)
   }
 
   const start = useMutation({
@@ -90,7 +89,7 @@ export function ChatPage() {
         const sent = current.slice(0, variables.lines.length)
         return addBubble('ai', reply.reply, sent)
       })
-      if (reply.showHelp) setHelpLines(reply.helpLines)
+      if (reply.showHelp) setIsHelpShown(true)
     },
   })
 
@@ -100,7 +99,7 @@ export function ChatPage() {
     if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
   }, [bubbles, send.isPending])
 
-  const isEnded = helpLines !== null
+  const isEnded = isHelpShown
   // 서버가 받는 줄 수(60)를 넘지 않게, 새 말과 AI 의 답이 들어갈 자리를 남겨 둡니다.
   const isTooLong = bubbles.length >= MAX_CHAT_LINES - 1
   // 409: 이미 끝났거나 서버가 다시 켜져 대본을 잊었습니다. 새로 시작해야 합니다.
@@ -130,7 +129,7 @@ export function ChatPage() {
   function handleRestart() {
     setChatId(null)
     setBubbles([])
-    setHelpLines(null)
+    setIsHelpShown(false)
     send.reset()
     start.mutate()
   }
@@ -212,31 +211,17 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* 위기 표현이 감지됐을 때. 공부 이야기는 멈추고 도움받을 곳을 먼저 보여 줍니다. */}
-      {helpLines !== null && (
-        <Card title="지금 바로 이야기할 수 있는 곳" className="border-amber-200 bg-amber-50">
-          <ul className="flex flex-col gap-2">
-            {helpLines.map((line) => (
-              <li key={line.number}>
-                <a
-                  href={`tel:${line.number}`}
-                  className="flex min-h-11 items-center justify-between rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-900"
-                >
-                  <span>
-                    {line.name} <span className="text-slate-500">· {line.detail}</span>
-                  </span>
-                  <span className="text-brand">{line.number}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-          <Link
-            to={SUPPORT_PATH}
-            className="text-brand mt-3 inline-flex h-11 items-center text-sm font-medium underline"
-          >
-            힘들 때 도움받기 화면 열기
-          </Link>
-        </Card>
+      {/* 위기 표현이 감지됐을 때. 공부 이야기는 멈추고 상담 전화 한 줄만 알려 줍니다. (누르면 바로 전화가 걸립니다) */}
+      {isHelpShown && (
+        <a
+          href={`tel:${YOUTH_HELP_LINE.number}`}
+          className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm"
+        >
+          <span className="break-keep text-slate-700">
+            지금 이야기할 곳: {YOUTH_HELP_LINE.name} · {YOUTH_HELP_LINE.detail}
+          </span>
+          <span className="text-brand font-semibold">{YOUTH_HELP_LINE.number}</span>
+        </a>
       )}
 
       {chatId !== null && !isEnded && (

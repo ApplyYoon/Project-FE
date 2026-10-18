@@ -1,5 +1,4 @@
 import { queryOptions } from '@tanstack/react-query'
-import { AI_SHOW_HELP_EVENT } from '@/lib/aiCardApi'
 import {
   ANALYSIS_GROUPS,
   type AnalysisExperiment,
@@ -18,7 +17,7 @@ import { loadData, saveData } from '@/lib/storage'
  *
  * - 테스트 로그인(가짜 토큰)이면 서버에 묻지 않고 null 을 돌려줍니다. 화면은 기본 문장(buildCodeAnalysis)을 씁니다.
  * - 서버가 analysis: null 을 주거나(AI 꺼짐 · 하루 한도 · 쓸 수 없는 답) 연결이 안 되면 analysis 가 null → 기본 문장
- * - showHelp 가 true 면 카드 이름 같은 글에 위기 표현이 있어서 AI 를 쓰지 않은 것입니다. 도움 안내를 띄우고 null 입니다.
+ * - showHelp 가 true 면 카드 이름 같은 글에 위기 표현이 있어서 AI 를 쓰지 않은 것입니다. 이때도 null 입니다.
  * - 같은 날 같은 숫자면 다시 묻지 않습니다. 받은 답을 저장해 둡니다. ('study-ai-analysis')
  */
 
@@ -107,10 +106,7 @@ export async function requestAnalysis(facts: AnalysisFact[]): Promise<AiAnalysis
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     const record = asRecord(result)
-    if (record.showHelp === true) {
-      window.dispatchEvent(new Event(AI_SHOW_HELP_EVENT))
-      return null
-    }
+    if (record.showHelp === true) return null
     const serverFacts = Array.isArray(record.serverFacts)
       ? record.serverFacts.map(toFact).filter((fact): fact is AnalysisFact => fact !== null)
       : []

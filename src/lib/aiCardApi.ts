@@ -8,18 +8,12 @@ import { isServerDataMode } from '@/lib/dataMode'
  *
  * - 테스트 로그인(가짜 토큰)이면 서버에 묻지 않고 null 을 돌려줍니다. 화면은 기본 문장(템플릿)을 씁니다.
  * - 서버가 null 을 주거나(AI 가 못 만듦 · 하루 한도) 연결이 안 되면 역시 null → 기본 문장
- * - showHelp 가 true 면 글에 위기 표현이 있어서 AI 를 쓰지 않은 것입니다. 이때는 AI_SHOW_HELP_EVENT 를 보내서
- *   도움 연결 안내(components/layout/AiHelpListener)를 띄우고 null 을 돌려줍니다.
+ * - showHelp 가 true 면 글에 위기 표현이 있어서 AI 를 쓰지 않은 것입니다. 이때도 null 을 돌려주고 기본 문장으로 갑니다.
  */
 
-/** AI 도우미가 "글에 위기 표현이 있다(showHelp)" 고 알릴 때 보내는 이벤트 이름입니다. */
-export const AI_SHOW_HELP_EVENT = 'study-ai-show-help'
-
-/** 서버가 showHelp 를 주면 도움 안내를 띄우라고 알리고 true 를 돌려줍니다. */
-function handleShowHelp(record: Record<string, unknown>): boolean {
-  if (record.showHelp !== true) return false
-  window.dispatchEvent(new Event(AI_SHOW_HELP_EVENT))
-  return true
+/** 서버가 "글에 위기 표현이 있어서 AI 를 쓰지 않았다(showHelp)" 고 알렸는지 */
+function isShowHelp(record: Record<string, unknown>): boolean {
+  return record.showHelp === true
 }
 
 /** 서버가 GPT 를 최대 10초 기다리므로 그보다 조금 더 기다립니다. 카운트다운은 그동안 기본 문장으로 갑니다. */
@@ -61,7 +55,7 @@ export async function requestFirstStep(input: FirstStepRequest): Promise<string 
       string,
       unknown
     >
-    if (handleShowHelp(record)) return null
+    if (isShowHelp(record)) return null
     return typeof record.step === 'string' && record.step.trim() !== '' ? record.step.trim() : null
   } catch (error) {
     // 401 은 api() 가 이미 로그인 화면으로 보냅니다. 그 밖의 실패는 기본 문장으로 조용히 넘어갑니다.
@@ -89,7 +83,7 @@ export async function requestChecklist(title: string, goal?: string): Promise<st
       string,
       unknown
     >
-    if (handleShowHelp(record) || !Array.isArray(record.items)) return null
+    if (isShowHelp(record) || !Array.isArray(record.items)) return null
     const items = record.items.filter(
       (value): value is string => typeof value === 'string' && value.trim() !== '',
     )
@@ -132,7 +126,7 @@ export async function requestFailCauseOptions(title: string): Promise<FailCauseO
       string,
       unknown
     >
-    if (handleShowHelp(record) || !Array.isArray(record.options)) return null
+    if (isShowHelp(record) || !Array.isArray(record.options)) return null
     // 모양이 맞는 선지만 씁니다. (쉼표는 실패 원인 칸을 나누는 글자라 빼 둡니다)
     const options: FailCauseOption[] = []
     for (const value of record.options) {
@@ -193,7 +187,7 @@ export async function requestQuickCard(text: string): Promise<QuickCardDraft | n
       string,
       unknown
     >
-    if (handleShowHelp(record) || typeof record.card !== 'object' || record.card === null) {
+    if (isShowHelp(record) || typeof record.card !== 'object' || record.card === null) {
       return null
     }
     const card = record.card as Record<string, unknown>

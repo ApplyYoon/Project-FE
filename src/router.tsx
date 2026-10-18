@@ -93,9 +93,6 @@ const SignupPage = lazy(() => import('@/pages/SignupPage').then((m) => ({ defaul
 const ConsentPage = lazy(() =>
   import('@/pages/ConsentPage').then((m) => ({ default: m.ConsentPage })),
 )
-const SupportPage = lazy(() =>
-  import('@/pages/SupportPage').then((m) => ({ default: m.SupportPage })),
-)
 const CardTimerPage = lazy(() =>
   import('@/pages/CardTimerPage').then((m) => ({ default: m.CardTimerPage })),
 )
@@ -160,6 +157,9 @@ export const router = createBrowserRouter([
       { path: 'notifications', element: <NotificationsPage /> },
       // 예전 주소(/messages)로 들어오면 새 주소로 넘겨 줍니다. 저장해 둔 주소나 예전 알림을 눌러도 열리게 하려는 것입니다.
       { path: 'messages', element: <Navigate to="/notifications" replace /> },
+      // 도움 연결 안내 화면(/support)은 시연 범위 밖이라 2026-10-18 에 지웠습니다. 옛 링크는 홈으로 보냅니다.
+      // (AI 채팅에서 위기 표현이 나오면 채팅 안에서 상담 전화 한 줄만 알려 줍니다)
+      { path: 'support', element: <Navigate to="/" replace /> },
       // 탭 이름을 바꾸기 전의 옛 주소들. ?date= 같은 값은 그대로 가져갑니다. (#386)
       { path: 'planner', element: <RedirectWithQuery to="/cards" /> },
       { path: 'records', element: <RedirectWithQuery to={ANALYSIS_PATH} /> },
@@ -329,17 +329,6 @@ export const router = createBrowserRouter([
           <ConsentPage />
         </PageBoundary>
       </RequireAuth>
-    ),
-  },
-  // 도움 연결 안내는 헤더·하단 탭 없이 화면 전체를 쓰고, 힘든 순간에 로그인 때문에 막히면 안 돼서
-  // RequireAuth 로 감싸지 않습니다. (PUBLIC_PATHS 에도 있습니다)
-  {
-    path: '/support',
-    errorElement: <ErrorPage />,
-    element: (
-      <PageBoundary fullScreen>
-        <SupportPage />
-      </PageBoundary>
     ),
   },
 ])

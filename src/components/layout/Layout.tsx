@@ -1,4 +1,3 @@
-import { AiHelpListener } from '@/components/layout/AiHelpListener'
 import { BackToTabLink } from '@/components/layout/BackToTabLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { DailyTagBar } from '@/components/layout/DailyTagBar'
@@ -81,8 +80,6 @@ export function Layout() {
       <Header hideNav={isTimerLocked} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
-        {/* AI 도우미에 보낸 글에 위기 표현이 있으면 어느 화면이든 도움 연결 안내를 띄웁니다. (#419) */}
-        <AiHelpListener />
         {/* 그날 처음이면 어느 화면이든 맨 위에 "오늘 컨디션 + 감정 태그" 한 줄을 띄웁니다. 화면을 막지 않습니다. (#387) */}
         <DailyTagBar />
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}

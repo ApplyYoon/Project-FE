@@ -1,8 +1,7 @@
 /**
  * 로그인 안 해도 열려야 하는 주소들입니다. RequireAuth 는 이 목록에 없는 주소를 모두 막습니다.
- * /support(도움 연결 안내)는 힘든 순간에 로그인 때문에 막히면 안 돼서 여기에 있습니다. (#96)
  */
-const PUBLIC_PATHS = ['/login', '/signup', '/support']
+const PUBLIC_PATHS = ['/login', '/signup']
 
 /**
  * 로그인 없이 열어도 되는 주소인지 알려 줍니다.
