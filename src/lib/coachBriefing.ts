@@ -39,10 +39,10 @@ import type { Card, CheckIn, EmotionTag, StudySession } from '@/types'
  *   startTitled  — 그 제목 · 길이의 카드를 만들어 바로 시작합니다 (예: '미적분Ⅰ 복습' 10분)
  *   focus        — "내가 준비하는 것" 으로 저장하고(내신 · 수능 · 대회 · 기타), 그 말을 내 말풍선으로 보냅니다
  *   pickDate     — 대화 아래에 작은 날짜 고르기 칸을 엽니다 (대회 날짜 → 내 일정, lib/myEvents.ts)
- *   dayPlan      — 코치가 오늘 계획을 짜서 계획 말풍선으로 보여 줍니다 (light 면 가볍게, lib/coachPlan.ts)
+ *   dayPlan      — 코치가 오늘 계획을 짜서 계획 말풍선으로 보여 줍니다 (light 면 가볍게, tomorrow 면 내일 계획, lib/coachPlan.ts)
  *   longPlan     — 시험 · 대회 날까지의 긴 계획을 짜는 칸(목표 · 날짜 · 하루 시간 · 사진)을 엽니다
  *   quiz         — 확인 문제를 냅니다. topic 이 있으면 바로, 없으면 주제를 고르는 칸을 엽니다 (lib/studyQuiz.ts)
- *   quizReview   — 어제 틀린 문제를 다시 냅니다 (서버를 부르지 않음)
+ *   quizReview   — 어제(또는 daysAgo 일 전) 틀린 문제를 다시 냅니다 (서버를 부르지 않음)
  *   makePlan     — AI 가 알아들은 목표 · 날짜로 긴 계획을 바로 짭니다. 날짜가 없으면 긴 계획 칸을 엽니다 (BE #327)
  *   checkCall    — 공부 끝 확인 통화를 겁니다 (/call — 오늘 공부를 끝내야 열림, lib/checkCall.ts)
  * 행동 칩(say · checkIn 이 아닌 것)은 누를 때만 실행합니다. 자동으로 하지 않습니다.
@@ -60,14 +60,17 @@ export type CoachChip =
   | { kind: 'focus'; label: string; focus: StudyFocusKind }
   /** 날짜 고르기 칸을 엽니다. 고른 날짜는 내 일정이 됩니다. (lib/myEvents.ts) */
   | { kind: 'pickDate'; label: string }
-  /** 코치가 오늘 계획을 짜 줍니다. light 면 컨디션이 안 좋은 날처럼 가볍게 (2026-10-18 계획 핑퐁) */
-  | { kind: 'dayPlan'; label: string; light?: boolean }
+  /**
+   * 코치가 오늘 계획을 짜 줍니다. light 면 컨디션이 안 좋은 날처럼 가볍게 (2026-10-18 계획 핑퐁)
+   * tomorrow 면 내일 계획 (밤 정리 알림의 [📅 내일 계획 짜 줘], lib/coachNudges.ts)
+   */
+  | { kind: 'dayPlan'; label: string; light?: boolean; tomorrow?: boolean }
   /** 시험 · 대회 날까지의 긴 계획(최대 30일)을 짜는 칸을 엽니다. */
   | { kind: 'longPlan'; label: string }
   /** 확인 문제 (2026-10-18 "제대로 공부했나 문제를 내 보기도"). 카드로 내면 그 카드의 제목 · 체크리스트 */
   | { kind: 'quiz'; label: string; topic?: string; cardId?: string; checklist?: string[] }
-  /** 어제 틀린 문제 다시 풀기 */
-  | { kind: 'quizReview'; label: string }
+  /** 틀린 문제 다시 풀기. daysAgo 가 없으면 어제 것, 있으면 그 날들(복습 알림: 1 · 3 · 7일 전) */
+  | { kind: 'quizReview'; label: string; daysAgo?: number[] }
   /** AI 가 채팅에서 알아들은 목표 · 날짜로 긴 계획 짜기 (endDate 가 없으면 칸을 엶) */
   | { kind: 'makePlan'; label: string; goal: string; endDate: string | null }
   /** 공부 끝 확인 통화 걸기 (2026-10-18 "공부를 하게 하고 완료한 조건으로 통화") */

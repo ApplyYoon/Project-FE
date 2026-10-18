@@ -1,5 +1,6 @@
 import { cn } from '@/lib/cn'
 import { groupPlanByDate, summarizePlan, type CoachPlan, type PlanStatus } from '@/lib/coachPlan'
+import { getTodayKey, moveDateKey } from '@/lib/date'
 import { useState } from 'react'
 
 /** 계획 상태 글자 (고치는 중이면 없음) */
@@ -12,6 +13,16 @@ const PLAN_STATUS_LABELS: Record<PlanStatus, string | null> = {
 
 /** 처음에 펼쳐 보여 줄 날 수. 나머지는 [전체 보기] 로 펼칩니다. */
 const PLAN_SHOWN_DAYS = 3
+
+/** 하루 계획의 제목. 오늘이 아닌 날(밤 정리 알림의 내일 계획)이면 그날을 씁니다. */
+function dayPlanTitle(plan: CoachPlan): string {
+  const date = plan.drafts[0]?.date
+  const todayKey = getTodayKey()
+  if (!date || date === todayKey) return '📋 오늘 계획'
+  if (date === moveDateKey(todayKey, 1)) return '📋 내일 계획'
+  const [, month, day] = date.split('-').map(Number)
+  return `📋 ${month}월 ${day}일 계획`
+}
 
 interface PlanCardProps {
   plan: CoachPlan
@@ -31,7 +42,7 @@ export function PlanCard({ plan, className }: PlanCardProps) {
   const groups = groupPlanByDate(plan.drafts)
   const shownGroups = isAllShown ? groups : groups.slice(0, PLAN_SHOWN_DAYS)
   const statusLabel = PLAN_STATUS_LABELS[plan.status]
-  const title = plan.kind === 'long' && plan.spec ? `📅 ${plan.spec.goal}` : '📋 오늘 계획'
+  const title = plan.kind === 'long' && plan.spec ? `📅 ${plan.spec.goal}` : dayPlanTitle(plan)
   return (
     <div
       className={cn(

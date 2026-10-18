@@ -38,7 +38,13 @@ import {
   type StudyFocusKind,
 } from '@/lib/studyFocus'
 import { getCoachStrength, STRENGTH_PRESETS, type StrengthPreset } from '@/lib/coachStrength'
-import { isMissionAlertsOn, setMissionAlertsOn } from '@/lib/dailyMission'
+import {
+  NUDGE_KINDS,
+  NUDGE_LABELS,
+  loadNudgeSettings,
+  setNudgeOn,
+  type NudgeKind,
+} from '@/lib/coachNudges'
 import { addDemoData, isDemoSeeded, removeDemoData } from '@/lib/demoData'
 import type { CareLevel } from '@/lib/careLevel'
 import { careLevelInfos } from '@/lib/careLevelInfo'
@@ -100,7 +106,7 @@ const CONFIRM_CARE_LEVEL = 4
  *                탈퇴(테스트 계정은 처음부터 다시 하기) — 숨기지 않고 여기 바로 둡니다 (2026-10-18)
  *   ② 코치 세기 — 약 · 보통 · 강 하나로 고름 (관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 한꺼번에, lib/coachStrength.ts)
  *                하나씩 정하던 예전 칸은 "자세히" 안에 접어 둡니다.
- *   ③ 알림     — 오늘의 미션 알림 · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
+ *   ③ 알림     — 코치 알림(종류별) · AI 코치 전화 시간 · 하루 메시지 횟수와 연락 금지 시간 · 말로 바꾸기(AI)
  *   ④ 내 데이터 — 모든 기록 지우기 하나
  * 시연용 가상 데이터 칸은 주소 끝에 ?demo=on 을 붙였을 때만 보입니다.
  */
@@ -192,12 +198,11 @@ export function SettingsPage() {
     setIsClassSaved(true)
   }
 
-  // 오늘의 미션 알림 켜기 · 끄기 (lib/dailyMission.ts)
-  const [isMissionAlertOn, setIsMissionAlertOn] = useState(isMissionAlertsOn)
+  // 코치 알림 종류별 켜기 · 끄기 (lib/coachNudges.ts)
+  const [nudgeSettings, setNudgeSettings] = useState(loadNudgeSettings)
 
-  function handleToggleMissionAlerts(isOn: boolean) {
-    setMissionAlertsOn(isOn)
-    setIsMissionAlertOn(isOn)
+  function handleToggleNudge(kind: NudgeKind, isOn: boolean) {
+    setNudgeSettings(setNudgeOn(kind, isOn))
   }
   const [messageSettings, setMessageSettings] = useState(getMessageSettings)
   // 온보딩 마지막에 세운 처음 계획. 아직 안 세웠으면 null 입니다. (#240)
@@ -460,26 +465,38 @@ export function SettingsPage() {
           </details>
         </Card>
 
-        {/* ③ 알림: 오늘의 미션 알림 · 전화 받을 시간 · 하루 메시지 횟수와 연락 금지 시간 */}
+        {/* ③ 알림: 코치 알림(종류별) · 전화 받을 시간 · 하루 메시지 횟수와 연락 금지 시간 */}
         <Card title="알림">
           <div className="flex flex-col gap-5">
-            <label className="flex cursor-pointer items-center justify-between gap-3">
-              <span className="flex flex-col">
-                <span className="text-sm font-semibold text-slate-900">오늘의 미션 알림</span>
-                <span className="text-sm break-keep text-slate-500">
-                  아침 · 하교 무렵 · 저녁에 코치가 미션을 알려 줘요. (휴대폰 앱에서)
-                </span>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-semibold text-slate-900">코치 알림</span>
+              <span className="text-sm break-keep text-slate-500">
+                코치가 먼저 말을 걸어요. 하루 메시지 수(최대 4개)만큼만, 수업 시간 · 연락 금지
+                시간에는 보내지 않아요. (휴대폰 앱에서)
               </span>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={isMissionAlertOn}
-                  onChange={(event) => handleToggleMissionAlerts(event.target.checked)}
-                  aria-label="오늘의 미션 알림"
-                  className="accent-brand h-5 w-5 cursor-pointer"
-                />
-              </span>
-            </label>
+              {NUDGE_KINDS.map((kind) => (
+                <label
+                  key={kind}
+                  className="flex cursor-pointer items-center justify-between gap-3"
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-sm text-slate-900">{NUDGE_LABELS[kind].title}</span>
+                    <span className="text-xs break-keep text-slate-500">
+                      {NUDGE_LABELS[kind].description}
+                    </span>
+                  </span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={nudgeSettings[kind]}
+                      onChange={(event) => handleToggleNudge(kind, event.target.checked)}
+                      aria-label={`코치 알림 — ${NUDGE_LABELS[kind].title}`}
+                      className="accent-brand h-5 w-5 cursor-pointer"
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
 
             <div className="flex flex-col gap-2">
               <Input

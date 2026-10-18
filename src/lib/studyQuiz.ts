@@ -391,11 +391,36 @@ function rightQuestionsOn(results: QuizResult[], dateKey: string): string[] {
 
 /** 어제 틀린 문제들. 오늘 다시 풀어서 맞힌 문제는 뺍니다. */
 export function loadYesterdayWrong(todayKey: string): QuizQuestion[] {
-  const results = loadQuizResults()
-  const rightToday = rightQuestionsOn(results, todayKey)
-  return wrongQuestionsOn(results, moveDateKey(todayKey, -1)).filter(
-    (question) => !rightToday.includes(question.question),
-  )
+  return wrongForReview(loadQuizResults(), todayKey, [1])
+}
+
+/**
+ * 복습할 틀린 문제들 — daysAgo 일 전(예: 1 · 3 · 7일 전)에 틀린 문제를 모읍니다. (같은 문제는 한 번만)
+ * 틀린 날 뒤로 오늘까지 다시 풀어서 맞힌 문제는 뺍니다. 복습 알림(lib/coachNudges.ts)과 코치의 [📝 틀린 문제 다시] 가 씁니다.
+ *
+ *   wrongForReview(결과들, '2026-10-19', [1, 3, 7])
+ *     -> 10-18 · 10-16 · 10-12 에 틀린 문제 중 그 뒤에 맞힌 적 없는 것들
+ */
+export function wrongForReview(
+  results: QuizResult[],
+  todayKey: string,
+  daysAgo: number[],
+): QuizQuestion[] {
+  const wrong: QuizQuestion[] = []
+  for (const days of daysAgo) {
+    const wrongDate = moveDateKey(todayKey, -days)
+    // 틀린 다음 날부터 오늘까지 맞힌 문제 글
+    const rightAfter: string[] = []
+    for (let day = days - 1; day >= 0; day--) {
+      rightAfter.push(...rightQuestionsOn(results, moveDateKey(todayKey, -day)))
+    }
+    for (const question of wrongQuestionsOn(results, wrongDate)) {
+      const isRetried = rightAfter.includes(question.question)
+      const isAdded = wrong.some((saved) => saved.question === question.question)
+      if (!isRetried && !isAdded) wrong.push(question)
+    }
+  }
+  return wrong
 }
 
 // ---- 서버 ----
