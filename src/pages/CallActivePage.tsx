@@ -3,6 +3,7 @@ import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { loadCallCard } from '@/lib/callCard'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
+import { COACH_PATH } from '@/lib/tabMenu'
 import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { toCallLines, type CallResultState } from '@/lib/callReview'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
@@ -403,12 +404,12 @@ export function CallActivePage() {
 
   function handleHangUp() {
     // 화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다.
-    // 통화가 연결된 적이 없으면 평가할 내용이 없어서, 결과 화면 대신 홈으로 갑니다.
+    // 통화가 연결된 적이 없으면 평가할 내용이 없어서, 결과 화면 대신 코치 화면(통화를 건 곳)으로 갑니다.
     if (isCounting) {
       goToResult()
       return
     }
-    navigate('/', { replace: true })
+    navigate(COACH_PATH, { replace: true })
   }
 
   // 다시 시도: "연결 중"으로 돌려놓고 attempt 를 올리면 위 useEffect 가 새로 연결합니다.
@@ -441,7 +442,7 @@ export function CallActivePage() {
             goToResult()
             return
           }
-          navigate('/', { replace: true })
+          navigate(COACH_PATH, { replace: true })
         }}
         onPreview={import.meta.env.DEV ? () => setIsPreview(true) : undefined}
       />

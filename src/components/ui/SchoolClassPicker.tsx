@@ -16,7 +16,7 @@ interface SchoolClassPickerProps {
 
 /**
  * 학년 · 반을 고르는 작은 칸입니다. 고른 반은 서버에 저장하지 않고 이 기기에만 둡니다. (lib/schoolToday.ts)
- * 오늘 탭(시간표 보기)과 설정의 계정 묶음이 같이 씁니다. 두 곳 다 같은 저장소(study-school-class)를 씁니다.
+ * 홈(시간표 보기)과 설정의 계정 묶음이 같이 씁니다. 두 곳 다 같은 저장소(study-school-class)를 씁니다.
  *
  *   <SchoolClassPicker initial={schoolClass} onSave={handleSave} description="몇 학년 몇 반이야?" saveLabel="저장" />
  */

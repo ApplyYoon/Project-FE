@@ -1,7 +1,7 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
 import { cn } from '@/lib/cn'
 import { scrollToTop } from '@/lib/scroll'
-import { COACH_PATH, RECORDS_PATH, TODAY_PATH } from '@/lib/tabMenu'
+import { COACH_PATH, HOME_PATH, RECORDS_PATH } from '@/lib/tabMenu'
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
@@ -23,17 +23,16 @@ function TabIcon({ children }: { children: ReactNode }) {
   )
 }
 
-/** 탭 주소 → 아이콘. 코치(말풍선) · 오늘(해) · 타이머(시계) · 기록(막대그래프) */
+/** 탭 주소 → 아이콘. 홈(집) · 코치(말풍선) · 타이머(시계) · 기록(막대그래프) */
 const TAB_ICONS: Record<string, ReactNode> = {
+  [HOME_PATH]: (
+    <TabIcon>
+      <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
+    </TabIcon>
+  ),
   [COACH_PATH]: (
     <TabIcon>
       <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
-    </TabIcon>
-  ),
-  [TODAY_PATH]: (
-    <TabIcon>
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
     </TabIcon>
   ),
   '/timer': (
@@ -50,7 +49,7 @@ const TAB_ICONS: Record<string, ReactNode> = {
 }
 
 /**
- * 모바일 화면 아래에 고정되는 탭 메뉴입니다. (코치 · 오늘 · 타이머 · 기록)
+ * 모바일 화면 아래에 고정되는 탭 메뉴입니다. (홈 · 코치 · 타이머 · 기록)
  * 아이콘 + 작은 글자이고, 지금 있는 탭은 진한 글자로 보여 줍니다. (2026-10-18 모바일 UI)
  * PC(sm 이상)에서는 숨기고, 대신 헤더 메뉴를 보여줍니다.
  */
@@ -72,7 +71,7 @@ export function BottomTabNav() {
               // 탭을 누르면 맨 위로 올립니다. 지금 보고 있는 탭을 다시 눌러도 올라갑니다.
               onClick={scrollToTop}
               className={({ isActive }) =>
-                // 오늘 · 기록 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
+                // 홈 · 기록 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
                 tabLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
               }
             >
