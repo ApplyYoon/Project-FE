@@ -1,6 +1,6 @@
 /**
  * 오늘 학교 정보(우리 반 시간표 · 급식 · 다가오는 학사일정)를 서버(BE)에서 받아오는 곳입니다. (BE PR #305 · #306)
- * 오늘 탭(/today) 맨 위와 AI 코치의 아침 브리핑이 씁니다.
+ * 홈(/)의 시간표 · 급식 · 일정 칸과 AI 코치의 아침 브리핑이 씁니다.
  *
  *   GET /school/today?grade=2&classNo=1
  *     -> 200 { date, school: { code, name } | null,
@@ -217,7 +217,7 @@ async function fetchSchoolToday(schoolClass: SchoolClass | null): Promise<School
 }
 
 /**
- * 테스트 로그인으로 시연할 때 보여 줄 예시입니다. 서버 없이도 오늘 탭 · 코치 브리핑이 굴러가게 합니다.
+ * 테스트 로그인으로 시연할 때 보여 줄 예시입니다. 서버 없이도 홈 · 코치 브리핑이 굴러가게 합니다.
  * 날짜는 오늘을 기준으로 만들어서, 언제 시연해도 "오늘 · 내일 · D-12" 가 맞게 나옵니다.
  */
 export function buildDemoSchoolToday(todayKey: string): SchoolToday {

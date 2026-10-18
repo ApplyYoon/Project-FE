@@ -4,6 +4,7 @@ import { useToggle } from '@/hooks/useToggle'
 import { careThemes, pickGreeting } from '@/lib/careTheme'
 import { cn } from '@/lib/cn'
 import { unlockCallAudio } from '@/lib/realtimeCall'
+import { COACH_PATH } from '@/lib/tabMenu'
 import { getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -65,8 +66,9 @@ export function CallPage() {
     }
   }
 
+  // 통화는 코치 화면의 [통화] 버튼에서 걸어서, 그만두면 코치 화면으로 돌아갑니다.
   function handleConfirmReject() {
-    navigate('/')
+    navigate(COACH_PATH)
   }
 
   // 마이크를 못 쓰는 경우: 켜는 방법을 안내하는 화면
@@ -117,7 +119,7 @@ export function CallPage() {
           {/* 권한을 바꾸기 전에는 "다시 시도" 가 소용없어서, 바로 할 수 있는 채팅을 첫 번째(진한) 버튼으로 둡니다. (#460) */}
           {/* 채팅은 통화와 같은 대본을 글로 합니다. (최종 기획서 「4.5」 "통화를 못 받았을 때 같은 대본을 채팅으로") */}
           <div className="mt-auto flex w-full flex-col gap-3 pt-10">
-            <Button size="lg" className="w-full" onClick={() => navigate('/')}>
+            <Button size="lg" className="w-full" onClick={() => navigate(COACH_PATH)}>
               말 대신 채팅으로 하기
             </Button>
             <Button

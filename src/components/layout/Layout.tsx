@@ -23,7 +23,7 @@ import { useSessionSync } from '@/hooks/useSessionSync'
 import { useTimerLock } from '@/hooks/useTimerLock'
 import { cn } from '@/lib/cn'
 import { needsSubjectsPath } from '@/lib/dataMode'
-import { COACH_PATH, getBackToTabLink, TODAY_PATH } from '@/lib/tabMenu'
+import { COACH_PATH, getBackToTabLink, HOME_PATH } from '@/lib/tabMenu'
 import { TIMER_PATH } from '@/lib/timerLock'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -99,8 +99,8 @@ export function Layout() {
         )}
       >
         {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
-        {/* 오늘 탭에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되고, 코치 화면은 채팅 자리가 좁아지기 때문입니다. */}
-        {pathname === TODAY_PATH && <IosInstallGuide />}
+        {/* 홈에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되고, 코치 화면은 채팅 자리가 좁아지기 때문입니다. */}
+        {pathname === HOME_PATH && <IosInstallGuide />}
         {/* 기록 탭의 하위 탭 막대(기록 · 리포트)는 RecordsPage 가 직접 그립니다. */}
         {backToTab && <BackToTabLink to={backToTab.to} label={backToTab.label} />}
 

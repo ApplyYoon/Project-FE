@@ -17,7 +17,7 @@ interface HeaderProps {
  *   hideNav           -> action 만 (온보딩의 "나중에 하기" 등). 없으면 앱 이름만 보입니다.
  *                         로그인·가입·온보딩처럼 탭 없이 뜨는 화면(PlainLayout)이라, 로그인 전이어도 "로그인" 을 띄우지 않습니다.
  *   로그인 전          -> "로그인" 하나만 (처음 온 사람도 로그인 화면에서 시작하면 가입으로 이어지기 때문입니다, #319)
- *   로그인             -> PC 는 탭 4개(코치 · 오늘 · 타이머 · 기록) 메뉴, 모바일은 비어 있음(하단 탭을 씀)
+ *   로그인             -> PC 는 탭 4개(홈 · 코치 · 타이머 · 기록) 메뉴, 모바일은 비어 있음(하단 탭을 씀)
  * 알림 종 · 통화 · 설정은 코치 화면 머리에만 둡니다. (2026-10-18 "탭을 명확히", pages/CoachPage.tsx)
  */
 
@@ -56,7 +56,7 @@ export function Header({ hideNav = false, action }: HeaderProps) {
                   // 메뉴를 누르면 맨 위로 올립니다. 지금 보고 있는 메뉴를 다시 눌러도 올라갑니다. (하단 탭과 같은 규칙)
                   onClick={scrollToTop}
                   className={({ isActive }) =>
-                    // 오늘 · 기록 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
+                    // 홈 · 기록 아래 화면(카드 · 목표 등)에서도 그 탭이 선택된 모양이 되게 합니다.
                     navLinkClass({ isActive: isActive || isNavItemSelected(item.to, pathname) })
                   }
                 >

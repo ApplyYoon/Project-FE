@@ -1,4 +1,5 @@
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
+import { MissionBar } from '@/components/ui/MissionBar'
 import { SettingsLink } from '@/components/ui/SettingsLink'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAiMessages } from '@/hooks/useAiMessages'
@@ -116,7 +117,7 @@ function getChatErrorMessage(error: unknown): string {
 }
 
 /**
- * 코치 탭(첫 화면 "/") — AI 코치(멘토)와 이어서 이야기하는 대화방 하나입니다. (2026-10-18, BE #238 · #307)
+ * 코치 탭("/coach", 두 번째 탭) — AI 코치(멘토)와 이어서 이야기하는 대화방 하나입니다. (2026-10-18, BE #238 · #307)
  * 사용자 결정: "채팅 탭은 무조건 하나", "멘토와 연속적인 대화를 한다는 느낌으로".
  *
  *   1. 지난 대화가 이 기기에 남아 있어서 다시 열면 이어서 보입니다. 날이 바뀌면 날짜 구분선이 생깁니다. (lib/coachThread.ts)
@@ -136,7 +137,7 @@ function getChatErrorMessage(error: unknown): string {
  */
 export function CoachPage() {
   // 하루 1번 관리 단계를 판정해 저장합니다. ("통화가 없으면 다음 날 첫 진입 때", 기획서 5.4)
-  // 첫 화면이 홈에서 코치로 바뀌어서 여기서도 부릅니다. 오늘 이미 판정했으면 아무것도 바꾸지 않습니다.
+  // 홈과 코치 중 어디로 먼저 들어와도 판정되게 여기서도 부릅니다. 오늘 이미 판정했으면 아무것도 바꾸지 않습니다.
   useState(() => runDailyCareStage(getTodayKey(), Date.now()))
 
   return (
@@ -635,7 +636,7 @@ function CoachChat() {
         </ul>
       </div>
 
-      {/* 대회 · 기타 날짜 고르기 칸. 고르면 내 일정(오늘 탭 "다가오는 일정")에 D-day 로 뜹니다. */}
+      {/* 대회 · 기타 날짜 고르기 칸. 고르면 내 일정(홈 "다가오는 일정")에 D-day 로 뜹니다. */}
       {isPickingDate && focusStep === 'date' && (
         <form
           onSubmit={handlePickDate}
@@ -738,48 +739,6 @@ function CoachChat() {
 // 작은 칩 버튼: 흰 바탕 + 옅은 테두리, 높이 40px
 const chipClass =
   'flex h-10 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-transform active:scale-[0.98]'
-
-interface MissionBarProps {
-  missions: Mission[]
-  /** 누르면 코치가 미션 전체를 보여 줍니다. */
-  onOpen: () => void
-}
-
-/**
- * 코치 화면 맨 위의 "오늘의 미션" 한 줄. 몇 개 끝냈는지와 다음 미션 이름을 보여 줍니다.
- * 채팅 자리를 덜 차지하려고 한 줄(높이 56px)로만 둡니다. 누르면 코치가 미션을 말풍선으로 보여 줍니다.
- */
-function MissionBar({ missions, onOpen }: MissionBarProps) {
-  const done = countDoneMissions(missions)
-  const next = nextMission(missions)
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`오늘의 미션 ${missions.length}개 중 ${done}개 끝. 눌러서 코치에게 보기`}
-      className="flex min-h-14 w-full shrink-0 cursor-pointer items-center gap-3 rounded-3xl bg-white px-4 py-2 text-left transition-transform active:scale-[0.99]"
-    >
-      <span
-        aria-hidden
-        className={cn(
-          'flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold',
-          next ? 'bg-brand-light text-brand' : 'bg-emerald-50 text-emerald-700',
-        )}
-      >
-        {done}/{missions.length}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs font-medium text-slate-500">오늘의 미션</span>
-        <span className="block truncate text-[15px] font-semibold text-slate-900">
-          {next ? next.title : '오늘 미션 다 끝냈어요 👏'}
-        </span>
-      </span>
-      <span aria-hidden className="text-slate-400">
-        ›
-      </span>
-    </button>
-  )
-}
 
 interface ChipRowProps {
   chips: CoachChip[]
