@@ -90,6 +90,9 @@ const RECORD_KEYS = [
   'coach-thread',
   // 공부 중 폰을 든 기록 (세션별, lib/liftAlerts.ts)
   'phone-lifts',
+  // 내가 준비하는 것(lib/studyFocus.ts) · 내 일정(lib/myEvents.ts)
+  'focus',
+  'my-events',
   ...DIARY_KEYS,
 ]
 

@@ -97,7 +97,7 @@ import type {
  * 타이머 탭 — 카드 기준 (최종 기획서 「4.4 타이머」, #395)
  *
  * - 세션이 없으면 **대기 화면**: 다음 카드 [시작], [지금 시작](즉석 카드)
- * - 세션이 있으면 **세션 화면**: 카드의 예정 종료 시각까지 줄어드는 시계, [일시정지] · [끝내기]
+ * - 세션이 있으면 **세션 화면**: [시작] 을 누른 순간부터 카드 길이만큼 줄어드는 시계, [일시정지] · [끝내기]
  * - 알림으로 `/timer?card=카드id` 가 열리면 묻지 않고 바로 시작합니다.
  * 진행 중인 세션은 저장돼 있어서 새로고침해도 이어집니다.
  */
@@ -949,6 +949,19 @@ function SessionView({
           <p className="text-xs break-keep text-slate-500">
             폰을 화면이 바닥을 보게 엎어 두면, 들 때마다 코치가 알려 줘요.
           </p>
+        )}
+        {/* 관리 강도 '강' 이면 방해 금지를 켭니다(안드로이드). 권한이 없으면 한 번 열어 달라고 안내합니다. */}
+        {phone.dndState === 'on' && (
+          <p className="text-xs break-keep text-slate-500">🔕 공부하는 동안 방해 금지를 켰어요.</p>
+        )}
+        {phone.dndState === 'noPermission' && (
+          <button
+            type="button"
+            onClick={phone.openDndSettings}
+            className="h-10 rounded-xl bg-slate-100 px-4 text-xs font-medium break-keep text-slate-700"
+          >
+            🔕 방해 금지를 켜려면 권한이 필요해요 · 권한 열기
+          </button>
         )}
       </Card>
 

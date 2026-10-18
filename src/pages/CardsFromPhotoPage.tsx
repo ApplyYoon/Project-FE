@@ -279,7 +279,7 @@ export function CardsFromPhotoPage() {
             </label>
             <label
               className={cn(
-                'flex h-14 cursor-pointer items-center justify-center rounded-2xl bg-slate-100 text-[17px] font-semibold text-slate-900 active:scale-[0.98]',
+                'flex h-14 cursor-pointer items-center justify-center rounded-2xl bg-white text-[17px] font-semibold text-slate-900 ring-1 ring-slate-200 active:scale-[0.98]',
                 read.isPending && 'pointer-events-none opacity-50',
               )}
             >

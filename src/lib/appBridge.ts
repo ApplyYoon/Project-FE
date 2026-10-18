@@ -73,6 +73,8 @@ export interface WebToAppPayloads {
   'focus.start': { dnd?: boolean; pin?: boolean; nudges?: FocusNudge[]; url?: string }
   /** 공부 세션 끝: 앱이 숫자를 답합니다. (lib/liftAlerts.ts 의 readPhoneSummary) */
   'focus.end': Record<string, never>
+  /** 안드로이드 "방해 금지 접근" 설정 화면 열기 (방해 금지를 켤 권한이 없을 때) */
+  'focus.openSettings': Record<string, never>
 }
 
 /** 웹 → 앱 메시지의 이름들 ('ready' | 'notify.show' | …) */

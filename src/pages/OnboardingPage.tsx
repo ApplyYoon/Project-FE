@@ -5,7 +5,6 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/cn'
 import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
-import { loadMyHypotheses, saveMyHypotheses, toMyHypotheses } from '@/lib/myHypotheses'
 import { getOnboardingResumePath } from '@/lib/onboardingProgress'
 import {
   getFirstSteps,
@@ -13,7 +12,6 @@ import {
   isFirstStageDone,
   loadOnboardingAnswers,
   toChoiceOption,
-  type FirstStage,
   type OnboardingStep,
 } from '@/lib/onboardingSteps'
 import { loadData, removeData, saveData } from '@/lib/storage'
@@ -23,13 +21,10 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // 설문을 끝내고 답을 저장하는 이름입니다. (실제 키는 storage.ts 가 앞에 'study-' 를 붙여서 'study-onboarding-answers' 가 됩니다)
 const STORAGE_KEY = 'onboarding-answers'
 
-// 설문을 끝내기 전에, 고르던 답과 보고 있던 질문 번호를 임시로 넣어 두는 이름입니다. 묶음마다 따로 둡니다.
-// 새로고침하거나 다른 화면에 다녀와도 하던 질문부터 이어서 할 수 있습니다. 묶음을 끝내면 지웁니다.
+// 설문을 끝내기 전에, 고르던 답과 보고 있던 질문 번호를 임시로 넣어 두는 이름입니다.
+// 새로고침하거나 다른 화면에 다녀와도 하던 질문부터 이어서 할 수 있습니다. 끝내면 지웁니다.
 // (lib/onboardingProgress.ts 의 DRAFT_KEYS 와 같은 이름이어야 "처음부터 다시" 가 같이 지웁니다)
-const DRAFT_KEYS: Record<FirstStage, string> = {
-  basic: 'onboarding-draft',
-  hypotheses: 'onboarding-hypotheses-draft',
-}
+const DRAFT_KEY = 'onboarding-draft'
 
 /** 설문 도중에 임시로 저장해 두는 값 */
 interface OnboardingDraft {
@@ -107,49 +102,38 @@ function StepInput({ step, value, onChange }: StepInputProps) {
   )
 }
 
-interface OnboardingPageProps {
-  /**
-   * basic: 처음 온보딩의 학년 질문입니다. (기본값. 주소: /onboarding)
-   * hypotheses: 처음 온보딩의 자기 인식 4문항(내 가설)입니다. 심리검사 다음에 나옵니다. (주소: /onboarding/hypotheses)
-   */
-  mode?: FirstStage
-}
-
 /**
  * 온보딩 설문입니다. 한 화면에 질문 하나씩 보여주고 "다음" 으로 넘어갑니다.
  * 질문 목록은 lib/onboardingSteps.ts 한 곳에서 관리합니다.
  *
- * 그 묶음(mode 가 'basic' · 'hypotheses')의 질문만 묻습니다. 마지막에 "다음" 을 누르면 답을 저장하고 온보딩의 다음 단계로 갑니다. (lib/onboardingProgress.ts)
- *   basic 을 끝낼 때 관리 강도 한도와 메시지 설정을 기본값으로 시작합니다. (설정에서 언제든 바꿉니다) (#239)
- *   hypotheses 를 끝내면 답을 '내 가설' 로도 저장합니다. (lib/myHypotheses.ts)
+ * 처음 온보딩의 학년 질문(basic 묶음)을 묻습니다. 마지막에 "다음" 을 누르면 답을 저장하고 온보딩의 다음 단계로 갑니다. (lib/onboardingProgress.ts)
+ *   끝낼 때 관리 강도 한도와 메시지 설정을 기본값으로 시작합니다. (설정에서 언제든 바꿉니다) (#239)
+ *   (자기 인식 4문항 묶음은 2026-10-18 에 지웠습니다. 주관적인 짐작이라 기록으로 재는 값만 씁니다)
  *   위쪽의 "로그인 화면으로" 를 눌러도 고르던 답은 임시로 저장되어 있어서, 다시 오면 하던 질문부터 이어집니다.
  *   그 묶음을 이미 끝낸 사람이 오면 온보딩의 다음 단계(다 끝났으면 홈)로 보냅니다.
  * (설정의 "내 정보 더 알려주기"(mode 'more')는 최종 기획서에 없는 질문들이라 #417 에서 지웠습니다)
  *
  * 메뉴·하단 탭이 없는 틀(PlainLayout)로 감싸서 시안처럼 앱 이름만 위에 보입니다.
  */
-export function OnboardingPage({ mode = 'basic' }: OnboardingPageProps) {
+export function OnboardingPage() {
   const navigate = useNavigate()
   // 저장된 답. 설문을 한 번도 안 했으면 null 입니다.
   const [savedAnswers] = useState(loadOnboardingAnswers)
   // 이번에 물어볼 질문들 (그 묶음의 질문)
-  const steps = getFirstSteps(mode)
+  const steps = getFirstSteps('basic')
   // 전에 하다 만 곳이 있으면 거기서부터 이어서 합니다. (새로고침해도 답이 남습니다)
   const [draft] = useState(() => {
-    const loaded = loadDraft(DRAFT_KEYS[mode], getFirstSteps(mode).length)
+    const loaded = loadDraft(DRAFT_KEY, steps.length)
     if (Object.keys(loaded.answers).length > 0 || savedAnswers === null) return loaded
     // 옛 온보딩에서 이미 답한 칸(하루 공부 시간 등)이 있으면 미리 골라 둡니다. 보고 그대로 넘기면 됩니다.
     const prefilled: Record<string, string> = {}
-    for (const step of getFirstSteps(mode)) {
+    for (const step of steps) {
       if (savedAnswers[step.key]) prefilled[step.key] = savedAnswers[step.key]
     }
     return { stepIndex: 0, answers: prefilled }
   })
   // 이 묶음을 이미 끝냈는지. 끝냈으면 아래에서 다음 단계로 보냅니다.
-  const [isStageDone] = useState(() => {
-    if (mode === 'hypotheses') return loadMyHypotheses() !== undefined
-    return isFirstStageDone(savedAnswers, mode)
-  })
+  const [isStageDone] = useState(() => isFirstStageDone(savedAnswers, 'basic'))
   const [stepIndex, setStepIndex] = useState(draft.stepIndex)
   // 지금 화면에서 고른 답. 예) { grade: '고2', targetExam: '수능' }
   // "이전" 으로 돌아가도 여기에 남아 있어서 고른 답이 그대로 보입니다.
@@ -157,7 +141,7 @@ export function OnboardingPage({ mode = 'basic' }: OnboardingPageProps) {
 
   // 온보딩을 하는 동안에는 답을 고르거나 질문을 넘길 때마다 임시로 저장합니다.
   // (이 묶음을 이미 끝낸 사람은 아래에서 다음 단계로 보내므로 저장하지 않습니다)
-  const draftKey = DRAFT_KEYS[mode]
+  const draftKey = DRAFT_KEY
   const shouldSaveDraft = !isStageDone
   useEffect(() => {
     if (shouldSaveDraft) saveData(draftKey, { stepIndex, answers })
@@ -212,16 +196,11 @@ export function OnboardingPage({ mode = 'basic' }: OnboardingPageProps) {
       saveData(STORAGE_KEY, { ...(savedAnswers ?? {}), ...trimmedAnswers })
       // 묶음을 끝냈으니 임시로 저장해 둔 답은 지웁니다.
       removeData(draftKey)
-      if (mode === 'basic') {
-        // 관리 강도 한도 · 독설 수위 · 메시지 설정은 묻지 않고 기본값으로 시작합니다. (#239)
-        // getCareLimits · getMessageSettings 는 저장된 게 없으면 기본값을 돌려줍니다.
-        const limits = getCareLimits()
-        setInitialCareLimits(limits.maxCareLevel, limits.maxHarshness)
-        saveMessageSettings(getMessageSettings())
-      } else {
-        // 자기 인식 4문항은 '내 가설' 로도 저장합니다. 2주 동안 기록으로 확인합니다. (#411)
-        saveMyHypotheses(toMyHypotheses(trimmedAnswers, Date.now()))
-      }
+      // 관리 강도 한도 · 독설 수위 · 메시지 설정은 묻지 않고 기본값으로 시작합니다. (#239)
+      // getCareLimits · getMessageSettings 는 저장된 게 없으면 기본값을 돌려줍니다.
+      const limits = getCareLimits()
+      setInitialCareLimits(limits.maxCareLevel, limits.maxHarshness)
+      saveMessageSettings(getMessageSettings())
       // 온보딩의 다음 단계로 갑니다. 다 끝났으면 홈입니다. (순서: lib/onboardingProgress.ts)
       navigate(getOnboardingResumePath() ?? '/')
       return

@@ -5,7 +5,6 @@ import { useIsServerData } from '@/hooks/useIsServerData'
 import { AUTO_SETTING_ROWS } from '@/lib/autoSettingOptions'
 import { getCareLevelInfo } from '@/lib/careLevelInfo'
 import { getCareLimits } from '@/lib/careLimits'
-import { loadMyHypotheses, type MyHypotheses } from '@/lib/myHypotheses'
 import {
   getTraitSummary,
   hasCareConsent,
@@ -44,26 +43,10 @@ function getTestSettingLines(): SettingLine[] {
   return lines
 }
 
-/** 하루 공부 시간(분)을 보기 글자처럼. 300분은 보기에서 "5시간 이상" 이었습니다. */
-function formatDailyHours(minutes: number): string {
-  const hours = minutes / 60
-  return hours >= 5 ? '5시간 이상' : `${hours}시간`
-}
-
-/** 내 가설 4개를 "아침형 · 집중 50분 …" 같은 줄로. '잘 모르겠음' 은 "기록으로 알아볼게요" 로 */
-function getHypothesisLines(hypotheses: MyHypotheses): string[] {
-  const unknown = '잘 모르겠음 → 기록으로 알아볼게요'
-  return [
-    `아침형/밤형: ${hypotheses.chronotype === null ? unknown : hypotheses.chronotype === 'morning' ? '아침형' : '밤형'}`,
-    `한 번에 집중: ${hypotheses.maxFocusMinutes === null ? unknown : `${hypotheses.maxFocusMinutes}분 안팎`}`,
-    `가장 큰 방해: ${hypotheses.biggestDistraction ?? unknown}`,
-    `평일 공부 시간: ${hypotheses.dailyAvailableMinutes === null ? unknown : formatDailyHours(hypotheses.dailyAvailableMinutes)}`,
-  ]
-}
-
 /**
  * 온보딩 6번 "결과 화면" 입니다. (주소: /onboarding/result, 기획서 4.1, #389)
- * 성향 요약 3줄 + 검사로 맞춘 설정(설정마다 이유 한 줄) + "2주 동안 네 가설을 확인해볼게."
+ * 성향 요약 3줄 + 검사로 맞춘 설정(설정마다 이유 한 줄).
+ * (자기 인식 4문항 "내 가설" 줄은 2026-10-18 에 4문항과 같이 지웠습니다)
  *
  * - 성향 요약: 진짜 로그인이면 서버 AI 가 점수를 보고 쓴 문장(BE /ai/profile-lines)을 보여 줍니다.
  *   받는 동안 · 못 받으면 코드가 고른 문장(lib/onboardingCare.ts 의 getTraitSummary)을 씁니다. (2026-10-17 결정)
@@ -116,7 +99,6 @@ export function OnboardingResultPage() {
   // 진짜 로그인일 때만 서버(AI)를 부릅니다. 테스트 로그인은 기본 문장만 보여 줍니다.
   const isServerData = useIsServerData()
   const [psychTest] = useState(loadPsychTest)
-  const [hypotheses] = useState(loadMyHypotheses)
   const [settingLines] = useState(getTestSettingLines)
   const [limits] = useState(getCareLimits)
   const [proposal] = useState(() => proposeCareLimits(loadScaleLevels()))
@@ -190,16 +172,6 @@ export function OnboardingResultPage() {
             설정에서 언제든 바꿀 수 있고, 바꾼 것은 AI 가 다시 건드리지 않아요.
           </p>
         </Card>
-
-        {hypotheses !== undefined && (
-          <Card title="2주 동안 네 가설을 확인해볼게">
-            <ul className="flex flex-col gap-1.5 text-sm break-keep text-slate-700">
-              {getHypothesisLines(hypotheses).map((line) => (
-                <li key={line}>· {line}</li>
-              ))}
-            </ul>
-          </Card>
-        )}
 
         <Button size="lg" className="w-full sm:w-auto sm:self-start" onClick={handleStart}>
           시작하기

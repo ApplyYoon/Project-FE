@@ -86,6 +86,23 @@ export function getLiftNudges(strength: LiftStrength): FocusNudge[] {
   ]
 }
 
+/**
+ * 공부할 때 휴대폰 방해 금지를 켤지. 관리 강도가 '강' 일 때만 켭니다. (안드로이드 앱만, 2026-10-18)
+ * 끝나면 앱이 원래대로 되돌립니다.
+ */
+export function shouldTurnOnDnd(strength: LiftStrength): boolean {
+  return strength === 'strong'
+}
+
+/** 'focus.start' 의 답에서 방해 금지 상태를 꺼냅니다. 없거나 모양이 틀리면 null (앱 밖 · 옛 앱) */
+export function readDndState(reply: unknown): 'on' | 'off' | 'noPermission' | 'unsupported' | null {
+  if (typeof reply !== 'object' || reply === null) return null
+  const dnd = (reply as Record<string, unknown>).dnd
+  return dnd === 'on' || dnd === 'off' || dnd === 'noPermission' || dnd === 'unsupported'
+    ? dnd
+    : null
+}
+
 /** 한 세션 동안의 폰 기록 (앱이 'focus.end' 로 답한 숫자를 정리한 것) */
 export interface PhoneLiftSummary {
   /** 5초 넘게 들고 있던 시간 합계 (밀리초) */
