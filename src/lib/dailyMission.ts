@@ -28,8 +28,8 @@ export interface Mission {
   done: boolean
 }
 
-/** 오늘 카드가 없을 때 [▷ 시작] 칩으로 만드는 즉석 카드의 길이 (분) */
-export const DAILY_GOAL_MINUTES = 25
+/** 오늘 카드가 없을 때 [▷ 시작] 칩으로 만드는 즉석 카드의 길이 (분). 학교 한 교시 50분 (2026-10-18: 30분 밑은 공부 블록으로 보지 않음) */
+export const DAILY_GOAL_MINUTES = 50
 
 export interface MissionInput {
   /** 오늘 체크인을 했는지 */

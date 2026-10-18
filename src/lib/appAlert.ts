@@ -70,7 +70,7 @@ export const appAlertSentences: Record<AppAlertType, AlertSentence[]> = {
     { careLevel: 2, harshness: 1, text: '{time} {plan}, 시작할 시간이야' },
     { careLevel: 2, harshness: 2, text: '{time} {plan}, 아직 시작 전이야. 타이머부터 켜자.' },
     { careLevel: 1, harshness: 1, text: '{time} {plan} 할 시간이야. 지금 켜면 계획대로야.' },
-    { careLevel: 0, harshness: 1, text: '{time} {plan}, 준비되면 10분만 해볼까?' },
+    { careLevel: 0, harshness: 1, text: '{time} {plan}, 준비되면 하나만 해볼까?' },
   ],
   timerDone: [
     { careLevel: 1, harshness: 1, text: '{subject} {minutes}분 완주!' },
@@ -81,7 +81,7 @@ export const appAlertSentences: Record<AppAlertType, AlertSentence[]> = {
     { careLevel: 0, harshness: 1, text: '오늘 계획 {target}을 다 채웠어. 이제 푹 쉬어.' },
   ],
   missed3Days: [
-    { careLevel: 0, harshness: 1, text: '요즘 힘들지. 오늘은 10분만 해볼까?' },
+    { careLevel: 0, harshness: 1, text: '요즘 힘들지. 오늘은 딱 한 장만 해볼까?' },
     { careLevel: 0, harshness: 1, text: '괜찮아, 천천히 다시 시작하자. 오늘은 한 가지만 해보자.' },
   ],
   weekGoalAchieved: [
@@ -159,7 +159,7 @@ export function getAppAlertCareLevel(
  *                         (random 이 0.9 면 '19:00 국어 비문학 3지문, 아직 시작 전이야. 타이머부터 켜자.')
  *   ('planLate', 2, 1) -> '19:00 국어 비문학 3지문, 시작할 시간이야'   (수위 2 문장은 나오지 않습니다)
  *   ('planLate', 1, 3) -> '19:00 국어 비문학 3지문 할 시간이야. 지금 켜면 계획대로야.'
- *   ('planLate', 0, 3) -> '19:00 국어 비문학 3지문, 준비되면 10분만 해볼까?'
+ *   ('planLate', 0, 3) -> '19:00 국어 비문학 3지문, 준비되면 하나만 해볼까?'
  * 예시 (values = { subject: '국어', minutes: '50' })
  *   ('timerDone', 1, 3) -> '국어 50분 완주!'
  *   ('timerDone', 0, 3) -> '국어 50분을 채웠어. 잠깐 쉬어도 돼.'

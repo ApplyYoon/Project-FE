@@ -80,8 +80,8 @@ export function makeSplitCard(card: Card, dateKey: string, minutes: number, now:
   }
 }
 
-/** 나눌 때 고르는 길이: 원래의 절반 · 원래 그대로 (10분 아래로는 줄이지 않음) */
+/** 나눌 때 고르는 길이: 원래의 절반 · 원래 그대로 (30분 아래로는 줄이지 않음 — 30분 밑은 공부 블록으로 보지 않음) */
 export function getSplitMinuteOptions(durationMinutes: number): number[] {
-  const half = Math.max(10, Math.round(durationMinutes / 2 / 5) * 5)
+  const half = Math.max(30, Math.round(durationMinutes / 2 / 5) * 5)
   return half >= durationMinutes ? [durationMinutes] : [half, durationMinutes]
 }
