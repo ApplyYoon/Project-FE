@@ -14,6 +14,7 @@ import { cancelPhoneFocusEarly, startPhoneFocusEarly, usePhoneLift } from '@/hoo
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { playAlarm } from '@/lib/alarm'
 import {
+  formatDuration,
   formatPhoneSummary,
   getLiftStrength,
   isFaceDownUnavailable,
@@ -77,7 +78,12 @@ import { playTick } from '@/lib/tick'
 import { showSystemNotification } from '@/lib/notifications'
 import { isInApp, onAppMessage, sendToApp } from '@/lib/appBridge'
 import {
+  clearAwayTrack,
+  closeAwayTrack,
   formatFocusEvidence,
+  isLongAway,
+  loadAwayTrack,
+  saveAwayTrack,
   saveFocusScore,
   scoreEndedSession,
   type DistractionSpan,
@@ -858,17 +864,14 @@ interface SessionViewProps {
 }
 
 /**
- * 세션이 끝날 때 "화면이 안 보이던 구간들" 을 마무리합니다. (웹 집중도용)
- * 화면을 떠나 있는 채로 끝났으면(hiddenSince 가 있음) 그 구간도 끝 시각까지 넣습니다.
+ * 세션이 끝날 때, 웹에서 화면을 떠난 구간들을 마무리하고 저장해 둔 기록을 지웁니다. (집중도용)
+ * 떠나 있는 채로 끝났으면 그 구간도 끝 시각까지 넣습니다. 앱 안이면 null (앱의 폰 기록을 씀)
  */
-function closeHiddenSpans(
-  spans: DistractionSpan[],
-  hiddenSince: number | null,
-  endedAt: number,
-): DistractionSpan[] {
-  return hiddenSince === null
-    ? [...spans]
-    : [...spans, { at: hiddenSince, ms: endedAt - hiddenSince }]
+function finishAwayTrack(record: StudySession, inApp: boolean): DistractionSpan[] | null {
+  if (inApp) return null
+  const track = closeAwayTrack(loadAwayTrack(record.startedAt), record.endedAt)
+  clearAwayTrack()
+  return track.spans
 }
 
 /** 세션 화면 — 나가는 길은 [일시정지] · [끝내기] 뿐입니다 */
@@ -898,25 +901,37 @@ function SessionView({
     onEnd: onPhoneSummary,
   })
   // 웹(앱 밖)에서는 다른 탭 · 앱으로 가서 이 화면이 안 보인 구간을 적어 둡니다. 집중도 점수의 딴짓 시간입니다. (lib/focusScore.ts)
-  // 화면에 보여 줄 값이 아니라서 state 가 아니라 ref 에 둡니다. (바뀌어도 화면을 다시 그리지 않음)
-  const hiddenSpans = useRef<DistractionSpan[]>([])
-  const hiddenSince = useRef<number | null>(null)
+  // 앱 안에서는 앱이 앱 밖 시간(outsideMs)을 재므로 겹쳐 세지 않게 여기서는 재지 않습니다.
+  // 새로고침해도 이어지게 저장해 두고, 돌아왔을 때 5초 넘게 떠나 있었으면 "다른 화면에 2분 있었어" 를 보여 줍니다.
+  const [awayMs, setAwayMs] = useState<number | null>(null)
+  const sessionStartedAt = active?.startedAt ?? null
+  const isPausedNow = active?.pausedNow !== undefined
   useEffect(() => {
-    if (phone.isAvailable) return
-    function handleVisibilityChange() {
-      if (document.hidden) {
-        hiddenSince.current = Date.now()
-      } else if (hiddenSince.current !== null) {
-        hiddenSpans.current.push({
-          at: hiddenSince.current,
-          ms: Date.now() - hiddenSince.current,
-        })
-        hiddenSince.current = null
-      }
+    if (phone.isAvailable || sessionStartedAt === null) return
+    const startedAt = sessionStartedAt
+    function handleReturn() {
+      const track = loadAwayTrack(startedAt)
+      if (track.hiddenSince === null) return
+      const returnedAt = Date.now()
+      saveAwayTrack(closeAwayTrack(track, returnedAt))
+      // 쉬는 중(일시정지)에 다녀온 것은 딴짓이 아니라서 안내하지 않습니다.
+      const awayFor = returnedAt - track.hiddenSince
+      if (!isPausedNow && isLongAway(awayFor)) setAwayMs(awayFor)
     }
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        handleReturn()
+        return
+      }
+      // 이미 떠나 있는 중이면(페이지를 닫을 때 한 번 더 불림) 처음 떠난 시각을 그대로 둡니다.
+      const track = loadAwayTrack(startedAt)
+      if (track.hiddenSince === null) saveAwayTrack({ ...track, hiddenSince: Date.now() })
+    }
+    // 떠나 있는 동안 페이지가 새로 불렸으면(모바일 웹에서 가끔), 지금 돌아온 것으로 닫습니다.
+    if (!document.hidden) handleReturn()
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [phone.isAvailable])
+  }, [phone.isAvailable, sessionStartedAt, isPausedNow])
 
   // 3단계: 폰을 너무 오래 들고 있으면 세션을 멈추고 '폰 확인' 으로 남깁니다. (돌아와서 [다시 시작])
   const shouldAutoPause = phone.stage === 3 && active !== null && active.pausedNow === undefined
@@ -934,12 +949,7 @@ function SessionView({
     if (active && remainingMs === 0) {
       playAlarm()
       const record = session.finish()
-      if (record) {
-        const spans = phone.isAvailable
-          ? null
-          : closeHiddenSpans(hiddenSpans.current, hiddenSince.current, record.endedAt)
-        onFinished(record, spans)
-      }
+      if (record) onFinished(record, finishAwayTrack(record, phone.isAvailable))
     }
   }, [active, remainingMs, session, onFinished, phone.isAvailable])
 
@@ -999,6 +1009,24 @@ function SessionView({
           <p className="text-sm font-medium text-amber-700">
             {LONG_PAUSE_MINUTES}분 넘게 멈춰 있어요. 준비되면 다시 시작해요.
           </p>
+        )}
+        {/* 웹: 다른 탭 · 앱에 다녀왔으면 한 줄 안내 (다음에 다녀오면 새 시간으로 바뀜) */}
+        {awayMs !== null && (
+          <div
+            role="status"
+            className="flex w-full max-w-sm items-center gap-2 rounded-2xl bg-amber-50 py-1 pr-1 pl-4 text-left"
+          >
+            <p className="min-w-0 flex-1 text-sm font-medium break-keep text-amber-800">
+              다른 화면에 {formatDuration(awayMs)} 있었어. 다시 이어 가자!
+            </p>
+            <button
+              type="button"
+              onClick={() => setAwayMs(null)}
+              className="h-10 shrink-0 rounded-xl px-3 text-sm font-medium text-amber-800 hover:bg-amber-100"
+            >
+              닫기
+            </button>
+          </div>
         )}
         {active.pausedNow?.tag === 'phone' && phone.isAvailable && (
           <p className="text-sm font-medium break-keep text-amber-700">
@@ -1143,11 +1171,7 @@ function SessionView({
             onClick={() => {
               setIsEndOpen(false)
               const record = session.finish()
-              if (!record) return
-              const spans = phone.isAvailable
-                ? null
-                : closeHiddenSpans(hiddenSpans.current, hiddenSince.current, record.endedAt)
-              onFinished(record, spans)
+              if (record) onFinished(record, finishAwayTrack(record, phone.isAvailable))
             }}
           >
             끝내기

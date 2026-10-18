@@ -15,7 +15,7 @@
  *   공부 25분, 폰을 2분 들었음 → (25 − 2) ÷ 25 × 100 = 92
  */
 import { formatDuration, type PhoneLiftSummary } from '@/lib/liftAlerts'
-import { loadData, saveData } from '@/lib/storage'
+import { loadData, removeData, saveData } from '@/lib/storage'
 import type { StudySession } from '@/types'
 
 /** 딴짓 한 번 — 시작 시각(밀리초)과 길이(밀리초) */
@@ -135,6 +135,65 @@ export function scoreEndedSession(
   }
   if (hiddenSpans !== null) return getFocusScore(session, hiddenSpans, 'hidden')
   return null
+}
+
+// ---- 웹: 공부 중에 타이머 화면을 떠난 기록 (CardTimerPage 의 SessionView) ----
+
+/**
+ * 진행 중인 세션에서 화면을 떠난 기록. 새로고침해도 이어지게 저장해 둡니다.
+ * (모바일 웹은 다른 앱에 다녀오면 페이지를 새로 불러올 때가 있어서, 떠난 시각까지 저장합니다)
+ */
+export interface SessionAwayTrack {
+  /** 어느 세션의 기록인지 (세션을 시작한 시각) */
+  sessionStartedAt: number
+  /** 떠났다가 돌아온 구간들 */
+  spans: DistractionSpan[]
+  /** 지금 떠나 있는 중이면 떠난 시각, 아니면 null */
+  hiddenSince: number | null
+}
+
+// 저장소 이름 (실제 키는 'study-session-away'). 세션이 끝나면 지웁니다.
+const AWAY_TRACK_KEY = 'session-away'
+
+/** 그 세션의 화면을 떠난 기록. 없거나 다른 세션 것이면 빈 기록 */
+export function loadAwayTrack(sessionStartedAt: number): SessionAwayTrack {
+  const empty: SessionAwayTrack = { sessionStartedAt, spans: [], hiddenSince: null }
+  const saved = loadData<unknown>(AWAY_TRACK_KEY, null)
+  if (typeof saved !== 'object' || saved === null) return empty
+  const track = saved as Partial<SessionAwayTrack>
+  const isValid =
+    track.sessionStartedAt === sessionStartedAt &&
+    Array.isArray(track.spans) &&
+    (track.hiddenSince === null || typeof track.hiddenSince === 'number')
+  return isValid ? (track as SessionAwayTrack) : empty
+}
+
+export function saveAwayTrack(track: SessionAwayTrack): void {
+  saveData(AWAY_TRACK_KEY, track)
+}
+
+export function clearAwayTrack(): void {
+  removeData(AWAY_TRACK_KEY)
+}
+
+/**
+ * 화면에 돌아왔을 때 떠나 있던 구간을 닫습니다. 떠나 있지 않았으면 그대로 돌려줍니다.
+ *
+ *   closeAwayTrack({ spans: [], hiddenSince: 1000, … }, 61000)
+ *     -> { spans: [{ at: 1000, ms: 60000 }], hiddenSince: null, … }
+ */
+export function closeAwayTrack(track: SessionAwayTrack, now: number): SessionAwayTrack {
+  if (track.hiddenSince === null) return track
+  return {
+    ...track,
+    spans: [...track.spans, { at: track.hiddenSince, ms: Math.max(0, now - track.hiddenSince) }],
+    hiddenSince: null,
+  }
+}
+
+/** 돌아왔을 때 "다른 화면에 2분 있었어" 안내를 띄울 만큼 오래 떠나 있었는지 (5초 넘게) */
+export function isLongAway(ms: number): boolean {
+  return ms >= IGNORE_UNDER_MS
 }
 
 /** 밀리초 → '25분' (1분보다 짧아도 1분) */
