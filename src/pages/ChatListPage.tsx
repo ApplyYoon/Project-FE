@@ -1,5 +1,4 @@
 import { NotificationsBell } from '@/components/ui/NotificationsBell'
-import { SettingsLink } from '@/components/ui/SettingsLink'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
 import { CALL_LOCKED_TEXT, localCheckCall } from '@/lib/checkCall'
@@ -33,8 +32,8 @@ export function ChatListPage() {
   const call = localCheckCall(sessions, cards, todayKey)
 
   return (
-    // 홈과 같이 모바일은 연회색 바탕 위에 흰 묶음을 올립니다. (-mx-4 -my-6 으로 Layout 의 여백까지 덮음)
-    <div className="-mx-4 -my-6 flex flex-col gap-4 bg-slate-100 px-4 py-6 sm:mx-0 sm:my-0 sm:rounded-3xl sm:p-6">
+    // 홈과 같이 모바일은 연회색 바탕 위에 흰 묶음을 올립니다. (-mx-4 -mt-3 -mb-6 으로 Layout 의 여백까지 덮음)
+    <div className="-mx-4 -mt-3 -mb-6 flex flex-col gap-4 bg-slate-100 px-4 pt-3 pb-6 sm:mx-0 sm:my-0 sm:rounded-3xl sm:p-6">
       <div className="flex items-center justify-between gap-2 px-1">
         <div className="min-w-0">
           <h1 className="text-[26px] leading-snug font-bold tracking-tight text-slate-900">채팅</h1>
@@ -43,9 +42,8 @@ export function ChatListPage() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {/* 알림 · 설정은 탭 없이 채팅 머리에 둡니다. (2026-10-18 "탭을 명확히") */}
+          {/* 알림은 탭 없이 채팅 머리에 둡니다. (2026-10-18 "탭을 명확히") 설정은 2026-10-19 에 헤더로 옮겼습니다. */}
           <NotificationsBell />
-          <SettingsLink />
         </div>
       </div>
 

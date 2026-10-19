@@ -15,6 +15,7 @@ function shouldShowGuide(): boolean {
  * 아이폰은 홈 화면에 추가해야만 알림을 받을 수 있어서 필요합니다.
  * (안드로이드 크롬은 브라우저가 알아서 "앱 설치" 를 띄워 줘서 따로 안내하지 않습니다)
  * 홈('/')에서만 보여줍니다. 어느 화면에서 보여줄지는 Layout 이 정합니다.
+ * ⚠️ 2026-10-19 부터 Layout 에서 그리지 않습니다. (시연을 모바일 웹 · 앱(WebView)으로 해서) 다시 쓸 수 있게 파일은 남겨 둡니다.
  */
 export function IosInstallGuide() {
   const [isVisible, setIsVisible] = useState(shouldShowGuide)

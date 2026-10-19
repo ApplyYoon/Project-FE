@@ -3,7 +3,6 @@ import { MissionBar } from '@/components/ui/MissionBar'
 import { NotificationsBell } from '@/components/ui/NotificationsBell'
 import { PlanCard } from '@/components/ui/PlanCard'
 import { ReasonChips } from '@/components/ui/ReasonChips'
-import { SettingsLink } from '@/components/ui/SettingsLink'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
@@ -283,14 +282,14 @@ export function ChatRoomPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {/* 통화 · 알림 · 설정은 탭 없이 대화방 머리에 둡니다. 통화는 매일 코치(상담) 방에만. (2026-10-18 "탭을 명확히") */}
+          {/* 통화 · 알림은 탭 없이 대화방 머리에 둡니다. 통화는 매일 코치(상담) 방에만. (2026-10-18 "탭을 명확히")
+              설정은 2026-10-19 에 헤더로 옮겼습니다. */}
           {roomInfo.isDailyCoach && (
             <Link to="/call" className={chipClass}>
               <span aria-hidden>📞</span> 통화
             </Link>
           )}
           <NotificationsBell />
-          <SettingsLink />
         </div>
       </div>
 
@@ -745,7 +744,7 @@ function RoomChat({ room }: RoomChatProps) {
   const [skipBefore, setSkipBefore] = useState(() =>
     prefersReducedMotion() ? Number.POSITIVE_INFINITY : now,
   )
-  // 휴대폰처럼 손가락으로 누르는 화면인지. 터치 키보드에는 Shift 가 없어서 Enter 를 줄바꿈으로 남겨 둡니다.
+  // 휴대폰처럼 손가락으로 누르는 화면인지. 터치 키보드에는 Shift 가 없어서 "Shift+Enter 줄바꿈" 안내를 PC 에서만 보여 줍니다.
   const [isTouchKeyboard] = useState(isCoarsePointer)
 
   // 대화방이 바뀔 때마다 이 기기에 저장합니다. (다시 열면 이어서 보이게) 지금 보고 있으니 "새 말" 점도 지웁니다.
@@ -1608,14 +1607,13 @@ function RoomChat({ room }: RoomChatProps) {
   }
 
   /**
-   * 입력칸의 Enter: PC 는 Enter = 보내기, Shift+Enter = 줄바꿈 (사용자 요청 2026-10-18)
+   * 입력칸의 Enter: Enter = 보내기, Shift+Enter = 줄바꿈 (사용자 요청 2026-10-18, 휴대폰도 같게 2026-10-19)
    * - 한글은 글자를 조합하는 중에도 Enter 가 한 번 들어옵니다. 조합 중에 보내면 마지막 글자가 따로 한 번 더 보내져서,
    *   조합이 끝난 Enter 에만 보냅니다. (components/ui/SchoolField.tsx 와 같은 방식)
-   * - 휴대폰(터치 키보드)은 Shift 가 없어서 Enter 를 줄바꿈으로 둡니다. 보내기는 [보내기] 버튼으로.
+   * - 휴대폰(터치 키보드)도 Enter 가 보내기입니다. 터치 키보드에는 Shift+Enter 가 없어서 휴대폰에서는 줄바꿈을 할 수 없습니다.
    */
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
-    if (isTouchKeyboard) return
     event.preventDefault()
     if (isBusy || (draft.trim() === '' && attachedPhoto === null)) return
     sendText(draft)
@@ -2567,8 +2565,8 @@ function RoomChat({ room }: RoomChatProps) {
             maxLength={MAX_CHAT_TEXT_LENGTH}
             rows={1}
             disabled={isBusy}
-            // PC 키보드는 Enter 가 "보내기" 라서 보내기 모양 키로, 휴대폰은 줄바꿈 그대로
-            enterKeyHint={isTouchKeyboard ? 'enter' : 'send'}
+            // Enter 가 "보내기" 라서 휴대폰 키보드의 Enter 키도 보내기 모양으로 보이게 합니다.
+            enterKeyHint="send"
             // 계획을 고치는 중이면 쓰는 말이 고치는 요청이 된다고 알려 줍니다.
             placeholder={
               openPlanBubble
@@ -2588,7 +2586,7 @@ function RoomChat({ room }: RoomChatProps) {
             보내기
           </button>
         </div>
-        {/* PC 에서만 키 안내. 휴대폰은 Enter 가 줄바꿈이고 보내기는 버튼입니다. */}
+        {/* PC 에서만 키 안내. 휴대폰 키보드에는 Shift+Enter 가 없어서 안내하지 않습니다. */}
         {!isTouchKeyboard && (
           <p className="px-2 text-xs text-slate-400">Enter 보내기 · Shift+Enter 줄바꿈</p>
         )}

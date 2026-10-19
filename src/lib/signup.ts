@@ -68,13 +68,15 @@ export interface SignupProfile {
   email: string
   /** 고른 학교 이름. 안 골랐으면 빈 글자 */
   schoolName: string
+  /** 고른 학교의 NEIS 번호. 안 골랐으면 빈 글자 (설정에서 학과 · 계열을 고칠 때 씀) */
+  schoolCode: string
 }
 
 /**
  * 이 기기에 저장해 둔 가입 정보에서 화면에 보여줄 것만 꺼냅니다. 가입 정보가 없으면 null 입니다.
  * 저장소의 값은 모양이 다를 수 있어서(예전에 가입해 이메일이 없는 경우 등) 하나씩 확인하고, 없는 칸은 빈 글자로 둡니다.
  *
- *   loadSignupProfile() -> { nickname: '하늘', email: 'sky@example.com', schoolName: '한국디지털미디어고등학교' }
+ *   loadSignupProfile() -> { nickname: '하늘', email: 'sky@example.com', schoolName: '한국디지털미디어고등학교', schoolCode: '7530560' }
  */
 export function loadSignupProfile(): SignupProfile | null {
   const saved = loadData<unknown>(SIGNUP_STORAGE_KEY, null)
@@ -86,6 +88,7 @@ export function loadSignupProfile(): SignupProfile | null {
     nickname: typeof info.nickname === 'string' ? info.nickname : '',
     email: typeof info.email === 'string' ? info.email : '',
     schoolName: typeof school?.name === 'string' ? school.name : '',
+    schoolCode: typeof school?.code === 'string' ? school.code : '',
   }
 }
 

@@ -10,6 +10,7 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { LeaveAccountSection } from '@/components/ui/LeaveAccountSection'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
+import { SchoolTrackField } from '@/components/ui/SchoolTrackField'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsServerData } from '@/hooks/useIsServerData'
@@ -61,7 +62,6 @@ import {
   type MessageSettings,
 } from '@/lib/messageSettings'
 import { deleteMyData, type DeleteKind } from '@/lib/myData'
-import { showIosInstallGuideAgain } from '@/lib/pwa'
 import {
   getNotificationPermission,
   isNotificationSupported,
@@ -76,6 +76,7 @@ import {
   type WebPushStatus,
 } from '@/lib/webPush'
 import { loadSchoolClass, saveSchoolClass, type SchoolClass } from '@/lib/schoolToday'
+import { loadSchoolTrack, saveSchoolTrack, type SchoolTrack } from '@/lib/schoolTrack'
 import { loadSignupProfile } from '@/lib/signup'
 import { deleteServerSessions } from '@/lib/sessionsApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
@@ -335,6 +336,11 @@ export function SettingsPage() {
 
           {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 코치가 오늘 계획을 짤 때 이걸 보고 맞춰요. */}
           <StudyFocusField className="mt-5" />
+
+          {/* 학과(특성화고 · 마이스터고) 또는 계열: 가입 때 묻는 것과 같은 칸입니다. 학교를 고른 사람만 보입니다. (2026-10-19) */}
+          {profile?.schoolCode && (
+            <SchoolTrackSettings schoolCode={profile.schoolCode} className="mt-5" />
+          )}
 
           {/* 내 정보 고치기는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) 탈퇴는 아래에 바로 둡니다. */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -907,7 +913,6 @@ const webPushMessages: Record<WebPushStatus, string> = {
  * 위의 "알림 켜기" 는 앱이 열려 있을 때 뜨는 알림이고, 이것은 앱을 닫아 둬도 서버가 보내는 알림입니다.
  */
 function WebPushSection() {
-  const navigate = useNavigate()
   // 이 기기의 지금 상태. 처음에는 알아보는 중(null)입니다.
   const [status, setStatus] = useState<WebPushStatus | null>(null)
 
@@ -937,19 +942,7 @@ function WebPushSection() {
       <p className="text-sm break-keep text-slate-500">
         {status === null ? '이 기기에서 쓸 수 있는지 알아보는 중이에요…' : webPushMessages[status]}
       </p>
-      {/* 아이폰인데 홈 화면 앱이 아니면, 홈의 설치 안내(#105)로 이어 줍니다. 닫아 둔 안내도 다시 보이게 합니다. */}
-      {status === 'needs-install' && (
-        <Button
-          variant="secondary"
-          className="h-11 w-full sm:w-auto"
-          onClick={() => {
-            showIosInstallGuideAgain()
-            navigate('/')
-          }}
-        >
-          홈 화면에 추가하는 방법 보기
-        </Button>
-      )}
+      {/* 아이폰인데 홈 화면 앱이 아니면 위 문구로만 알려 줍니다. 홈의 설치 안내(#105)는 2026-10-19 에 꺼서 그리로 가는 버튼도 뺐습니다. */}
       {status === 'off' && (
         <Button
           className="h-11 w-full sm:w-auto"
@@ -1022,6 +1015,38 @@ function DemoDataSection() {
         )}
       </div>
     </Card>
+  )
+}
+
+interface SchoolTrackSettingsProps {
+  /** 가입 때 고른 학교의 NEIS 번호 */
+  schoolCode: string
+  className?: string
+}
+
+/**
+ * 설정 › 계정의 학과 · 계열 칸. 고르면 바로 이 기기에 저장합니다. (lib/schoolTrack.ts)
+ * 고르는 칸 자체는 가입 화면과 같은 부품(components/ui/SchoolTrackField.tsx)입니다.
+ */
+function SchoolTrackSettings({ schoolCode, className }: SchoolTrackSettingsProps) {
+  const [track, setTrack] = useState(() => loadSchoolTrack(schoolCode))
+  const [isSaved, setIsSaved] = useState(false)
+
+  function handleChange(next: SchoolTrack | null) {
+    saveSchoolTrack(next)
+    setTrack(next)
+    setIsSaved(true)
+  }
+
+  return (
+    <div className={className}>
+      <SchoolTrackField schoolCode={schoolCode} value={track} onChange={handleChange} />
+      {isSaved && (
+        <p role="status" className="mt-2 text-sm text-slate-600">
+          {track ? '저장했어요.' : '지웠어요.'}
+        </p>
+      )}
+    </div>
   )
 }
 

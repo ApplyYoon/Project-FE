@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { ChipButton } from '@/components/ui/ChipButton'
 import { MissionBar } from '@/components/ui/MissionBar'
-import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
@@ -30,12 +29,7 @@ import {
   schoolNoticesQuery,
   type SchoolNotice,
 } from '@/lib/schoolNotices'
-import {
-  loadSchoolClass,
-  saveSchoolClass,
-  schoolTodayQuery,
-  type SchoolClass,
-} from '@/lib/schoolToday'
+import { loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
 import {
   clearSettingChanges,
   describeSettingChange,
@@ -90,7 +84,7 @@ const textLinkClass =
  *   ⑤ 학교 공지: 학교 홈페이지의 가정통신문 · 공지사항 제목, 대회 글은 🏆 (2026-10-19)
  *   맨 아래: 지금 관리 모드와 이유 · AI 가 바꾼 설정 알림
  *
- * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 설정 · 알림 · 통화는 코치 화면 머리에 있습니다.
+ * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 알림 · 통화는 코치 화면 머리에, 설정은 헤더(PC 메뉴 · 모바일 오른쪽 위 톱니)에 있습니다.
  */
 export function HomePage() {
   const { search } = useLocation()
@@ -149,8 +143,8 @@ function HomeView() {
   }
 
   return (
-    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -my-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
-    <div className="-mx-4 -my-6 flex flex-col gap-4 bg-slate-100 px-4 py-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
+    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -mt-3 -mb-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
+    <div className="-mx-4 -mt-3 -mb-6 flex flex-col gap-4 bg-slate-100 px-4 pt-3 pb-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
       {/* ① 인사 + 오늘의 미션 */}
       <section className="flex flex-col gap-3">
         <div className="min-w-0 px-1">
@@ -439,17 +433,13 @@ interface SchoolTodaySectionProps {
 
 /**
  * ③ 오늘 시간표 · 급식과 ④ 다가오는 일정입니다. 서버에서 받는 동안은 스켈레톤, 못 받으면 안내를 보여 줍니다. (AsyncBoundary)
- * 반을 아직 안 정했으면 시간표 자리에 반을 고르는 칸이 나옵니다. 학년은 온보딩에서 고른 학년이 미리 골라져 있고 바꿀 수도 있습니다.
- * 고른 반은 이 기기에만 저장합니다. (온보딩은 학년만 묻습니다 — 시간표는 반마다 달라서 보고 싶은 학생만 여기서 고릅니다)
+ * 홈은 시간표를 보여 주기만 합니다. 학년 · 반은 설정의 계정 묶음에서 정합니다. (2026-10-19 "반 저장도 설정에서 해, 홈에선 시간표만")
+ * 반을 아직 안 정했으면 시간표 자리에 설정으로 가는 링크가 나옵니다. 반은 이 기기에만 저장합니다. (lib/schoolToday.ts)
  */
 function SchoolTodaySection({ todayKey }: SchoolTodaySectionProps) {
   const isServerData = useIsServerData()
-  const [schoolClass, setSchoolClass] = useState(loadSchoolClass)
-
-  function handleSaveClass(next: SchoolClass) {
-    saveSchoolClass(next)
-    setSchoolClass(next)
-  }
+  // 설정에서 정한 반. 홈에서는 바꾸지 않아서 처음에 한 번만 읽습니다.
+  const [schoolClass] = useState(loadSchoolClass)
 
   return (
     <AsyncBoundary
@@ -457,12 +447,7 @@ function SchoolTodaySection({ todayKey }: SchoolTodaySectionProps) {
       errorMessage="학교 정보를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
       resetKeys={[schoolClass?.grade, schoolClass?.classNo]}
     >
-      <SchoolTodayView
-        todayKey={todayKey}
-        isServerData={isServerData}
-        schoolClass={schoolClass}
-        onSaveClass={handleSaveClass}
-      />
+      <SchoolTodayView todayKey={todayKey} isServerData={isServerData} schoolClass={schoolClass} />
     </AsyncBoundary>
   )
 }
@@ -484,18 +469,10 @@ interface SchoolTodayViewProps {
   todayKey: string
   isServerData: boolean
   schoolClass: SchoolClass | null
-  onSaveClass: (next: SchoolClass) => void
 }
 
-function SchoolTodayView({
-  todayKey,
-  isServerData,
-  schoolClass,
-  onSaveClass,
-}: SchoolTodayViewProps) {
+function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayViewProps) {
   const { data } = useSuspenseQuery(schoolTodayQuery(schoolClass, isServerData, todayKey))
-  // 반을 바꾸는 칸을 열었는지
-  const [isEditingClass, setIsEditingClass] = useState(false)
   // 내 일정(대회 등, 코치 채팅에서 날짜를 알려 주면 생김 · lib/myEvents.ts)도 학교 일정과 같은 목록에 보여 줍니다.
   const [myEvents] = useState(() => getUpcomingMyEvents(todayKey, 60))
   const myRows: UpcomingRow[] = myEvents.map((event) => ({
@@ -522,7 +499,7 @@ function SchoolTodayView({
   }
 
   // 시연 예시는 반을 안 골라도 시간표를 보여 줍니다. (서버 없이 바로 시연되게)
-  const showClassPicker = !data.isDemo && (schoolClass === null || isEditingClass)
+  const needsClass = !data.isDemo && schoolClass === null
   // 같은 이름이 이어지는 날(시험 3일 등)은 한 줄로 묶고, 내 학년 행사만 남깁니다.
   const periods = groupEventPeriods(
     filterForGrade(
@@ -558,28 +535,23 @@ function SchoolTodayView({
         <section className={sectionCardClass}>
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-[17px] font-bold text-slate-900">오늘 시간표</h2>
-            {schoolClass && !data.isDemo && !isEditingClass && (
-              <button
-                type="button"
-                onClick={() => setIsEditingClass(true)}
-                className="h-10 shrink-0 cursor-pointer rounded-full px-3 text-sm font-medium text-slate-500 hover:bg-slate-100"
-              >
-                {schoolClass.grade}학년 {schoolClass.classNo}반 ›
-              </button>
+            {/* 어느 반 시간표인지 글자로만 보여 줍니다. 반은 설정에서 바꿉니다. */}
+            {schoolClass && !data.isDemo && (
+              <p className="shrink-0 text-sm font-medium text-slate-500">
+                {schoolClass.grade}학년 {schoolClass.classNo}반
+              </p>
             )}
           </div>
 
-          {showClassPicker ? (
-            <SchoolClassPicker
-              initial={schoolClass}
-              onSave={(next) => {
-                onSaveClass(next)
-                setIsEditingClass(false)
-              }}
-              description="몇 반이야? 알려 주면 오늘 시간표를 보여 줄게."
-              saveLabel="시간표 보기"
-              className="mt-2"
-            />
+          {needsClass ? (
+            <>
+              <p className="mt-1 text-[15px] break-keep text-slate-500">
+                설정에서 학년 · 반을 정하면 오늘 시간표가 여기에 떠요.
+              </p>
+              <Link to="/settings" className={textLinkClass}>
+                설정에서 반 정하기 ›
+              </Link>
+            </>
           ) : data.timetable === null || data.timetable.length === 0 ? (
             <p className="mt-2 text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
           ) : (
