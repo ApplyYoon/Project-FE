@@ -3,12 +3,14 @@ import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
+import { ChipButton } from '@/components/ui/ChipButton'
 import { MissionBar } from '@/components/ui/MissionBar'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
+import { useQueryParam } from '@/hooks/useQueryParam'
 import { loadCardMarks } from '@/lib/cardMarks'
 import { getCareLimits } from '@/lib/careLimits'
 import { localCheckCall, type StudiedInfo } from '@/lib/checkCall'
@@ -23,6 +25,12 @@ import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { loadRestDays } from '@/lib/restDays'
 import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
 import {
+  isContestNotice,
+  matchesFocusName,
+  schoolNoticesQuery,
+  type SchoolNotice,
+} from '@/lib/schoolNotices'
+import {
   loadSchoolClass,
   saveSchoolClass,
   schoolTodayQuery,
@@ -35,6 +43,7 @@ import {
   revertSettingChange,
 } from '@/lib/settingChanges'
 import type { SettingChange } from '@/lib/settingsMapping'
+import { loadStudyFocus } from '@/lib/studyFocus'
 import { COACH_PATH, PLAN_CHAT_PATH } from '@/lib/chatRooms'
 import {
   getTodayCardsState,
@@ -78,6 +87,7 @@ const textLinkClass =
  *   ② 오늘 계획: 오늘 카드를 시간 순서로 + [시작]. 카드가 없으면 [코치와 오늘 계획 짜기] · [사진으로 만들기]
  *   ③ 오늘 시간표 · 급식 (모바일은 위아래, PC 는 나란히)
  *   ④ 다가오는 일정: 학교 일정 + 내 일정을 날짜 순서로, D-day 와 함께
+ *   ⑤ 학교 공지: 학교 홈페이지의 가정통신문 · 공지사항 제목, 대회 글은 🏆 (2026-10-19)
  *   맨 아래: 지금 관리 모드와 이유 · AI 가 바꾼 설정 알림
  *
  * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 설정 · 알림 · 통화는 코치 화면 머리에 있습니다.
@@ -170,6 +180,9 @@ function HomeView() {
 
       {/* ③ 오늘 시간표 · 급식 → ④ 다가오는 일정 (2026-10-18, BE GET /school/today) */}
       <SchoolTodaySection todayKey={todayKey} />
+
+      {/* ⑤ 학교 공지 (2026-10-19, BE GET /school/notices). 시간표 · 급식과 따로 받아서, 공지가 늦어도 위 칸은 먼저 뜹니다. */}
+      <SchoolNoticesSection todayKey={todayKey} />
 
       {/* 지금 관리 모드와 그 이유 — 하루 1번 판정한 결과입니다 (#384 규칙, lib/dailyCareRun.ts) */}
       <CareModeBanner
@@ -672,6 +685,177 @@ function UpcomingSection({ rows }: { rows: UpcomingRow[] }) {
         </ul>
       )}
     </section>
+  )
+}
+
+/** 홈에서 처음에 보여 줄 공지 개수. 더 있으면 [n개 더 보기] 를 붙입니다. */
+const NOTICE_PREVIEW_COUNT = 5
+
+interface SchoolNoticesSectionProps {
+  todayKey: string
+}
+
+/**
+ * ⑤ 학교 공지. 서버가 학교 홈페이지에서 하루 한 번 받아 둔 가정통신문 · 공지사항 제목입니다. (lib/schoolNotices.ts)
+ * 사용자: "학교 공지도 보여주게 해야 되는데", "내가 참여할 대회? 관심있는 대회?" (2026-10-19)
+ * NEIS 공개 API 에는 공지가 없어서 서버가 홈페이지를 직접 읽습니다.
+ */
+function SchoolNoticesSection({ todayKey }: SchoolNoticesSectionProps) {
+  return (
+    <AsyncBoundary
+      pendingFallback={
+        <div role="status">
+          <span className="sr-only">학교 공지를 불러오는 중이에요</span>
+          <Skeleton className="h-40 w-full rounded-3xl" />
+        </div>
+      }
+      errorMessage="학교 공지를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
+    >
+      <SchoolNoticesView todayKey={todayKey} />
+    </AsyncBoundary>
+  )
+}
+
+/** 화면에 그릴 공지 한 줄 (대회 글인지 · 내가 준비하는 대회인지를 붙임) */
+interface NoticeRow extends SchoolNotice {
+  isContest: boolean
+  isMine: boolean
+}
+
+interface SchoolNoticesViewProps {
+  todayKey: string
+}
+
+function SchoolNoticesView({ todayKey }: SchoolNoticesViewProps) {
+  const isServerData = useIsServerData()
+  const { data } = useSuspenseQuery(schoolNoticesQuery(isServerData, todayKey))
+  // [전체] · [🏆 대회] 중 무엇을 보는지, 더 보기를 펼쳤는지는 주소에 둡니다. (/?notice=contest&noticeMore=open)
+  const [noticeParam, setNoticeParam] = useQueryParam('notice', 'all', { replace: true })
+  const [moreParam, setMoreParam] = useQueryParam('noticeMore', 'closed', { replace: true })
+  // "내가 준비하는 것" 을 대회·자격증으로 골랐으면 그 이름(예: 정보올림피아드)이 들어간 글을 맨 위로 올립니다. (lib/studyFocus.ts)
+  const [focusName] = useState(() => {
+    const focus = loadStudyFocus()
+    return focus?.kind === 'CONTEST' ? focus.name : null
+  })
+
+  // 학교를 안 골랐으면 위의 "오늘 학교" 칸이 이미 안내해서, 여기서는 그리지 않습니다.
+  if (data.school === null) return null
+
+  const rows: NoticeRow[] = data.notices.map((notice) => {
+    const isMine = matchesFocusName(notice.title, focusName)
+    // 내가 준비하는 대회·자격증 글은 제목에 '대회' 가 없어도 대회 글로 봅니다. (예: '컴퓨터활용능력 시험 안내')
+    return { ...notice, isContest: isMine || isContestNotice(notice.title), isMine }
+  })
+  // 내 대회 글을 먼저, 나머지는 서버가 준 순서(최근 글 먼저) 그대로 둡니다.
+  const sortedRows = [...rows.filter((row) => row.isMine), ...rows.filter((row) => !row.isMine)]
+  const contestCount = rows.filter((row) => row.isContest).length
+  // 주소는 누구나 고칠 수 있어서, 'contest' 이면서 대회 글이 하나라도 있을 때만 대회 글만 보여 줍니다.
+  const isContestOnly = noticeParam === 'contest' && contestCount > 0
+  const visibleRows = isContestOnly ? sortedRows.filter((row) => row.isContest) : sortedRows
+  const isMoreOpen = moreParam === 'open'
+  const shownRows = isMoreOpen ? visibleRows : visibleRows.slice(0, NOTICE_PREVIEW_COUNT)
+
+  return (
+    <section className={sectionCardClass}>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[17px] font-bold text-slate-900">학교 공지</h2>
+        {data.isDemo && (
+          <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
+            시연용 예시
+          </span>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="mt-1 text-[15px] break-keep text-slate-500">
+          {data.fetchedAt === null
+            ? '아직 학교 홈페이지에서 공지를 못 가져왔어요. 홈페이지 모양이 달라서 못 읽는 학교일 수도 있어요.'
+            : '최근 30일 동안 올라온 공지가 없어요.'}
+        </p>
+      ) : (
+        <>
+          {/* 대회 글이 있을 때만 고르는 버튼을 보여 줍니다. (flex-wrap: 좁은 화면에서 넘치면 다음 줄로) */}
+          {contestCount > 0 && (
+            <div role="group" aria-label="공지 고르기" className="mt-3 flex flex-wrap gap-2">
+              <ChipButton selected={!isContestOnly} onClick={() => setNoticeParam('all')}>
+                {`전체 ${rows.length}`}
+              </ChipButton>
+              <ChipButton selected={isContestOnly} onClick={() => setNoticeParam('contest')}>
+                {`🏆 대회 ${contestCount}`}
+              </ChipButton>
+            </div>
+          )}
+
+          <ul className="mt-2 flex flex-col gap-1">
+            {shownRows.map((row, index) => (
+              <NoticeRowItem key={`${row.kind}-${row.date}-${row.title}-${index}`} row={row} />
+            ))}
+          </ul>
+
+          {visibleRows.length > NOTICE_PREVIEW_COUNT && (
+            <button
+              type="button"
+              onClick={() => setMoreParam(isMoreOpen ? 'closed' : 'open')}
+              className="mt-1 h-10 w-full cursor-pointer rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-100"
+            >
+              {isMoreOpen ? '접기' : `${visibleRows.length - NOTICE_PREVIEW_COUNT}개 더 보기`}
+            </button>
+          )}
+        </>
+      )}
+
+      <p className="mt-2 text-xs break-keep text-slate-500">
+        학교 홈페이지에서 하루 한 번 제목만 가져와요.
+      </p>
+    </section>
+  )
+}
+
+interface NoticeRowItemProps {
+  row: NoticeRow
+}
+
+/** 공지 한 줄: 이모지 · 제목 · 날짜와 게시판. 주소가 있으면 누를 때 학교 홈페이지 글이 새 창으로 열립니다. */
+function NoticeRowItem({ row }: NoticeRowItemProps) {
+  const icon = row.isContest ? '🏆' : row.kind === '가정통신문' ? '📄' : '📢'
+  const content = (
+    <>
+      <span aria-hidden className={rowIconClass}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-2 block text-[15px] font-semibold break-keep text-slate-900">
+          {row.title}
+        </span>
+        <span className="block text-sm text-slate-500">
+          {formatMonthDay(row.date)} · {row.kind}
+          {row.isMine && <span className="text-brand font-medium"> · 내가 준비하는 대회</span>}
+        </span>
+      </span>
+      {row.url && (
+        <span aria-hidden className="shrink-0 text-slate-400">
+          ›
+        </span>
+      )}
+    </>
+  )
+
+  return (
+    <li>
+      {row.url ? (
+        // 학교 홈페이지는 우리 앱 밖이라 새 창으로 엽니다. noopener: 열린 창이 우리 화면을 건드리지 못하게 합니다.
+        <a
+          href={row.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-h-14 items-center gap-3 rounded-xl active:bg-slate-50"
+        >
+          {content}
+        </a>
+      ) : (
+        <div className="flex min-h-14 items-center gap-3">{content}</div>
+      )}
+    </li>
   )
 }
 
