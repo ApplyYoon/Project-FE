@@ -90,7 +90,7 @@ const textLinkClass =
  *   ⑤ 학교 공지: 학교 홈페이지의 가정통신문 · 공지사항 제목, 대회 글은 🏆 (2026-10-19)
  *   맨 아래: 지금 관리 모드와 이유 · AI 가 바꾼 설정 알림
  *
- * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 설정 · 알림 · 통화는 코치 화면 머리에 있습니다.
+ * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 알림 · 통화는 코치 화면 머리에, 설정은 헤더(PC 메뉴 · 모바일 오른쪽 위 톱니)에 있습니다.
  */
 export function HomePage() {
   const { search } = useLocation()
@@ -149,8 +149,8 @@ function HomeView() {
   }
 
   return (
-    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -my-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
-    <div className="-mx-4 -my-6 flex flex-col gap-4 bg-slate-100 px-4 py-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
+    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -mt-3 -mb-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
+    <div className="-mx-4 -mt-3 -mb-6 flex flex-col gap-4 bg-slate-100 px-4 pt-3 pb-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
       {/* ① 인사 + 오늘의 미션 */}
       <section className="flex flex-col gap-3">
         <div className="min-w-0 px-1">
