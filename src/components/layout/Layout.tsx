@@ -95,7 +95,8 @@ export function Layout() {
         className={cn(
           'mx-auto w-full max-w-5xl flex-1 px-4 sm:px-6',
           // min-h-0: 안의 채팅 목록이 넘칠 때 화면이 늘어나지 않고 목록 안에서 스크롤되게 합니다.
-          isCoach ? 'flex min-h-0 flex-col py-3 sm:py-4' : 'py-6 sm:py-10',
+          // 모바일 위 여백은 12px(pt-3)입니다. 24px 는 헤더 아래가 비어 보여서 줄였습니다. (2026-10-19)
+          isCoach ? 'flex min-h-0 flex-col py-3 sm:py-4' : 'pt-3 pb-6 sm:py-10',
         )}
       >
         {/* 아이폰 "홈 화면에 추가" 안내(components/layout/IosInstallGuide.tsx, #105)는 2026-10-19 에 껐습니다.

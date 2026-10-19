@@ -150,8 +150,8 @@ function HomeView() {
   }
 
   return (
-    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -my-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
-    <div className="-mx-4 -my-6 flex flex-col gap-4 bg-slate-100 px-4 py-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
+    // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -mt-3 -mb-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
+    <div className="-mx-4 -mt-3 -mb-6 flex flex-col gap-4 bg-slate-100 px-4 pt-3 pb-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
       {/* ① 인사 + 오늘의 미션 */}
       <section className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2 px-1">
