@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolField } from '@/components/ui/SchoolField'
+import { SchoolTrackField } from '@/components/ui/SchoolTrackField'
 import { TermsView } from '@/components/ui/TermsView'
 import { useAuth } from '@/hooks/useAuth'
 import { getGoogleAuthErrorMessage, signupWithGoogle } from '@/lib/authApi'
@@ -10,6 +11,7 @@ import { cn } from '@/lib/cn'
 import { isServerDataToken } from '@/lib/dataMode'
 import { clearPendingGoogleSignup, loadPendingGoogleSignup } from '@/lib/googleSignup'
 import type { School } from '@/lib/schoolSearch'
+import { saveSchoolTrack, type SchoolTrack } from '@/lib/schoolTrack'
 import {
   EMAIL_MAX_LENGTH,
   NAME_MAX_LENGTH,
@@ -180,6 +182,11 @@ export function SignupPage() {
   const [email, setEmail] = useState(googleSignup?.email ?? '')
   // 고른 고등학교. 안 골라도 가입할 수 있어서 null 로 시작합니다.
   const [school, setSchool] = useState<School | null>(null)
+  // 고른 학교의 학과(특성화고 · 마이스터고) 또는 계열(그 밖의 학교). 선택이라 null 로 시작합니다. (lib/schoolTrack.ts)
+  const [schoolTrack, setSchoolTrack] = useState<SchoolTrack | null>(null)
+  // 학교를 바꾸면 예전 학교에서 고른 학과 · 계열은 쓰지 않습니다.
+  const currentTrack =
+    school !== null && schoolTrack?.schoolCode === school.code ? schoolTrack : null
   // 칸을 한 번이라도 건드렸는지. 처음 열었을 때부터 빨간 글씨를 보여주지 않으려고 씁니다.
   const [isNameTouched, setIsNameTouched] = useState(false)
   const [isNicknameTouched, setIsNicknameTouched] = useState(false)
@@ -307,6 +314,7 @@ export function SignupPage() {
         // 다 썼으니 구글 신분증을 지우고, 가입 정보를 저장한 뒤 로그인합니다. (가입 정보가 있어야 가입 화면으로 다시 오지 않습니다)
         clearPendingGoogleSignup()
         saveData(SIGNUP_STORAGE_KEY, info)
+        saveSchoolTrack(currentTrack)
         login(result.user, result.token)
         // 가입하면 온보딩의 맨 처음(앱 소개)으로 갑니다.
         // replace: 뒤로 가기로 가입 화면에 돌아오지 않게 합니다.
@@ -320,6 +328,7 @@ export function SignupPage() {
 
     // 테스트 로그인으로 이미 로그인한 사람은 바로 온보딩으로 갑니다. (맨 처음은 앱 소개)
     saveData(SIGNUP_STORAGE_KEY, info)
+    saveSchoolTrack(currentTrack)
     navigate(ONBOARDING_INTRO_PATH)
   }
 
@@ -435,6 +444,14 @@ export function SignupPage() {
         {step === 2 && (
           <>
             <SchoolField school={school} onChange={setSchool} />
+            {/* 학교를 고르면 학교 종류에 따라 학과(특성화고 · 마이스터고) 또는 계열을 묻습니다. 선택입니다. */}
+            {school !== null && (
+              <SchoolTrackField
+                schoolCode={school.code}
+                value={currentTrack}
+                onChange={setSchoolTrack}
+              />
+            )}
 
             <div className="flex flex-col gap-2">
               <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 py-2 font-medium">

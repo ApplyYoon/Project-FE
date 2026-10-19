@@ -10,6 +10,7 @@ import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { LeaveAccountSection } from '@/components/ui/LeaveAccountSection'
 import { Modal } from '@/components/ui/Modal'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
+import { SchoolTrackField } from '@/components/ui/SchoolTrackField'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useIsServerData } from '@/hooks/useIsServerData'
@@ -75,6 +76,7 @@ import {
   type WebPushStatus,
 } from '@/lib/webPush'
 import { loadSchoolClass, saveSchoolClass, type SchoolClass } from '@/lib/schoolToday'
+import { loadSchoolTrack, saveSchoolTrack, type SchoolTrack } from '@/lib/schoolTrack'
 import { loadSignupProfile } from '@/lib/signup'
 import { deleteServerSessions } from '@/lib/sessionsApi'
 import { loadData, removeData, saveData } from '@/lib/storage'
@@ -334,6 +336,11 @@ export function SettingsPage() {
 
           {/* 내가 준비하는 것: 코치가 대화에서 묻는 것과 같은 값입니다. 코치가 오늘 계획을 짤 때 이걸 보고 맞춰요. */}
           <StudyFocusField className="mt-5" />
+
+          {/* 학과(특성화고 · 마이스터고) 또는 계열: 가입 때 묻는 것과 같은 칸입니다. 학교를 고른 사람만 보입니다. (2026-10-19) */}
+          {profile?.schoolCode && (
+            <SchoolTrackSettings schoolCode={profile.schoolCode} className="mt-5" />
+          )}
 
           {/* 내 정보 고치기는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) 탈퇴는 아래에 바로 둡니다. */}
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -1008,6 +1015,38 @@ function DemoDataSection() {
         )}
       </div>
     </Card>
+  )
+}
+
+interface SchoolTrackSettingsProps {
+  /** 가입 때 고른 학교의 NEIS 번호 */
+  schoolCode: string
+  className?: string
+}
+
+/**
+ * 설정 › 계정의 학과 · 계열 칸. 고르면 바로 이 기기에 저장합니다. (lib/schoolTrack.ts)
+ * 고르는 칸 자체는 가입 화면과 같은 부품(components/ui/SchoolTrackField.tsx)입니다.
+ */
+function SchoolTrackSettings({ schoolCode, className }: SchoolTrackSettingsProps) {
+  const [track, setTrack] = useState(() => loadSchoolTrack(schoolCode))
+  const [isSaved, setIsSaved] = useState(false)
+
+  function handleChange(next: SchoolTrack | null) {
+    saveSchoolTrack(next)
+    setTrack(next)
+    setIsSaved(true)
+  }
+
+  return (
+    <div className={className}>
+      <SchoolTrackField schoolCode={schoolCode} value={track} onChange={handleChange} />
+      {isSaved && (
+        <p role="status" className="mt-2 text-sm text-slate-600">
+          {track ? '저장했어요.' : '지웠어요.'}
+        </p>
+      )}
+    </div>
   )
 }
 
