@@ -1,7 +1,6 @@
 import { BackToTabLink } from '@/components/layout/BackToTabLink'
 import { BottomTabNav } from '@/components/layout/BottomTabNav'
 import { Header } from '@/components/layout/Header'
-import { IosInstallGuide } from '@/components/layout/IosInstallGuide'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { FocusUnlockScreen } from '@/components/ui/FocusUnlockScreen'
@@ -23,7 +22,7 @@ import { useSessionSync } from '@/hooks/useSessionSync'
 import { useTimerLock } from '@/hooks/useTimerLock'
 import { cn } from '@/lib/cn'
 import { needsSubjectsPath } from '@/lib/dataMode'
-import { CHAT_PATH, getBackToTabLink, HOME_PATH } from '@/lib/tabMenu'
+import { CHAT_PATH, getBackToTabLink } from '@/lib/tabMenu'
 import { TIMER_PATH } from '@/lib/timerLock'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -99,9 +98,8 @@ export function Layout() {
           isCoach ? 'flex min-h-0 flex-col py-3 sm:py-4' : 'py-6 sm:py-10',
         )}
       >
-        {/* 아이폰에서 아직 홈 화면에 추가 안 한 사람에게만 보이는 안내입니다. (#105) */}
-        {/* 홈에서만 보여줍니다. 모든 화면 맨 위에 계속 떠 있으면 방해가 되고, 코치 화면은 채팅 자리가 좁아지기 때문입니다. */}
-        {pathname === HOME_PATH && <IosInstallGuide />}
+        {/* 아이폰 "홈 화면에 추가" 안내(components/layout/IosInstallGuide.tsx, #105)는 2026-10-19 에 껐습니다.
+            시연을 모바일 웹 · 앱(WebView)으로 하기로 해서입니다. 다시 켜려면 홈('/')일 때 <IosInstallGuide /> 를 여기에 그립니다. */}
         {/* 기록 탭의 하위 탭 막대(기록 · 리포트)는 RecordsPage 가 직접 그립니다. */}
         {backToTab && <BackToTabLink to={backToTab.to} label={backToTab.label} />}
 
