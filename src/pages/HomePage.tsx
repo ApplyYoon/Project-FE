@@ -6,7 +6,6 @@ import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { ChipButton } from '@/components/ui/ChipButton'
 import { MissionBar } from '@/components/ui/MissionBar'
 import { SchoolClassPicker } from '@/components/ui/SchoolClassPicker'
-import { SettingsLink } from '@/components/ui/SettingsLink'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
@@ -84,14 +83,14 @@ const textLinkClass =
  * 홈 탭(첫 화면 "/")입니다. (2026-10-18 '오늘' 탭(/today)에서 이름 · 주소를 바꿔 첫 탭으로 올림)
  * 사용자: "일단 홈 정도도 필요하지 않나", "달력 위치도 좀 바꾸거나", "홈 화면 수정도 좀 하자"
  *
- *   ① 인사 + 오른쪽 위 ⚙️ 설정 + 오늘의 미션 한 줄 (누르면 코치 화면으로)
+ *   ① 인사 + 오늘의 미션 한 줄 (누르면 코치 화면으로)
  *   ② 오늘 계획: 오늘 카드를 시간 순서로 + [시작]. 카드가 없으면 [코치와 오늘 계획 짜기] · [사진으로 만들기]
  *   ③ 오늘 시간표 · 급식 (모바일은 위아래, PC 는 나란히)
  *   ④ 다가오는 일정: 학교 일정 + 내 일정을 날짜 순서로, D-day 와 함께
  *   ⑤ 학교 공지: 학교 홈페이지의 가정통신문 · 공지사항 제목, 대회 글은 🏆 (2026-10-19)
  *   맨 아래: 지금 관리 모드와 이유 · AI 가 바꾼 설정 알림
  *
- * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 알림 · 통화는 코치 화면 머리에, 설정은 코치 화면과 홈 머리에 있습니다.
+ * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 알림 · 통화는 코치 화면 머리에, 설정은 헤더(PC 메뉴 · 모바일 오른쪽 위 톱니)에 있습니다.
  */
 export function HomePage() {
   const { search } = useLocation()
@@ -154,20 +153,14 @@ function HomeView() {
     <div className="-mx-4 -mt-3 -mb-6 flex flex-col gap-4 bg-slate-100 px-4 pt-3 pb-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
       {/* ① 인사 + 오늘의 미션 */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-2 px-1">
-          <div className="min-w-0">
-            <p className="text-[15px] text-slate-500">
-              {formatToday(toDayDate(new Date(now)))}
-              {nearestGoal &&
-                ` · ${nearestGoal.title} ${formatDday(getDaysUntil(nearestGoal.dDay))}`}
-            </p>
-            <h1 className="mt-1 text-[26px] leading-snug font-bold tracking-tight text-slate-900">
-              오늘도 같이 시작해 볼까?
-            </h1>
-          </div>
-          {/* 설정은 아래 탭에 없어서, 로그아웃 · 탈퇴를 찾기 쉽게 홈 머리에도 둡니다. (2026-10-19)
-              바탕이 연회색이라 마우스를 올리면 흰색으로 보이게 합니다. */}
-          <SettingsLink className="-mr-2 hover:bg-white" />
+        <div className="min-w-0 px-1">
+          <p className="text-[15px] text-slate-500">
+            {formatToday(toDayDate(new Date(now)))}
+            {nearestGoal && ` · ${nearestGoal.title} ${formatDday(getDaysUntil(nearestGoal.dDay))}`}
+          </p>
+          <h1 className="mt-1 text-[26px] leading-snug font-bold tracking-tight text-slate-900">
+            오늘도 같이 시작해 볼까?
+          </h1>
         </div>
         {/* 미션은 코치가 채팅에서 같이 해 줘서, 누르면 코치 화면으로 갑니다. */}
         <MissionBar missions={missions} onOpen={() => navigate(COACH_PATH)} />

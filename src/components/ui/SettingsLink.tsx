@@ -6,7 +6,8 @@ interface SettingsLinkProps {
 }
 
 /**
- * 설정 화면으로 가는 톱니 아이콘 버튼입니다. 설정은 아래 탭에 없어서 코치 화면 머리와 홈 머리에 둡니다. (#386, 2026-10-18 · 홈은 2026-10-19)
+ * 설정 화면으로 가는 톱니 아이콘 버튼입니다. 설정은 아래 탭에 없어서 모바일 헤더 오른쪽 위에 둡니다. (#386, 2026-10-19 헤더로 옮김)
+ * PC 는 헤더 메뉴의 "설정" 글자로 갑니다. (components/layout/Header.tsx)
  * 누르기 쉽게 44×44px(h-11 w-11) 입니다.
  */
 export function SettingsLink({ className }: SettingsLinkProps) {

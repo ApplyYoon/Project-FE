@@ -5,7 +5,7 @@ import { CHAT_PATH, HOME_PATH, isHomePath, isRecordsPath, RECORDS_PATH } from '@
  * 저녁에 '코치' 탭을 대화방 목록(채팅: 📞 매일 통화 · 📅 계획 · 💬 상담 · 📚 과목 쌤)으로 바꿨습니다. (lib/chatRooms.ts)
  * PC 헤더 메뉴와 모바일 하단 탭이 이 목록을 같이 씁니다.
  * 메뉴를 추가·변경하려면 여기 한 곳만 고치면 됩니다.
- * 설정 · 알림은 탭에 없고 채팅 목록 · 대화방 머리의 아이콘으로 갑니다. 설정 톱니는 홈 머리에도 있습니다. (SettingsLink · 알림 종)
+ * 설정 · 알림은 탭에 없습니다. 설정은 헤더(PC 메뉴 맨 오른쪽 "설정" · 모바일 오른쪽 위 톱니 SettingsLink), 알림은 채팅 목록 · 대화방 머리의 종입니다.
  * 카드 · 목표 관리는 홈 탭에서 들어갑니다. 통화는 채팅 목록 맨 위 [📞 매일 통화] 로 갑니다.
  */
 export const navItems = [

@@ -3,7 +3,6 @@ import { MissionBar } from '@/components/ui/MissionBar'
 import { NotificationsBell } from '@/components/ui/NotificationsBell'
 import { PlanCard } from '@/components/ui/PlanCard'
 import { ReasonChips } from '@/components/ui/ReasonChips'
-import { SettingsLink } from '@/components/ui/SettingsLink'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
@@ -283,14 +282,14 @@ export function ChatRoomPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {/* 통화 · 알림 · 설정은 탭 없이 대화방 머리에 둡니다. 통화는 매일 코치(상담) 방에만. (2026-10-18 "탭을 명확히") */}
+          {/* 통화 · 알림은 탭 없이 대화방 머리에 둡니다. 통화는 매일 코치(상담) 방에만. (2026-10-18 "탭을 명확히")
+              설정은 2026-10-19 에 헤더로 옮겼습니다. */}
           {roomInfo.isDailyCoach && (
             <Link to="/call" className={chipClass}>
               <span aria-hidden>📞</span> 통화
             </Link>
           )}
           <NotificationsBell />
-          <SettingsLink />
         </div>
       </div>
 

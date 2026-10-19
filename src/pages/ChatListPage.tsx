@@ -1,5 +1,4 @@
 import { NotificationsBell } from '@/components/ui/NotificationsBell'
-import { SettingsLink } from '@/components/ui/SettingsLink'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
 import { CALL_LOCKED_TEXT, localCheckCall } from '@/lib/checkCall'
@@ -43,9 +42,8 @@ export function ChatListPage() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {/* 알림 · 설정은 탭 없이 채팅 머리에 둡니다. (2026-10-18 "탭을 명확히") */}
+          {/* 알림은 탭 없이 채팅 머리에 둡니다. (2026-10-18 "탭을 명확히") 설정은 2026-10-19 에 헤더로 옮겼습니다. */}
           <NotificationsBell />
-          <SettingsLink />
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { isNavItemSelected, navItems } from '@/components/layout/navItems'
+import { SettingsLink } from '@/components/ui/SettingsLink'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/cn'
 import { scrollToTop } from '@/lib/scroll'
@@ -17,8 +18,9 @@ interface HeaderProps {
  *   hideNav           -> action 만 (온보딩의 "나중에 하기" 등). 없으면 앱 이름만 보입니다.
  *                         로그인·가입·온보딩처럼 탭 없이 뜨는 화면(PlainLayout)이라, 로그인 전이어도 "로그인" 을 띄우지 않습니다.
  *   로그인 전          -> "로그인" 하나만 (처음 온 사람도 로그인 화면에서 시작하면 가입으로 이어지기 때문입니다, #319)
- *   로그인             -> PC 는 탭 4개(홈 · 코치 · 타이머 · 기록) 메뉴, 모바일은 비어 있음(하단 탭을 씀)
- * 알림 종 · 통화 · 설정은 코치 화면 머리에만 둡니다. (2026-10-18 "탭을 명확히", pages/CoachPage.tsx)
+ *   로그인             -> PC 는 탭 4개(홈 · 채팅 · 타이머 · 기록) 메뉴 + 맨 오른쪽 "설정", 모바일은 오른쪽 위 ⚙️ 톱니(하단 탭은 4개 그대로)
+ * 설정은 아래 탭에 넣지 않고 헤더에 따로 둡니다. 로그아웃 · 탈퇴가 설정에 있어서 어느 화면에서든 찾을 수 있게. (2026-10-19)
+ * 알림 종 · 통화는 채팅 목록 · 대화방 머리에 둡니다. (2026-10-18 "탭을 명확히")
  */
 
 export function Header({ hideNav = false, action }: HeaderProps) {
@@ -63,7 +65,13 @@ export function Header({ hideNav = false, action }: HeaderProps) {
                   {item.label}
                 </NavLink>
               ))}
+              {/* 설정은 탭 4개 뒤 맨 오른쪽에 따로 둡니다. /settings/account(내 계정)에서도 선택된 모양입니다. */}
+              <NavLink to="/settings" onClick={scrollToTop} className={navLinkClass}>
+                설정
+              </NavLink>
             </nav>
+            {/* 모바일은 오른쪽 위 톱니로 설정에 갑니다. (PC 는 위 메뉴의 "설정") */}
+            <SettingsLink className="-mr-2 sm:hidden" />
           </div>
         )}
       </div>
