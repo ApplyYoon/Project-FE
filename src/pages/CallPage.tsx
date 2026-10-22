@@ -53,12 +53,17 @@ function CallGateSkeleton() {
 function CallGate() {
   const isServerData = useIsServerData()
   const { data: gate } = useSuspenseQuery(checkCallQuery(isServerData))
-  return <CallRingView studied={gate.studied} />
+  return <CallRingView studied={gate.studied} canCall={isServerData} />
 }
 
 interface CallRingViewProps {
   /** 방금 끝낸 공부. 있으면 "그걸 말로 설명해 봐" 를 보여 줍니다. 없으면 보통 통화입니다. */
   studied: StudiedInfo | null
+  /**
+   * false 면 테스트 로그인이라 통화를 걸 수 없습니다. 받기를 막고 안내를 보여 줍니다. (2026-10-22 QA)
+   * 통화 임시 키는 이제 서버(로그인한 사람만)에서만 받는데, 테스트 로그인의 토큰은 서버가 모르는 가짜라서입니다.
+   */
+  canCall: boolean
 }
 
 /**
@@ -73,7 +78,7 @@ function reviewGreeting(studied: StudiedInfo): string {
 }
 
 /** 전화 받기 화면 */
-function CallRingView({ studied }: CallRingViewProps) {
+function CallRingView({ studied, canCall }: CallRingViewProps) {
   const navigate = useNavigate()
   const [isRejectOpen, toggleReject] = useToggle(false)
   const [micError, setMicError] = useState<MicError | null>(null)
@@ -229,10 +234,13 @@ function CallRingView({ studied }: CallRingViewProps) {
           </div>
         </div>
 
-        <p className="mt-10 text-lg break-keep sm:text-xl">&quot;{greeting}&quot;</p>
+        {/* [overflow-wrap:anywhere]: 띄어쓰기 없는 긴 카드 제목도 줄을 바꿔서, 휴대폰 화면이 옆으로 밀리지 않게 합니다. (2026-10-22 QA) */}
+        <p className="mt-10 text-lg [overflow-wrap:anywhere] break-keep sm:text-xl">
+          &quot;{greeting}&quot;
+        </p>
         {/* 방금 끝낸 공부가 있으면 확인 통화로 무엇을 할지 알려 줍니다. (코치가 서버 기록으로 같은 공부를 물어봄) */}
         {studied && (
-          <p className="mt-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-[15px] break-keep">
+          <p className="mt-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-[15px] [overflow-wrap:anywhere] break-keep">
             방금 한 {studied.title ? `'${studied.title}'` : '공부'}({studied.minutes}분)을 코치한테
             말로 설명해 봐. 코치가 2~3개 물어보고 이해도를 알려 줄 거야.
           </p>
@@ -240,6 +248,16 @@ function CallRingView({ studied }: CallRingViewProps) {
         <p className="mt-3 text-sm break-keep text-indigo-100">
           1~3분 · 녹음하지 않고 요약만 저장해요
         </p>
+        {/* role="status": 화면을 읽어 주는 프로그램도 바로 알려 줍니다. */}
+        {!canCall && (
+          <p
+            role="status"
+            className="mt-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-sm break-keep"
+          >
+            테스트 로그인으로는 통화를 걸 수 없어요. 구글로 로그인하면 AI 선생님과 통화할 수 있어요.
+            채팅은 테스트 로그인으로도 돼요.
+          </p>
+        )}
 
         {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
         <div className="mt-auto flex w-full items-start justify-around pt-12">
@@ -260,9 +278,9 @@ function CallRingView({ studied }: CallRingViewProps) {
             <button
               type="button"
               onClick={handleAccept}
-              disabled={isRequesting}
+              disabled={isRequesting || !canCall}
               aria-label="받기"
-              className="flex h-16 w-16 animate-bounce cursor-pointer items-center justify-center rounded-full bg-green-500 text-2xl text-white hover:bg-green-600"
+              className="flex h-16 w-16 animate-bounce cursor-pointer items-center justify-center rounded-full bg-green-500 text-2xl text-white hover:bg-green-600 disabled:animate-none disabled:cursor-not-allowed disabled:opacity-40"
             >
               <span aria-hidden>📞</span>
             </button>

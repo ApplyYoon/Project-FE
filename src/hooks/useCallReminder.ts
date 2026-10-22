@@ -6,6 +6,7 @@ import {
   shouldRingNow,
   showCallNotification,
 } from '@/lib/callReminder'
+import { isServerDataMode } from '@/lib/dataMode'
 import { loadExamDates, loadSavedWritings } from '@/lib/diarySafety'
 import { loadFocusMode } from '@/lib/focusMode'
 import { isTimerLocked } from '@/lib/timerLock'
@@ -27,6 +28,7 @@ const CHECK_INTERVAL_MS = 10_000
  * - 집중 모드 중이거나 글을 쓰는 화면이면 건너뜁니다. (lib/callReminder.ts 의 isBusyForCall)
  * - 하루에 한 번만 울립니다. (언제 울렸는지 저장해 둡니다)
  * - 오늘 공부를 안 했어도 울립니다. 통화의 공부 조건은 2026-10-22 에 뺐습니다. (lib/checkCall.ts)
+ * - 테스트 로그인(시연)이면 울리지 않습니다. 통화를 걸 수 없기 때문입니다.
  * - 앱이 닫혀 있을 때는 동작하지 않습니다. (웹 푸시는 서버와 서비스 워커가 필요합니다)
  *
  * 라우터 안쪽에 있는 컴포넌트에서 한 번만 부르면 됩니다. (지금은 Layout)
@@ -47,6 +49,8 @@ export function useCallReminder() {
     if (!isLoggedIn) return
 
     function check() {
+      // 테스트 로그인은 통화를 걸 수 없어서 전화 화면으로 데려가지 않습니다. (임시 키는 서버에서만 받음, 2026-10-22 QA)
+      if (!isServerDataMode()) return
       // 이미 전화 화면이면 다시 띄우지 않습니다.
       if (pathnameRef.current.startsWith('/call')) return
       // 집중 모드 중이거나 글을 쓰는 화면이면 이번 전화는 건너뜁니다. (화면이 넘어가면 집중이 깨지거나 쓰던 글이 사라집니다)
