@@ -16,6 +16,7 @@ import { createInstantCardNow } from '@/lib/cardSession'
 import { countsForCheckCall } from '@/lib/checkCall'
 import {
   MAX_CHAT_TEXT_LENGTH,
+  openChatSession,
   sendChatMessage,
   startChat,
   type ChatReply,
@@ -800,7 +801,8 @@ function RoomChat({ room }: RoomChatProps) {
       image: string | null
       about: ChatAbout | null
     }) => {
-      const open = async () => (await startChat({ room: roomInfo.serverRoom, about })).chatId
+      // 학생이 먼저 말을 보내는 길이라 AI 첫 인사 없이 채팅 번호만 받습니다. (인사는 화면에 안 쓰여서 8초쯤 버려졌음)
+      const open = () => openChatSession({ room: roomInfo.serverRoom, about })
       let openId = id ?? (await open())
       let reply: ChatReply
       try {
