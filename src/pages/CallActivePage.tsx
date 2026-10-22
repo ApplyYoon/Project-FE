@@ -220,7 +220,8 @@ function SubtitleList({ messages }: SubtitleListProps) {
               {/* max-w-[80%] + break-words: 긴 말풍선도 화면 폭을 넘지 않고 안에서 줄바꿈됩니다. */}
               <p
                 className={cn(
-                  'max-w-[80%] rounded-2xl px-4 py-2 text-sm break-words sm:text-base',
+                  // 15px · leading-relaxed: 움직이는 통화 중에도 자막을 한 번에 읽을 수 있게 줄 사이를 넉넉히 둡니다.
+                  'max-w-[85%] rounded-2xl px-4 py-2 text-[15px] leading-relaxed break-words sm:text-base',
                   message.speaker === 'me' ? 'bg-brand text-white' : 'bg-white/20 text-white',
                 )}
               >
@@ -603,7 +604,9 @@ export function CallActivePage() {
           <AiAvatar careLevel={careLevel} />
         </div>
 
-        <p className="mt-8 text-lg break-keep sm:text-xl">&quot;{greeting}&quot;</p>
+        <p className="mt-8 max-w-[22em] text-lg leading-relaxed break-keep sm:text-xl">
+          &quot;{greeting}&quot;
+        </p>
 
         {/* 통화 중에 짠 계획 (AI 가 도구를 불렀을 때). 저장은 [이대로 할게] 를 눌러야 합니다. */}
         {(shownPlan !== null || isPlanBusy || planNote !== null) && (
@@ -618,13 +621,14 @@ export function CallActivePage() {
                 <p className="text-sm break-keep text-indigo-50">{shownPlan.reply}</p>
                 <PlanCard plan={shownPlan.plan} className="sm:max-w-none" />
                 {shownPlan.plan.status === 'open' && (
+                  // 색 바탕 위라서 [이대로 할게] 는 흰 버튼(inverse), [닫기] 는 글자만 있는 버튼으로 둡니다. (채운 버튼은 하나)
                   <div className="mt-2 flex gap-2">
-                    <Button className="flex-1" onClick={handleAcceptPlan}>
+                    <Button variant="inverse" className="flex-1" onClick={handleAcceptPlan}>
                       ✅ 이대로 할게
                     </Button>
                     <Button
-                      variant="secondary"
-                      className="flex-1"
+                      variant="ghost"
+                      className="flex-1 text-white hover:bg-white/10"
                       onClick={() => setShownPlan(null)}
                     >
                       닫기
@@ -674,8 +678,8 @@ export function CallActivePage() {
           </div>
         )}
 
-        {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
-        <div className="mt-auto flex w-full items-start justify-around pt-12">
+        {/* mt-auto: 버튼을 화면 아래(엄지가 닿는 곳)로 밀어냅니다. 채운 버튼은 [끊기] 하나, 음소거는 선만 있는 버튼입니다. */}
+        <div className="mt-auto flex w-full items-end justify-around pt-12 pb-2">
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
@@ -683,7 +687,7 @@ export function CallActivePage() {
               aria-pressed={isMuted}
               aria-label={isMuted ? '음소거 해제' : '음소거'}
               className={cn(
-                'flex h-16 w-16 cursor-pointer items-center justify-center rounded-full border border-slate-400 text-2xl',
+                'flex h-16 w-16 cursor-pointer items-center justify-center rounded-full border-2 border-white/60 text-2xl transition-transform active:scale-95',
                 isMuted ? 'bg-white text-slate-900' : 'bg-transparent text-white hover:bg-white/10',
               )}
             >
@@ -693,15 +697,16 @@ export function CallActivePage() {
           </div>
 
           <div className="flex flex-col items-center gap-2">
+            {/* 끊기는 1순위라서 조금 더 크게(80px) 둡니다. (피츠의 법칙) */}
             <button
               type="button"
               onClick={handleHangUp}
               aria-label="끊기"
-              className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-red-600 text-2xl text-white hover:bg-red-700"
+              className="flex h-20 w-20 cursor-pointer items-center justify-center rounded-full bg-red-600 text-3xl text-white transition-transform hover:bg-red-700 active:scale-95"
             >
               <span aria-hidden>✕</span>
             </button>
-            <span className="text-sm font-medium">끊기</span>
+            <span className="text-sm font-semibold">끊기</span>
           </div>
         </div>
       </div>

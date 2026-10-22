@@ -151,15 +151,16 @@ export function NotificationsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">알림</h1>
-        <p className="mt-1 text-sm break-keep text-slate-500">
-          앱에서 생긴 일과 AI 선생님이 보낸 메시지가 여기에 쌓여.
+        <h1 className="text-[28px] leading-snug font-bold tracking-tight sm:text-3xl">알림</h1>
+        <p className="mt-1 text-[15px] break-keep text-slate-500">
+          앱 알림과 AI 선생님 메시지가 여기에 쌓여.
         </p>
       </div>
 
       {/* 전체 / AI 메시지 / 앱 알림 탭. 옆의 숫자는 그 종류가 몇 개 쌓였는지입니다. */}
-      {/* max-w-full: 좁은 화면에서 탭 묶음이 화면보다 넓어지지 않게 합니다. */}
-      <div className="inline-flex max-w-full self-start rounded-lg bg-slate-100 p-1">
+      {/* 모바일은 세 칸이 폭을 똑같이 나눠 가집니다(grid-cols-3). PC 는 글자 폭만큼만.
+          바탕이 연회색이라 묶음은 한 단계 진한 회색, 고른 탭은 흰 바탕 + 굵은 글자로 또렷하게 보입니다. */}
+      <div className="grid w-full grid-cols-3 gap-1 rounded-xl bg-slate-200 p-1 sm:inline-grid sm:w-auto sm:self-start">
         {TABS.map((item) => (
           <button
             key={item.key}
@@ -167,8 +168,10 @@ export function NotificationsPage() {
             aria-pressed={tab === item.key}
             onClick={() => setTab(item.key)}
             className={cn(
-              'h-10 cursor-pointer rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors',
-              tab === item.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
+              'h-11 min-w-0 cursor-pointer rounded-lg px-2 text-sm whitespace-nowrap transition-colors sm:px-4',
+              tab === item.key
+                ? 'bg-white font-bold text-slate-900'
+                : 'font-medium text-slate-600 hover:text-slate-900',
             )}
           >
             {item.label} <span className="tabular-nums">{countByTab[item.key]}</span>
@@ -176,13 +179,14 @@ export function NotificationsPage() {
         ))}
       </div>
 
+      {/* 범례는 "보조 설명" 이라 작고 연하게, 탭 바로 아래에 붙입니다. (-mt-3: 묶음 사이 간격보다 가깝게) */}
       {usedLevels.length > 0 && (
-        <ul aria-label="말풍선 색 안내" className="flex flex-wrap gap-x-4 gap-y-2">
+        <ul aria-label="말풍선 색 안내" className="-mt-3 flex flex-wrap gap-x-3 gap-y-1 px-1">
           {usedLevels.map((level) => (
-            <li key={level} className="flex items-center gap-1.5 text-sm text-slate-600">
+            <li key={level} className="flex items-center gap-1 text-xs text-slate-500">
               <span
                 aria-hidden
-                className={cn('h-3.5 w-3.5 rounded border', careLevelStyles[level].bubble)}
+                className={cn('h-2.5 w-2.5 rounded-sm border', careLevelStyles[level].bubble)}
               />
               {careLevelStyles[level].name}
             </li>
@@ -204,19 +208,23 @@ export function NotificationsPage() {
 
             return (
               <li key={message.id} className="flex flex-col gap-5">
-                {isNewDay && <Divider>{formatDayLabel(message.sentAt)}</Divider>}
+                {isNewDay && (
+                  <Divider className="pt-1 font-medium tabular-nums">
+                    {formatDayLabel(message.sentAt)}
+                  </Divider>
+                )}
                 {message.id === firstUnreadId && (
                   <Divider className="font-semibold text-red-600">여기부터 안 읽음</Divider>
                 )}
-                <MessageBubble message={message} />
+                <MessageBubble message={message} isUnread={unreadIdsAtOpen.has(message.id)} />
               </li>
             )
           })}
         </ol>
       )}
 
-      <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <p className="text-sm text-slate-600">
+      <div className="flex flex-col gap-3 rounded-2xl bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <p className="text-sm break-keep text-slate-600">
           {settings.dailyCount === 0
             ? '지금은 메시지를 보내지 않도록 꺼 두었어. 설정에서 바꿀 수 있어.'
             : `${settings.quietStart} ~ ${settings.quietEnd} 에는 보내지 않아. 횟수와 시간은 설정에서 바꿀 수 있어.`}
@@ -250,38 +258,47 @@ function Divider({ children, className }: DividerProps) {
 
 interface MessageBubbleProps {
   message: AiMessage
+  /** 화면을 열 때 안 읽은 알림이었으면 true. 굵은 글자 + 파란 점으로 표시합니다. */
+  isUnread: boolean
 }
 
 /** 아바타 + 말풍선 + 보낸 시각 · 종류 */
-function MessageBubble({ message }: MessageBubbleProps) {
+function MessageBubble({ message, isUnread }: MessageBubbleProps) {
   const style = careLevelStyles[message.careLevel]
   // 앱이 정해 둔 문장으로 만든 알림인지, AI 가 쓴 메시지인지. 아바타와 아래 글자로 구분해 줍니다.
   const isApp = isAppAlert(message)
 
   return (
     <div className="flex items-start gap-2.5 sm:gap-3">
+      {/* relative: 안 읽은 알림의 파란 점을 아바타 오른쪽 위에 붙이려고 씁니다. */}
       <div
         aria-hidden
         className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-          isApp ? 'bg-slate-100 text-slate-600' : 'bg-brand-light text-brand',
+          'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+          isApp ? 'bg-white text-slate-600' : 'bg-brand-light text-brand',
         )}
       >
         {isApp ? '앱' : 'AI'}
+        {isUnread && (
+          <span className="bg-brand absolute -top-0.5 -right-0.5 size-3 rounded-full border-2 border-slate-100" />
+        )}
       </div>
 
       {/* min-w-0: 긴 글자가 있어도 화면 밖으로 밀려나지 않게 합니다. */}
       <div className="flex max-w-[85%] min-w-0 flex-col gap-1.5 sm:max-w-xl">
         <p
           className={cn(
-            'rounded-2xl border px-4 py-2.5 text-sm break-words text-slate-900 sm:text-base',
+            'rounded-2xl border px-4 py-2.5 text-[15px] leading-relaxed break-words sm:text-base',
+            // 안 읽은 것은 굵고 진하게, 읽은 것은 보통 굵기로 한 단계 연하게 (점과 함께 두 가지로 구분)
+            isUnread ? 'font-semibold text-slate-900' : 'font-normal text-slate-700',
             style.bubble,
           )}
         >
+          {isUnread && <span className="sr-only">안 읽음 · </span>}
           {message.text}
         </p>
         <p className="flex flex-wrap items-center gap-x-3 text-xs text-slate-500">
-          <span>
+          <span className="tabular-nums">
             <time dateTime={new Date(message.sentAt).toISOString()}>
               {formatTime(message.sentAt)}
             </time>

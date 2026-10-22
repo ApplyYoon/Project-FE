@@ -67,10 +67,15 @@ export function LeaveAccountSection({ isTestUser, className }: LeaveAccountSecti
 
   return (
     <div className={cn('flex flex-col gap-2', className)}>
-      <Button variant="danger" className="w-full" onClick={() => setIsOpen(true)}>
+      {/* 되돌릴 수 없는 일이라 꽉 찬 빨간 버튼 대신 빨간 글자 + 선으로 조용히 둡니다. 숨기지는 않습니다. (2차 규칙 3) */}
+      <Button
+        variant="outline"
+        className="w-full border-red-200 text-red-700 hover:bg-red-50"
+        onClick={() => setIsOpen(true)}
+      >
         {label}
       </Button>
-      <p className="text-xs break-keep text-slate-500">
+      <p className="text-[13px] break-keep text-slate-500">
         {isTestUser
           ? '테스트 계정이라 이 기기의 기록을 모두 지우고 가입 · 온보딩부터 다시 시작해요.'
           : '계정과 모든 기록을 지워요. 같은 구글 계정으로 다시 가입하면 처음부터 시작해요.'}

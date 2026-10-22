@@ -31,7 +31,8 @@ export function SubjectBadge({ name, color, className }: SubjectBadgeProps) {
     // inline-block + max-w-full + truncate: 이름이 길면 한 줄로 줄이고 끝을 '...' 으로 보여줍니다.
     <span
       className={cn(
-        'inline-block max-w-full truncate rounded px-2 py-0.5 text-xs font-semibold',
+        // rounded-md: 누르는 칩(rounded-full)과 헷갈리지 않게, 보기만 하는 꼬리표는 살짝만 둥글립니다. (2026-10-22)
+        'inline-block max-w-full truncate rounded-md px-2 py-0.5 text-xs font-semibold',
         colorStyles[color],
         className,
       )}

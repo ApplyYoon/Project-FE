@@ -151,7 +151,7 @@ function CallRingView({ studied }: CallRingViewProps) {
               : '마이크를 찾을 수 없어요. 마이크가 연결돼 있는지, 주소가 https 또는 localhost 인지 확인해 주세요.'}
           </p>
 
-          <section className="mt-8 w-full rounded-xl border border-slate-200 p-5 text-left">
+          <section className="mt-8 w-full rounded-2xl border border-slate-200 p-5 text-left">
             <h2 className="font-semibold">마이크 켜는 방법</h2>
             <ol className="mt-4 flex flex-col gap-3 text-slate-700">
               <li className="flex items-center gap-3">
@@ -229,10 +229,13 @@ function CallRingView({ studied }: CallRingViewProps) {
           </div>
         </div>
 
-        <p className="mt-10 text-lg break-keep sm:text-xl">&quot;{greeting}&quot;</p>
+        {/* max-w-[22em] · leading-relaxed: 한 줄이 너무 길지 않고 줄 사이가 넉넉해야 한 번에 읽힙니다. */}
+        <p className="mt-10 max-w-[22em] text-lg leading-relaxed break-keep sm:text-xl">
+          &quot;{greeting}&quot;
+        </p>
         {/* 방금 끝낸 공부가 있으면 확인 통화로 무엇을 할지 알려 줍니다. (코치가 서버 기록으로 같은 공부를 물어봄) */}
         {studied && (
-          <p className="mt-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-[15px] break-keep">
+          <p className="mt-4 w-full rounded-2xl bg-white/15 px-4 py-3 text-left text-[15px] leading-relaxed break-keep">
             방금 한 {studied.title ? `'${studied.title}'` : '공부'}({studied.minutes}분)을 코치한테
             말로 설명해 봐. 코치가 2~3개 물어보고 이해도를 알려 줄 거야.
           </p>
@@ -241,15 +244,17 @@ function CallRingView({ studied }: CallRingViewProps) {
           1~3분 · 녹음하지 않고 요약만 저장해요
         </p>
 
-        {/* mt-auto: 버튼을 화면 아래로 밀어냅니다. */}
-        <div className="mt-auto flex w-full items-start justify-around pt-12">
+        {/* mt-auto: 버튼을 화면 아래(엄지가 닿는 곳)로 밀어냅니다. */}
+        {/* 채운 버튼은 [받기] 하나만 둡니다. 거절은 선만 있는 버튼으로 낮춥니다. (폰 레스토프)
+            움직이는 버튼은 누르기 어려워서 튀는 효과(animate-bounce)는 뺐습니다. 울리는 느낌은 위 아이콘의 깜빡임으로 충분합니다. */}
+        <div className="mt-auto flex w-full items-end justify-around pt-12 pb-2">
           <div className="flex flex-col items-center gap-2">
             {/* h-16 w-16 = 64px (완료 조건: 지름 56px 이상) */}
             <button
               type="button"
               onClick={toggleReject}
               aria-label="거절"
-              className="flex h-16 w-16 animate-bounce cursor-pointer items-center justify-center rounded-full bg-red-600 text-2xl text-white hover:bg-red-700"
+              className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full border-2 border-white/60 text-2xl text-white transition-transform hover:bg-white/10 active:scale-95"
             >
               <span aria-hidden>✕</span>
             </button>
@@ -257,16 +262,17 @@ function CallRingView({ studied }: CallRingViewProps) {
           </div>
 
           <div className="flex flex-col items-center gap-2">
+            {/* 받기는 1순위라서 조금 더 크게(80px) 둡니다. (피츠의 법칙) */}
             <button
               type="button"
               onClick={handleAccept}
               disabled={isRequesting}
               aria-label="받기"
-              className="flex h-16 w-16 animate-bounce cursor-pointer items-center justify-center rounded-full bg-green-500 text-2xl text-white hover:bg-green-600"
+              className="flex h-20 w-20 cursor-pointer items-center justify-center rounded-full bg-green-500 text-3xl text-white transition-transform hover:bg-green-600 active:scale-95 disabled:opacity-60"
             >
               <span aria-hidden>📞</span>
             </button>
-            <span className="text-sm font-medium">받기</span>
+            <span className="text-sm font-semibold">받기</span>
           </div>
         </div>
       </div>
