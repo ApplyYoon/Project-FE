@@ -95,7 +95,7 @@ export function localCheckCall(
 export function readCheckCall(value: unknown): { studied: StudiedInfo | null } | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
-  if (typeof record.open !== 'boolean') return null
+  // open 칸은 이제 쓰지 않아서 보지 않습니다. (서버가 나중에 open 을 빼도 studied 를 그대로 읽게, 2026-10-22 QA)
   let studied: StudiedInfo | null = null
   if (typeof record.studied === 'object' && record.studied !== null) {
     const raw = record.studied as Record<string, unknown>

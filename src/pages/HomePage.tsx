@@ -30,7 +30,7 @@ import {
   schoolNoticesQuery,
   type SchoolNotice,
 } from '@/lib/schoolNotices'
-import { loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
+import { dayLabelOf, loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
 import {
   clearSettingChanges,
   describeSettingChange,
@@ -744,6 +744,10 @@ function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTod
           <p className="text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
         ) : (
           <>
+            {/* 주말에는 서버가 다음 월요일 시간표를 줘서 "월요일 시간표" 로 적습니다. (schoolDay, 2026-10-22) */}
+            <p className="mb-2 text-[13px] font-semibold text-slate-500">
+              {dayLabelOf(data.schoolDay, todayKey)} 시간표
+            </p>
             {/* 자리를 덜 차지하게 두 칸으로 놓습니다. 교시 번호가 있어서 순서는 번호로 읽습니다. (1 2 / 3 4 / …) */}
             <ol className="grid grid-cols-2 gap-x-3 gap-y-1">
               {data.timetable.map((period) => (
@@ -759,6 +763,7 @@ function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTod
             </ol>
             {/* 어느 반 시간표인지 글자로만 보여 줍니다. 반은 설정에서 바꿉니다. */}
             <p className="mt-2 text-[13px] break-keep text-slate-500">
+              {data.schoolDay !== data.date && '주말이라 다음 수업일 시간표를 미리 보여 줘요. '}
               {schoolClass && !data.isDemo
                 ? `${schoolClass.grade}학년 ${schoolClass.classNo}반 시간표예요.`
                 : '반 시간표 기준이에요.'}{' '}
@@ -783,7 +788,7 @@ function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTod
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-semibold text-slate-900">
-                    {meal.date === todayKey ? '오늘' : '내일'} {meal.kind}
+                    {dayLabelOf(meal.date, todayKey)} {meal.kind}
                   </span>
                   <span className="line-clamp-2 block text-sm break-keep text-slate-500">
                     {meal.dishes.join(' · ')}

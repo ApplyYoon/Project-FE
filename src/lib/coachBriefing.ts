@@ -18,7 +18,7 @@ import {
 import type { ChatReply } from '@/lib/chatApi'
 import { sessionMinutes } from '@/lib/dailyRecords'
 import type { FocusScoreRecord } from '@/lib/focusScore'
-import type { SchoolToday } from '@/lib/schoolToday'
+import { dayLabelOf, type SchoolToday } from '@/lib/schoolToday'
 import { loadData } from '@/lib/storage'
 import {
   STUDY_FOCUS_OPTIONS,
@@ -208,7 +208,15 @@ export function buildMorningBriefing(input: BriefingInput): CoachMessage {
   const lines: string[] = [greetingOf(input.hour)]
 
   const subjects = subjectsOf(input.school)
-  if (subjects.length > 0) lines.push(`오늘은 ${subjects.join(' · ')} 수업이 있는 날이야.`)
+  // 주말에는 서버가 다음 월요일 시간표를 줘서 "월요일엔 … 수업이 있어" 로 말합니다. (schoolDay, 2026-10-22)
+  const school = input.school
+  if (subjects.length > 0 && school && school.schoolDay !== school.date) {
+    lines.push(
+      `${dayLabelOf(school.schoolDay, school.date)}엔 ${subjects.join(' · ')} 수업이 있어.`,
+    )
+  } else if (subjects.length > 0) {
+    lines.push(`오늘은 ${subjects.join(' · ')} 수업이 있는 날이야.`)
+  }
   const lunch = lunchOf(input.school)
   if (lunch) lines.push(`점심은 ${lunch} 🍚`)
   const exam = nearestExamOf(input.school, input.grade)
