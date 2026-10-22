@@ -16,6 +16,7 @@ import { createInstantCardNow } from '@/lib/cardSession'
 import { countsForCheckCall } from '@/lib/checkCall'
 import {
   MAX_CHAT_TEXT_LENGTH,
+  openChatSession,
   sendChatMessage,
   startChat,
   type ChatReply,
@@ -90,6 +91,7 @@ import {
   needsNewSession,
   newSessionStart,
   nextBubbleId,
+  otherRoomLines,
   saveCoachThread,
   sessionLines,
   type CoachThread,
@@ -400,9 +402,13 @@ function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanReq
   })
 }
 
-/** 오늘 시간표의 과목 (겹치지 않게). AI 가 오늘 계획의 카드 글을 쓸 때 참고합니다. */
+/**
+ * 오늘 시간표의 과목 (겹치지 않게). AI 가 오늘 계획의 카드 글을 쓸 때 "오늘 배운 과목" 으로 참고합니다.
+ * 주말에는 시간표가 다음 월요일 것이라 오늘 배운 과목이 아니어서 빈 목록입니다. (schoolDay, 2026-10-22)
+ */
 function todaySubjectsOf(school: SchoolToday | null): string[] {
   const subjects: string[] = []
+  if (school && school.schoolDay !== school.date) return subjects
   for (const period of school?.timetable ?? []) {
     if (!subjects.includes(period.subject)) subjects.push(period.subject)
   }
@@ -800,15 +806,18 @@ function RoomChat({ room }: RoomChatProps) {
       image: string | null
       about: ChatAbout | null
     }) => {
-      const open = async () => (await startChat({ room: roomInfo.serverRoom, about })).chatId
+      // 학생이 먼저 말을 보내는 길이라 AI 첫 인사 없이 채팅 번호만 받습니다. (인사는 화면에 안 쓰여서 8초쯤 버려졌음)
+      const open = () => openChatSession({ room: roomInfo.serverRoom, about })
+      // 오늘 다른 방에서 한 말도 같이 보내서, 이 방 AI 가 그 이야기를 이어 갑니다. (lib/coachThread.ts, 2026-10-22)
+      const otherRooms = otherRoomLines(user?.id ?? 'unknown', room, todayKey)
       let openId = id ?? (await open())
       let reply: ChatReply
       try {
-        reply = await sendChatMessage(openId, lines, image)
+        reply = await sendChatMessage(openId, lines, image, otherRooms)
       } catch (error) {
         if (!(error instanceof ApiError && error.status === 409)) throw error
         openId = await open()
-        reply = await sendChatMessage(openId, lines, image)
+        reply = await sendChatMessage(openId, lines, image, otherRooms)
       }
       return { openId, reply }
     },
@@ -937,7 +946,15 @@ function RoomChat({ room }: RoomChatProps) {
       const todayCondition = isToday ? (loadLocalCheckIn(todayKey)?.condition ?? null) : null
       const condition = request.light ? 2 : todayCondition
       const result = await withDemoFallback(
-        () => requestDayPlan({ date: planDate, focus, subjects: planSubjects, condition }),
+        () =>
+          requestDayPlan({
+            date: planDate,
+            focus,
+            subjects: planSubjects,
+            condition,
+            // 상담 · 과목 쌤에서 오늘 한 이야기(예: 미적분 극한)를 계획에 넣게 같이 보냅니다. (2026-10-22)
+            otherRooms: otherRoomLines(user?.id ?? 'unknown', room, todayKey),
+          }),
         demo,
       )
       return isToday ? result : asTomorrowReply(result)
@@ -1750,7 +1767,7 @@ function RoomChat({ room }: RoomChatProps) {
       return
     }
     if (chip.kind === 'checkCall') {
-      // 통화 화면이 문(오늘 끝낸 공부)을 확인합니다. 방금 공부한 기록은 거기서 바로 서버로 보냅니다. (lib/checkCall.ts)
+      // 통화 화면이 오늘 끝낸 공부를 확인합니다. 방금 공부한 기록은 거기서 바로 서버로 보냅니다. (lib/checkCall.ts)
       navigate('/call')
       return
     }

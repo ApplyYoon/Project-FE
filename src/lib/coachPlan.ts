@@ -353,11 +353,16 @@ export interface DayPlanInput {
   subjects: string[]
   /** 오늘 컨디션 1 ~ 5. 2 이하면 서버가 가볍게 짭니다. 모르면 null */
   condition: number | null
+  /**
+   * 오늘 다른 대화방(상담 · 과목 쌤)에서 학생이 한 말 몇 줄 (lib/coachThread.ts 의 otherRoomLines, 2026-10-22)
+   * 서버가 목표 없는 칸에 그 공부(예: 미적분 극한)를 넣습니다. 안 주면 보내지 않습니다.
+   */
+  otherRooms?: string[]
 }
 
 /**
  * 오늘 계획을 짜 달라고 합니다. (진짜 로그인일 때만)
- *   요청 { date, focus?, subjects?, condition? }
+ *   요청 { date, focus?, subjects?, condition?, otherRooms? }
  *   응답 { drafts: [...], evidence: ['…'] } — drafts 가 비었으면 넣을 빈 시간이 없는 것 (이유는 evidence)
  */
 export async function requestDayPlan(input: DayPlanInput): Promise<PlanReply> {
@@ -369,6 +374,9 @@ export async function requestDayPlan(input: DayPlanInput): Promise<PlanReply> {
         focus: focusBody(input.focus),
         subjects: subjectsBody(input.subjects),
         condition: input.condition,
+        ...(input.otherRooms && input.otherRooms.length > 0
+          ? { otherRooms: input.otherRooms }
+          : {}),
       }),
       signal: AbortSignal.timeout(PLAN_TIMEOUT_MS),
     }),

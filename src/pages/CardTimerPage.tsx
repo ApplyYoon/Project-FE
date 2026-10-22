@@ -37,6 +37,7 @@ import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
 import { getTodayKey, moveDateKey, toDayKey } from '@/lib/date'
 import { getChatRoom, startTalk, TALK_ROOM_OF } from '@/lib/chatRooms'
+import { countsForCheckCall } from '@/lib/checkCall'
 import { cardFailLines, sessionReviewLines } from '@/lib/talkLines'
 import {
   addCardMark,
@@ -765,6 +766,13 @@ export function CardTimerPage() {
             setEndedPhone(null)
             setEndedHidden(null)
           }}
+          onCall={() => {
+            // 팝업을 닫고 통화 화면으로 갑니다. 통화 화면이 방금 기록을 서버로 먼저 보낸 뒤 묻습니다. (lib/checkCall.ts)
+            setEndedRecord(null)
+            setEndedPhone(null)
+            setEndedHidden(null)
+            navigate('/call')
+          }}
           proofRequired={isStage4}
           onProofSaved={() => {
             // 4단계에서 증빙이 있는 실행을 했으면 4단계를 풉니다. (「5.4」 해제 조건)
@@ -1341,6 +1349,8 @@ interface EndPopupProps {
   /** 즉석 카드의 제목 · 체크리스트를 정했을 때 */
   onRenameCard: (changes: Pick<CardModel, 'title' | 'checklist'>) => void
   onClose: () => void
+  /** [📞 확인 통화 받기] — 팝업을 닫고 통화 화면으로 갑니다. 10분 넘게 공부했을 때만 보입니다. (통화 수정 7) */
+  onCall: () => void
   /** 관리 4단계라 증빙이 꼭 필요한지 — 없으면 실행으로 인정하지 않습니다 (#408) */
   proofRequired: boolean
   /** 증빙을 남겼을 때 */
@@ -1366,6 +1376,7 @@ function EndPopup({
   onTalk,
   onRenameCard,
   onClose,
+  onCall,
   proofRequired,
   onProofSaved,
   phone,
@@ -1467,6 +1478,9 @@ function EndPopup({
 
   const needsShortfall = !isInstant && !isComplete && shortfalls.length === 0
   const canFinishChecklist = isInstant ? line.trim() !== '' : !needsShortfall
+  // 이 공부가 확인 통화로 확인할 만한지 (10분 넘게 앱이 잰 공부, lib/checkCall.ts)
+  // 복습 통화는 공부 직후에 해야 해서, 마지막 단계의 첫 버튼으로 바로 보냅니다. (통화 수정 7)
+  const canCheckCall = countsForCheckCall(record)
 
   /** [💬 코치랑 후기 나누기] — 체크한 것까지 저장하고 대화방으로 갑니다. 다 못 한 이유는 대화에서 AI 가 짐작해 확인받습니다. */
   function handleTalk() {
@@ -1671,7 +1685,14 @@ function EndPopup({
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-700">다음은 무엇을 할까요?</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Button onClick={onClose}>다음 카드 보기</Button>
+            {canCheckCall && (
+              <Button onClick={onCall} className="sm:col-span-2">
+                📞 확인 통화 받기
+              </Button>
+            )}
+            <Button variant={canCheckCall ? 'secondary' : 'primary'} onClick={onClose}>
+              다음 카드 보기
+            </Button>
             {/* 다 한 공부도 어땠는지 말로 나누면 코치가 다음 계획에 씁니다. (#582) */}
             <Button variant="secondary" onClick={handleTalk}>
               💬 {talkRoom.name} 방에서 후기 나누기

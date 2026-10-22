@@ -21,6 +21,7 @@ import {
   type ChatSource,
 } from '@/lib/chatApi'
 import {
+  CHAT_ROOMS,
   cleanAboutLines,
   isChatAboutKind,
   threadStorageKey,
@@ -266,6 +267,55 @@ export function saveCoachThread(thread: CoachThread, now: number, room: ChatRoom
 /** 대화방 목록에 보여 줄 마지막 말풍선 (구분선 빼고). 없으면 null */
 export function lastTalkBubble(thread: CoachThread): ThreadBubble | null {
   return thread.bubbles.findLast((bubble) => !bubble.isDivider) ?? null
+}
+
+// 다른 방 이야기로 보낼 줄 수 · 한 줄 글자 수 · 방마다 줄 수 (BE OtherRoomTalk 가 6줄 · 80자로 씀)
+const OTHER_ROOM_MAX_LINES = 6
+const OTHER_ROOM_LINE_LENGTH = 80
+const OTHER_ROOM_LINES_PER_ROOM = 3
+// 이보다 짧은 말("응" · "1번" 같은 대답)은 다른 방에 알려 줄 내용이 없어서 뺍니다.
+const OTHER_ROOM_MIN_TEXT_LENGTH = 4
+
+/**
+ * 학생이 오늘(새벽 4시 기준) 다른 대화방에서 한 말 몇 줄입니다. (2026-10-22 점검 "채팅 방끼리 학생 정보를 공유하지 않는다")
+ * 방마다 대화는 이 기기에만 있어서, 서버에 같이 보내야 이 방의 답 · 계획이 그 이야기를 압니다.
+ * 방마다 마지막 3줄, 모두 합쳐 최근 6줄까지, 한 줄은 방 이름을 넣어 80자까지. 보낼 때는 시간 순서입니다.
+ * 빼는 말: 구분선 · 4자보다 짧은 말 · 칩을 눌러 붙은 말("이대로 할게" 처럼 그 방 칩 글자와 똑같은 말)
+ *   칩 말이 섞이면 방마다 3줄 안에서 학생이 직접 쓴 말이 밀려나서 뺍니다. (2026-10-22 QA)
+ *
+ *   상담 방에 오늘 "미적분 극한이 헷갈려" 를 썼고 지금 계획 방이면 -> ['상담: 미적분 극한이 헷갈려']
+ */
+export function otherRoomLines(ownerId: string, room: ChatRoomId, todayKey: string): string[] {
+  const lines: { at: number; text: string }[] = []
+  for (const other of CHAT_ROOMS) {
+    if (other.id === room) continue
+    const bubbles = loadCoachThread(ownerId, other.id).bubbles
+    const chipLabels = new Set(
+      bubbles.flatMap((bubble) => bubble.chips ?? []).map((chip) => chip.label),
+    )
+    const mine = bubbles.filter((bubble) => {
+      const text = bubble.text.replace(/\s+/g, ' ').trim()
+      return (
+        bubble.speaker === 'me' &&
+        !bubble.isDivider &&
+        text.length >= OTHER_ROOM_MIN_TEXT_LENGTH &&
+        !chipLabels.has(text) &&
+        toDayKey(bubble.at) === todayKey
+      )
+    })
+    for (const bubble of mine.slice(-OTHER_ROOM_LINES_PER_ROOM)) {
+      const line = `${other.name}: ${bubble.text.replace(/\s+/g, ' ').trim()}`
+      // 이모지가 반으로 잘리지 않게 글자(코드 포인트) 단위로 자릅니다.
+      lines.push({
+        at: bubble.at,
+        text: Array.from(line).slice(0, OTHER_ROOM_LINE_LENGTH).join(''),
+      })
+    }
+  }
+  return lines
+    .sort((a, b) => a.at - b.at)
+    .slice(-OTHER_ROOM_MAX_LINES)
+    .map((line) => line.text)
 }
 
 /** 다음 말풍선 번호 */

@@ -29,7 +29,7 @@ import {
   schoolNoticesQuery,
   type SchoolNotice,
 } from '@/lib/schoolNotices'
-import { loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
+import { dayLabelOf, loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
 import {
   clearSettingChanges,
   describeSettingChange,
@@ -124,7 +124,7 @@ function HomeView() {
     now,
   })
 
-  // 오늘 공부를 하나 끝냈으면 확인 통화 입구를 보여 줍니다. (이 기기 기록으로 봄 — 통화 화면이 서버에 다시 확인, lib/checkCall.ts)
+  // 오늘 끝낸 공부가 있으면 통화 입구를 확인 통화로 보여 줍니다. (이 기기 기록으로 봄 — 통화 화면이 서버에 다시 확인, lib/checkCall.ts)
   const checkCall = localCheckCall(allSessions, cards, todayKey)
 
   // AI 가 바꾼 설정 기록 (#385). [되돌리기] · [확인] 을 누르면 줄어듭니다. (lib/settingChanges.ts)
@@ -169,8 +169,8 @@ function HomeView() {
         onPhoto={() => navigate('/cards/photo')}
       />
 
-      {/* 오늘 공부를 끝냈으면: 코치한테 말로 설명하는 확인 통화 (2026-10-18) */}
-      {checkCall.studied && <CheckCallEntry studied={checkCall.studied} />}
+      {/* AI 통화 입구. 언제든 직접 걸 수 있고, 오늘 공부를 끝냈으면 말로 설명하는 확인 통화로 보여 줍니다. (2026-10-22) */}
+      <CallEntry studied={checkCall.studied} />
 
       {/* ③ 오늘 시간표 · 급식 → ④ 다가오는 일정 (2026-10-18, BE GET /school/today) */}
       <SchoolTodaySection todayKey={todayKey} />
@@ -200,13 +200,16 @@ function HomeView() {
 // 흰 묶음 카드 (토스 형식: 테두리 · 그림자 없이 둥근 흰 바탕)
 const sectionCardClass = 'rounded-3xl bg-white p-5'
 
-interface CheckCallEntryProps {
-  /** 오늘 가장 최근에 끝낸 공부 */
-  studied: StudiedInfo
+interface CallEntryProps {
+  /** 오늘 가장 최근에 끝낸 공부. 없으면 null (그러면 보통 통화 입구) */
+  studied: StudiedInfo | null
 }
 
-/** 확인 통화 입구 한 줄. 누르면 통화 화면(/call)이 문을 서버에 확인하고 전화를 받게 합니다. */
-function CheckCallEntry({ studied }: CheckCallEntryProps) {
+/**
+ * AI 통화 입구 한 줄. 누르면 통화 화면(/call)이 오늘 끝낸 공부를 서버에 확인하고 전화를 받게 합니다.
+ * 공부를 안 했어도 직접 걸 수 있습니다. (2026-10-22 사용자 "수동 통화도 가능하게")
+ */
+function CallEntry({ studied }: CallEntryProps) {
   return (
     <Link
       to="/call"
@@ -215,15 +218,24 @@ function CheckCallEntry({ studied }: CheckCallEntryProps) {
       <span aria-hidden className={rowIconClass}>
         📞
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-bold text-slate-900">
-          코치한테 3분 설명해 볼래?
+      {studied ? (
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-bold text-slate-900">
+            코치한테 3분 설명해 볼래?
+          </span>
+          <span className="block text-sm break-keep text-slate-500">
+            방금 한 {studied.title ? `'${studied.title}'` : '공부'}({studied.minutes}분)을 말로
+            설명하면 코치가 확인해 줘
+          </span>
         </span>
-        <span className="block text-sm break-keep text-slate-500">
-          방금 한 {studied.title ? `'${studied.title}'` : '공부'}({studied.minutes}분)을 말로
-          설명하면 코치가 확인해 줘
+      ) : (
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-bold text-slate-900">AI 선생님한테 전화하기</span>
+          <span className="block text-sm break-keep text-slate-500">
+            3분 동안 오늘 공부 이야기를 나눠 봐
+          </span>
         </span>
-      </span>
+      )}
       <span aria-hidden className="shrink-0 text-slate-400">
         ›
       </span>
@@ -534,7 +546,10 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <section className={sectionCardClass}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-[17px] font-bold text-slate-900">오늘 시간표</h2>
+            {/* 주말에는 서버가 다음 월요일 시간표를 줘서 "월요일 시간표" 로 적습니다. (schoolDay, 2026-10-22) */}
+            <h2 className="text-[17px] font-bold text-slate-900">
+              {dayLabelOf(data.schoolDay, todayKey)} 시간표
+            </h2>
             {/* 어느 반 시간표인지 글자로만 보여 줍니다. 반은 설정에서 바꿉니다. */}
             {schoolClass && !data.isDemo && (
               <p className="shrink-0 text-sm font-medium text-slate-500">
@@ -570,7 +585,8 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
                 ))}
               </ol>
               <p className="mt-2 text-xs break-keep text-slate-500">
-                반 시간표 기준이에요. 선택과목은 다를 수 있어요.
+                {data.schoolDay !== data.date && '주말이라 다음 수업일 시간표를 미리 보여 줘요. '}반
+                시간표 기준이에요. 선택과목은 다를 수 있어요.
                 {data.timetablePartial && ' 지금은 5교시까지만 보여요.'}
               </p>
             </>
@@ -590,7 +606,7 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] font-semibold text-slate-900">
-                      {meal.date === todayKey ? '오늘' : '내일'} {meal.kind}
+                      {dayLabelOf(meal.date, todayKey)} {meal.kind}
                     </span>
                     <span className="line-clamp-2 block text-sm break-keep text-slate-500">
                       {meal.dishes.join(' · ')}

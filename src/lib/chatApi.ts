@@ -5,6 +5,7 @@
  * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "상담 채팅") 전부 로그인이 필요합니다.
  *   열기      POST /chats?grade=2&classNo=1   { careLevel, maxHarshness, card, room?, about? }   (학년 · 반은 있으면 — 오늘 시간표를 대본에)
  *                                         -> 200 { chatId, reply, showHelp, helpLines, quickReplies?, action?, tags? }
+ *             POST /chats?greet=false     (같은 본문) -> 200 { chatId, reply: null, … }  첫 인사 없이 채팅 번호만 (BE 채팅 수정 1)
  *   말 보내기  POST /chats/{chatId}/messages { lines: [{ speaker: 'ai' | 'me', text }], image? }  (이 서버 세션의 대화 전체)
  *                                         -> 200 (위와 같은 모양)
  *   room  · about · image · tags 는 대화방 3개(BE #330, 2026-10-18)부터입니다.
@@ -12,6 +13,8 @@
  *     about — 무엇에 대한 대화인지: 종류 + 이 기기에서 만든 사실 줄 1~8개. 서버가 첫 말을 그 주제로 꺼냅니다.
  *     image — 이번 말에 붙인 사진 한 장(줄인 data URL). 그 한 번의 답에만 쓰고 서버 · 이 기기 어디에도 저장하지 않습니다.
  *     tags  — 후기 · 못 한 카드 대화에서 AI 가 학생 말로 짐작한 이유 값 (0~3개). 화면은 "맞아?" 로 확인만 받습니다.
+ *     otherRooms — 말 보내기에 같이 보내는, 오늘 다른 대화방에서 학생이 한 말 몇 줄 (2026-10-22, lib/coachThread.ts 의 otherRoomLines).
+ *                  서버가 그 한 번의 답에만 대본에 붙이고 저장하지 않습니다. 그래서 다른 방 이야기를 이 방 AI 도 압니다.
  *   sources (BE #342, 2026-10-18) — 📚 과목 쌤 방에서 AI 가 웹 검색을 했을 때 답에 쓴 출처 (0~3개, { title, url }).
  *     서버가 교육 · 공공 · 백과사전 사이트만 남겨 줍니다. 화면은 답 아래에 작은 링크로 보여 줍니다.
  *   정리하기  POST /calls/{chatId}/finish (lib/callReview.ts 의 finishCall). 코치 탭은 날이 바뀌면 지난 세션을 조용히 정리합니다.
@@ -222,10 +225,52 @@ export interface StartChatOptions {
  *   startChat({ room: 'TUTOR', about: { kind: 'QUIZ_WRONG', lines: ['문제: … / 학생 답: 1 / 정답: 0'] } })
  */
 export function startChat(options: StartChatOptions = {}): Promise<ChatReply> {
-  const tone = getCallTone()
+  return postChat(startChatPath(true), startChatBody(options))
+}
+
+/**
+ * 첫 인사 없이 채팅 번호만 받습니다. 학생이 먼저 말을 보낼 때 씁니다. (BE POST /chats?greet=false, 점검 "채팅 수정 1")
+ * 첫 인사를 만드는 데 8초쯤 걸리는데, 학생이 먼저 말하는 화면에서는 그 인사를 쓰지 않고 버렸습니다.
+ * 서버가 옛 버전이라 greet 를 모르고 인사를 같이 줘도, 채팅 번호만 쓰므로 그대로 동작합니다.
+ */
+export async function openChatSession(options: StartChatOptions = {}): Promise<string> {
+  const result = await api<unknown>(startChatPath(false), {
+    method: 'POST',
+    body: JSON.stringify(startChatBody(options)),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  const chatId =
+    typeof result === 'object' && result !== null
+      ? (result as Record<string, unknown>).chatId
+      : undefined
+  // 502: 서버가 이상한 응답을 줬다는 뜻으로 씁니다. (postChat 과 같음)
+  if (typeof chatId !== 'string' || chatId === '') {
+    throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+  }
+  return chatId
+}
+
+/**
+ * 채팅을 여는 주소. 이 기기에 학년 · 반이 있으면 붙이고, greet 가 false 면 greet=false 를 붙입니다.
+ *   startChatPath(true)  -> '/chats?grade=2&classNo=1'
+ *   startChatPath(false) -> '/chats?grade=2&classNo=1&greet=false'
+ */
+function startChatPath(greet: boolean): string {
+  const params = new URLSearchParams()
   const schoolClass = loadSchoolClass()
-  const query = schoolClass ? `?grade=${schoolClass.grade}&classNo=${schoolClass.classNo}` : ''
-  return postChat(`/chats${query}`, {
+  if (schoolClass) {
+    params.set('grade', String(schoolClass.grade))
+    params.set('classNo', String(schoolClass.classNo))
+  }
+  if (!greet) params.set('greet', 'false')
+  const query = params.toString()
+  return query ? `/chats?${query}` : '/chats'
+}
+
+/** 채팅을 열 때 보내는 본문. 요청은 통화를 걸 때와 같습니다. (startChat · openChatSession 이 같이 씀) */
+function startChatBody(options: StartChatOptions): object {
+  const tone = getCallTone()
+  return {
     careLevel: tone.careLevel,
     maxHarshness: tone.maxHarshness,
     card: loadCallCard(),
@@ -234,7 +279,7 @@ export function startChat(options: StartChatOptions = {}): Promise<ChatReply> {
     // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
     ...(options.room ? { room: options.room } : {}),
     ...(options.about ? { about: options.about } : {}),
-  })
+  }
 }
 
 /**
@@ -245,9 +290,12 @@ export function sendChatMessage(
   chatId: string,
   lines: CallLine[],
   image: string | null = null,
+  otherRooms: string[] = [],
 ): Promise<ChatReply> {
   return postChat(`/chats/${encodeURIComponent(chatId)}/messages`, {
     lines,
     ...(image ? { image } : {}),
+    // 오늘 다른 대화방에서 한 말 (없으면 보내지 않음)
+    ...(otherRooms.length > 0 ? { otherRooms } : {}),
   })
 }
