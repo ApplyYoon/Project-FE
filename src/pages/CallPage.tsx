@@ -61,6 +61,17 @@ interface CallRingViewProps {
   studied: StudiedInfo | null
 }
 
+/**
+ * 확인 통화의 인사말. 카드 제목이 있으면 넣습니다.
+ *   { title: '곱의 미분법' } -> "'곱의 미분법' 끝냈구나! 나한테 설명해 줄래?"
+ *   { title: null }          -> '공부 끝냈구나! 방금 한 거 나한테 설명해 줄래?'
+ */
+function reviewGreeting(studied: StudiedInfo): string {
+  return studied.title
+    ? `'${studied.title}' 끝냈구나! 나한테 설명해 줄래?`
+    : '공부 끝냈구나! 방금 한 거 나한테 설명해 줄래?'
+}
+
 /** 전화 받기 화면 */
 function CallRingView({ studied }: CallRingViewProps) {
   const navigate = useNavigate()
@@ -76,7 +87,11 @@ function CallRingView({ studied }: CallRingViewProps) {
   const careLevel = getTodayCareLevel()
   const theme = careThemes[careLevel]
   // useState 안에서 한 번만 고릅니다. (다시 그려질 때마다 인사말이 바뀌지 않게)
-  const [greeting] = useState(() => pickGreeting(careLevel, getTodayMaxHarshness()))
+  // 방금 끝낸 공부가 있으면 복습용 인사말, 없을 때만 관리 단계별 공용 인사말을 씁니다. (통화 수정 6)
+  // 점검에서 공부를 막 끝낸 학생의 확인 통화 화면에 "타이머 켤 시간이야" 가 크게 나왔습니다.
+  const [greeting] = useState(() =>
+    studied ? reviewGreeting(studied) : pickGreeting(careLevel, getTodayMaxHarshness()),
+  )
 
   async function handleAccept() {
     if (isRequesting) return
