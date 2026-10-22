@@ -1,10 +1,9 @@
 import { NotificationsBell } from '@/components/ui/NotificationsBell'
 import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
-import { CALL_LOCKED_TEXT, localCheckCall } from '@/lib/checkCall'
+import { localCheckCall } from '@/lib/checkCall'
 import { CALL_ENTRY, CHAT_ROOMS, chatRoomPath, loadLastSeen } from '@/lib/chatRooms'
 import { lastTalkBubble, loadCoachThread, type ThreadBubble } from '@/lib/coachThread'
-import { cn } from '@/lib/cn'
 import { loadAllSessions } from '@/lib/dailyRecords'
 import { getTodayKey, toDayKey } from '@/lib/date'
 import { useState } from 'react'
@@ -14,8 +13,9 @@ import { Link } from 'react-router-dom'
  * 채팅 탭("/chat") — 대화방 목록입니다. (2026-10-18 저녁, #582)
  * 사용자 결정: "맨 위 📞 매일 통화 카드 + 채팅방 3개 📅 계획 · 💬 상담 · 📚 과목 쌤", "채팅 탭은 하나 있어야 됨 무조건"
  *
- * - 맨 위 📞 매일 통화: 오늘 공부를 하나 끝내면 열리는 확인 통화(#584). 누르면 통화 화면(/call)이 문을 다시 확인합니다.
- *   여기서는 이 기기의 기록으로만 열렸는지 미리 보여 줍니다. (서버에 묻지 않아서 열기만 해서는 아무 요청도 안 감)
+ * - 맨 위 📞 매일 통화: 언제든 걸 수 있습니다. 오늘 끝낸 공부가 있으면 그걸 설명하는 확인 통화(#584)라고 알려 줍니다.
+ *   여기서는 이 기기의 기록으로만 미리 보여 줍니다. (서버에 묻지 않아서 열기만 해서는 아무 요청도 안 감)
+ *   "잠김" 표시는 2026-10-22 에 통화의 공부 조건과 함께 뺐습니다.
  * - 방마다 마지막 말 한 줄과, 마지막으로 열어 본 뒤에 AI 가 한 말이 있으면 파란 점을 보여 줍니다.
  * - 방 이름 · 아이콘 · 설명은 lib/chatRooms.ts 의 CHAT_ROOMS 한 곳에서 읽습니다.
  */
@@ -61,19 +61,16 @@ export function ChatListPage() {
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
               <span className="text-[17px] font-bold text-slate-900">{CALL_ENTRY.name}</span>
-              <span
-                className={cn(
-                  'rounded-full px-2 py-0.5 text-xs font-semibold',
-                  call.open ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500',
-                )}
-              >
-                {call.open ? '열림' : '잠김'}
-              </span>
+              {call.studied && (
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                  확인 통화
+                </span>
+              )}
             </span>
             <span className="block text-sm break-keep text-slate-500">
-              {call.open && call.studied
+              {call.studied
                 ? `방금 한 ${call.studied.title ? `'${call.studied.title}'` : '공부'}(${call.studied.minutes}분)를 코치한테 3분 설명해 봐`
-                : CALL_LOCKED_TEXT}
+                : 'AI 선생님이랑 3분 동안 오늘 이야기를 나눠 봐'}
             </span>
           </span>
           <span aria-hidden className="text-slate-400">

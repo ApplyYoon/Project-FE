@@ -21,6 +21,7 @@ import {
   type ChatSource,
 } from '@/lib/chatApi'
 import {
+  CHAT_ROOMS,
   cleanAboutLines,
   isChatAboutKind,
   threadStorageKey,
@@ -266,6 +267,40 @@ export function saveCoachThread(thread: CoachThread, now: number, room: ChatRoom
 /** 대화방 목록에 보여 줄 마지막 말풍선 (구분선 빼고). 없으면 null */
 export function lastTalkBubble(thread: CoachThread): ThreadBubble | null {
   return thread.bubbles.findLast((bubble) => !bubble.isDivider) ?? null
+}
+
+// 다른 방 이야기로 보낼 줄 수 · 한 줄 글자 수 · 방마다 줄 수 (BE OtherRoomTalk 가 6줄 · 80자로 씀)
+const OTHER_ROOM_MAX_LINES = 6
+const OTHER_ROOM_LINE_LENGTH = 80
+const OTHER_ROOM_LINES_PER_ROOM = 3
+
+/**
+ * 학생이 오늘(새벽 4시 기준) 다른 대화방에서 한 말 몇 줄입니다. (2026-10-22 점검 "채팅 방끼리 학생 정보를 공유하지 않는다")
+ * 방마다 대화는 이 기기에만 있어서, 서버에 같이 보내야 이 방의 답 · 계획이 그 이야기를 압니다.
+ * 방마다 마지막 3줄, 모두 합쳐 최근 6줄까지, 한 줄은 80자까지. 구분선 · 빈 말은 뺍니다. 보낼 때는 시간 순서입니다.
+ *
+ *   상담 방에 오늘 "미적분 극한이 헷갈려" 를 썼고 지금 계획 방이면 -> ['상담: 미적분 극한이 헷갈려']
+ */
+export function otherRoomLines(ownerId: string, room: ChatRoomId, todayKey: string): string[] {
+  const lines: { at: number; text: string }[] = []
+  for (const other of CHAT_ROOMS) {
+    if (other.id === room) continue
+    const mine = loadCoachThread(ownerId, other.id).bubbles.filter(
+      (bubble) =>
+        bubble.speaker === 'me' &&
+        !bubble.isDivider &&
+        bubble.text.trim() !== '' &&
+        toDayKey(bubble.at) === todayKey,
+    )
+    for (const bubble of mine.slice(-OTHER_ROOM_LINES_PER_ROOM)) {
+      const text = bubble.text.replace(/\s+/g, ' ').trim().slice(0, OTHER_ROOM_LINE_LENGTH)
+      lines.push({ at: bubble.at, text: `${other.name}: ${text}` })
+    }
+  }
+  return lines
+    .sort((a, b) => a.at - b.at)
+    .slice(-OTHER_ROOM_MAX_LINES)
+    .map((line) => line.text)
 }
 
 /** 다음 말풍선 번호 */
