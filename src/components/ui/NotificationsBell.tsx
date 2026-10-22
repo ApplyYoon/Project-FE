@@ -36,7 +36,7 @@ export function NotificationsBell() {
     <Link
       to="/notifications"
       aria-label={label}
-      className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+      className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 active:scale-95"
     >
       <BellIcon />
       {unreadCount > 0 && (
