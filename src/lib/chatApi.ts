@@ -13,6 +13,8 @@
  *     about — 무엇에 대한 대화인지: 종류 + 이 기기에서 만든 사실 줄 1~8개. 서버가 첫 말을 그 주제로 꺼냅니다.
  *     image — 이번 말에 붙인 사진 한 장(줄인 data URL). 그 한 번의 답에만 쓰고 서버 · 이 기기 어디에도 저장하지 않습니다.
  *     tags  — 후기 · 못 한 카드 대화에서 AI 가 학생 말로 짐작한 이유 값 (0~3개). 화면은 "맞아?" 로 확인만 받습니다.
+ *     otherRooms — 말 보내기에 같이 보내는, 오늘 다른 대화방에서 학생이 한 말 몇 줄 (2026-10-22, lib/coachThread.ts 의 otherRoomLines).
+ *                  서버가 그 한 번의 답에만 대본에 붙이고 저장하지 않습니다. 그래서 다른 방 이야기를 이 방 AI 도 압니다.
  *   sources (BE #342, 2026-10-18) — 📚 과목 쌤 방에서 AI 가 웹 검색을 했을 때 답에 쓴 출처 (0~3개, { title, url }).
  *     서버가 교육 · 공공 · 백과사전 사이트만 남겨 줍니다. 화면은 답 아래에 작은 링크로 보여 줍니다.
  *   정리하기  POST /calls/{chatId}/finish (lib/callReview.ts 의 finishCall). 코치 탭은 날이 바뀌면 지난 세션을 조용히 정리합니다.
@@ -288,9 +290,12 @@ export function sendChatMessage(
   chatId: string,
   lines: CallLine[],
   image: string | null = null,
+  otherRooms: string[] = [],
 ): Promise<ChatReply> {
   return postChat(`/chats/${encodeURIComponent(chatId)}/messages`, {
     lines,
     ...(image ? { image } : {}),
+    // 오늘 다른 대화방에서 한 말 (없으면 보내지 않음)
+    ...(otherRooms.length > 0 ? { otherRooms } : {}),
   })
 }
