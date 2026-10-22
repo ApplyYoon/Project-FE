@@ -1,7 +1,8 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
-import { ProgressBar } from '@/components/ui/ProgressBar'
+import { OnboardingStepper } from '@/components/ui/OnboardingStepper'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { cn } from '@/lib/cn'
 import { getCareLimits, setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
@@ -95,9 +96,10 @@ function ChoiceCard({ name, label, isSelected, onSelect }: ChoiceCardProps) {
     // border-2: 고른 카드의 테두리를 굵게 보이려고 처음부터 2px 로 둡니다. (1px 였다가 2px 가 되면 카드가 움직여 보입니다)
     <label
       className={cn(
-        'flex h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 font-medium',
+        'flex h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-4 text-[15px] font-medium',
+        // 고른 칸은 연한 brand 바탕 + 굵은 글자. brand 로 꽉 채우는 것은 [다음] 버튼만입니다. (2차 규칙 1)
         isSelected
-          ? 'border-brand bg-brand-light text-brand'
+          ? 'border-brand bg-brand-light text-brand font-semibold'
           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
       )}
     >
@@ -204,8 +206,6 @@ export function OnboardingPage() {
   const isLastStep = stepIndex === steps.length - 1
   // 답이 있어야(선택 질문 제외) 넘어갑니다.
   const canGoNext = isAnswerValid(step, answers[step.key] ?? '')
-  // 현재 몇 번째 질문까지 왔는지를 0~100 으로 바꿉니다. (예: 10개 중 3번째 = 30)
-  const progress = ((stepIndex + 1) / steps.length) * 100
 
   function handleChangeAnswer(key: string, nextValue: string) {
     setAnswers((prev) => ({ ...prev, [key]: nextValue }))
@@ -255,30 +255,29 @@ export function OnboardingPage() {
       headerAction={<OnboardingExitButton />}
     >
       <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-brand font-semibold">{step.group}</span>
-            <span className="text-slate-500">
-              {stepIndex + 1} / {steps.length}
-            </span>
-          </div>
-          <ProgressBar value={progress} />
-        </div>
+        {/* 온보딩 전체에서 어디쯤인지 (앱 소개 → 학년 → 심리검사 → 관리 설정 → 결과 중 2번째) */}
+        <OnboardingStepper current={2} />
 
         <div>
+          {/* 이 묶음 질문이 둘 이상일 때만 "1 / 2" 를 보여 줍니다. */}
+          {steps.length > 1 && (
+            <p className="mb-2 text-[13px] text-slate-500 tabular-nums">
+              {step.group} · {stepIndex + 1} / {steps.length}
+            </p>
+          )}
           {/* tabIndex -1: 코드로 포커스를 줄 수 있게 합니다. outline-none: 제목에 포커스 테두리는 그리지 않습니다. */}
           <h1
             ref={titleRef}
             tabIndex={-1}
-            className="text-2xl font-bold tracking-tight break-keep outline-none sm:text-3xl"
+            className="text-[28px] leading-tight font-bold tracking-tight break-keep outline-none"
           >
             {step.title}
             {step.optional && (
-              <span className="ml-2 align-middle text-sm font-medium text-slate-400">(선택)</span>
+              <span className="ml-2 align-middle text-sm font-medium text-slate-500">(선택)</span>
             )}
           </h1>
           {step.description && (
-            <p className="mt-2 text-sm break-keep text-slate-600 sm:text-base">
+            <p className="mt-2 max-w-prose text-[15px] break-keep text-slate-600">
               {step.description}
             </p>
           )}
@@ -287,24 +286,23 @@ export function OnboardingPage() {
         {/* key: 질문이 바뀔 때 입력칸을 새로 만들어서 이전 질문의 상태가 섞이지 않게 합니다. */}
         <StepInput key={step.key} step={step} answers={answers} onChange={handleChangeAnswer} />
 
-        <div className="flex gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            className="w-1/3"
-            disabled={isFirstStep}
-            onClick={handlePrev}
-          >
-            이전
-          </Button>
+        <p className="text-center text-[13px] break-keep text-slate-500">
+          온보딩은 3분이면 끝나요.
+        </p>
+
+        {/* 1순위 [다음] 은 화면 아래 엄지 자리에 폭 전체로, [이전] 은 낮은 버튼으로 둡니다. (피츠의 법칙) */}
+        <StickyActionBar className="sm:flex-row-reverse sm:justify-end sm:gap-3">
           {/* 처음 설문에서는 답이 없으면(선택 질문 제외) 눌리지 않습니다. */}
-          <Button type="submit" size="lg" className="flex-1" disabled={!canGoNext}>
+          <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={!canGoNext}>
             다음
           </Button>
-        </div>
-
-        <p className="text-center text-sm break-keep text-slate-500">온보딩은 3분이면 끝나요.</p>
+          {/* 첫 질문에서는 돌아갈 곳이 없어서 [이전] 을 보여 주지 않습니다. */}
+          {!isFirstStep && (
+            <Button type="button" variant="ghost" className="w-full sm:w-auto" onClick={handlePrev}>
+              이전
+            </Button>
+          )}
+        </StickyActionBar>
       </form>
     </PlainLayout>
   )

@@ -280,8 +280,8 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">설정</h1>
-        <p className="mt-2 text-slate-600">꼭 필요한 네 가지만 모았어요.</p>
+        <h1 className="text-[28px] leading-snug font-bold tracking-tight sm:text-3xl">설정</h1>
+        <p className="mt-1 text-[15px] text-slate-500">계정 · 코치 · 알림을 여기서 바꿔요.</p>
       </div>
 
       {/* PC(lg)에서는 두 칸으로 나눕니다. 모바일은 한 줄로 쌓습니다. */}
@@ -342,24 +342,17 @@ export function SettingsPage() {
             <SchoolTrackSettings schoolCode={profile.schoolCode} className="mt-5" />
           )}
 
-          {/* 내 정보 고치기는 내 계정 화면에 있습니다. (pages/AccountPage.tsx) 탈퇴는 아래에 바로 둡니다. */}
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <Link
-              to="/settings/account"
-              className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 sm:flex-1"
-            >
-              내 정보 고치기
-            </Link>
-            <Button
-              variant="secondary"
-              className="h-11 w-full sm:flex-1"
-              onClick={() => setIsLogoutOpen(true)}
-            >
-              로그아웃
-            </Button>
-          </div>
-          {/* 탈퇴(테스트 계정은 처음부터 다시 하기). 확인 창 한 번이고, 붙잡는 말 없이 지워지는 것만 알려 줍니다. */}
-          <LeaveAccountSection isTestUser={user?.id === testUser.id} className="mt-5" />
+          {/* 내 정보 고치기는 내 계정 화면에 있습니다. (pages/AccountPage.tsx)
+              앱 설정 화면처럼 "다음 화면으로 가는 줄" 모양입니다. 로그아웃 · 탈퇴는 화면 맨 아래에 따로 둡니다. (2026-10-22) */}
+          <Link
+            to="/settings/account"
+            className="mt-5 flex min-h-12 items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[15px] font-medium text-slate-900"
+          >
+            내 정보 고치기
+            <span aria-hidden className="text-xl text-slate-400">
+              ›
+            </span>
+          </Link>
         </Card>
 
         {/* ② 코치 세기: 관리 강도 한도 · 독설 수위 · 잠금 · 독촉 전화를 약 · 보통 · 강 하나로 (lib/coachStrength.ts) */}
@@ -376,11 +369,12 @@ export function SettingsPage() {
                 role="radio"
                 aria-checked={strength === preset.strength}
                 onClick={() => handlePickStrength(preset)}
+                // 고른 것은 연한 brand 바탕 + 테두리 + 굵게. 꽉 채운 brand 는 "행동 버튼" 에만 씁니다. (2차 규칙 1)
                 className={cn(
-                  'h-12 cursor-pointer rounded-xl border text-base font-semibold transition-colors',
+                  'h-12 cursor-pointer rounded-xl border text-base transition-colors',
                   strength === preset.strength
-                    ? 'border-brand bg-brand text-white'
-                    : 'hover:border-brand border-slate-200 bg-white text-slate-700',
+                    ? 'border-brand bg-brand-light text-brand ring-brand font-bold ring-1'
+                    : 'hover:border-brand border-slate-200 bg-white font-medium text-slate-700',
                 )}
               >
                 {preset.label}
@@ -435,37 +429,40 @@ export function SettingsPage() {
                   />
                 )}
               </div>
-              <label className="flex cursor-pointer items-center justify-between gap-3">
-                <span className="flex flex-col">
-                  <span className="text-sm font-semibold text-slate-900">집중 모드 잠금 허용</span>
-                  <span className="text-sm text-slate-500">풀려면 10초 기다리고 이유를 적어요</span>
+              {/* 켜고 끄는 칸은 스위치 모양(index.css 의 .switch). 줄 전체가 label 이라 어디를 눌러도 바뀝니다. (min-h-12 = 48px) */}
+              <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3">
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[15px] font-semibold text-slate-900">
+                    집중 모드 잠금 허용
+                  </span>
+                  <span className="text-[13px] break-keep text-slate-500">
+                    풀려면 10초 기다리고 이유를 적어요
+                  </span>
                 </span>
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-                  <input
-                    type="checkbox"
-                    checked={limits.allowFocusMode}
-                    onChange={(event) => setLimits(setAllowFocusMode(event.target.checked))}
-                    aria-label="집중 모드 잠금 허용"
-                    className="accent-brand h-5 w-5 cursor-pointer"
-                  />
-                </span>
+                <input
+                  type="checkbox"
+                  checked={limits.allowFocusMode}
+                  onChange={(event) => setLimits(setAllowFocusMode(event.target.checked))}
+                  aria-label="집중 모드 잠금 허용"
+                  className="switch shrink-0"
+                />
               </label>
-              <label className="flex cursor-pointer items-center justify-between gap-3">
-                <span className="flex flex-col">
-                  <span className="text-sm font-semibold text-slate-900">
+              <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3">
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[15px] font-semibold text-slate-900">
                     정해진 시간 외 독촉 전화
                   </span>
-                  <span className="text-sm text-slate-500">허용해도 하루 1번까지만</span>
+                  <span className="text-[13px] break-keep text-slate-500">
+                    허용해도 하루 1번까지만
+                  </span>
                 </span>
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-                  <input
-                    type="checkbox"
-                    checked={limits.allowOffHoursCall}
-                    onChange={(event) => setLimits(setAllowOffHoursCall(event.target.checked))}
-                    aria-label="정해진 시간 외 독촉 전화"
-                    className="accent-brand h-5 w-5 cursor-pointer"
-                  />
-                </span>
+                <input
+                  type="checkbox"
+                  checked={limits.allowOffHoursCall}
+                  onChange={(event) => setLimits(setAllowOffHoursCall(event.target.checked))}
+                  aria-label="정해진 시간 외 독촉 전화"
+                  className="switch shrink-0"
+                />
               </label>
             </div>
           </details>
@@ -475,33 +472,33 @@ export function SettingsPage() {
         <Card title="알림">
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-slate-900">코치 알림</span>
-              <span className="text-sm break-keep text-slate-500">
-                코치가 먼저 말을 걸어요. 하루 메시지 수(최대 4개)만큼만, 수업 시간 · 연락 금지
-                시간에는 보내지 않아요. (휴대폰 앱에서)
+              <span className="text-[15px] font-semibold text-slate-900">코치 알림</span>
+              <span className="text-[13px] break-keep text-slate-500">
+                하루 메시지 수만큼만 보내고, 수업 · 연락 금지 시간엔 보내지 않아요. (휴대폰 앱)
               </span>
-              {NUDGE_KINDS.map((kind) => (
-                <label
-                  key={kind}
-                  className="flex cursor-pointer items-center justify-between gap-3"
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="text-sm text-slate-900">{NUDGE_LABELS[kind].title}</span>
-                    <span className="text-xs break-keep text-slate-500">
-                      {NUDGE_LABELS[kind].description}
+              {/* 앱 설정처럼 줄마다 스위치 하나. 줄 사이는 얇은 선으로 나눕니다. (근접성) */}
+              <div className="mt-1 flex flex-col divide-y divide-slate-100">
+                {NUDGE_KINDS.map((kind) => (
+                  <label
+                    key={kind}
+                    className="flex min-h-14 cursor-pointer items-center justify-between gap-3 py-2"
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-[15px] text-slate-900">{NUDGE_LABELS[kind].title}</span>
+                      <span className="text-[13px] break-keep text-slate-500">
+                        {NUDGE_LABELS[kind].description}
+                      </span>
                     </span>
-                  </span>
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center">
                     <input
                       type="checkbox"
                       checked={nudgeSettings[kind]}
                       onChange={(event) => handleToggleNudge(kind, event.target.checked)}
                       aria-label={`코치 알림 — ${NUDGE_LABELS[kind].title}`}
-                      className="accent-brand h-5 w-5 cursor-pointer"
+                      className="switch shrink-0"
                     />
-                  </span>
-                </label>
-              ))}
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -577,18 +574,16 @@ export function SettingsPage() {
 
         {/* ④ 내 데이터: 모든 기록 지우기 하나만 */}
         <Card title="내 데이터">
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-slate-500">
+          <div className="flex flex-col gap-3">
+            <p className="text-[13px] break-keep text-slate-500">
               이 기기와 서버의 공부 기록 · 체크인 · 코치와의 대화를 모두 지워요. 지우면 되돌릴 수
-              없어요.
-            </p>
-            <p className="text-sm break-keep text-slate-500">
-              계정과 설정은 남겨요. 계정까지 지우고 처음부터 시작하려면 위의{' '}
+              없어요. 계정과 설정은 남겨요. 계정까지 지우려면 맨 아래{' '}
               {user?.id === testUser.id ? '[처음부터 다시 하기]' : '[탈퇴하기]'} 를 눌러 주세요.
             </p>
+            {/* 되돌릴 수 없는 일이라 꽉 찬 빨간 버튼 대신 빨간 글자 + 선으로 둡니다. 누르면 확인창이 한 번 더 뜹니다. (2차 규칙 3) */}
             <Button
-              variant="danger"
-              className="h-11 w-full sm:w-auto"
+              variant="outline"
+              className="w-full border-red-200 text-red-700 hover:bg-red-50 sm:w-auto"
               onClick={() => setPendingKind('all')}
             >
               모든 기록 지우기
@@ -611,6 +606,22 @@ export function SettingsPage() {
         {/* 발표 시연용 가상 데이터 (#418). 주소 끝에 ?demo=on 을 붙였을 때만 보입니다 */}
         <DemoDataSection />
       </div>
+
+      {/* 로그아웃 · 탈퇴는 앱 설정 화면 관례대로 맨 아래에 따로 둡니다. 자주 누르는 칸과 멀리 두어 실수로 누르지 않게 합니다. (2026-10-22, 2차 규칙 3)
+          로그아웃은 확인창, 탈퇴는 확인창 한 번(붙잡는 말 없이)입니다. */}
+      <Card className="flex flex-col gap-4">
+        <Button
+          variant="ghost"
+          className="w-full text-red-700 hover:bg-red-50"
+          onClick={() => setIsLogoutOpen(true)}
+        >
+          로그아웃
+        </Button>
+        <LeaveAccountSection
+          isTestUser={user?.id === testUser.id}
+          className="border-t border-slate-100 pt-4"
+        />
+      </Card>
 
       {/* 관리 강도 한도를 센 단계로 올리기 전에 한 번 더 물어봅니다. (올린 값은 내일부터 적용됩니다) */}
       <Modal
@@ -696,7 +707,7 @@ export function SettingsPage() {
           이 기기에 저장된 계획과 기록은 지워지지 않아요. 다시 로그인하면 이어서 볼 수 있어요.
         </p>
         <p className="mt-2 text-sm break-keep text-slate-500">
-          다른 사람과 같이 쓰는 기기라면, 아래 &quot;내 데이터&quot; 에서 기록을 먼저 지워 주세요.
+          다른 사람과 같이 쓰는 기기라면, 위 &quot;내 데이터&quot; 에서 기록을 먼저 지워 주세요.
         </p>
         <div className="mt-5 flex gap-3">
           <Button
@@ -784,8 +795,8 @@ function SettingsFromTextSection({ current, onApply }: SettingsFromTextSectionPr
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3">
-      <h4 className="text-sm font-semibold text-slate-900">말로 바꾸기</h4>
+    <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
+      <h4 className="text-[15px] font-semibold text-slate-900">말로 바꾸기</h4>
       <p className="text-sm break-keep text-slate-600">
         예) &quot;아침엔 알림 꺼 줘&quot; · &quot;전화는 밤 9시에 해 줘&quot;. 전화 시간 · 메시지 수
         · 연락 금지 시간만 바꿀 수 있어요.
@@ -808,9 +819,12 @@ function SettingsFromTextSection({ current, onApply }: SettingsFromTextSectionPr
               className="h-10 bg-white text-base"
             />
           </div>
+          {/* 설정 화면에 꽉 찬 버튼이 몰리지 않게 회색 작은 버튼으로 둡니다. (입력칸과 같은 40px 높이) */}
           <Button
             type="submit"
-            className="shrink-0"
+            size="sm"
+            variant="secondary"
+            className="shrink-0 bg-white hover:bg-slate-100"
             disabled={text.trim() === '' || mutation.isPending}
           >
             변경안 보기
@@ -1078,8 +1092,8 @@ function StudyFocusField({ className }: { className?: string }) {
 
   return (
     <div className={className}>
-      <p className="text-sm font-semibold text-slate-900">내가 준비하는 것</p>
-      <p className="mt-1 text-sm break-keep text-slate-500">
+      <p className="text-[15px] font-semibold text-slate-900">내가 준비하는 것</p>
+      <p className="mt-1 text-[13px] break-keep text-slate-500">
         코치가 오늘 계획을 짤 때 이걸 보고 맞춰요.
       </p>
       <div className="mt-2 flex flex-wrap gap-2">

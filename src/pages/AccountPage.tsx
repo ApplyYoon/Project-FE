@@ -38,15 +38,18 @@ export function AccountPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        {/* h-11 = 44px: 손가락으로 누르기 쉬운 높이 */}
+        {/* h-11 = 44px: 손가락으로 누르기 쉬운 높이.
+            이 화면은 헤더에 ‹ 뒤로를 두지 않고 이 링크로 설정에 돌아갑니다. (2026-10-22) */}
         <Link
           to="/settings"
           className="text-brand mb-2 inline-flex h-11 items-center gap-1 text-sm font-medium hover:underline"
         >
           <span aria-hidden>‹</span> 설정
         </Link>
-        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">내 계정</h1>
-        <p className="mt-2 break-keep text-slate-600">내 정보를 고치고, 탈퇴할 수 있어요.</p>
+        <h1 className="text-[28px] leading-snug font-bold tracking-tight sm:text-3xl">내 계정</h1>
+        <p className="mt-1 text-[15px] break-keep text-slate-500">
+          내 정보를 고치고, 탈퇴할 수 있어요.
+        </p>
       </div>
 
       {isTestUser ? (
@@ -75,8 +78,8 @@ function AccountSkeleton() {
     // role="status": "받아오는 중" 이라는 것을 스크린리더에도 알려 줍니다. (회색 상자는 읽지 않습니다)
     <div role="status" className="flex flex-col gap-6">
       <span className="sr-only">내 정보를 받아오는 중이에요</span>
-      <Skeleton className="h-96 w-full rounded-xl" />
-      <Skeleton className="h-32 w-full rounded-xl" />
+      <Skeleton className="h-96 w-full rounded-2xl" />
+      <Skeleton className="h-32 w-full rounded-2xl" />
     </div>
   )
 }
@@ -211,28 +214,26 @@ function ProfileCard({ profile }: ProfileCardProps) {
           }}
         />
 
-        {/* 선택 동의는 언제든 켜고 끌 수 있어야 합니다. min-h-12: 줄 전체가 누르는 영역입니다. */}
+        {/* 선택 동의는 언제든 켜고 끌 수 있어야 합니다. min-h-12: 줄 전체가 누르는 영역입니다. 스위치 모양은 index.css 의 .switch */}
         <label className="flex min-h-12 cursor-pointer items-center justify-between gap-3 border-t border-slate-200 pt-4">
-          <span className="flex flex-col">
-            <span className="text-sm font-semibold text-slate-900">
+          <span className="flex min-w-0 flex-col">
+            <span className="text-[15px] font-semibold text-slate-900">
               일기·감정 기록을 분석에 쓰기 (선택)
             </span>
-            <span className="text-sm break-keep text-slate-500">
+            <span className="text-[13px] break-keep text-slate-500">
               끄면 일기와 기분은 나만 보고, 분석에는 쓰지 않아요.
             </span>
           </span>
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center">
-            <input
-              type="checkbox"
-              checked={diaryAnalysis}
-              onChange={(event) => {
-                setDiaryAnalysis(event.target.checked)
-                setIsSaved(false)
-              }}
-              aria-label="일기·감정 기록을 분석에 쓰기"
-              className="accent-brand h-5 w-5 cursor-pointer"
-            />
-          </span>
+          <input
+            type="checkbox"
+            checked={diaryAnalysis}
+            onChange={(event) => {
+              setDiaryAnalysis(event.target.checked)
+              setIsSaved(false)
+            }}
+            aria-label="일기·감정 기록을 분석에 쓰기"
+            className="switch shrink-0"
+          />
         </label>
 
         {/* role="alert": 안내가 뜨면 스크린리더가 바로 읽어 줍니다. */}

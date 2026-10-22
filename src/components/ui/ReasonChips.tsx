@@ -15,7 +15,7 @@ interface ReasonChipsProps<K extends string> {
 /**
  * 이유를 **여러 개** 고르는 칩 묶음입니다. 고른 칩은 색이 들어옵니다. (2026-10-18 "이유 복수 선택")
  * 일시정지 이유 · 다 못 한 이유 · 잘 된 이유 · 카드 실패 원인에서 같이 씁니다.
- * 모바일에서도 두 줄로 나란히 놓이고, 누르는 곳은 40px(h-10) 입니다.
+ * 모바일에서도 2열로 나란히 놓이고, 누르는 곳은 44px(min-h-11) 입니다. 글이 길면 두 줄로 늘어납니다.
  *
  *   <ReasonChips options={CARD_FAIL_CAUSES} selected={causes} onToggle={handleToggle} label="못 한 원인" />
  */
@@ -37,9 +37,9 @@ export function ReasonChips<K extends string>({
             aria-pressed={isOn}
             onClick={() => onToggle(item.key)}
             className={cn(
-              'h-10 cursor-pointer rounded-lg border px-2 text-sm break-keep',
+              'min-h-11 cursor-pointer rounded-xl border px-2 py-1 text-[15px] break-keep transition active:scale-[0.98]',
               isOn
-                ? 'border-brand bg-brand/10 text-brand font-semibold'
+                ? 'border-brand bg-brand-light text-brand ring-brand font-semibold ring-1'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
             )}
           >

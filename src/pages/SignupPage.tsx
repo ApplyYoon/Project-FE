@@ -1,4 +1,5 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -114,7 +115,7 @@ interface SignupStepsProps {
 /** "1 계정 정보 / 2 학교·나이 / 3 약관 동의" 처럼 지금 어느 단계인지 보여주는 막대입니다. */
 function SignupSteps({ current }: SignupStepsProps) {
   return (
-    <ol className="grid grid-cols-3 gap-2 text-xs sm:text-sm">
+    <ol className="grid grid-cols-3 gap-1 text-[13px]">
       {signupSteps.map((step, index) => {
         const number = index + 1
         // done: 지나온 단계 / current: 지금 단계 / next: 아직 안 온 단계
@@ -127,13 +128,14 @@ function SignupSteps({ current }: SignupStepsProps) {
             className="flex flex-col gap-2"
           >
             <span
-              className={cn('h-1 rounded-full', state === 'next' ? 'bg-slate-200' : 'bg-brand')}
+              // 온보딩 단계 막대(OnboardingStepper)와 같은 굵기 · 색으로 맞춥니다.
+              className={cn('h-1.5 rounded-full', state === 'next' ? 'bg-slate-200' : 'bg-brand')}
             />
             <span
               className={cn(
                 'break-keep',
                 state === 'current' && 'font-bold text-slate-900',
-                state === 'done' && 'text-brand font-semibold',
+                state === 'done' && 'text-slate-700',
                 state === 'next' && 'text-slate-500',
               )}
             >
@@ -338,13 +340,15 @@ export function SignupPage() {
         <SignupSteps current={step} />
 
         <div>
-          <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep">
             {signupSteps[step - 1].title}
           </h1>
           {step !== 1 ? (
-            <p className="mt-2 break-keep text-slate-600">{signupSteps[step - 1].description}</p>
+            <p className="mt-2 max-w-prose text-[15px] break-keep text-slate-600">
+              {signupSteps[step - 1].description}
+            </p>
           ) : googleSignup !== null ? (
-            <p className="mt-2 break-keep text-slate-600">
+            <p className="mt-2 text-[15px] break-keep text-slate-600">
               구글 계정으로 가입해요. 이름은 고칠 수 있어요.{' '}
               {/* type="button": form 안의 버튼이라, 적지 않으면 눌렀을 때 가입 제출이 돼 버립니다. */}
               <button
@@ -358,7 +362,7 @@ export function SignupPage() {
           ) : (
             // 로그인한 채로 온 사람에게는 지금 로그인 상태라는 것과 나가는 길(로그아웃)을 같이 보여줍니다.
             // 안 그러면 "로그인도 안 했는데 왜 가입 화면이지?" 하고 헷갈립니다. (예전 테스트 로그인이 남아 있는 경우)
-            <p className="mt-2 break-keep text-slate-600">
+            <p className="mt-2 text-[15px] break-keep text-slate-600">
               {isTestUser
                 ? '테스트 계정으로 로그인했어요. 적은 정보는 이 브라우저에만 저장돼요.'
                 : '이미 로그인한 상태예요.'}{' '}
@@ -392,7 +396,7 @@ export function SignupPage() {
                 onBlur={() => setIsNameTouched(true)}
                 className="h-12 text-base"
               />
-              <p className="text-sm text-slate-500">
+              <p className="text-[13px] text-slate-500">
                 실제 이름을 적어 주세요. ({NAME_MIN_LENGTH}~{NAME_MAX_LENGTH}자)
               </p>
             </div>
@@ -413,7 +417,7 @@ export function SignupPage() {
                 onBlur={() => setIsNicknameTouched(true)}
                 className="h-12 text-base"
               />
-              <p className="text-sm text-slate-500">
+              <p className="text-[13px] text-slate-500">
                 앱에서 부르는 이름이에요. ({NICKNAME_MIN_LENGTH}~{NICKNAME_MAX_LENGTH}자)
               </p>
             </div>
@@ -465,8 +469,8 @@ export function SignupPage() {
                   className="accent-brand h-5 w-5 shrink-0"
                 />
                 <span className="break-keep">
-                  <span className="text-brand font-semibold">[필수]</span> 고등학생이에요 (만 14세
-                  이상)
+                  <span className="font-semibold text-slate-900">[필수]</span> 고등학생이에요 (만
+                  14세 이상)
                 </span>
               </label>
               <p className="text-sm break-keep text-slate-500">만 14세 미만은 가입할 수 없어요.</p>
@@ -510,14 +514,14 @@ export function SignupPage() {
                         <span
                           className={cn(
                             'font-semibold',
-                            item.isRequired ? 'text-brand' : 'text-slate-500',
+                            item.isRequired ? 'text-slate-900' : 'text-slate-500',
                           )}
                         >
                           {item.isRequired ? '[필수]' : '[선택]'}
                         </span>{' '}
                         {item.label}
                         {item.description && (
-                          <span className="mt-1 block text-sm text-slate-500">
+                          <span className="mt-1 block text-[13px] text-slate-500">
                             {item.description}
                           </span>
                         )}
@@ -528,7 +532,7 @@ export function SignupPage() {
                       type="button"
                       onClick={() => setOpenedKey(item.key)}
                       aria-label={`${item.label} 보기`}
-                      className="text-brand h-10 shrink-0 cursor-pointer px-1 text-sm underline"
+                      className="text-brand h-10 shrink-0 cursor-pointer rounded-xl px-3 text-[13px] font-semibold hover:bg-slate-100"
                     >
                       보기
                     </button>
@@ -558,7 +562,8 @@ export function SignupPage() {
           </>
         )}
 
-        <div className="flex flex-col gap-2">
+        {/* 1순위 [다음] · [가입하기] 는 화면 아래 엄지 자리에 붙여 둡니다. (피츠의 법칙) */}
+        <StickyActionBar>
           {/* 서버가 가입을 거절했거나 연결하지 못했을 때의 안내 (구글 가입) */}
           {submitError !== null && (
             <p role="alert" className="text-center text-sm break-keep text-red-600">
@@ -579,7 +584,7 @@ export function SignupPage() {
             {/* 2 · 3단계에는 앞 단계로 돌아가는 버튼이 있습니다. (브라우저의 뒤로 가기와 같은 곳으로 갑니다) */}
             {step > 1 && (
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="lg"
                 className="shrink-0"
                 onClick={() => goToStep(step - 1)}
@@ -609,11 +614,11 @@ export function SignupPage() {
             )}
           </div>
           {step === 3 && !hasRequiredConsents(consents) && (
-            <p className="text-center text-sm break-keep text-slate-500">
+            <p className="text-center text-[13px] break-keep text-slate-500">
               [필수] 두 가지에 동의하면 눌러져요.
             </p>
           )}
-        </div>
+        </StickyActionBar>
       </form>
 
       <Modal

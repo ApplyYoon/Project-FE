@@ -3,6 +3,7 @@ import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { Input } from '@/components/ui/Input'
 import { MinutesPicker } from '@/components/ui/MinutesPicker'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
@@ -402,132 +403,139 @@ function CardForm({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {/* 계획 정확도 한 줄. 내 계획이 얼마나 맞는지 먼저 보고 쓰게 합니다. (더닝-크루거 대응) */}
-      <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm break-keep text-slate-600">
+      <p className="rounded-xl bg-white px-4 py-3 text-[13px] break-keep text-slate-600">
         {accuracy ? (
           <>
             최근 4주 계획 정확도{' '}
-            <strong className="text-slate-900">{Math.round(accuracy.rate * 100)}%</strong> ·
-            체크리스트를 계획한 만큼 해낸 비율이에요 (카드 {accuracy.samples}번)
+            <strong className="text-slate-900 tabular-nums">
+              {Math.round(accuracy.rate * 100)}%
+            </strong>{' '}
+            · 체크리스트를 계획한 만큼 해낸 비율이에요 (카드 {accuracy.samples}번)
           </>
         ) : (
           '카드를 5번 끝내면 최근 4주 계획 정확도를 보여 줄게요.'
         )}
       </p>
 
+      {/* 필수 묶음: 생각하는 순서대로 ① 무엇을 → ② 언제 → ③ 체크리스트. 칸 사이는 선(divide-y)으로 나눕니다. */}
       <Card title="꼭 적을 것">
-        <div className="flex flex-col gap-5">
-          <Input
-            id="card-title"
-            label="무엇을 할까요?"
-            value={values.title}
-            onChange={(event) => change('title', event.target.value)}
-            onBlur={handleTitleBlur}
-            maxLength={CARD_TITLE_MAX_LENGTH}
-            placeholder="예: 수학 문제집"
-            error={shownErrors.title}
-          />
-
-          {/* 카드 기본값 AI 추천 (#419 표 2번). 목표 · 유형은 "더 보기" 안에 있어서, 무엇을 채웠는지 여기서 한 줄로 알려 줍니다. */}
-          {aiDefaults && (
-            <div className="flex flex-col gap-2 rounded-lg bg-violet-50 px-4 py-3">
-              <p className="text-sm break-keep text-slate-700">
-                <span className="font-semibold text-violet-700">AI 추천</span>으로 채워 뒀어요:{' '}
-                <strong className="text-slate-900">{aiDefaultsSummary}</strong>
-              </p>
-              {aiDefaults.evidence && (
-                <p className="text-xs break-keep text-slate-500">{aiDefaults.evidence}</p>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  onClick={handleKeepDefaults}
-                >
-                  이대로 할게
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  onClick={handleUndoDefaults}
-                >
-                  되돌리기
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* 언제: 1회성 / 반복 */}
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium text-slate-700">언제</p>
-            <SegmentedToggle
-              label="반복 여부"
-              options={[
-                { value: 'once', label: '한 번만' },
-                { value: 'repeat', label: '요일마다 반복' },
-              ]}
-              value={values.repeat ? 'repeat' : 'once'}
-              onChange={(next) => change('repeat', next === 'repeat')}
+        <div className="flex flex-col divide-y divide-slate-100">
+          <div className="flex flex-col gap-5 pb-6">
+            <Input
+              id="card-title"
+              label="무엇을 할까요?"
+              value={values.title}
+              onChange={(event) => change('title', event.target.value)}
+              onBlur={handleTitleBlur}
+              maxLength={CARD_TITLE_MAX_LENGTH}
+              placeholder="예: 수학 문제집"
+              error={shownErrors.title}
             />
-            {values.repeat && (
-              <div className="grid grid-cols-7 gap-1">
-                {WEEKDAY_ORDER.map((weekday) => (
-                  <button
-                    key={weekday}
-                    type="button"
-                    aria-pressed={values.repeatDays.includes(weekday)}
-                    onClick={() => handleToggleWeekday(weekday)}
-                    className={cn(
-                      'h-10 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
-                      values.repeatDays.includes(weekday)
-                        ? 'border-brand bg-brand/10 text-brand'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
-                    )}
+
+            {/* 카드 기본값 AI 추천 (#419 표 2번). 목표 · 유형은 "더 보기" 안에 있어서, 무엇을 채웠는지 여기서 한 줄로 알려 줍니다. */}
+            {aiDefaults && (
+              <div className="flex flex-col gap-2 rounded-xl bg-violet-50 px-4 py-3">
+                <p className="text-sm break-keep text-slate-700">
+                  <span className="font-semibold text-violet-700">AI 추천</span>으로 채워 뒀어요:{' '}
+                  <strong className="text-slate-900">{aiDefaultsSummary}</strong>
+                </p>
+                {aiDefaults.evidence && (
+                  <p className="text-xs break-keep text-slate-500">{aiDefaults.evidence}</p>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={handleKeepDefaults}
                   >
-                    {getWeekdayName(weekday)}
-                  </button>
-                ))}
+                    이대로 할게
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={handleUndoDefaults}
+                  >
+                    되돌리기
+                  </Button>
+                </div>
               </div>
             )}
-            {shownErrors.repeatDays && (
-              <p className="text-xs text-red-600">{shownErrors.repeatDays}</p>
-            )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              id="card-date"
-              type="date"
-              label={values.repeat ? '반복 시작 날짜' : '날짜'}
-              value={values.date}
-              // 날짜를 지우면 저장할 수 없으니, 빈 값은 받지 않습니다.
-              onChange={(event) => {
-                if (isDateKey(event.target.value)) change('date', event.target.value)
-              }}
-            />
-            <Input
-              id="card-start-time"
-              type="time"
-              label="시작 시각"
-              value={values.startTime}
-              onChange={(event) => change('startTime', event.target.value)}
-              error={shownErrors.startTime}
+          {/* 언제: 1회성 / 반복 · 날짜 · 시작 시각 · 길이 */}
+          <div className="flex flex-col gap-5 py-6">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-semibold text-slate-700">언제 할까요?</p>
+              <SegmentedToggle
+                label="반복 여부"
+                options={[
+                  { value: 'once', label: '한 번만' },
+                  { value: 'repeat', label: '요일마다 반복' },
+                ]}
+                value={values.repeat ? 'repeat' : 'once'}
+                onChange={(next) => change('repeat', next === 'repeat')}
+              />
+              {values.repeat && (
+                <div className="grid grid-cols-7 gap-1">
+                  {WEEKDAY_ORDER.map((weekday) => (
+                    <button
+                      key={weekday}
+                      type="button"
+                      aria-pressed={values.repeatDays.includes(weekday)}
+                      onClick={() => handleToggleWeekday(weekday)}
+                      className={cn(
+                        'h-10 cursor-pointer rounded-xl border text-sm font-medium transition-colors',
+                        values.repeatDays.includes(weekday)
+                          ? 'border-brand bg-brand-light text-brand ring-brand font-semibold ring-1'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
+                      )}
+                    >
+                      {getWeekdayName(weekday)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {shownErrors.repeatDays && (
+                <p className="text-xs text-red-600">{shownErrors.repeatDays}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                id="card-date"
+                type="date"
+                label={values.repeat ? '반복 시작 날짜' : '날짜'}
+                value={values.date}
+                // 날짜를 지우면 저장할 수 없으니, 빈 값은 받지 않습니다.
+                onChange={(event) => {
+                  if (isDateKey(event.target.value)) change('date', event.target.value)
+                }}
+              />
+              <Input
+                id="card-start-time"
+                type="time"
+                label="시작 시각"
+                value={values.startTime}
+                onChange={(event) => change('startTime', event.target.value)}
+                error={shownErrors.startTime}
+              />
+            </div>
+
+            <MinutesPicker
+              key={minutesPickerKey}
+              label="길이"
+              presets={[30, 60, 90, 120]}
+              value={values.durationMinutes}
+              onChange={(minutes) => change('durationMinutes', minutes)}
+              max={PLAN_MAX_MINUTES}
             />
           </div>
-
-          <MinutesPicker
-            key={minutesPickerKey}
-            label="길이"
-            presets={[30, 60, 90, 120]}
-            value={values.durationMinutes}
-            onChange={(minutes) => change('durationMinutes', minutes)}
-            max={PLAN_MAX_MINUTES}
-          />
 
           {/* 체크리스트: 개수 자유, 중요도 구분 없음 */}
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium text-slate-700">체크리스트</p>
+          <div className="flex flex-col gap-2 py-6 last:pb-0">
+            <p className="text-sm font-semibold text-slate-700">체크리스트</p>
             <ul className="flex flex-col gap-2">
               {values.checklist.map((item, index) => (
                 <li key={item.id} className="flex items-center gap-2">
@@ -537,16 +545,17 @@ function CardForm({
                     maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                     aria-label={`체크리스트 ${index + 1}번`}
                     placeholder="예: 42~45쪽 풀기"
-                    className="focus:border-brand focus:ring-brand/20 h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:ring-2"
+                    className="focus:ring-brand/40 h-12 min-w-0 flex-1 rounded-xl border-0 bg-slate-100 px-4 text-base outline-none placeholder:text-slate-400 focus:bg-white focus:ring-2"
                   />
                   {isAiChecklistItem(item) && (
                     <span className="shrink-0 text-xs font-semibold text-violet-700">AI 추천</span>
                   )}
                   <Button
                     variant="ghost"
+                    size="sm"
                     onClick={() => handleDeleteChecklistItem(item.id)}
                     aria-label={`체크리스트 ${index + 1}번 지우기`}
-                    className="w-10 shrink-0 px-0 text-slate-400"
+                    className="w-10 shrink-0 px-0 text-slate-500"
                   >
                     ✕
                   </Button>
@@ -559,12 +568,13 @@ function CardForm({
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={handleAddChecklistItem}>
+              <Button variant="secondary" size="sm" onClick={handleAddChecklistItem}>
                 + 항목 더하기
               </Button>
               {aiChecklist !== 'off' && (
                 <Button
                   variant="secondary"
+                  size="sm"
                   onClick={handleAskChecklist}
                   disabled={values.title.trim() === '' || isAskingChecklist}
                 >
@@ -579,20 +589,21 @@ function CardForm({
             </p>
           </div>
 
-          {failCauseRequired && failCauseField}
+          {failCauseRequired && <div className="pt-6">{failCauseField}</div>}
         </div>
       </Card>
 
-      {/* 선택 칸: 성향에 따라 펼쳐 두거나 접어 둡니다 (#385) */}
-      <Card>
+      {/* 선택 칸: 성향에 따라 펼쳐 두거나 접어 둡니다 (#385)
+          필수 묶음(흰 바탕)보다 한 단계 낮게 보이도록, 바탕 없이 선만 둘렀습니다. */}
+      <Card className="border border-slate-200 bg-transparent">
         <button
           type="button"
           aria-expanded={isMoreOpen}
           onClick={() => setMoreParam(isMoreOpen ? 'closed' : 'open')}
-          className="flex h-10 w-full cursor-pointer items-center justify-between gap-3 text-left"
+          className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 text-left"
         >
           <span className="min-w-0">
-            <span className="block text-base font-semibold text-slate-900">더 정하기 (선택)</span>
+            <span className="block text-[15px] font-semibold text-slate-700">더 정하기 (선택)</span>
             <span className="block truncate text-xs text-slate-500">
               목표 · 우선순위 · 유형 · 예상 달성 개수 · 알림
             </span>
@@ -666,7 +677,8 @@ function CardForm({
               <p className="text-sm font-medium text-slate-700">몇 개까지 할 수 있을 것 같나요?</p>
               <div className="flex items-center gap-2">
                 <Button
-                  variant="secondary"
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleChangeExpectedDone(expectedDone - 1)}
                   disabled={expectedDone <= 0}
                   aria-label="예상 개수 줄이기"
@@ -674,11 +686,12 @@ function CardForm({
                 >
                   −
                 </Button>
-                <p className="min-w-0 flex-1 text-center text-sm font-semibold text-slate-900">
+                <p className="min-w-0 flex-1 text-center text-sm font-semibold text-slate-900 tabular-nums">
                   {expectedDone} / {checklistTotal}개{isLowered ? '' : ' (전부)'}
                 </p>
                 <Button
-                  variant="secondary"
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleChangeExpectedDone(expectedDone + 1)}
                   disabled={!isLowered}
                   aria-label="예상 개수 늘리기"
@@ -749,28 +762,32 @@ function CardForm({
       </Card>
 
       {isSleepBlocked && (
-        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm break-keep text-red-700">
+        <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm break-keep text-red-700">
           수면 보호 시간({sleepWindow.label})과 겹쳐서 저장할 수 없어요. 시작 시각이나 길이를 바꿔
           주세요.
         </p>
       )}
       {!isSleepBlocked && bufferWarning && (
-        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm break-keep text-amber-800">
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm break-keep text-amber-800">
           {bufferWarning} (저장은 돼요)
         </p>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row-reverse">
-        <Button type="submit" size="lg" disabled={isSleepBlocked} className="w-full sm:w-auto">
+      {/* 이 화면의 채운 버튼은 [저장] 하나. 긴 폼이라 모바일에서는 하단 탭 바로 위(엄지 자리)에 붙여 둡니다. (피츠의 법칙)
+          취소는 붙이지 않고 맨 끝에 조용한 글자 버튼으로 둡니다. */}
+      {/* sticky 는 감싼 상자 안에서만 붙어 있어서, 폼(form)의 바로 아래 자식으로 둡니다. */}
+      <StickyActionBar aboveTabBar>
+        <Button type="submit" size="lg" disabled={isSleepBlocked} className="w-full">
           {editingCard ? '고친 내용 저장' : '카드 저장'}
         </Button>
-        <Link
-          to={`/cards?date=${values.date}`}
-          className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-slate-100 px-6 text-base font-medium text-slate-900 hover:bg-slate-200 sm:w-auto"
-        >
-          취소
-        </Link>
-      </div>
+      </StickyActionBar>
+      {/* -mt-4: 폼 간격(gap-6)을 줄여 [저장] 바로 아래에 붙여 보이게 합니다. */}
+      <Link
+        to={`/cards?date=${values.date}`}
+        className="-mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl px-6 text-[15px] font-medium text-slate-700 hover:bg-slate-200/60"
+      >
+        취소
+      </Link>
     </form>
   )
 }
@@ -829,7 +846,7 @@ export function CardEditPage() {
   if (cardId && !editingCard) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight">
           카드를 찾을 수 없어요
         </h1>
         <p className="text-slate-600">지워졌거나 주소가 틀렸어요.</p>
@@ -843,16 +860,17 @@ export function CardEditPage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <div>
+        {/* 보던 날짜(?date=)로 돌아가는 링크라 모바일 · PC 모두 둡니다. 이 화면은 헤더에 ‹ 뒤로를 두지 않습니다. (2026-10-22) */}
         <Link
           to={`/cards?date=${editingCard?.date ?? startDate}`}
-          className="inline-flex h-10 items-center text-sm text-slate-500"
+          className="mb-2 inline-flex h-10 items-center text-sm text-slate-500"
         >
           ← 카드
         </Link>
-        <h1 className="mt-2 text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight">
           {editingCard ? '카드 고치기' : '새 카드'}
         </h1>
-        <p className="mt-2 text-sm break-keep text-slate-600">
+        <p className="mt-2 text-[15px] break-keep text-slate-600">
           언제 할지와 체크리스트만 정하면 돼요.
         </p>
       </div>

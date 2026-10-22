@@ -86,10 +86,15 @@ export function Layout() {
         'flex flex-col',
         isCoach ? 'h-dvh' : 'min-h-screen',
         // 하단 탭(높이 h-14 + 아이폰 홈 막대 안전 영역)이 마지막 내용을 가리지 않게 아래를 비웁니다.
-        isLoggedIn && !isTimerLocked && 'pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0',
+        // 대화방은 모바일에서 하단 탭을 숨기므로(아래) 이 여백도 두지 않습니다.
+        isLoggedIn &&
+          !isTimerLocked &&
+          !isCoach &&
+          'pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0',
       )}
     >
-      <Header hideNav={isTimerLocked} />
+      {/* 대화방은 모바일에서 자기 머리(‹ · 방 이름 · 통화 · 종)만 보여 주고 이 헤더는 숨깁니다. 메신저 앱처럼 화면 전체를 대화에. (2026-10-22) */}
+      <Header hideNav={isTimerLocked} hideOnMobile={isCoach} />
 
       <main
         className={cn(
@@ -108,13 +113,13 @@ export function Layout() {
         {focusAutoUnlock.message && (
           <div
             role="status"
-            className="mb-6 flex items-center justify-between gap-3 rounded-lg bg-sky-50 px-4 py-2 text-sm break-keep text-sky-800"
+            className="mb-6 flex items-center justify-between gap-3 rounded-xl bg-sky-50 px-4 py-2 text-sm break-keep text-sky-800"
           >
             <p>{focusAutoUnlock.message}</p>
             <button
               type="button"
               onClick={focusAutoUnlock.dismiss}
-              className="h-10 shrink-0 cursor-pointer rounded-md px-3 font-medium hover:bg-sky-100"
+              className="h-10 shrink-0 cursor-pointer rounded-xl px-3 font-medium hover:bg-sky-100"
             >
               확인
             </button>
@@ -140,15 +145,17 @@ export function Layout() {
         )}
       </main>
 
-      {/* 코치 화면은 높이를 꽉 채우는 채팅이라 아래 글을 숨깁니다. */}
+      {/* 코치 화면은 높이를 꽉 채우는 채팅이라 아래 글을 숨깁니다.
+          모바일(앱)에서는 웹 사이트의 꼬리말이 어색해서 PC 에서만 보여 줍니다. (2026-10-22) */}
       {!isCoach && (
-        <footer className="border-t border-slate-200 py-6 text-center text-sm text-slate-500">
+        <footer className="hidden border-t border-slate-200 py-6 text-center text-sm text-slate-500 sm:block">
           © 2026 Tmax IT Hope School
         </footer>
       )}
 
-      {/* 세션 중에는 하단 탭을 숨깁니다. 나가는 길은 세션 화면의 [일시정지] · [끝내기] 뿐입니다. */}
-      {isLoggedIn && !isTimerLocked && <BottomTabNav />}
+      {/* 세션 중에는 하단 탭을 숨깁니다. 나가는 길은 세션 화면의 [일시정지] · [끝내기] 뿐입니다.
+          대화방에서도 숨깁니다(입력창이 화면 맨 아래 엄지 자리에 오게). 방 머리의 ‹ 로 목록에 돌아갑니다. (2026-10-22) */}
+      {isLoggedIn && !isTimerLocked && !isCoach && <BottomTabNav />}
     </div>
   )
 }

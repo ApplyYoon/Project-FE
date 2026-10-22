@@ -27,7 +27,8 @@ export function Input({ label, error, className, id, ...props }: InputProps) {
         aria-describedby={error ? errorId : undefined}
         className={cn(
           // 테두리 없이 연회색 칸. 글자는 16px(text-base) — 아이폰은 이보다 작은 칸을 누르면 화면을 확대합니다.
-          'h-12 w-full rounded-2xl border-0 bg-slate-100 px-4 text-base',
+          // 모서리는 rounded-xl: 묶음(Card, rounded-2xl) 안의 칸이라 한 단계 작게 합니다. (2026-10-22)
+          'h-12 w-full rounded-xl border-0 bg-slate-100 px-4 text-base',
           'placeholder:text-slate-400',
           'focus:ring-brand/40 focus:bg-white focus:ring-2 focus:outline-none',
           error && 'bg-red-50 ring-2 ring-red-300 focus:ring-red-300',

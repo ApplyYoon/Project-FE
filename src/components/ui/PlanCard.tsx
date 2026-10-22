@@ -45,8 +45,9 @@ export function PlanCard({ plan, className }: PlanCardProps) {
   const title = plan.kind === 'long' && plan.spec ? `📅 ${plan.spec.goal}` : dayPlanTitle(plan)
   return (
     <div
+      // 모서리 rounded-2xl: 묶음(카드) 단계. 안쪽 줄은 따로 둥글리지 않습니다. 보조 글자는 대비 때문에 slate-500 아래로 내리지 않습니다. (2026-10-22)
       className={cn(
-        'mt-2 w-full rounded-[20px] border border-slate-200 bg-white p-3 sm:max-w-md',
+        'mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 sm:max-w-md',
         plan.status === 'replaced' && 'opacity-50',
         className,
       )}
@@ -68,7 +69,7 @@ export function PlanCard({ plan, className }: PlanCardProps) {
       {plan.evidence.length > 0 && (
         <ul className="mt-1 flex flex-col gap-0.5">
           {plan.evidence.slice(0, 2).map((line) => (
-            <li key={line} className="text-xs break-keep text-slate-400">
+            <li key={line} className="text-xs break-keep text-slate-500">
               · {line}
             </li>
           ))}
@@ -89,9 +90,12 @@ export function PlanCard({ plan, className }: PlanCardProps) {
                   </span>
                   <span className="min-w-0 flex-1 break-words">
                     <span className="text-slate-900">{draft.title}</span>
-                    <span className="text-slate-400"> · {draft.durationMinutes}분</span>
+                    <span className="text-slate-500 tabular-nums">
+                      {' '}
+                      · {draft.durationMinutes}분
+                    </span>
                     {draft.checklist.length > 0 && (
-                      <span className="block text-xs break-words text-slate-400">
+                      <span className="block text-xs break-words text-slate-500">
                         {draft.checklist.join(' · ')}
                       </span>
                     )}

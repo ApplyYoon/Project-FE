@@ -66,35 +66,38 @@ export function InsightCard({
 
   return (
     <Card className={className}>
-      <div className="flex flex-wrap items-center gap-2">
-        {/* 예시는 내 기록으로 만든 문장이 아니라는 것을 먼저 알려줍니다. */}
-        {isExample && (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-            예시
-          </span>
-        )}
-        {isAiWritten && (
-          <span className="bg-brand-light text-brand rounded-full px-2 py-0.5 text-xs font-semibold">
-            AI 가 쓴 글
-          </span>
-        )}
-        {insight.isHypothesis && (
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-            가설
-          </span>
-        )}
-        <span className="text-sm font-medium text-slate-500">이번 주 발견</span>
-      </div>
+      {/* 표시(예시 · AI · 가설)가 하나라도 있을 때만 줄을 그립니다.
+          "이번 주 발견" 같은 작은 머리 글자는 바깥 제목(리포트의 h2)과 겹쳐서 뺐습니다. (2026-10-22) */}
+      {(isExample || isAiWritten || insight.isHypothesis) && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {/* 예시는 내 기록으로 만든 문장이 아니라는 것을 먼저 알려줍니다. */}
+          {isExample && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+              예시
+            </span>
+          )}
+          {isAiWritten && (
+            <span className="bg-brand-light text-brand rounded-full px-2 py-0.5 text-xs font-semibold">
+              AI 가 쓴 글
+            </span>
+          )}
+          {insight.isHypothesis && (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+              가설
+            </span>
+          )}
+        </div>
+      )}
 
       <p
         className={cn(
-          'mt-2 text-base font-semibold text-slate-900',
-          dispute?.outcome === 'aiWrong' && 'text-slate-400 line-through',
+          'text-[17px] leading-relaxed font-semibold break-keep text-slate-900',
+          dispute?.outcome === 'aiWrong' && 'text-slate-500 line-through',
         )}
       >
         {insight.sentence}
       </p>
-      {detail && <p className="mt-1 text-sm break-keep text-slate-600">{detail}</p>}
+      {detail && <p className="mt-1 text-sm leading-relaxed break-keep text-slate-600">{detail}</p>}
       {dispute?.outcome === 'aiWrong' && (
         <p className="mt-1 text-sm font-medium text-violet-700">
           실험해 보니 AI가 틀렸어요. 이 발견은 철회했어요.
@@ -118,11 +121,14 @@ export function InsightCard({
       </button>
 
       {isEvidenceOpen && (
-        <ul id={evidenceId} className="mb-2 flex flex-col gap-2 rounded-lg bg-slate-50 p-3">
+        <ul
+          id={evidenceId}
+          className="mb-2 flex flex-col divide-y divide-slate-200 rounded-xl bg-slate-50 px-3"
+        >
           {evidenceRows.map((row) => (
             <li
               key={row.date}
-              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm"
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm tabular-nums"
             >
               <span className="font-medium text-slate-700">{formatShortDate(row.date)}</span>
               <span className="text-slate-600">
@@ -151,9 +157,10 @@ export function InsightCard({
               aria-checked={isSelected}
               onClick={() => handleSelectResponse(option.value)}
               className={cn(
-                'h-10 cursor-pointer rounded-lg border px-3 text-sm font-medium transition-colors',
+                // 고르는 칩이라 rounded-full. 고른 것은 brand 테두리 + 굵은 글자로 또렷하게 보입니다.
+                'h-10 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors',
                 isSelected
-                  ? 'border-brand bg-brand-light text-brand'
+                  ? 'border-brand bg-brand-light text-brand font-semibold'
                   : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
               )}
             >

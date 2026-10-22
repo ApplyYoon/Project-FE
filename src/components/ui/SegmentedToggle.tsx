@@ -35,7 +35,7 @@ export function SegmentedToggle<T extends string>({
     <div
       role="group"
       aria-label={label}
-      className={cn('flex w-full rounded-lg bg-slate-100 p-1', className)}
+      className={cn('flex w-full rounded-xl bg-slate-100 p-1', className)}
     >
       {options.map((option) => (
         <button
@@ -44,9 +44,9 @@ export function SegmentedToggle<T extends string>({
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={cn(
-            'h-10 flex-1 cursor-pointer rounded-md px-3 text-sm font-medium transition-colors',
+            'h-10 flex-1 cursor-pointer rounded-lg px-3 text-sm font-medium transition-colors',
             value === option.value
-              ? 'bg-white text-slate-900 shadow-sm'
+              ? 'bg-white text-slate-900 ring-1 ring-slate-200'
               : 'text-slate-500 hover:text-slate-900',
           )}
         >

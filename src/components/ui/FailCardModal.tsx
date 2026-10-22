@@ -4,6 +4,7 @@ import { Modal } from '@/components/ui/Modal'
 import { ReasonChips } from '@/components/ui/ReasonChips'
 import { CARD_FAIL_CAUSES, type CardFailCause } from '@/lib/cardMarks'
 import { getChatRoom, TALK_ROOM_OF } from '@/lib/chatRooms'
+import { cn } from '@/lib/cn'
 import { toggleReason } from '@/lib/reasons'
 
 interface FailCardModalProps {
@@ -47,14 +48,23 @@ export function FailCardModal({ isOpen, cardTitle, onClose, onFail, onTalk }: Fa
         label="못 한 원인"
         className="mt-3"
       />
-      <Button className="mt-4 w-full" disabled={causes.length === 0} onClick={handleFail}>
-        실패로 기록
-      </Button>
+      {/* 이야기하며 정하는 길을 먼저 두고, 되돌리기 어려운 [실패로 기록] 은 맨 아래 빨간 글자 테두리 버튼으로 둡니다. (2차 규칙 3) */}
       {onTalk && (
-        <Button variant="secondary" className="mt-2 w-full" onClick={onTalk}>
+        <Button variant="outline" className="mt-5 w-full" onClick={onTalk}>
           💬 {getChatRoom(TALK_ROOM_OF.CARD_FAIL).name} 방에서 이야기하며 정하기
         </Button>
       )}
+      <Button
+        variant="outline"
+        className={cn(
+          'w-full border-red-200 text-red-700 hover:bg-red-50',
+          onTalk ? 'mt-2' : 'mt-5',
+        )}
+        disabled={causes.length === 0}
+        onClick={handleFail}
+      >
+        실패로 기록
+      </Button>
     </Modal>
   )
 }

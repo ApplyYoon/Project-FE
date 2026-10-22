@@ -28,7 +28,7 @@ export function MessageSettingsFields({ value, onChange, className }: MessageSet
   return (
     <div className={cn('flex flex-col gap-5', className)}>
       <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-700">하루 메시지 횟수</span>
+        <span className="text-[15px] font-semibold text-slate-900">하루 메시지 횟수</span>
         {/* 375px 에서도 6개가 한 줄에 들어가고, 버튼 하나가 40px 보다 넓습니다. */}
         <div role="group" aria-label="하루 메시지 횟수" className="grid grid-cols-6 gap-2">
           {DAILY_COUNT_OPTIONS.map((count) => {
@@ -39,11 +39,12 @@ export function MessageSettingsFields({ value, onChange, className }: MessageSet
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => onChange({ ...value, dailyCount: count })}
+                // 고른 것은 연한 brand 바탕 + 테두리 + 굵게 (꽉 채운 brand 는 행동 버튼에만)
                 className={cn(
-                  'h-10 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
+                  'h-10 cursor-pointer rounded-xl border text-sm tabular-nums transition-colors',
                   isSelected
-                    ? 'border-brand bg-brand-light text-brand'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                    ? 'border-brand bg-brand-light text-brand ring-brand font-bold ring-1'
+                    : 'border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50',
                 )}
               >
                 {count === 0 ? '끔' : count}
@@ -59,7 +60,7 @@ export function MessageSettingsFields({ value, onChange, className }: MessageSet
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-700">연락 금지 시간</span>
+        <span className="text-[15px] font-semibold text-slate-900">연락 금지 시간</span>
         <div className="flex items-center gap-2">
           {/* min-w-0: 좁은 화면에서 시각 칸이 줄어들 수 있게 해서 가로 스크롤을 막습니다. */}
           <div className="min-w-0 flex-1">
@@ -82,7 +83,7 @@ export function MessageSettingsFields({ value, onChange, className }: MessageSet
             />
           </div>
         </div>
-        <p className="text-sm text-slate-500">이 시간에는 메시지도 전화도 안 와요.</p>
+        <p className="text-[13px] text-slate-500">이 시간에는 메시지도 전화도 안 와요.</p>
       </div>
     </div>
   )

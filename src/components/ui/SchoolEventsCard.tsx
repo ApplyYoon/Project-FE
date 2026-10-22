@@ -79,7 +79,7 @@ function SchoolEventsContent() {
       {/* 제목 줄: 학교 이름이 길면 줄여서 [새로고침] 이 밀려나지 않게 합니다. */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold text-slate-900">학교 일정</h3>
+          <h3 className="text-[15px] font-bold text-slate-900">학교 일정</h3>
           <p className="truncate text-xs text-slate-500">{data.school.name}</p>
         </div>
         <Button
@@ -99,10 +99,10 @@ function SchoolEventsContent() {
       )}
 
       {nextExam && (
-        <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2">
+        <div className="mb-3 rounded-xl bg-slate-50 px-3 py-2">
           <p className="text-xs text-slate-500">다음 시험</p>
           <p className="flex flex-wrap items-baseline gap-x-2 font-medium break-keep text-slate-900">
-            <span className="text-brand font-semibold">
+            <span className="font-bold text-slate-900 tabular-nums">
               {formatDday(daysUntilKey(nextExam.start, todayKey))}
             </span>
             <span>{nextExam.name}</span>
@@ -114,7 +114,7 @@ function SchoolEventsContent() {
       )}
 
       {showReplan && nextExam && (
-        <div className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <div className="mb-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm break-keep text-amber-900">
             시험까지 {Math.max(0, daysUntilKey(nextExam.start, todayKey))}일 남았어요. 시험 범위에
             맞춰 공부 카드를 다시 짜 볼까요?
@@ -123,7 +123,8 @@ function SchoolEventsContent() {
           <div className="flex gap-2">
             <Link
               to="/cards/new"
-              className="bg-brand hover:bg-brand-dark inline-flex h-10 flex-1 items-center justify-center rounded-lg px-4 text-sm font-medium text-white sm:flex-none"
+              // 카드 화면의 1순위 버튼과 겹치지 않게 채우지 않은 버튼(흰 바탕 + 선)으로 둡니다. (2026-10-22)
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 hover:bg-slate-50 sm:flex-none"
             >
               계획 다시 짜기
             </Link>
@@ -142,7 +143,7 @@ function SchoolEventsContent() {
         <ul className="flex flex-col divide-y divide-slate-100">
           {upcoming.map((period) => (
             <li key={`${period.start}|${period.name}`} className="flex items-center gap-3 py-2">
-              <span className="w-28 shrink-0 text-sm text-slate-500 sm:w-36">
+              <span className="w-28 shrink-0 text-sm text-slate-500 tabular-nums sm:w-36">
                 {formatPeriodDates(period)}
               </span>
               <span
@@ -164,7 +165,7 @@ function SchoolEventsContent() {
       )}
 
       {data.fetchedAt !== null && (
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-slate-500">
           나이스(NEIS) 학사일정 · {formatFetchedAt(data.fetchedAt)} 에 받음
         </p>
       )}

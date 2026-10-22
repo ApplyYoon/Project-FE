@@ -10,7 +10,7 @@ interface TermsViewProps {
  */
 export function TermsView({ terms }: TermsViewProps) {
   return (
-    <div className="flex flex-col gap-4 text-sm break-keep text-slate-700">
+    <div className="flex max-w-prose flex-col gap-4 text-[15px] break-keep text-slate-700">
       <p>{terms.intro}</p>
       {terms.sections.map((section) => (
         <section key={section.title}>
@@ -22,7 +22,7 @@ export function TermsView({ terms }: TermsViewProps) {
           </ul>
         </section>
       ))}
-      <p className="text-xs text-slate-500">마지막으로 고친 날: {terms.updatedAt}</p>
+      <p className="text-[13px] text-slate-500">마지막으로 고친 날: {terms.updatedAt}</p>
     </div>
   )
 }

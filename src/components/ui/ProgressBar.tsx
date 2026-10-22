@@ -38,7 +38,7 @@ export function ProgressBar({ value, showLabel = false, className }: ProgressBar
       </div>
 
       {showLabel && (
-        <span className="w-10 shrink-0 text-right text-sm font-medium text-slate-600">
+        <span className="w-10 shrink-0 text-right text-sm font-medium text-slate-600 tabular-nums">
           {percent}%
         </span>
       )}

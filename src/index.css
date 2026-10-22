@@ -8,9 +8,12 @@
   --color-brand: #4f46e5;
   --color-brand-dark: #4338ca;
   --color-brand-light: #eef2ff;
+  /* 형광펜 노랑: "지금 · 다음 카드" 표시에만 씁니다. 장식으로 쓰지 않습니다. 위 글자는 text-slate-900 (2026-10-22) */
+  --color-now: #ffe066;
 
   --font-sans:
-    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+    'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    system-ui, sans-serif;
 }
 
 @layer base {
@@ -30,5 +33,41 @@
   /* 키보드로 이동했을 때 포커스가 잘 보이도록 */
   :focus-visible {
     @apply outline-brand outline-2 outline-offset-2;
+  }
+
+  /* 움직임 줄이기를 켠 사람에게는 화면 전환 · 누름 효과를 거의 없앱니다. (접근성) */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * 켜고 끄는 설정을 휴대폰 스위치 모양으로 보여 줍니다. (2026-10-22 앱 기준)
+   * <input type="checkbox" className="switch" /> 처럼 체크박스에 붙이기만 하면 됩니다. 동작은 체크박스 그대로입니다.
+   * 켜짐은 brand 색: 스위치는 "고른 것" 이 아니라 "켜져 있다" 는 상태라 휴대폰 관례대로 색을 채웁니다.
+   */
+  .switch {
+    @apply relative h-7 w-12 shrink-0 cursor-pointer appearance-none rounded-full bg-slate-300 transition-colors;
+  }
+  .switch::before {
+    content: '';
+    @apply absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white transition-transform;
+  }
+  .switch:checked {
+    @apply bg-brand;
+  }
+  .switch:checked::before {
+    @apply translate-x-5;
+  }
+  .switch:disabled {
+    @apply cursor-not-allowed opacity-50;
   }
 }

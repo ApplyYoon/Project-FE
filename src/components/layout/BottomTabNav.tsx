@@ -50,7 +50,8 @@ const TAB_ICONS: Record<string, ReactNode> = {
 
 /**
  * 모바일 화면 아래에 고정되는 탭 메뉴입니다. (홈 · 채팅 · 타이머 · 기록)
- * 아이콘 + 작은 글자이고, 지금 있는 탭은 진한 글자로 보여 줍니다. (2026-10-18 모바일 UI)
+ * 아이콘 + 작은 글자이고, 지금 있는 탭은 brand 색 + 굵은 글자로 보여 줍니다. (2026-10-18 모바일 UI, 2026-10-22 색)
+ * 비치는 효과(blur) 없이 흰 바탕 + 위 1px 선으로 구분합니다.
  * PC(sm 이상)에서는 숨기고, 대신 헤더 메뉴를 보여줍니다.
  */
 export function BottomTabNav() {
@@ -60,7 +61,7 @@ export function BottomTabNav() {
     <nav
       aria-label="하단 메뉴"
       // pb: 아이폰 아래 홈 막대만큼 띄웁니다. (안전 영역이 없는 화면에서는 0)
-      className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-100 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden"
     >
       {/* 탭 4개를 같은 너비로 나눕니다. */}
       <ul className="grid grid-cols-4">
@@ -85,10 +86,10 @@ export function BottomTabNav() {
   )
 }
 
-/* 지금 있는 탭이면 진한 글자, 아니면 연한 회색입니다. 누르는 동안 살짝 작아집니다. */
+/* 지금 있는 탭이면 brand 색 + 굵게, 아니면 회색(slate-500, 흰 바탕에서 읽히는 대비)입니다. 글자는 12px. 누르는 동안 살짝 작아집니다. */
 function tabLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
-    'flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition active:scale-95',
-    isActive ? 'text-slate-900' : 'text-slate-400',
+    'flex h-14 flex-col items-center justify-center gap-0.5 text-xs transition active:scale-95',
+    isActive ? 'text-brand font-bold' : 'font-medium text-slate-500',
   )
 }

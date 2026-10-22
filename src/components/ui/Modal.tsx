@@ -82,7 +82,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
         />
         <div className="mb-3 flex items-center justify-between gap-2">
           {/* min-w-0 + break-words: 긴 제목이 가로로 튀어나가지 않게 합니다. */}
-          <h2 className="min-w-0 text-[19px] font-bold tracking-tight break-words text-slate-900">
+          <h2 className="min-w-0 text-[20px] font-bold tracking-tight break-words text-slate-900">
             {title}
           </h2>
           <button

@@ -113,32 +113,36 @@ function WeeklyReport({ sessions }: WeeklyReportProps) {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
-            주간 리포트
+        <div className="min-w-0">
+          {/* 위 하위 탭이 이미 [리포트] 라서, 제목은 "어느 주인지" 를 말합니다. (같은 글자를 두 번 크게 쓰지 않게) */}
+          <h1 className="text-2xl leading-snug font-bold tracking-tight text-slate-900 sm:text-[28px]">
+            {weekName} 리포트
           </h1>
-          <p className="mt-1 text-slate-600">
+          <p className="mt-0.5 text-[15px] text-slate-500 tabular-nums">
             {formatShortDate(mondayKey)} ~ {formatShortDate(moveDateKey(mondayKey, 6))}
           </p>
         </div>
 
-        <div className="flex gap-1">
+        {/* 주 이동 버튼은 40×40px(h-10 w-10). 작은 글자 버튼 대신 누르기 쉬운 네모 버튼입니다. (피츠의 법칙) */}
+        <div className="flex gap-2">
           <Button
-            variant="secondary"
+            size="sm"
+            variant="outline"
             aria-label="지난 주로 이동"
-            className="w-10 shrink-0 px-0"
+            className="h-10 w-10 shrink-0 px-0 text-xl"
             onClick={() => setWeeksAgoParam(String(weeksAgo + 1))}
           >
-            ‹
+            <span aria-hidden>‹</span>
           </Button>
           <Button
-            variant="secondary"
+            size="sm"
+            variant="outline"
             aria-label="다음 주로 이동"
             disabled={weeksAgo === 0}
-            className="w-10 shrink-0 px-0"
+            className="h-10 w-10 shrink-0 px-0 text-xl"
             onClick={() => setWeeksAgoParam(String(Math.max(0, weeksAgo - 1)))}
           >
-            ›
+            <span aria-hidden>›</span>
           </Button>
         </div>
       </div>
@@ -227,7 +231,7 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
 
           {/* ③ 인사이트 1개. 발견은 지금까지의 기록으로 만든 것이라, 지난 주를 볼 때는 제목만 맞게 바꿉니다. */}
           <section>
-            <h2 className="text-lg font-bold text-slate-900">
+            <h2 className="text-[17px] font-semibold tracking-tight text-slate-900">
               {isCurrentWeek ? '이번 주 발견' : '지금까지의 발견'}
             </h2>
             {/* 인사이트는 1개만. 최근 28일 기록으로 만든 AI 분석에서 '생각과 실제' 를 먼저 고릅니다. (#419) */}
@@ -236,13 +240,17 @@ function WeekCells({ mondayKey, weekName, isCurrentWeek, days, sessions }: WeekC
 
           {/* ④ 지난 실험 결과. 가장 최근 자기 실험(#412)이 진행 중이면 며칠째인지, 끝났으면 판정 */}
           <section>
-            <h2 className="text-lg font-bold text-slate-900">지난 실험 결과</h2>
+            <h2 className="text-[17px] font-semibold tracking-tight text-slate-900">
+              지난 실험 결과
+            </h2>
             <LatestExperimentLine />
           </section>
 
           {/* ⑤ 다음 실험 제안. AI 분석이 고른 실험 하나를 보여 줍니다. (가설·실험 탭은 2026-10-18 에 지웠습니다) */}
           <section>
-            <h2 className="text-lg font-bold text-slate-900">다음 실험 제안</h2>
+            <h2 className="text-[17px] font-semibold tracking-tight text-slate-900">
+              다음 실험 제안
+            </h2>
             <AnalysisExperimentSuggestion className="mt-2" />
           </section>
         </>
@@ -273,7 +281,7 @@ function LatestExperimentLine() {
     detail = `실행률 ${Math.round(latest.baselineRate * 100)}% → ${Math.round(latest.experimentRate * 100)}%`
   }
   return (
-    <p className="mt-2 text-sm break-keep text-slate-700">
+    <p className="mt-2 text-[15px] leading-relaxed break-keep text-slate-700 tabular-nums">
       <span className="font-semibold text-slate-900">&quot;{rule}&quot;</span> ·{' '}
       {EXPERIMENT_STATUS_LABELS[latest.status]}
       {detail !== '' && ` · ${detail}`}
@@ -318,15 +326,18 @@ function PredictionCard({
   if (prediction === undefined) {
     return (
       <Card title="먼저 맞혀 보기">
-        <p className="text-base font-semibold break-keep text-slate-900">{question}</p>
+        <p className="text-base leading-relaxed font-semibold break-keep text-slate-900">
+          {question}
+        </p>
         <p className="mt-1 text-sm text-slate-500">하나를 고르면 실제 숫자를 보여줄게.</p>
-        {/* 1탭으로 고릅니다. 보기 5개가 375px 에서도 한 줄에 들어가게 5칸으로 나눕니다. */}
-        <div className="mt-4 grid grid-cols-5 gap-2">
+        {/* 1탭으로 고릅니다. 보기 5개가 375px 에서도 한 줄에 들어가게 5칸으로 나눕니다.
+            min-w-0: 칸이 글자 폭보다 좁아져도 묶음 밖으로 넘치지 않고 칸 안에 머뭅니다. (가로 스크롤 없음) */}
+        <div className="mt-4 grid grid-cols-5 gap-1.5 sm:gap-2">
           {values.map((value) => (
             <Button
               key={value}
-              variant="secondary"
-              className="h-11 px-0"
+              variant="outline"
+              className="h-11 min-w-0 rounded-full px-0 text-sm tabular-nums sm:text-[15px]"
               onClick={() => onPredict(value)}
             >
               {value}
@@ -345,17 +356,18 @@ function PredictionCard({
   return (
     <Card title="먼저 맞혀 보기">
       <p className="text-sm break-keep text-slate-600">{question}</p>
-      <dl className="mt-3 grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-slate-50 p-3">
+      {/* 내 예측과 실제를 한 묶음 안에 나란히 두고 세로 선으로 나눕니다. (근접성) */}
+      <dl className="mt-3 grid grid-cols-2 divide-x divide-slate-200 rounded-xl bg-slate-50 py-3">
+        <div className="min-w-0 px-4">
           <dt className="text-xs text-slate-500">내 예측</dt>
-          <dd className="mt-1 text-2xl font-bold text-slate-900">
+          <dd className="mt-1 text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
             {prediction.predicted}
             {unit}
           </dd>
         </div>
-        <div className="bg-brand-light rounded-lg p-3">
-          <dt className="text-brand text-xs">실제</dt>
-          <dd className="mt-1 text-2xl font-bold text-slate-900">
+        <div className="min-w-0 px-4">
+          <dt className="text-brand text-xs font-semibold">실제</dt>
+          <dd className="text-brand-dark mt-1 text-3xl font-bold tracking-tight tabular-nums">
             {actual}
             {unit}
           </dd>
@@ -383,13 +395,14 @@ function NumbersSection({ weekName, numbers }: NumbersSectionProps) {
 
   return (
     <section>
-      <h2 className="text-lg font-bold text-slate-900">{weekName} 숫자</h2>
+      <h2 className="text-[17px] font-semibold tracking-tight text-slate-900">{weekName} 숫자</h2>
       <p className="mt-1 text-sm break-keep text-slate-500">
         묻지 않고, 카드와 타이머 기록으로 계산한 숫자예요.
       </p>
 
-      {/* 모바일은 한 줄에 하나, PC(sm 이상)는 3칸으로 나란히 */}
-      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* 작은 카드 3장 대신 흰 묶음 하나 안을 선으로 나눕니다. (근접성)
+          모바일은 위아래로(divide-y), PC(sm 이상)는 3칸으로 나란히(divide-x) */}
+      <div className="mt-3 grid grid-cols-1 divide-y divide-slate-100 rounded-2xl bg-white px-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-0 sm:py-5">
         <NumberStat
           label="실행률"
           value={formatPercent(numbers.runRate)}
@@ -420,7 +433,7 @@ function NumbersSection({ weekName, numbers }: NumbersSectionProps) {
       </div>
 
       {/* 측정 대 자기 보고: 타이머로 잰 시간과 끝난 뒤 적은 시간 */}
-      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm break-keep text-slate-600">
+      <p className="mt-3 rounded-xl bg-white px-4 py-3 text-sm break-keep text-slate-600 tabular-nums">
         측정{' '}
         <strong className="font-semibold text-slate-900">
           {formatMinutes(numbers.measuredMinutes)}
@@ -445,13 +458,13 @@ interface NumberStatProps {
   detail: string
 }
 
-/** 숫자 한 칸 (이름 · 값 · 설명) */
+/** 숫자 한 칸 (이름 · 값 · 설명). 숫자는 크게, 이름 · 설명은 작게 (위계) */
 function NumberStat({ label, value, detail }: NumberStatProps) {
   return (
-    <Card>
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
-      <p className="mt-1 text-xs break-keep text-slate-500">{detail}</p>
-    </Card>
+    <div className="flex flex-col py-4 sm:px-5 sm:py-0">
+      <p className="text-[13px] font-medium text-slate-500">{label}</p>
+      <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900 tabular-nums">{value}</p>
+      <p className="mt-1 text-[13px] break-keep text-slate-500">{detail}</p>
+    </div>
   )
 }

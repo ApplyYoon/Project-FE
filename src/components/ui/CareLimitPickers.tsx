@@ -53,8 +53,11 @@ export function CareLevelPicker({ value, onChange, className }: CareLevelPickerP
           <label
             key={option.level}
             className={cn(
-              'flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3',
-              isSelected ? 'border-brand bg-brand-light' : 'border-slate-200 hover:bg-slate-50',
+              // 고른 칸은 연한 brand 바탕 + 테두리 (꽉 채우지 않음). 안쪽 행이라 rounded-xl 입니다.
+              'flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3',
+              isSelected
+                ? 'border-brand bg-brand-light ring-brand ring-1'
+                : 'border-slate-200 hover:bg-slate-50',
             )}
           >
             <input
@@ -65,8 +68,15 @@ export function CareLevelPicker({ value, onChange, className }: CareLevelPickerP
               className="accent-brand mt-1 h-5 w-5 shrink-0 cursor-pointer"
             />
             <span className="flex flex-col">
-              <span className="text-sm font-semibold text-slate-900">{option.label}</span>
-              <span className="text-sm text-slate-500">{option.description}</span>
+              <span
+                className={cn(
+                  'text-[15px] text-slate-900',
+                  isSelected ? 'text-brand-dark font-bold' : 'font-semibold',
+                )}
+              >
+                {option.label}
+              </span>
+              <span className="text-[13px] break-keep text-slate-500">{option.description}</span>
             </span>
           </label>
         )
@@ -98,10 +108,10 @@ export function HarshnessPicker({ value, onChange, className }: HarshnessPickerP
               aria-label={`${level}단계, ${harshnessDescriptions[level]}`}
               onClick={() => onChange(level)}
               className={cn(
-                'h-10 cursor-pointer rounded-lg border text-sm font-medium transition-colors',
+                'h-10 cursor-pointer rounded-xl border text-sm tabular-nums transition-colors',
                 isSelected
-                  ? 'border-brand bg-brand-light text-brand'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                  ? 'border-brand bg-brand-light text-brand ring-brand font-bold ring-1'
+                  : 'border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50',
               )}
             >
               {level}
@@ -110,7 +120,7 @@ export function HarshnessPicker({ value, onChange, className }: HarshnessPickerP
         })}
       </div>
 
-      <p className="mt-2 text-sm text-slate-500">
+      <p className="mt-2 text-[13px] text-slate-500">
         {value} · {harshnessDescriptions[value]}
       </p>
     </div>

@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { SchoolEventsCard } from '@/components/ui/SchoolEventsCard'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
@@ -49,7 +50,7 @@ function GoalList({ goals }: GoalListProps) {
   return (
     <Card title={`목표 ${goals.length}/${MAX_ACTIVE_GOALS}`}>
       {goals.length === 0 ? (
-        <p className="text-sm break-keep text-slate-500">
+        <p className="text-[15px] break-keep text-slate-500">
           아직 목표가 없어요. 목표를 세우면 카드를 목표별로 묶어서 볼 수 있어요.
         </p>
       ) : (
@@ -59,9 +60,9 @@ function GoalList({ goals }: GoalListProps) {
               {/* 누르면 목표 상세(진척 · 2주 점검, #403)로 갑니다. */}
               <Link
                 to={`/goals/${goal.id}`}
-                className="flex min-h-10 items-center gap-3 py-2 hover:bg-slate-50"
+                className="-mx-2 flex min-h-11 items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"
               >
-                <span className="text-brand w-14 shrink-0 text-sm font-semibold">
+                <span className="text-brand w-14 shrink-0 text-sm font-semibold tabular-nums">
                   {formatDday(getDaysUntil(goal.dDay))}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
@@ -82,7 +83,7 @@ function GoalList({ goals }: GoalListProps) {
       ) : (
         <Link
           to="/goals/new"
-          className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-900 hover:bg-slate-200"
+          className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-900 hover:bg-slate-200 active:scale-[0.98]"
         >
           + 목표 만들기
         </Link>
@@ -157,20 +158,31 @@ function CardTimeline({
     const { items, unscheduled } = getDayTimeline(cards, fixedBlocks, dayKey)
     const cardsToShrink = getFlexibleCardsToShrink(items)
     if (items.length === 0 && unscheduled.length === 0) {
-      return <p className="text-sm text-slate-500">이 날은 카드가 없어요.</p>
+      return (
+        <p className="text-[15px] break-keep text-slate-500">
+          이 날은 카드가 없어요. 아래 [+ 카드 만들기] 로 하나 만들어 볼까요?
+        </p>
+      )
     }
     return (
       <div className="flex flex-col gap-3">
         {/* 일정이 넘치면(시간이 겹치면) 유연 카드부터 줄여 보자고 합니다. 절대 카드는 그대로 둡니다. (「4.3」) */}
         {cardsToShrink.length > 0 && (
-          <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm break-keep text-amber-900">
-            <p className="font-medium">시간이 겹쳐요. 유연 카드부터 줄여 볼까요?</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+          // 경고는 노란 바탕 + 진한 노란 선 + ⚠ 로 한눈에 보이게. 고치기 버튼은 흰 선 버튼(outline)입니다.
+          <div
+            role="status"
+            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm break-keep text-amber-900"
+          >
+            <p className="flex items-start gap-2 font-semibold">
+              <span aria-hidden>⚠</span>
+              <span>시간이 겹쳐요. 유연 카드부터 줄여 볼까요?</span>
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
               {cardsToShrink.map((card) => (
                 <Link
                   key={card.id}
                   to={`/cards/${card.id}/edit`}
-                  className="inline-flex h-10 max-w-full items-center rounded-lg bg-white px-3 font-medium text-amber-900 hover:bg-amber-100"
+                  className="inline-flex h-10 max-w-full items-center rounded-xl border border-amber-300 bg-white px-3 font-medium text-slate-900 hover:bg-amber-100 active:scale-[0.98]"
                 >
                   <span className="truncate">{card.title} 고치기</span>
                 </Link>
@@ -201,7 +213,7 @@ function CardTimeline({
                   {item.kind === 'fixed' ? (
                     // 고정 일정: 타이머가 없어서 누를 수 없는 회색 블록입니다. 최소 높이는 계산한 숫자라 style 을 씁니다.
                     <div
-                      className="flex min-w-0 flex-1 items-start justify-between gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
+                      className="flex min-w-0 flex-1 items-start justify-between gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500"
                       style={{ minHeight: height }}
                     >
                       <span className="min-w-0 truncate font-medium">
@@ -255,7 +267,7 @@ function CardTimeline({
       <Link
         to={`/cards/${card.id}/edit`}
         className={cn(
-          'flex min-h-12 min-w-0 flex-1 flex-col gap-1 rounded-lg border px-3 py-2 text-sm hover:brightness-95',
+          'flex min-h-12 min-w-0 flex-1 flex-col gap-1 rounded-xl border px-3 py-2 text-sm hover:brightness-95',
           goalIndex >= 0 ? GOAL_BLOCK_STYLES[goalIndex] : NO_GOAL_BLOCK_STYLE,
           isOverlapping && 'border-2 border-amber-500',
         )}
@@ -266,13 +278,13 @@ function CardTimeline({
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate font-semibold">{card.title}</span>
           {card.priority === 'absolute' && (
-            <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+            <span className="shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
               절대
             </span>
           )}
         </span>
         {/* 결과까지 다 보이게 줄을 바꿔 씁니다. (블록은 minHeight 라서 같이 늘어납니다) */}
-        <span className="text-xs break-keep opacity-80">
+        <span className="text-xs break-keep tabular-nums opacity-80">
           {goalIndex >= 0 ? `${goals[goalIndex].title} · ` : ''}
           {timeRange}
           {doneText}
@@ -292,7 +304,7 @@ function CardTimeline({
           item.kind === 'fixed' ? (
             <li
               key={item.block.id}
-              className="truncate rounded border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500"
+              className="truncate rounded-lg border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-500 tabular-nums"
             >
               {formatDayClock(item.start)} 고정 · {item.block.title}
             </li>
@@ -313,7 +325,7 @@ function CardTimeline({
       <Link
         to={`/cards/${card.id}/edit`}
         className={cn(
-          'flex flex-col rounded border px-2 py-1 text-xs hover:brightness-95',
+          'flex flex-col rounded-lg border px-2 py-1 text-xs hover:brightness-95',
           goalIndex >= 0 ? GOAL_BLOCK_STYLES[goalIndex] : NO_GOAL_BLOCK_STYLE,
         )}
       >
@@ -329,13 +341,13 @@ function CardTimeline({
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">카드</h2>
+        <h2 className="text-[17px] font-semibold text-slate-900">카드 일정</h2>
         <SegmentedToggle
           label="타임라인 보기"
           options={periodOptions}
           value={period}
           onChange={onChangePeriod}
-          className="w-32"
+          className="w-36"
         />
       </div>
 
@@ -371,10 +383,10 @@ function CardTimeline({
                       aria-pressed={key === dateKey}
                       onClick={() => onSelectDate(key)}
                       className={cn(
-                        'flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-lg border text-xs',
+                        'flex min-h-12 cursor-pointer flex-col items-center justify-center rounded-xl border text-xs',
                         key === dateKey
-                          ? 'border-brand bg-brand/10 text-brand font-semibold'
-                          : 'border-slate-200 text-slate-600',
+                          ? 'border-brand bg-brand-light text-brand ring-brand font-semibold ring-1'
+                          : 'border-slate-200 bg-white text-slate-600',
                       )}
                     >
                       <span>
@@ -398,9 +410,9 @@ function CardTimeline({
                     aria-pressed={key === dateKey}
                     onClick={() => onSelectDate(key)}
                     className={cn(
-                      'h-10 cursor-pointer rounded-lg text-sm',
+                      'h-10 cursor-pointer rounded-xl text-sm tabular-nums',
                       key === dateKey
-                        ? 'bg-brand/10 text-brand font-semibold'
+                        ? 'bg-brand-light text-brand ring-brand font-semibold ring-1'
                         : 'text-slate-600 hover:bg-slate-50',
                     )}
                   >
@@ -414,20 +426,6 @@ function CardTimeline({
           </>
         )}
       </div>
-
-      <Link
-        to={`/cards/new?date=${dateKey}`}
-        className="bg-brand hover:bg-brand-dark mt-4 inline-flex h-12 w-full items-center justify-center rounded-2xl px-5 text-[15px] font-semibold text-white active:scale-[0.98]"
-      >
-        + 카드 만들기
-      </Link>
-      {/* 시험 범위표 · 학습지를 찍으면 AI 가 카드 여러 장을 나눠 줍니다. (pages/CardsFromPhotoPage.tsx) */}
-      <Link
-        to="/cards/photo"
-        className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-2xl bg-slate-100 px-5 text-[15px] font-semibold text-slate-900 hover:bg-slate-200 active:scale-[0.98]"
-      >
-        📸 사진으로 만들기
-      </Link>
     </Card>
   )
 }
@@ -472,31 +470,12 @@ export function CardsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">카드</h1>
-
-        {/* 날짜 이동: ◀ / 날짜(주 보기면 그 주) / ▶ / 오늘로 돌아가기 */}
-        <div className="mt-3 flex items-center gap-1">
-          <Button
-            variant="secondary"
-            onClick={() => setSelectedDate(moveDateKey(selectedDate, -dateStep))}
-            aria-label={period === 'week' ? '지난주로 이동' : '어제로 이동'}
-            className="w-10 shrink-0 px-0"
-          >
-            ◀
-          </Button>
-          <p className="min-w-0 flex-1 text-center text-sm font-semibold whitespace-nowrap text-slate-900 sm:text-base">
-            {period === 'week' ? weekLabel : dateLabel}
-          </p>
-          <Button
-            variant="secondary"
-            onClick={() => setSelectedDate(moveDateKey(selectedDate, dateStep))}
-            aria-label={period === 'week' ? '다음 주로 이동' : '내일로 이동'}
-            className="w-10 shrink-0 px-0"
-          >
-            ▶
-          </Button>
+        {/* 제목 줄: 왼쪽 "카드", 오른쪽 [오늘] (다른 날을 보고 있을 때 돌아오는 길) */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight">카드</h1>
           <Button
             variant="ghost"
+            size="sm"
             onClick={() => setSelectedDate(todayKey)}
             disabled={isToday}
             className="text-brand shrink-0 px-3"
@@ -504,14 +483,40 @@ export function CardsPage() {
             오늘
           </Button>
         </div>
+
+        {/* 날짜 이동: ‹ / 날짜(주 보기면 그 주) / › */}
+        {/* ‹ › 는 40px 네모 버튼(h-10 w-10)이라 엄지로 누르기 쉽습니다. (피츠의 법칙) */}
+        <div className="mt-3 flex items-center gap-2 rounded-2xl bg-white p-1 ring-1 ring-slate-200">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedDate(moveDateKey(selectedDate, -dateStep))}
+            aria-label={period === 'week' ? '지난주로 이동' : '어제로 이동'}
+            className="w-10 shrink-0 px-0"
+          >
+            <span aria-hidden className="text-lg leading-none">
+              ‹
+            </span>
+          </Button>
+          <p className="min-w-0 flex-1 truncate text-center text-[15px] font-semibold text-slate-900 tabular-nums sm:text-[17px]">
+            {period === 'week' ? weekLabel : dateLabel}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedDate(moveDateKey(selectedDate, dateStep))}
+            aria-label={period === 'week' ? '다음 주로 이동' : '내일로 이동'}
+            className="w-10 shrink-0 px-0"
+          >
+            <span aria-hidden className="text-lg leading-none">
+              ›
+            </span>
+          </Button>
+        </div>
       </div>
 
-      {/* 진행 중인 목표 (#391) */}
-      <GoalList goals={activeGoals} />
-
-      {/* 학교 학사일정 · 시험이 다가오면 계획 다시 짜기 (#508) */}
-      <SchoolEventsCard />
-
+      {/* 묶음 순서는 "매일 보는 것 → 가끔 보는 것" 입니다. (서열 위치 효과)
+          날짜 이동 바로 아래에 그날 카드, 그다음 목표, 맨 아래에 학교 일정입니다. */}
       {/* 카드 일·주 타임라인 (#394). 타이머 대기 화면이 이 카드를 보여 줍니다 */}
       <CardTimeline
         cards={cards}
@@ -525,6 +530,29 @@ export function CardsPage() {
         onChangePeriod={setPeriodParam}
         onSelectDate={setSelectedDate}
       />
+
+      {/* 진행 중인 목표 (#391) */}
+      <GoalList goals={activeGoals} />
+
+      {/* 학교 학사일정 · 시험이 다가오면 계획 다시 짜기 (#508) */}
+      <SchoolEventsCard />
+
+      {/* 1순위 [+ 카드 만들기] 는 모바일에서 하단 탭 바로 위(엄지 자리)에 붙여 둡니다. (피츠의 법칙) */}
+      <StickyActionBar aboveTabBar className="flex-row gap-2">
+        <Link
+          to={`/cards/new?date=${selectedDate}`}
+          className="bg-brand hover:bg-brand-dark inline-flex h-12 min-w-0 flex-1 items-center justify-center rounded-xl px-5 text-[15px] font-semibold text-white active:scale-[0.98]"
+        >
+          + 카드 만들기
+        </Link>
+        {/* 시험 범위표 · 학습지를 찍으면 AI 가 카드 여러 장을 나눠 줍니다. (pages/CardsFromPhotoPage.tsx) */}
+        <Link
+          to="/cards/photo"
+          className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-[15px] font-semibold text-slate-900 hover:bg-slate-50 active:scale-[0.98]"
+        >
+          📸 사진으로
+        </Link>
+      </StickyActionBar>
     </div>
   )
 }

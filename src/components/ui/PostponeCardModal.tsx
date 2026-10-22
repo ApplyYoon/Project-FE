@@ -49,11 +49,11 @@ export function PostponeCardModal({
           rows={4}
           maxLength={500}
           placeholder="예: 학원이 늦게 끝나서 오늘은 못 해요. 내일 저녁 8시에 식사 끝나자마자 같은 분량을 할게요. …"
-          className="w-full rounded-lg border border-slate-300 p-3 text-sm"
+          className="w-full rounded-xl border border-slate-300 p-3 text-base sm:text-sm"
         />
         <p
           className={cn(
-            'text-right text-xs',
+            'text-right text-xs tabular-nums',
             length >= POSTPONE_REASON_MIN ? 'text-emerald-700' : 'text-slate-500',
           )}
         >
@@ -66,7 +66,7 @@ export function PostponeCardModal({
               type="date"
               value={newDate}
               onChange={(event) => setNewDate(event.target.value)}
-              className="h-10 rounded-lg border border-slate-300 px-2"
+              className="h-11 min-w-0 rounded-xl border border-slate-300 px-2 tabular-nums"
             />
           </label>
           <label className="flex flex-col gap-1 text-sm text-slate-700">
@@ -75,16 +75,21 @@ export function PostponeCardModal({
               type="time"
               value={newTime}
               onChange={(event) => setNewTime(event.target.value)}
-              className="h-10 rounded-lg border border-slate-300 px-2"
+              className="h-11 min-w-0 rounded-xl border border-slate-300 px-2 tabular-nums"
             />
           </label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Button variant="secondary" onClick={onClose}>
-            그만두기
-          </Button>
-          <Button disabled={!canSave} onClick={() => onPostpone(reason.trim(), newDate, newTime)}>
+        {/* 1순위 [미루기] 하나만 채운 버튼으로, 폭 전체. [그만두기] 는 그 아래 글자 버튼입니다. */}
+        <div className="mt-1 flex flex-col gap-2">
+          <Button
+            className="w-full"
+            disabled={!canSave}
+            onClick={() => onPostpone(reason.trim(), newDate, newTime)}
+          >
             미루기
+          </Button>
+          <Button variant="ghost" className="w-full" onClick={onClose}>
+            그만두기
           </Button>
         </div>
       </div>
