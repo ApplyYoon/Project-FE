@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CareModeBanner } from '@/components/ui/CareModeBanner'
 import { ChipButton } from '@/components/ui/ChipButton'
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { MissionBar } from '@/components/ui/MissionBar'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
@@ -71,7 +72,7 @@ function formatToday(date: Date): string {
 // Button 은 <button> 이라서, 다른 화면으로 가는 곳에는 Link 에 이 클래스를 붙여 씁니다.
 // h-12 / h-10: 손가락으로 누르기 쉽게 높이를 40px 이상으로 둡니다.
 const textLinkClass =
-  'text-brand inline-flex h-10 items-center text-sm font-medium underline underline-offset-4'
+  'inline-flex h-10 items-center text-sm font-medium text-slate-600 underline underline-offset-4'
 
 /**
  * 홈 탭(첫 화면 "/")입니다. (2026-10-18 '오늘' 탭(/today)에서 이름 · 주소를 바꿔 첫 탭으로 올림)
@@ -79,9 +80,8 @@ const textLinkClass =
  *
  *   ① 인사 + 오늘의 미션 한 줄 (누르면 코치 화면으로)
  *   ② 오늘 계획: 오늘 카드를 시간 순서로 + [시작]. 카드가 없으면 [코치와 오늘 계획 짜기] · [사진으로 만들기]
- *   ③ 오늘 시간표 · 급식 (모바일은 위아래, PC 는 나란히)
- *   ④ 다가오는 일정: 학교 일정 + 내 일정을 날짜 순서로, D-day 와 함께
- *   ⑤ 학교 공지: 학교 홈페이지의 가정통신문 · 공지사항 제목, 대회 글은 🏆 (2026-10-19)
+ *   ③ 학교 정보 한 묶음: 위 탭 [시간표 | 급식 | 일정 | 공지] 중 하나만 펼침 (2026-10-22, 주소 ?school=)
+ *      일정 = 학교 일정 + 내 일정을 날짜 순서로 D-day 와 함께, 공지 = 학교 홈페이지 글 제목 · 대회 글은 🏆
  *   맨 아래: 지금 관리 모드와 이유 · AI 가 바꾼 설정 알림
  *
  * 숲은 기록 탭 맨 위로, 오늘 한 줄은 빠졌습니다. 알림 · 통화는 코치 화면 머리에, 설정은 헤더(PC 메뉴 · 모바일 오른쪽 위 톱니)에 있습니다.
@@ -145,38 +145,45 @@ function HomeView() {
   return (
     // 모바일은 바탕을 연회색으로 칠하고(-mx-4 -mt-3 -mb-6 으로 Layout 의 여백까지 덮음), 내용은 흰 묶음으로 올립니다.
     <div className="-mx-4 -mt-3 -mb-6 flex flex-col gap-4 bg-slate-100 px-4 pt-3 pb-6 sm:mx-0 sm:my-0 sm:gap-6 sm:rounded-3xl sm:p-6">
-      {/* ① 인사 + 오늘의 미션 */}
-      <section className="flex flex-col gap-3">
-        <div className="min-w-0 px-1">
-          <p className="text-[15px] text-slate-500">
-            {formatToday(toDayDate(new Date(now)))}
-            {nearestGoal && ` · ${nearestGoal.title} ${formatDday(getDaysUntil(nearestGoal.dDay))}`}
-          </p>
-          <h1 className="mt-1 text-[26px] leading-snug font-bold tracking-tight text-slate-900">
-            오늘도 같이 시작해 볼까?
-          </h1>
+      {/* ① 인사: 날짜 · 가까운 목표 D-day 한 줄 + 짧은 인사 */}
+      <div className="min-w-0 px-1">
+        <p className="text-[15px] text-slate-500 tabular-nums">
+          {formatToday(toDayDate(new Date(now)))}
+          {nearestGoal && ` · ${nearestGoal.title} ${formatDday(getDaysUntil(nearestGoal.dDay))}`}
+        </p>
+        <h1 className="mt-1 text-2xl leading-snug font-bold tracking-tight text-slate-900">
+          오늘도 같이 시작해 볼까?
+        </h1>
+      </div>
+
+      {/* 모바일은 위아래로 쌓고, PC(sm 이상)는 왼쪽에 계획(넓게) · 오른쪽에 미션 · 통화(좁게)를 나란히 놓습니다. */}
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[3fr_2fr] sm:gap-6">
+        <div className="flex min-w-0 flex-col gap-4">
+          {/* ② 지금 할 카드 → 오늘 계획. 홈에서 가장 먼저 · 가장 크게 보이는 것은 "지금 할 카드" 하나입니다. */}
+          <TodayPlanSection
+            state={todayCards}
+            onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
+            // ?plan=today: 코치 화면이 열리자마자 오늘 계획을 짜 줍니다. (계획 핑퐁)
+            onPlanWithCoach={() => navigate(`${PLAN_CHAT_PATH}?plan=today`)}
+            onPhoto={() => navigate('/cards/photo')}
+          />
         </div>
-        {/* 미션은 코치가 채팅에서 같이 해 줘서, 누르면 코치 화면으로 갑니다. */}
-        <MissionBar missions={missions} onOpen={() => navigate(COACH_PATH)} />
-      </section>
 
-      {/* ② 오늘 계획 */}
-      <TodayPlanSection
-        state={todayCards}
-        onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
-        // ?plan=today: 코치 화면이 열리자마자 오늘 계획을 짜 줍니다. (계획 핑퐁)
-        onPlanWithCoach={() => navigate(`${PLAN_CHAT_PATH}?plan=today`)}
-        onPhoto={() => navigate('/cards/photo')}
-      />
+        {/* 오늘의 미션 + AI 통화 입구: 둘 다 "코치와 하는 일" 이라 한 흰 묶음 안에 선으로 나눠 둡니다. (근접성) */}
+        <div className="flex min-w-0 flex-col divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white">
+          {/* 미션은 코치가 채팅에서 같이 해 줘서, 누르면 코치 화면으로 갑니다. 묶음 안이라 MissionBar 의 흰 바탕 · 모서리를 뺍니다. */}
+          <MissionBar
+            missions={missions}
+            onOpen={() => navigate(COACH_PATH)}
+            className="rounded-none bg-transparent"
+          />
+          {/* AI 통화 입구. 언제든 직접 걸 수 있고, 오늘 공부를 끝냈으면 말로 설명하는 확인 통화로 보여 줍니다. (2026-10-22) */}
+          <CallEntry studied={checkCall.studied} />
+        </div>
+      </div>
 
-      {/* AI 통화 입구. 언제든 직접 걸 수 있고, 오늘 공부를 끝냈으면 말로 설명하는 확인 통화로 보여 줍니다. (2026-10-22) */}
-      <CallEntry studied={checkCall.studied} />
-
-      {/* ③ 오늘 시간표 · 급식 → ④ 다가오는 일정 (2026-10-18, BE GET /school/today) */}
-      <SchoolTodaySection todayKey={todayKey} />
-
-      {/* ⑤ 학교 공지 (2026-10-19, BE GET /school/notices). 시간표 · 급식과 따로 받아서, 공지가 늦어도 위 칸은 먼저 뜹니다. */}
-      <SchoolNoticesSection todayKey={todayKey} />
+      {/* ③ 학교 정보 한 묶음: [시간표 | 급식 | 일정 | 공지] 중 하나만 펼칩니다. (BE GET /school/today · /school/notices) */}
+      <SchoolInfoSection todayKey={todayKey} />
 
       {/* 지금 관리 모드와 그 이유 — 하루 1번 판정한 결과입니다 (#384 규칙, lib/dailyCareRun.ts) */}
       <CareModeBanner
@@ -197,8 +204,10 @@ function HomeView() {
   )
 }
 
-// 흰 묶음 카드 (토스 형식: 테두리 · 그림자 없이 둥근 흰 바탕)
-const sectionCardClass = 'rounded-3xl bg-white p-5'
+// 흰 묶음 카드 (토스 형식: 테두리 · 그림자 없이 둥근 흰 바탕). 모서리는 Card 와 같은 rounded-2xl 입니다.
+const sectionCardClass = 'rounded-2xl bg-white p-5'
+// 학교 정보(시간표 · 급식 · 일정 · 공지)는 "보고 지나가는" 정보라 여백을 한 단계 줄여 조용하게 둡니다.
+const quietCardClass = 'rounded-2xl bg-white p-4'
 
 interface CallEntryProps {
   /** 오늘 가장 최근에 끝낸 공부. 없으면 null (그러면 보통 통화 입구) */
@@ -211,10 +220,8 @@ interface CallEntryProps {
  */
 function CallEntry({ studied }: CallEntryProps) {
   return (
-    <Link
-      to="/call"
-      className={cn(sectionCardClass, 'flex items-center gap-3 active:scale-[0.99]')}
-    >
+    // 미션과 같은 흰 묶음 안의 한 줄이라, 따로 바탕 · 모서리를 두지 않습니다.
+    <Link to="/call" className="flex min-h-14 items-center gap-3 px-4 py-3 active:bg-slate-50">
       <span aria-hidden className={rowIconClass}>
         📞
       </span>
@@ -246,6 +253,9 @@ function CallEntry({ studied }: CallEntryProps) {
 // 동그란 배경의 이모지 자리 (목록 줄 왼쪽)
 const rowIconClass =
   'flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg'
+// 학교 정보 줄의 이모지 자리는 한 단계 작게 둡니다. (보고 지나가는 정보라 시선을 덜 끌게)
+const quietIconClass =
+  'flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-base'
 
 /** 오늘 계획 한 줄의 상태별 이모지와 글자 */
 const PLAN_STATUS_INFO: Record<TodayCardStatus, { icon: string; label: string }> = {
@@ -273,126 +283,244 @@ interface TodayPlanSectionProps {
 }
 
 /**
- * ② 오늘 계획 (「4.2」). 오늘 카드를 시작 시각 순서로 보여 주고, 아직 할 카드에는 [시작] 을 붙입니다.
- * 지금 할 카드의 [시작] 은 진한 색, 아직 시간이 안 된 카드는 연한 색입니다. (미리 시작해도 됩니다)
- * 카드가 없으면 계획을 만드는 두 길(코치와 짜기 · 사진으로 만들기)을 보여 줍니다.
+ * ② 지금 할 카드 + 오늘 계획 (「4.2」).
+ *   - 맨 위 "지금 할 카드" 묶음(brand 색): 지금 할 카드, 없으면 다음 카드를 크게 + [▶ 시작]. 홈에서 채운 버튼은 이것 하나입니다.
+ *     카드가 없으면 같은 자리에서 계획을 만드는 길(코치와 짜기 · 사진으로 만들기)을 보여 줍니다.
+ *   - 그 아래 "오늘 계획" 목록: 오늘 카드를 시작 시각 순서로. 아직 할 카드에는 작은 ▶ 버튼만 붙입니다. (미리 시작해도 됩니다)
  */
 function TodayPlanSection({ state, onStart, onPlanWithCoach, onPhoto }: TodayPlanSectionProps) {
+  // 위 묶음에 크게 보여 줄 카드: 지금 할 카드가 먼저, 없으면 다음 카드
+  const heroCard = state.current ?? state.next
   return (
-    <section className={sectionCardClass}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[17px] font-bold text-slate-900">오늘 계획</h2>
-        {state.total > 0 && (
-          <p className="text-sm text-slate-500">
-            {state.doneCount}/{state.total} 끝
-          </p>
-        )}
-      </div>
+    <>
+      <NowCardBlock
+        state={state}
+        heroCard={heroCard}
+        onStart={onStart}
+        onPlanWithCoach={onPlanWithCoach}
+        onPhoto={onPhoto}
+      />
 
-      {state.items.length === 0 ? (
-        <>
-          <p className="mt-1 text-[15px] break-keep text-slate-500">
-            아직 오늘 계획이 없어요. 코치와 같이 짜거나, 시험 범위 사진으로 만들어 봐요.
-          </p>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <Button className="w-full sm:flex-1" onClick={onPlanWithCoach}>
-              💬 코치와 오늘 계획 짜기
-            </Button>
-            <Button variant="secondary" className="w-full sm:flex-1" onClick={onPhoto}>
-              📸 사진으로 만들기
-            </Button>
+      {state.items.length > 0 && (
+        <section className={sectionCardClass}>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-[17px] font-bold text-slate-900">오늘 계획</h2>
+            <p className="text-sm text-slate-500 tabular-nums">
+              {state.doneCount}/{state.total} 끝
+            </p>
           </div>
-        </>
-      ) : (
-        <ul className="mt-2 flex flex-col gap-1">
-          {state.items.map((item) => (
-            <PlanRow key={item.card.id} item={item} onStart={onStart} />
-          ))}
-        </ul>
-      )}
 
-      {state.unhandled.length > 0 && (
+          {/* 줄 사이를 1px 선으로 나눠, 줄마다 따로 떠 보이지 않게 합니다. */}
+          <ul className="mt-2 flex flex-col divide-y divide-slate-100">
+            {state.items.map((item) => (
+              <PlanRow
+                key={item.card.id}
+                item={item}
+                isHero={item.card === heroCard}
+                onStart={onStart}
+              />
+            ))}
+          </ul>
+
+          {/* 위 묶음이 카드를 보여 줄 때만 여기서 알려 줍니다. (할 카드가 없으면 위 묶음이 이 안내를 대신 크게 보여 줌) */}
+          {heroCard && state.unhandled.length > 0 && (
+            <Link
+              to="/timer"
+              className="mt-3 flex min-h-10 items-center rounded-xl bg-amber-50 px-3 text-sm break-keep text-amber-900"
+            >
+              시간이 끝난 카드 {state.unhandled.length}개 — 타이머에서 미루거나 실패로 남겨요 ›
+            </Link>
+          )}
+
+          {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
+          <div className="mt-1 flex justify-end">
+            <Link to="/cards" className={textLinkClass}>
+              카드 · 목표 모두 보기 ›
+            </Link>
+          </div>
+        </section>
+      )}
+    </>
+  )
+}
+
+interface NowCardBlockProps extends TodayPlanSectionProps {
+  /** 크게 보여 줄 카드 (지금 할 카드 → 다음 카드). 없으면 undefined */
+  heroCard: CardModel | undefined
+}
+
+/**
+ * "지금 할 카드" 묶음. 앱에서 유일하게 brand 색으로 꽉 채운 곳입니다. (폰 레스토프 효과: 눈에 띄는 것은 하나만)
+ * 버튼은 묶음 폭 전체 · 높이 56px 로 크게 둡니다. (피츠의 법칙: 크고 가까운 것이 빨리 눌린다)
+ */
+function NowCardBlock({ state, heroCard, onStart, onPlanWithCoach, onPhoto }: NowCardBlockProps) {
+  const blockClass = 'rounded-2xl bg-brand p-5 text-white sm:p-6'
+
+  // 1) 지금 · 다음 카드가 있으면: 형광펜 표시 + 큰 제목 + 시각 + [▶ 시작]
+  if (heroCard) {
+    const isNow = heroCard === state.current
+    return (
+      <section aria-label="지금 할 카드" className={blockClass}>
+        <span className="bg-now inline-flex rounded-full px-2.5 py-0.5 text-[13px] font-bold text-slate-900">
+          {isNow ? '지금' : '다음'}
+        </span>
+        <h2 className="mt-3 line-clamp-2 text-[28px] leading-tight font-bold tracking-tight break-keep">
+          {heroCard.title}
+        </h2>
+        <p className="mt-1 text-[15px] text-indigo-100 tabular-nums">{cardTimeText(heroCard)}</p>
+        <Button
+          variant="inverse"
+          size="lg"
+          className="mt-5 w-full"
+          onClick={() => onStart(heroCard)}
+          // 아래 오늘 계획 목록의 줄 버튼("○○ 시작")과 이름이 겹치지 않게 다르게 붙입니다.
+          aria-label={`${heroCard.title} 바로 시작`}
+        >
+          ▶ 시작
+        </Button>
+      </section>
+    )
+  }
+
+  // 2) 오늘 카드가 아예 없으면: 계획을 만드는 두 길. 채운 버튼은 [코치와 짜기] 하나, 사진은 글자 버튼으로 낮춥니다.
+  if (state.items.length === 0) {
+    return (
+      <section aria-label="오늘 계획 만들기" className={blockClass}>
+        <h2 className="text-2xl leading-snug font-bold tracking-tight">아직 오늘 계획이 없어요</h2>
+        <p className="mt-1 text-[15px] break-keep text-indigo-100">
+          코치와 같이 짜거나, 시험 범위 사진으로 만들어 봐요.
+        </p>
+        <Button variant="inverse" size="lg" className="mt-5 w-full" onClick={onPlanWithCoach}>
+          💬 코치와 오늘 계획 짜기
+        </Button>
+        <button
+          type="button"
+          onClick={onPhoto}
+          className="mt-2 h-12 w-full cursor-pointer rounded-xl text-[15px] font-semibold text-white hover:bg-white/10"
+        >
+          📸 사진으로 만들기
+        </button>
+        <div className="mt-1 flex justify-center">
+          <Link
+            to="/cards"
+            className="inline-flex h-10 items-center text-sm font-medium text-indigo-100 underline underline-offset-4"
+          >
+            카드 · 목표 모두 보기 ›
+          </Link>
+        </div>
+      </section>
+    )
+  }
+
+  // 3) 시간이 끝났는데 처리 안 한 카드만 남았으면: 타이머에서 정리하기
+  if (state.unhandled.length > 0) {
+    return (
+      <section aria-label="시간이 끝난 카드" className={blockClass}>
+        <h2 className="text-2xl leading-snug font-bold tracking-tight break-keep">
+          시간이 끝난 카드 {state.unhandled.length}개
+        </h2>
+        <p className="mt-1 text-[15px] break-keep text-indigo-100">
+          타이머에서 미루거나 실패로 남겨요.
+        </p>
         <Link
           to="/timer"
-          className="mt-3 flex min-h-10 items-center rounded-xl bg-amber-50 px-3 text-sm break-keep text-amber-900"
+          className="text-brand-dark hover:bg-brand-light mt-5 flex h-14 w-full items-center justify-center rounded-2xl bg-white px-6 text-[17px] font-semibold transition active:scale-[0.98]"
         >
-          시간이 끝난 카드 {state.unhandled.length}개 — 타이머에서 미루거나 실패로 남겨요 ›
+          타이머에서 정리하기
         </Link>
-      )}
+      </section>
+    )
+  }
 
-      {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
-      <div className="mt-2 flex justify-end">
-        <Link to="/cards" className={textLinkClass}>
-          카드 · 목표 모두 보기 ›
-        </Link>
-      </div>
+  // 4) 남은 카드가 없으면(다 끝냈거나 미루기 · 쉬는 날로 넘김): 같은 자리에서 코치와 계획을 더 짤 수 있게 합니다.
+  const isAllDone = state.doneCount === state.total
+  return (
+    <section aria-label="오늘 남은 카드 없음" className={blockClass}>
+      <span className="bg-now inline-flex rounded-full px-2.5 py-0.5 text-[13px] font-bold text-slate-900 tabular-nums">
+        {state.doneCount}/{state.total} 끝
+      </span>
+      <h2 className="mt-3 text-2xl leading-snug font-bold tracking-tight break-keep">
+        {isAllDone ? '오늘 계획을 다 마쳤어요 👏' : '오늘 남은 카드가 없어요'}
+      </h2>
+      <p className="mt-1 text-[15px] break-keep text-indigo-100">
+        더 하고 싶으면 코치와 계획을 더 짜 봐요.
+      </p>
+      <Button variant="inverse" size="lg" className="mt-5 w-full" onClick={onPlanWithCoach}>
+        💬 코치와 계획 더 짜기
+      </Button>
     </section>
   )
 }
 
 interface PlanRowProps {
   item: TodayCardItem
+  /** 위 "지금 할 카드" 묶음에 크게 나온 카드인지. 맞으면 형광펜 글자로만 짧게 표시합니다. */
+  isHero: boolean
   onStart: (card: CardModel) => void
 }
 
-/** 오늘 계획 한 줄: 상태 이모지 · 카드 이름 · 시각과 길이 · 오른쪽에 [시작] 또는 상태 글자 */
-function PlanRow({ item, onStart }: PlanRowProps) {
+/** 오늘 계획 한 줄: 상태 이모지 · 카드 이름 · 시각과 길이 · 오른쪽에 작은 ▶ 버튼 */
+function PlanRow({ item, isHero, onStart }: PlanRowProps) {
   const { card, status } = item
   const info = PLAN_STATUS_INFO[status]
   // 지금 할 카드와 아직 시간이 안 된 카드만 시작할 수 있습니다.
   const canStart = status === 'current' || status === 'waiting'
   // 끝냈거나 넘긴 카드는 흐리게 보여 줍니다.
   const isFinished = status === 'done' || status === 'skipped'
+  // 위 묶음에 나온 카드는 '지금' · '다음' 을 형광펜으로, 나머지는 상태 글자(시간 지남 · 끝 · 넘김)를 그대로 씁니다.
+  const label = isHero ? (status === 'current' ? '지금' : '다음') : info.label
   return (
-    <li className="flex min-h-14 items-center gap-3">
+    <li className={cn('flex min-h-14 items-center gap-3 py-2', isFinished && 'opacity-60')}>
       <span aria-hidden className={rowIconClass}>
         {info.icon}
       </span>
       <span className="min-w-0 flex-1">
         <span
           className={cn(
-            'block truncate text-[15px] font-semibold',
-            isFinished ? 'text-slate-400' : 'text-slate-900',
+            'block truncate text-[15px] font-semibold text-slate-900',
+            // 줄긋기는 끝낸 카드에만. 넘긴(미룸 · 실패) 카드는 흐리게만 해서 "끝냈다" 로 보이지 않게 합니다.
+            status === 'done' && 'line-through decoration-slate-400',
           )}
         >
           {card.title}
         </span>
-        <span className="block text-sm text-slate-500">
+        <span className="flex flex-wrap items-center gap-x-1.5 text-sm text-slate-500 tabular-nums">
           {cardTimeText(card)}
-          {info.label && (
-            <span
-              className={cn(
-                'font-semibold',
-                status === 'current' && 'text-brand',
-                status === 'unhandled' && 'text-amber-700',
-                status === 'done' && 'text-emerald-700',
-              )}
-            >
-              {' · '}
-              {info.label}
-            </span>
-          )}
+          {label &&
+            (isHero ? (
+              <span className="bg-now rounded px-1.5 text-xs font-bold text-slate-900">
+                {label}
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  'font-semibold',
+                  status === 'unhandled' && 'text-amber-700',
+                  status === 'done' && 'text-emerald-700',
+                )}
+              >
+                · {label}
+              </span>
+            ))}
         </span>
       </span>
       {canStart && (
-        <button
-          type="button"
+        // 줄마다 큰 [시작] 을 달면 고를 것이 많아 보여서(힉의 법칙), 40px 아이콘 버튼으로 낮춥니다.
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => onStart(card)}
           aria-label={`${card.title} 시작`}
-          className={cn(
-            'h-10 shrink-0 cursor-pointer rounded-full px-4 text-sm font-semibold transition active:scale-[0.98]',
-            status === 'current'
-              ? 'bg-brand hover:bg-brand-dark text-white'
-              : 'bg-slate-100 text-slate-900 hover:bg-slate-200',
-          )}
+          className="w-10 shrink-0 px-0"
         >
-          ▷ 시작
-        </button>
+          <svg aria-hidden viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+            <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+          </svg>
+        </Button>
       )}
     </li>
   )
 }
-
 interface SettingChangeNoticeProps {
   changes: SettingChange[]
   onRevert: (change: SettingChange) => void
@@ -408,7 +536,7 @@ function SettingChangeNotice({ changes, onRevert, onDismiss }: SettingChangeNoti
         <button
           type="button"
           onClick={onDismiss}
-          className="h-10 shrink-0 cursor-pointer rounded-md px-3 text-sm font-medium text-sky-900 hover:bg-sky-100"
+          className="h-10 shrink-0 cursor-pointer rounded-xl px-3 text-sm font-medium text-sky-900 hover:bg-sky-100"
         >
           확인
         </button>
@@ -427,7 +555,7 @@ function SettingChangeNotice({ changes, onRevert, onDismiss }: SettingChangeNoti
               <button
                 type="button"
                 onClick={() => onRevert(change)}
-                className="h-10 shrink-0 cursor-pointer rounded-md border border-sky-300 bg-white px-3 text-sm font-medium text-sky-900 hover:bg-sky-100"
+                className="h-10 shrink-0 cursor-pointer rounded-xl border border-sky-300 bg-white px-3 text-sm font-medium text-sky-900 hover:bg-sky-100"
               >
                 되돌리기
               </button>
@@ -439,51 +567,121 @@ function SettingChangeNotice({ changes, onRevert, onDismiss }: SettingChangeNoti
   )
 }
 
-interface SchoolTodaySectionProps {
+/** 학교 정보 묶음 위 세그먼트 탭. 주소 ?school= 에 이 value 가 들어갑니다. (/?school=meal) */
+type SchoolTab = 'timetable' | 'meal' | 'events' | 'notices'
+
+const SCHOOL_TABS: { value: SchoolTab; label: string }[] = [
+  { value: 'timetable', label: '시간표' },
+  { value: 'meal', label: '급식' },
+  { value: 'events', label: '일정' },
+  { value: 'notices', label: '공지' },
+]
+
+/** 주소의 값은 누구나 고칠 수 있어서, 아는 탭 이름이 아니면 시간표로 봅니다. */
+function toSchoolTab(value: string): SchoolTab {
+  return SCHOOL_TABS.find((tab) => tab.value === value)?.value ?? 'timetable'
+}
+
+// 학교를 아직 안 골랐을 때 어느 탭에서나 보여 주는 안내
+const SCHOOL_MISSING_TEXT =
+  '가입할 때 학교를 고르면 시간표 · 급식 · 학교 일정 · 공지가 여기에 떠요.'
+
+// 시연 예시 · 출처 안내. 학교 묶음 안의 작은 회색 한 줄로 둡니다. (눈에 띌 필요가 없는 정보)
+const schoolNoteClass = 'mt-3 text-[13px] break-keep text-slate-500'
+
+interface SchoolInfoSectionProps {
   todayKey: string
 }
 
 /**
- * ③ 오늘 시간표 · 급식과 ④ 다가오는 일정입니다. 서버에서 받는 동안은 스켈레톤, 못 받으면 안내를 보여 줍니다. (AsyncBoundary)
+ * ③ 학교 정보 한 묶음: 위의 세그먼트 탭(시간표 | 급식 | 일정 | 공지)으로 하나만 펼칩니다. (2026-10-22)
+ * 학교 정보는 "보고 지나가는" 정보라, 네 칸을 다 쌓지 않고 하나만 보여 줘서 홈을 짧게 합니다. (힉의 법칙)
+ * 고른 탭은 주소에 둡니다. (/?school=meal) 새로고침해도 보던 탭이 그대로입니다.
+ */
+function SchoolInfoSection({ todayKey }: SchoolInfoSectionProps) {
+  // replace: 탭을 여러 번 바꿔도 뒤로 가기 한 번이면 홈을 떠납니다. (공지 칩 ?notice= 와 같게)
+  const [schoolParam, setSchoolParam] = useQueryParam('school', 'timetable', {
+    replace: true,
+  })
+  const tab = toSchoolTab(schoolParam)
+
+  return (
+    <section className={quietCardClass}>
+      {/* 탭 이름이 묶음 제목을 대신해서, 제목은 화면 낭독기에만 읽어 줍니다. */}
+      <h2 className="sr-only">학교 정보</h2>
+      <SegmentedToggle
+        label="학교 정보 고르기"
+        options={SCHOOL_TABS}
+        value={tab}
+        onChange={setSchoolParam}
+      />
+      <div className="mt-3">
+        {/* 공지는 시간표 · 급식과 서버 주소가 달라서 따로 받습니다. */}
+        {tab === 'notices' ? (
+          <SchoolNoticesSection todayKey={todayKey} />
+        ) : (
+          <SchoolTodaySection todayKey={todayKey} tab={tab} />
+        )}
+      </div>
+    </section>
+  )
+}
+
+interface SchoolTodaySectionProps {
+  todayKey: string
+  /** 펼친 탭 (공지 탭은 SchoolNoticesSection 이 그림) */
+  tab: Exclude<SchoolTab, 'notices'>
+}
+
+/**
+ * 오늘 시간표 · 급식 · 다가오는 일정입니다. 서버에서 받는 동안은 스켈레톤, 못 받으면 안내를 보여 줍니다. (AsyncBoundary)
  * 홈은 시간표를 보여 주기만 합니다. 학년 · 반은 설정의 계정 묶음에서 정합니다. (2026-10-19 "반 저장도 설정에서 해, 홈에선 시간표만")
  * 반을 아직 안 정했으면 시간표 자리에 설정으로 가는 링크가 나옵니다. 반은 이 기기에만 저장합니다. (lib/schoolToday.ts)
  */
-function SchoolTodaySection({ todayKey }: SchoolTodaySectionProps) {
+function SchoolTodaySection({ todayKey, tab }: SchoolTodaySectionProps) {
   const isServerData = useIsServerData()
   // 설정에서 정한 반. 홈에서는 바꾸지 않아서 처음에 한 번만 읽습니다.
   const [schoolClass] = useState(loadSchoolClass)
 
   return (
     <AsyncBoundary
-      pendingFallback={<SchoolTodaySkeleton />}
+      pendingFallback={<SchoolInfoSkeleton text="학교 정보를 불러오는 중이에요" />}
       errorMessage="학교 정보를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
       resetKeys={[schoolClass?.grade, schoolClass?.classNo]}
     >
-      <SchoolTodayView todayKey={todayKey} isServerData={isServerData} schoolClass={schoolClass} />
+      <SchoolTodayView
+        todayKey={todayKey}
+        tab={tab}
+        isServerData={isServerData}
+        schoolClass={schoolClass}
+      />
     </AsyncBoundary>
   )
 }
 
-function SchoolTodaySkeleton() {
+interface SchoolInfoSkeletonProps {
+  /** 화면 낭독기에 읽어 줄 글 */
+  text: string
+}
+
+/** 학교 묶음 안을 받는 동안 보여 주는 회색 상자 */
+function SchoolInfoSkeleton({ text }: SchoolInfoSkeletonProps) {
   return (
-    <div role="status" className="flex flex-col gap-4">
-      <span className="sr-only">학교 정보를 불러오는 중이에요</span>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Skeleton className="h-40 w-full rounded-3xl" />
-        <Skeleton className="h-40 w-full rounded-3xl" />
-      </div>
-      <Skeleton className="h-28 w-full rounded-3xl" />
+    <div role="status">
+      <span className="sr-only">{text}</span>
+      <Skeleton className="h-32 w-full rounded-xl" />
     </div>
   )
 }
 
 interface SchoolTodayViewProps {
   todayKey: string
+  tab: Exclude<SchoolTab, 'notices'>
   isServerData: boolean
   schoolClass: SchoolClass | null
 }
 
-function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayViewProps) {
+function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTodayViewProps) {
   const { data } = useSuspenseQuery(schoolTodayQuery(schoolClass, isServerData, todayKey))
   // 내 일정(대회 등, 코치 채팅에서 날짜를 알려 주면 생김 · lib/myEvents.ts)도 학교 일정과 같은 목록에 보여 줍니다.
   const [myEvents] = useState(() => getUpcomingMyEvents(todayKey, 60))
@@ -498,15 +696,11 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
 
   if (data.school === null) {
     return (
-      <div className="flex flex-col gap-4">
-        <section className={sectionCardClass}>
-          <h2 className="text-[17px] font-bold text-slate-900">오늘 학교</h2>
-          <p className="mt-1 text-[15px] break-keep text-slate-500">
-            가입할 때 학교를 고르면 시간표 · 급식 · 학교 일정이 여기에 떠요.
-          </p>
-        </section>
-        {myRows.length > 0 && <UpcomingSection rows={myRows} />}
-      </div>
+      <>
+        {/* 학교가 없어도 내 일정은 일정 탭에서 볼 수 있습니다. */}
+        {tab === 'events' && myRows.length > 0 && <UpcomingList rows={myRows} />}
+        <p className="text-[15px] break-keep text-slate-500">{SCHOOL_MISSING_TEXT}</p>
+      </>
     )
   }
 
@@ -535,89 +729,79 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
     .slice(0, 5)
 
   return (
-    <div className="flex flex-col gap-4">
-      {data.isDemo && (
-        <p className="self-start rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
-          시연용 예시 — 테스트 로그인이라 서버 대신 정해 둔 학교 정보를 보여 줘요
-        </p>
-      )}
-
-      {/* ③ 시간표 · 급식: 모바일은 위아래, PC 는 나란히. items-start: 높이가 다른 칸을 억지로 늘리지 않습니다. */}
-      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-        <section className={sectionCardClass}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-[17px] font-bold text-slate-900">오늘 시간표</h2>
-            {/* 어느 반 시간표인지 글자로만 보여 줍니다. 반은 설정에서 바꿉니다. */}
-            {schoolClass && !data.isDemo && (
-              <p className="shrink-0 text-sm font-medium text-slate-500">
-                {schoolClass.grade}학년 {schoolClass.classNo}반
-              </p>
-            )}
-          </div>
-
-          {needsClass ? (
-            <>
-              <p className="mt-1 text-[15px] break-keep text-slate-500">
-                설정에서 학년 · 반을 정하면 오늘 시간표가 여기에 떠요.
-              </p>
-              <Link to="/settings" className={textLinkClass}>
-                설정에서 반 정하기 ›
-              </Link>
-            </>
-          ) : data.timetable === null || data.timetable.length === 0 ? (
-            <p className="mt-2 text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
-          ) : (
-            <>
-              {/* 자리를 덜 차지하게 두 칸으로 놓습니다. 교시 번호가 있어서 순서는 번호로 읽습니다. (1 2 / 3 4 / …) */}
-              <ol className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1">
-                {data.timetable.map((period) => (
-                  <li key={period.period} className="flex min-h-9 min-w-0 items-center gap-2">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                      {period.period}
-                    </span>
-                    <span className="min-w-0 truncate text-[15px] text-slate-900">
-                      {period.subject}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-              <p className="mt-2 text-xs break-keep text-slate-500">
-                반 시간표 기준이에요. 선택과목은 다를 수 있어요.
-                {data.timetablePartial && ' 지금은 5교시까지만 보여요.'}
-              </p>
-            </>
-          )}
-        </section>
-
-        <section className={sectionCardClass}>
-          <h2 className="text-[17px] font-bold text-slate-900">급식</h2>
-          {data.meals.length === 0 ? (
-            <p className="mt-2 text-[15px] text-slate-500">오늘 · 내일 급식 정보가 없어요.</p>
-          ) : (
-            <ul className="mt-2 flex flex-col gap-1">
-              {data.meals.map((meal) => (
-                <li key={`${meal.date}-${meal.kind}`} className="flex min-h-14 items-center gap-3">
-                  <span aria-hidden className={rowIconClass}>
-                    🍚
+    <>
+      {tab === 'timetable' &&
+        (needsClass ? (
+          <>
+            <p className="text-[15px] break-keep text-slate-500">
+              설정에서 학년 · 반을 정하면 오늘 시간표가 여기에 떠요.
+            </p>
+            <Link to="/settings" className={textLinkClass}>
+              설정에서 반 정하기 ›
+            </Link>
+          </>
+        ) : data.timetable === null || data.timetable.length === 0 ? (
+          <p className="text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
+        ) : (
+          <>
+            {/* 자리를 덜 차지하게 두 칸으로 놓습니다. 교시 번호가 있어서 순서는 번호로 읽습니다. (1 2 / 3 4 / …) */}
+            <ol className="grid grid-cols-2 gap-x-3 gap-y-1">
+              {data.timetable.map((period) => (
+                <li key={period.period} className="flex min-h-9 min-w-0 items-center gap-2">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600 tabular-nums">
+                    {period.period}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-semibold text-slate-900">
-                      {meal.date === todayKey ? '오늘' : '내일'} {meal.kind}
-                    </span>
-                    <span className="line-clamp-2 block text-sm break-keep text-slate-500">
-                      {meal.dishes.join(' · ')}
-                    </span>
+                  <span className="min-w-0 truncate text-[15px] text-slate-900">
+                    {period.subject}
                   </span>
                 </li>
               ))}
-            </ul>
-          )}
-        </section>
-      </div>
+            </ol>
+            {/* 어느 반 시간표인지 글자로만 보여 줍니다. 반은 설정에서 바꿉니다. */}
+            <p className="mt-2 text-[13px] break-keep text-slate-500">
+              {schoolClass && !data.isDemo
+                ? `${schoolClass.grade}학년 ${schoolClass.classNo}반 시간표예요.`
+                : '반 시간표 기준이에요.'}{' '}
+              선택과목은 다를 수 있어요.
+              {data.timetablePartial && ' 지금은 5교시까지만 보여요.'}
+            </p>
+          </>
+        ))}
 
-      {/* ④ 다가오는 일정 */}
-      <UpcomingSection rows={rows} />
-    </div>
+      {tab === 'meal' &&
+        (data.meals.length === 0 ? (
+          <p className="text-[15px] text-slate-500">오늘 · 내일 급식 정보가 없어요.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-slate-100">
+            {data.meals.map((meal) => (
+              <li
+                key={`${meal.date}-${meal.kind}`}
+                className="flex min-h-12 items-center gap-3 py-2"
+              >
+                <span aria-hidden className={quietIconClass}>
+                  🍚
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-slate-900">
+                    {meal.date === todayKey ? '오늘' : '내일'} {meal.kind}
+                  </span>
+                  <span className="line-clamp-2 block text-sm break-keep text-slate-500">
+                    {meal.dishes.join(' · ')}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ))}
+
+      {tab === 'events' && <UpcomingList rows={rows} />}
+
+      {data.isDemo && (
+        <p className={schoolNoteClass}>
+          시연용 예시 — 테스트 로그인이라 서버 대신 정해 둔 학교 정보를 보여 줘요
+        </p>
+      )}
+    </>
   )
 }
 
@@ -632,43 +816,43 @@ interface UpcomingRow {
   dDay: number
 }
 
-/** 다가오는 일정 목록. 시험 · 내 일정은 D-day 를 brand 색으로 강조합니다. */
-function UpcomingSection({ rows }: { rows: UpcomingRow[] }) {
+interface UpcomingListProps {
+  rows: UpcomingRow[]
+}
+
+/** 다가오는 일정 목록. 시험 · 내 일정은 D-day 를 진한 글자로, 학교 행사는 회색으로 보여 줍니다. */
+function UpcomingList({ rows }: UpcomingListProps) {
+  if (rows.length === 0) {
+    return <p className="text-[15px] text-slate-500">30일 안에 일정이 없어요.</p>
+  }
   return (
-    <section className={sectionCardClass}>
-      <h2 className="text-[17px] font-bold text-slate-900">다가오는 일정</h2>
-      {rows.length === 0 ? (
-        <p className="mt-2 text-[15px] text-slate-500">30일 안에 일정이 없어요.</p>
-      ) : (
-        <ul className="mt-2 flex flex-col gap-1">
-          {rows.map((row) => (
-            <li key={row.key} className="flex min-h-14 items-center gap-3">
-              <span aria-hidden className={rowIconClass}>
-                {row.kind === 'exam' ? '📝' : row.kind === 'mine' ? '⭐' : '📅'}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-semibold text-slate-900">
-                  {row.name}
-                </span>
-                <span className="block text-sm text-slate-500">
-                  {formatMonthDay(row.start)}
-                  {row.end !== row.start && ` ~ ${formatMonthDay(row.end)}`}
-                  {row.kind === 'mine' && ' · 내 일정'}
-                </span>
-              </span>
-              <span
-                className={cn(
-                  'shrink-0 text-base font-bold',
-                  row.kind === 'school' ? 'text-slate-700' : 'text-brand',
-                )}
-              >
-                {row.dDay === 0 ? '오늘' : `D-${row.dDay}`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <ul className="flex flex-col divide-y divide-slate-100">
+      {rows.map((row) => (
+        <li key={row.key} className="flex min-h-12 items-center gap-3 py-2">
+          <span aria-hidden className={quietIconClass}>
+            {row.kind === 'exam' ? '📝' : row.kind === 'mine' ? '⭐' : '📅'}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-semibold text-slate-900">
+              {row.name}
+            </span>
+            <span className="block text-[13px] text-slate-500 tabular-nums">
+              {formatMonthDay(row.start)}
+              {row.end !== row.start && ` ~ ${formatMonthDay(row.end)}`}
+              {row.kind === 'mine' && ' · 내 일정'}
+            </span>
+          </span>
+          <span
+            className={cn(
+              'shrink-0 text-[15px] font-bold tabular-nums',
+              row.kind === 'school' ? 'text-slate-500' : 'text-slate-900',
+            )}
+          >
+            {row.dDay === 0 ? '오늘' : `D-${row.dDay}`}
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -680,19 +864,14 @@ interface SchoolNoticesSectionProps {
 }
 
 /**
- * ⑤ 학교 공지. 서버가 학교 홈페이지에서 하루 한 번 받아 둔 가정통신문 · 공지사항 제목입니다. (lib/schoolNotices.ts)
+ * 학교 공지 탭. 서버가 학교 홈페이지에서 하루 한 번 받아 둔 가정통신문 · 공지사항 제목입니다. (lib/schoolNotices.ts)
  * 사용자: "학교 공지도 보여주게 해야 되는데", "내가 참여할 대회? 관심있는 대회?" (2026-10-19)
  * NEIS 공개 API 에는 공지가 없어서 서버가 홈페이지를 직접 읽습니다.
  */
 function SchoolNoticesSection({ todayKey }: SchoolNoticesSectionProps) {
   return (
     <AsyncBoundary
-      pendingFallback={
-        <div role="status">
-          <span className="sr-only">학교 공지를 불러오는 중이에요</span>
-          <Skeleton className="h-40 w-full rounded-3xl" />
-        </div>
-      }
+      pendingFallback={<SchoolInfoSkeleton text="학교 공지를 불러오는 중이에요" />}
       errorMessage="학교 공지를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
     >
       <SchoolNoticesView todayKey={todayKey} />
@@ -713,22 +892,32 @@ interface SchoolNoticesViewProps {
 function SchoolNoticesView({ todayKey }: SchoolNoticesViewProps) {
   const isServerData = useIsServerData()
   const { data } = useSuspenseQuery(schoolNoticesQuery(isServerData, todayKey))
-  // [전체] · [🏆 대회] 중 무엇을 보는지, 더 보기를 펼쳤는지는 주소에 둡니다. (/?notice=contest&noticeMore=open)
-  const [noticeParam, setNoticeParam] = useQueryParam('notice', 'all', { replace: true })
-  const [moreParam, setMoreParam] = useQueryParam('noticeMore', 'closed', { replace: true })
+  // [전체] · [🏆 대회] 중 무엇을 보는지, 더 보기를 펼쳤는지는 주소에 둡니다. (/?school=notices&notice=contest&noticeMore=open)
+  const [noticeParam, setNoticeParam] = useQueryParam('notice', 'all', {
+    replace: true,
+  })
+  const [moreParam, setMoreParam] = useQueryParam('noticeMore', 'closed', {
+    replace: true,
+  })
   // "내가 준비하는 것" 을 대회·자격증으로 골랐으면 그 이름(예: 정보올림피아드)이 들어간 글을 맨 위로 올립니다. (lib/studyFocus.ts)
   const [focusName] = useState(() => {
     const focus = loadStudyFocus()
     return focus?.kind === 'CONTEST' ? focus.name : null
   })
 
-  // 학교를 안 골랐으면 위의 "오늘 학교" 칸이 이미 안내해서, 여기서는 그리지 않습니다.
-  if (data.school === null) return null
+  // 학교를 안 골랐으면 다른 탭과 같은 안내를 보여 줍니다.
+  if (data.school === null) {
+    return <p className="text-[15px] break-keep text-slate-500">{SCHOOL_MISSING_TEXT}</p>
+  }
 
   const rows: NoticeRow[] = data.notices.map((notice) => {
     const isMine = matchesFocusName(notice.title, focusName)
     // 내가 준비하는 대회·자격증 글은 제목에 '대회' 가 없어도 대회 글로 봅니다. (예: '컴퓨터활용능력 시험 안내')
-    return { ...notice, isContest: isMine || isContestNotice(notice.title), isMine }
+    return {
+      ...notice,
+      isContest: isMine || isContestNotice(notice.title),
+      isMine,
+    }
   })
   // 내 대회 글을 먼저, 나머지는 서버가 준 순서(최근 글 먼저) 그대로 둡니다.
   const sortedRows = [...rows.filter((row) => row.isMine), ...rows.filter((row) => !row.isMine)]
@@ -740,18 +929,9 @@ function SchoolNoticesView({ todayKey }: SchoolNoticesViewProps) {
   const shownRows = isMoreOpen ? visibleRows : visibleRows.slice(0, NOTICE_PREVIEW_COUNT)
 
   return (
-    <section className={sectionCardClass}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[17px] font-bold text-slate-900">학교 공지</h2>
-        {data.isDemo && (
-          <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
-            시연용 예시
-          </span>
-        )}
-      </div>
-
+    <>
       {rows.length === 0 ? (
-        <p className="mt-1 text-[15px] break-keep text-slate-500">
+        <p className="text-[15px] break-keep text-slate-500">
           {data.fetchedAt === null
             ? '아직 학교 홈페이지에서 공지를 못 가져왔어요. 홈페이지 모양이 달라서 못 읽는 학교일 수도 있어요.'
             : '최근 30일 동안 올라온 공지가 없어요.'}
@@ -760,7 +940,7 @@ function SchoolNoticesView({ todayKey }: SchoolNoticesViewProps) {
         <>
           {/* 대회 글이 있을 때만 고르는 버튼을 보여 줍니다. (flex-wrap: 좁은 화면에서 넘치면 다음 줄로) */}
           {contestCount > 0 && (
-            <div role="group" aria-label="공지 고르기" className="mt-3 flex flex-wrap gap-2">
+            <div role="group" aria-label="공지 고르기" className="mb-1 flex flex-wrap gap-2">
               <ChipButton selected={!isContestOnly} onClick={() => setNoticeParam('all')}>
                 {`전체 ${rows.length}`}
               </ChipButton>
@@ -770,7 +950,7 @@ function SchoolNoticesView({ todayKey }: SchoolNoticesViewProps) {
             </div>
           )}
 
-          <ul className="mt-2 flex flex-col gap-1">
+          <ul className="flex flex-col divide-y divide-slate-100">
             {shownRows.map((row, index) => (
               <NoticeRowItem key={`${row.kind}-${row.date}-${row.title}-${index}`} row={row} />
             ))}
@@ -788,13 +968,13 @@ function SchoolNoticesView({ todayKey }: SchoolNoticesViewProps) {
         </>
       )}
 
-      <p className="mt-2 text-xs break-keep text-slate-500">
+      <p className={schoolNoteClass}>
         학교 홈페이지에서 하루 한 번 제목만 가져와요.
+        {data.isDemo && ' 지금은 시연용 예시예요.'}
       </p>
-    </section>
+    </>
   )
 }
-
 interface NoticeRowItemProps {
   row: NoticeRow
 }
@@ -804,7 +984,7 @@ function NoticeRowItem({ row }: NoticeRowItemProps) {
   const icon = row.isContest ? '🏆' : row.kind === '가정통신문' ? '📄' : '📢'
   const content = (
     <>
-      <span aria-hidden className={rowIconClass}>
+      <span aria-hidden className={quietIconClass}>
         {icon}
       </span>
       <span className="min-w-0 flex-1">
@@ -813,7 +993,9 @@ function NoticeRowItem({ row }: NoticeRowItemProps) {
         </span>
         <span className="block text-sm text-slate-500">
           {formatMonthDay(row.date)} · {row.kind}
-          {row.isMine && <span className="text-brand font-medium"> · 내가 준비하는 대회</span>}
+          {row.isMine && (
+            <span className="font-semibold text-slate-700"> · 내가 준비하는 대회</span>
+          )}
         </span>
       </span>
       {row.url && (
@@ -832,12 +1014,12 @@ function NoticeRowItem({ row }: NoticeRowItemProps) {
           href={row.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex min-h-14 items-center gap-3 rounded-xl active:bg-slate-50"
+          className="flex min-h-12 items-center gap-3 rounded-xl py-1 active:bg-slate-50"
         >
           {content}
         </a>
       ) : (
-        <div className="flex min-h-14 items-center gap-3">{content}</div>
+        <div className="flex min-h-12 items-center gap-3 py-1">{content}</div>
       )}
     </li>
   )

@@ -30,7 +30,8 @@ export function CareModeBanner({ level, reason, maxLevel, className }: CareModeB
   return (
     <section
       aria-label="지금 관리 모드"
-      className={cn('rounded-xl border p-4 sm:p-5', info.panelClass, className)}
+      // 바탕색이 곧 관리 단계(회복 초록 ~ 강제 빨강)를 알려 주는 정보라 그대로 둡니다. 모서리만 다른 묶음과 맞춥니다. (2026-10-22)
+      className={cn('rounded-2xl border p-4 sm:p-5', info.panelClass, className)}
     >
       {/* 모바일은 이름표 → 이유 순서로 쌓고, PC(sm 이상)는 한 줄로 나란히 놓습니다. */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -51,7 +52,7 @@ export function CareModeBanner({ level, reason, maxLevel, className }: CareModeB
         aria-expanded={isOpen}
         aria-controls={detailId}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="text-brand mt-1 inline-flex h-11 cursor-pointer items-center text-sm font-medium underline"
+        className="mt-1 inline-flex h-11 cursor-pointer items-center text-sm font-medium text-slate-600 underline underline-offset-4"
       >
         {isOpen ? '내 한도 닫기' : '내 한도 보기'}
       </button>
@@ -67,7 +68,7 @@ export function CareModeBanner({ level, reason, maxLevel, className }: CareModeB
                 <li
                   key={item.level}
                   className={cn(
-                    'rounded-lg border bg-white px-3 py-2',
+                    'rounded-xl border bg-white px-3 py-2',
                     isCurrent ? 'border-brand ring-brand/30 ring-2' : 'border-slate-200',
                     isOverLimit && 'opacity-50',
                   )}
@@ -77,7 +78,7 @@ export function CareModeBanner({ level, reason, maxLevel, className }: CareModeB
                       {item.level} {item.name}
                     </span>
                     {isCurrent && (
-                      <span className="bg-brand-light text-brand rounded-full px-2 py-0.5 text-xs font-semibold">
+                      <span className="bg-now rounded-full px-2 py-0.5 text-xs font-bold text-slate-900">
                         지금
                       </span>
                     )}
