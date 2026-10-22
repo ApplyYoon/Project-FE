@@ -71,10 +71,10 @@ export function ConsentPage() {
     <PlainLayout>
       <div className="mx-auto flex w-full max-w-md flex-col gap-5 py-6 sm:py-10">
         <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep">
             동의 문구를 다시 확인해 주세요
           </h1>
-          <p className="break-keep text-slate-600">
+          <p className="text-[15px] break-keep text-slate-600">
             최신 동의 문구에 동의해야 기록을 저장할 수 있어요. 동의하면 하던 화면으로 돌아가요.
           </p>
         </header>
@@ -85,16 +85,21 @@ export function ConsentPage() {
 
         {/* 동의하지 않아도 할 수 있는 것: 로그아웃 · 탈퇴 (보기 · 지우기는 서버가 막지 않습니다) */}
         <footer className="flex flex-col gap-2 border-t border-slate-200 pt-4">
-          <p className="text-sm break-keep text-slate-500">
+          <p className="text-[13px] break-keep text-slate-500">
             동의하지 않으면 로그아웃하거나, 내 계정에서 탈퇴할 수 있어요.
           </p>
           <div className="flex gap-2">
-            <Button variant="secondary" className="flex-1" onClick={handleLogout}>
+            {/* 로그아웃 · 탈퇴는 [동의하고 계속하기] 와 멀리 맨 아래에, 낮은 버튼으로 둡니다. (2차 규칙 3) */}
+            <Button
+              variant="ghost"
+              className="flex-1 text-red-700 hover:bg-red-50"
+              onClick={handleLogout}
+            >
               로그아웃
             </Button>
             <Link
               to="/settings/account"
-              className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-xl text-[15px] font-semibold text-slate-700 hover:bg-slate-100"
             >
               내 계정 · 탈퇴
             </Link>
@@ -203,7 +208,8 @@ function ConsentForm({ returnPath }: ConsentFormProps) {
                   className="accent-brand h-5 w-5 shrink-0"
                 />
                 <span className="min-w-0 break-keep">
-                  <span className="text-brand font-semibold">[필수]</span> {item.label}
+                  <span className="text-[13px] font-semibold text-slate-500">[필수]</span>{' '}
+                  {item.label}
                 </span>
               </label>
               {item.terms && (
@@ -212,7 +218,7 @@ function ConsentForm({ returnPath }: ConsentFormProps) {
                   type="button"
                   onClick={() => setOpenedKey(item.key)}
                   aria-label={`${item.label} 보기`}
-                  className="text-brand h-10 shrink-0 cursor-pointer px-1 text-sm underline"
+                  className="text-brand h-10 shrink-0 cursor-pointer rounded-xl px-3 text-[13px] font-semibold hover:bg-slate-100"
                 >
                   보기
                 </button>
