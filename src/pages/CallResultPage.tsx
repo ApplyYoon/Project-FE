@@ -92,7 +92,7 @@ export function CallResultPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
+      <h1 className="text-[28px] leading-snug font-bold tracking-tight sm:text-3xl">
         오늘의 통화 정리
       </h1>
 
@@ -129,15 +129,23 @@ export function CallResultPage() {
       )}
 
       {/* 모바일에서는 버튼을 위아래로, PC 에서는 나란히 놓습니다. */}
+      {/* 정리가 끝났으면 다음 행동은 [내 기록 보기] 하나라서 이것만 채운 버튼으로 둡니다. (폰 레스토프)
+          정리 중 · 실패일 때는 [다시 정리하기] 가 먼저라서 회색으로 낮춥니다. */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button
-          variant="secondary"
+          size="lg"
+          variant={mutation.isSuccess ? 'primary' : 'secondary'}
           className="w-full sm:w-auto"
           onClick={() => navigate('/records')}
         >
           내 기록 보기
         </Button>
-        <Button variant="ghost" className="w-full sm:w-auto" onClick={() => navigate('/')}>
+        <Button
+          size="lg"
+          variant="ghost"
+          className="w-full sm:w-auto"
+          onClick={() => navigate('/')}
+        >
           홈으로
         </Button>
       </div>
@@ -228,7 +236,7 @@ function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) 
     .map((key) => CARD_FAIL_CAUSES.find((option) => option.key === key)?.label ?? '기타')
     .join(' · ')
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3">
+    <li className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <p className="font-medium break-keep text-slate-900">{item.card.title}</p>
         <p className="text-sm text-slate-500">{cardWhenText(item.card, item.dateKey)}</p>
@@ -244,14 +252,22 @@ function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) 
             label={`${item.card.title} 못 한 원인`}
             className="sm:grid-cols-4"
           />
-          <Button size="sm" disabled={causes.length === 0} onClick={handleFail}>
+          {/* 카드마다 반복되는 버튼이라 채우지 않고 선만 둡니다. (채운 버튼은 화면에 하나) */}
+          {/* 되돌리기 어려운 기록이라 빨간 글자로 알려 줍니다. (2차 규칙 3) */}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={causes.length === 0}
+            onClick={handleFail}
+            className="text-red-700"
+          >
             실패로 기록
           </Button>
         </div>
       )}
 
       {step === 'split' && (
-        <div className="flex flex-col gap-2 rounded-lg bg-slate-50 p-3">
+        <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
           <p className="text-sm font-medium break-keep text-slate-800">
             실패로 기록했어요 ({causeLabel}). 나눠서 다른 날에 다시 넣을까요?
           </p>
@@ -278,9 +294,9 @@ function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) 
                     aria-pressed={splitMinutes === minutes}
                     onClick={() => setSplitMinutes(minutes)}
                     className={cn(
-                      'h-10 flex-1 cursor-pointer rounded-lg border text-sm font-medium',
+                      'h-10 flex-1 cursor-pointer rounded-xl border text-sm font-medium tabular-nums',
                       splitMinutes === minutes
-                        ? 'border-brand bg-brand-light text-brand'
+                        ? 'border-brand bg-brand-light text-brand font-bold'
                         : 'border-slate-300 bg-white text-slate-700',
                     )}
                   >
@@ -291,7 +307,7 @@ function UnhandledCardRow({ item, askSplit, onAddCard }: UnhandledCardRowProps) 
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button className="w-full sm:w-auto" onClick={handleSplit}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={handleSplit}>
               이 날에 다시 넣기
             </Button>
             <Button variant="ghost" className="w-full sm:w-auto" onClick={() => setStep('done')}>
@@ -377,7 +393,7 @@ function CardFixSection({ cards, onUpdateCard }: CardFixSectionProps) {
               className={cn(
                 'h-10 max-w-full cursor-pointer truncate rounded-full border px-3 text-sm font-medium',
                 item.id === card.id
-                  ? 'border-brand bg-brand-light text-brand'
+                  ? 'border-brand bg-brand-light text-brand font-bold'
                   : 'border-slate-300 bg-white text-slate-700',
               )}
             >
@@ -420,7 +436,7 @@ function CardFixSection({ cards, onUpdateCard }: CardFixSectionProps) {
               type="button"
               aria-label={`${item.text} 빼기`}
               onClick={() => setChecklist((prev) => prev.filter((other) => other.id !== item.id))}
-              className="h-10 shrink-0 cursor-pointer rounded-md px-3 text-sm text-slate-500 hover:bg-slate-100"
+              className="h-10 shrink-0 cursor-pointer rounded-xl px-3 text-sm text-slate-500 hover:bg-slate-100"
             >
               빼기
             </button>
@@ -451,7 +467,12 @@ function CardFixSection({ cards, onUpdateCard }: CardFixSectionProps) {
       {checklist.length === 0 && (
         <p className="mt-2 text-sm text-red-700">할 일이 하나는 있어야 해요.</p>
       )}
-      <Button className="mt-4 w-full sm:w-auto" onClick={handleApply} disabled={!isValid}>
+      <Button
+        variant="outline"
+        className="mt-4 w-full sm:w-auto"
+        onClick={handleApply}
+        disabled={!isValid}
+      >
         이대로 고치기
       </Button>
       {message !== '' && (
@@ -470,9 +491,9 @@ function ConclusionSkeleton() {
       <span className="text-sm text-slate-500">
         통화 내용을 정리하고 있어요. 30초쯤 걸릴 수 있어요.
       </span>
-      <Skeleton className="h-48 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-48 w-full rounded-2xl" />
+      <Skeleton className="h-24 w-full rounded-2xl" />
+      <Skeleton className="h-24 w-full rounded-2xl" />
     </div>
   )
 }
@@ -553,7 +574,7 @@ function SummaryCard({ conclusion }: ConclusionViewProps) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
-        <h2 className="text-lg font-bold text-slate-900">오늘 통화 요약</h2>
+        <h2 className="text-[17px] font-bold text-slate-900">오늘 통화 요약</h2>
         <span
           className={cn(
             'shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white',
@@ -593,7 +614,10 @@ function SummaryRow({ label, value }: SummaryRowProps) {
   return (
     <div className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-4">
       <dt className="shrink-0 text-xs text-slate-500 sm:w-24 sm:text-sm">{label}</dt>
-      <dd className="text-sm font-semibold break-keep text-slate-900">{value}</dd>
+      {/* leading-relaxed: 요약 문장이 두세 줄이 돼도 줄 사이가 넉넉해서 읽기 쉽습니다. */}
+      <dd className="text-[15px] leading-relaxed font-semibold break-keep text-slate-900">
+        {value}
+      </dd>
     </div>
   )
 }
@@ -620,16 +644,24 @@ function HabitCard({ habit }: HabitCardProps) {
       <p className="mt-1 text-sm break-keep text-slate-700">
         {habit.description}에 붙이는 이름이에요.
       </p>
-      {habit.evidence !== null && (
-        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm break-keep text-slate-700">
-          통화에서: {habit.evidence}
-        </p>
-      )}
-      <div className="bg-brand/10 mt-4 rounded-lg px-3 py-3">
+      {/* 할 일(다음엔 이렇게)을 먼저 보여 주고, 근거(통화에서 한 말)는 [근거 보기] 로 접어 둡니다. (점진적 공개) */}
+      <div className="bg-brand-light mt-4 rounded-xl px-3 py-3">
         <p className="text-brand-dark text-sm font-semibold">다음엔 이렇게 해 볼까요?</p>
-        <p className="mt-1 text-sm break-keep text-slate-900">{habit.solution}</p>
+        <p className="mt-1 text-[15px] leading-relaxed break-keep text-slate-900">
+          {habit.solution}
+        </p>
       </div>
-      <p className="mt-3 text-xs break-keep text-slate-500">
+      {habit.evidence !== null && (
+        <details className="mt-3 rounded-xl bg-slate-50 px-3">
+          <summary className="flex h-10 cursor-pointer items-center text-sm font-medium text-slate-700">
+            근거 보기
+          </summary>
+          <p className="pb-3 text-sm leading-relaxed break-keep text-slate-700">
+            통화에서: {habit.evidence}
+          </p>
+        </details>
+      )}
+      <p className="mt-3 text-[13px] break-keep text-slate-500">
         한 번 보였다고 내가 그런 사람이라는 뜻은 아니에요. 생각 습관은 알아차리면 바꿀 수 있어요.
       </p>
     </Card>
@@ -646,7 +678,7 @@ function HelpCard() {
       {/* 모바일에서는 눌러서 바로 전화가 걸립니다. 누르는 곳은 최소 40px(min-h-11 = 44px) */}
       <a
         href={`tel:${YOUTH_HELP_LINE.number}`}
-        className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm"
+        className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
       >
         <span className="break-keep text-slate-700">
           {YOUTH_HELP_LINE.name} · {YOUTH_HELP_LINE.detail}

@@ -99,10 +99,12 @@ function AppGoogleButton({ onCredential, onFail, className }: GoogleButtonProps)
   return (
     <Button
       type="button"
-      variant="secondary"
+      // 로그인 화면의 1순위 행동이라 폭 전체 · h-14(lg) 로 둡니다. 구글 버튼 관례대로 흰 바탕 + 테두리입니다.
+      variant="outline"
+      size="lg"
       onClick={() => void handleClick()}
       disabled={isWaiting}
-      className={cn('w-full border border-slate-200 bg-white', className)}
+      className={cn('w-full', className)}
     >
       {isWaiting ? '구글 계정 고르는 중…' : 'Google 계정으로 계속하기'}
     </Button>

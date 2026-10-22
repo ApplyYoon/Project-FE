@@ -60,33 +60,40 @@ interface TestLoginPanelProps {
 function TestLoginPanel({ onStart }: TestLoginPanelProps) {
   const { user, isLoggedIn, logout } = useAuth()
 
+  // 구글 버튼이 1순위라서, 테스트 영역은 흰 묶음 대신 선만 두른 조용한 칸으로 아래에 둡니다. (폰 레스토프 효과)
   return (
-    <Card title="테스트 모드" className="flex flex-col gap-3">
-      <p className="text-sm break-keep text-slate-500">
-        서버 없이 테스트 계정으로 써 볼 수 있어요. 기록은 이 브라우저에만 저장돼요.
-      </p>
+    <section
+      aria-label="테스트 모드"
+      className="flex flex-col gap-3 rounded-2xl p-4 ring-1 ring-slate-200"
+    >
+      <div>
+        <h2 className="text-[15px] font-semibold text-slate-700">테스트 모드</h2>
+        <p className="mt-1 text-[13px] break-keep text-slate-500">
+          서버 없이 테스트 계정으로 써 볼 수 있어요. 기록은 이 브라우저에만 저장돼요.
+        </p>
+      </div>
 
       {isLoggedIn ? (
         <>
           {/* role="status": 로그인 상태가 바뀌면 스크린리더가 읽어 줍니다. */}
-          <p role="status" className="text-sm font-medium text-slate-900">
+          <p role="status" className="text-[13px] font-medium text-slate-900">
             로그인됨: {user?.name}
           </p>
-          <Button variant="secondary" size="lg" className="w-full" onClick={logout}>
+          <Button variant="ghost" className="w-full text-red-700 hover:bg-red-50" onClick={logout}>
             로그아웃
           </Button>
         </>
       ) : (
         <>
-          <p role="status" className="text-sm font-medium text-slate-900">
+          <p role="status" className="text-[13px] font-medium text-slate-900">
             로그인 안 됨
           </p>
-          <Button size="lg" className="w-full" onClick={onStart}>
+          <Button variant="outline" className="w-full" onClick={onStart}>
             테스트로 시작하기
           </Button>
         </>
       )}
-    </Card>
+    </section>
   )
 }
 
@@ -116,7 +123,7 @@ function DemoCodeLoginPanel({ isWorking, error, onSubmit }: DemoCodeLoginPanelPr
 
   return (
     <Card title="시연 코드로 로그인" className="flex flex-col gap-3">
-      <p className="text-sm break-keep text-slate-500">
+      <p className="text-[13px] break-keep text-slate-500">
         시연 때 받은 코드를 넣으면 시연 계정으로 들어가요. 진짜 서버와 AI 를 써요.
       </p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -131,9 +138,10 @@ function DemoCodeLoginPanel({ isWorking, error, onSubmit }: DemoCodeLoginPanelPr
           onChange={(event) => setCode(event.target.value)}
           disabled={isWorking}
         />
+        {/* 채운 버튼은 구글로 시작하기 하나라서, 시연 코드는 테두리 버튼으로 둡니다. */}
         <Button
           type="submit"
-          size="lg"
+          variant="outline"
           className="w-full"
           disabled={code.trim() === '' || isWorking}
         >
@@ -249,14 +257,14 @@ export function LoginPage() {
     <PlainLayout>
       <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
         {/* ---------- 왼쪽: 앱 소개 ---------- */}
-        <section className="flex flex-col gap-5 lg:pt-4">
-          <p className="text-brand text-sm font-semibold">학생·입시생 AI 자기관리</p>
-          <h1 className="text-3xl leading-tight font-bold tracking-tight break-keep sm:text-4xl">
+        <section className="flex flex-col gap-4 sm:gap-5 lg:pt-4">
+          <p className="text-[13px] font-semibold text-slate-500">학생·입시생 AI 자기관리</p>
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep sm:text-4xl">
             주머니 속
             <br />
             관리형 독서실 선생님
           </h1>
-          <p className="break-keep text-slate-600">
+          <p className="max-w-prose text-[15px] break-keep text-slate-600">
             정해진 시간에 전화로 챙기고, 기록으로 나를 알려주고, 필요하면 엄하게 관리해요.
           </p>
           <ul className="flex flex-col gap-3">
@@ -273,7 +281,7 @@ export function LoginPage() {
                     {feature.icon}
                   </svg>
                 </span>
-                <span className="text-sm break-keep text-slate-700">{feature.text}</span>
+                <span className="text-[15px] break-keep text-slate-700">{feature.text}</span>
               </li>
             ))}
           </ul>
@@ -283,7 +291,7 @@ export function LoginPage() {
         {/* max-w-md(448px): 구글 버튼은 400px 보다 넓어지지 않아서, 칸을 이만큼으로 두어야 버튼이 카드 폭을 꽉 채웁니다. */}
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
           <Card title="시작하기" className="flex flex-col gap-4">
-            <p className="-mt-1 text-sm break-keep text-slate-500">
+            <p className="-mt-1 text-[13px] break-keep text-slate-500">
               구글 계정으로 바로 시작해요. 처음이면 가입으로 이어져요.
             </p>
 
@@ -300,7 +308,7 @@ export function LoginPage() {
                 />
               </div>
             ) : (
-              <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              <p className="rounded-xl bg-slate-50 px-4 py-3 text-[13px] text-slate-500">
                 구글로 시작하기는 아직 준비 중이에요.
               </p>
             )}
@@ -315,7 +323,7 @@ export function LoginPage() {
               </p>
             )}
 
-            <div className="border-t border-slate-100 pt-3 text-xs break-keep text-slate-500">
+            <div className="border-t border-slate-100 pt-3 text-[13px] break-keep text-slate-500">
               <p>약관 동의는 다음 화면에서 따로 받아요.</p>
               <p>고등학생만 가입할 수 있어요.</p>
             </div>

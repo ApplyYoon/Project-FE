@@ -5,6 +5,9 @@ import { CareLevelPicker, HarshnessPicker } from '@/components/ui/CareLimitPicke
 import { Input } from '@/components/ui/Input'
 import { MessageSettingsFields } from '@/components/ui/MessageSettingsFields'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
+import { OnboardingStepper } from '@/components/ui/OnboardingStepper'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
+import { careLevelInfos } from '@/lib/careLevelInfo'
 import { CALL_TIME_STORAGE_KEY, isCallTimeInQuietHours, parseCallTime } from '@/lib/callReminder'
 import { setInitialCareLimits } from '@/lib/careLimits'
 import { getMessageSettings, saveMessageSettings } from '@/lib/messageSettings'
@@ -77,6 +80,9 @@ export function OnboardingCarePage() {
   const isSleepOk = isSleepLongEnough(bedTime, wakeTime)
   const isCallInQuiet =
     callTime !== '' && isCallTimeInQuietHours(callTime, toQuietHours(messageSettings))
+  // 접은 "관리 세기" 묶음의 요약 줄에 보여 줄 지금 고른 단계 이름 (예: "2 잔소리")
+  const careLevelInfo = careLevelInfos.find((info) => info.level === maxCareLevel)
+  const careLevelName = careLevelInfo ? `${careLevelInfo.level} ${careLevelInfo.name}` : ''
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // form 이 기본으로 하는 "페이지 새로고침" 을 막습니다.
@@ -106,12 +112,12 @@ export function OnboardingCarePage() {
   return (
     <PlainLayout headerAction={<OnboardingExitButton />}>
       <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-xl flex-col gap-6">
+        <OnboardingStepper current={4} />
         <div>
-          <p className="text-brand text-sm font-semibold">관리 설정</p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep">
             어떻게 관리해 줄지 같이 정하자
           </h1>
-          <p className="mt-2 text-sm break-keep text-slate-600 sm:text-base">
+          <p className="mt-2 max-w-prose text-[15px] break-keep text-slate-600">
             검사 결과로 미리 채워 뒀어요. 보고 바꾸고 싶은 것만 바꿔 줘. 전부 설정에서 다시 바꿀 수
             있어요.
           </p>
@@ -125,7 +131,7 @@ export function OnboardingCarePage() {
             onChange={(event) => setCallTime(event.target.value)}
             className="h-12 text-base"
           />
-          <p className="mt-2 text-sm break-keep text-slate-500">
+          <p className="mt-2 text-[13px] break-keep text-slate-500">
             {callTime === ''
               ? '비워 두면 전화가 오지 않아요. 나중에 설정에서 정해도 돼요.'
               : `매일 ${callTime} 에 전화가 와요.`}
@@ -142,7 +148,7 @@ export function OnboardingCarePage() {
         </Card>
 
         <Card title="수면 보호 시간">
-          <p className="text-sm break-keep text-slate-500">
+          <p className="text-[13px] break-keep text-slate-500">
             잠자는 시간을 알려 줘. 공부 계획이 잠을 줄이지 않게 지켜 줄게요. 최소 {MIN_SLEEP_HOURS}
             시간이에요.
           </p>
@@ -182,28 +188,45 @@ export function OnboardingCarePage() {
         </Card>
 
         <Card title="관리 세기">
-          <div className="bg-brand/10 rounded-lg px-3 py-3">
-            <p className="text-brand-dark text-sm font-semibold">검사 결과로 미리 골랐어요</p>
-            <p className="mt-1 text-sm break-keep text-slate-900">{proposal.reason}</p>
+          <div className="bg-brand-light rounded-xl px-3 py-3">
+            <p className="text-brand-dark text-[13px] font-semibold">검사 결과로 미리 골랐어요</p>
+            <p className="mt-1 text-[15px] break-keep text-slate-900">{proposal.reason}</p>
           </div>
-          <h4 className="mt-5 text-sm font-semibold text-slate-900">제재 최대 한도</h4>
-          <p className="mt-1 text-sm break-keep text-slate-500">
-            아무리 미뤄도 이 단계보다 세게 관리하지 않아요.
-          </p>
-          <CareLevelPicker value={maxCareLevel} onChange={setMaxCareLevel} className="mt-3" />
-          <h4 className="mt-6 text-sm font-semibold text-slate-900">말투 수위</h4>
-          <HarshnessPicker value={maxHarshness} onChange={setMaxHarshness} className="mt-3" />
+          {/* 지금 고른 값은 요약 줄에 늘 보이고, 바꾸고 싶을 때만 펼칩니다. (점진적 공개 · 인지 부하 줄이기)
+              동의할 값이 가려지지 않게 요약에 두 값을 모두 적습니다. */}
+          <details className="group mt-3 rounded-xl ring-1 ring-slate-200">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0 text-[15px] break-keep text-slate-900">
+                제재 한도 <span className="font-semibold">{careLevelName}</span> · 말투 수위{' '}
+                <span className="font-semibold tabular-nums">{maxHarshness}단계</span>
+              </span>
+              <span className="text-brand shrink-0 text-[13px] font-semibold">
+                <span className="group-open:hidden">바꾸기</span>
+                <span className="hidden group-open:inline">접기</span>
+              </span>
+            </summary>
+            <div className="border-t border-slate-200 px-3 pt-4 pb-4">
+              <h3 className="text-[15px] font-semibold text-slate-900">제재 최대 한도</h3>
+              <p className="mt-1 text-[13px] break-keep text-slate-500">
+                아무리 미뤄도 이 단계보다 세게 관리하지 않아요.
+              </p>
+              <CareLevelPicker value={maxCareLevel} onChange={setMaxCareLevel} className="mt-3" />
+              <h3 className="mt-6 text-[15px] font-semibold text-slate-900">말투 수위</h3>
+              <HarshnessPicker value={maxHarshness} onChange={setMaxHarshness} className="mt-3" />
+            </div>
+          </details>
         </Card>
 
-        <div className="flex flex-col gap-2">
+        {/* 긴 화면이라 [이대로 할게요] 를 화면 아래 엄지 자리에 붙여 둡니다. (피츠의 법칙) */}
+        <StickyActionBar>
           {/* 이 버튼이 동의입니다. 수면 보호 시간이 짧으면 눌리지 않습니다. */}
           <Button type="submit" size="lg" className="w-full" disabled={!isSleepOk}>
             이대로 할게요
           </Button>
-          <p className="text-center text-sm break-keep text-slate-500">
+          <p className="text-center text-[13px] break-keep text-slate-500">
             누르면 이 세기로 관리하는 데 동의하는 거예요.
           </p>
-        </div>
+        </StickyActionBar>
       </form>
     </PlainLayout>
   )

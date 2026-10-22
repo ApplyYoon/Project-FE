@@ -16,7 +16,7 @@ export function SettingsLink({ className }: SettingsLinkProps) {
       to="/settings"
       aria-label="설정"
       className={cn(
-        'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100',
+        'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-200 active:scale-95',
         className,
       )}
     >

@@ -1,4 +1,5 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { Button } from '@/components/ui/Button'
 import { OnboardingExitButton } from '@/components/ui/OnboardingExitButton'
 import { cn } from '@/lib/cn'
@@ -49,47 +50,60 @@ export function OnboardingResumePage() {
     <PlainLayout headerAction={<OnboardingExitButton />}>
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+          <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep">
             지난번에 하던 곳이 있어요
           </h1>
-          <p className="mt-2 text-sm break-keep text-slate-600">
+          <p className="mt-2 text-[15px] break-keep text-slate-600">
             이어서 하면 멈춘 곳부터 시작해요. 처음부터 다시 해도 돼요.
           </p>
         </div>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-base font-semibold text-slate-900">어디까지 했나요</h2>
+        <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+          <h2 className="text-[17px] font-semibold text-slate-900">어디까지 했나요</h2>
           <ol className="mt-3 flex flex-col gap-3">
             {stages.map((stage, index) => (
               <li key={stage.label} className="flex items-center gap-3">
-                {/* 멈춘 단계만 진하게 칠해서 "여기서부터" 임을 보여줍니다. 끝낸 단계는 ✓ 로 바꿉니다. */}
+                {/* 멈춘 단계만 테두리를 둘러 "여기서부터" 임을 보여줍니다. 끝낸 단계는 ✓ 로 바꿉니다.
+                    brand 로 꽉 채우는 것은 [이어하기] 버튼만입니다. (2차 규칙 1) */}
                 <span
                   aria-hidden
                   className={cn(
-                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
-                    index === stoppedIndex ? 'bg-brand text-white' : 'bg-brand-light text-brand',
+                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums',
+                    index === stoppedIndex
+                      ? 'bg-brand-light text-brand ring-brand ring-2'
+                      : stage.isDone
+                        ? 'bg-brand-light text-brand'
+                        : 'bg-slate-100 text-slate-500',
                   )}
                 >
                   {stage.isDone ? '✓' : index + 1}
                 </span>
-                <p className="text-sm break-keep text-slate-700 sm:text-base">
+                <p className="text-[15px] break-keep text-slate-700">
                   <strong className="font-semibold text-slate-900">{stage.label}</strong>
                   {stage.isDone && <span className="text-slate-500"> — 했어요</span>}
-                  {index === stoppedIndex && <span className="text-brand"> — 여기서 멈췄어요</span>}
+                  {index === stoppedIndex && (
+                    <span className="text-brand font-semibold"> — 여기서 멈췄어요</span>
+                  )}
                 </p>
               </li>
             ))}
           </ol>
         </section>
 
-        <div className="flex flex-col gap-2">
+        {/* 1순위 [이어하기] 는 엄지 자리에 크게, 답을 지우는 [처음부터 다시] 는 아래에 작은 빨간 글자로 둡니다.
+            (되돌리기 어려운 행동은 실수로 누르기 어렵게, 2차 규칙 3) */}
+        <StickyActionBar className="gap-3">
           <Button size="lg" className="w-full" onClick={handleContinue}>
             이어하기
           </Button>
-          <Button variant="secondary" size="lg" className="w-full" onClick={handleRestart}>
+          <Button
+            variant="ghost"
+            className="w-full text-red-700 hover:bg-red-50"
+            onClick={handleRestart}
+          >
             처음부터 다시
           </Button>
-        </div>
+        </StickyActionBar>
       </div>
     </PlainLayout>
   )

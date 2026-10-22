@@ -4,6 +4,7 @@ import { ChipButton } from '@/components/ui/ChipButton'
 import { Input } from '@/components/ui/Input'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
@@ -168,10 +169,10 @@ export function GoalNewPage() {
   if (!canAddGoal(goals)) {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
-        <h1 className="text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep">
           목표는 동시에 {MAX_ACTIVE_GOALS}개까지예요
         </h1>
-        <p className="break-keep text-slate-600">
+        <p className="text-[15px] break-keep text-slate-600">
           끝내거나 그만둔 목표가 생기면 새로 만들 수 있어요.
         </p>
         <Link to="/cards" className="text-brand inline-flex h-10 items-center font-medium">
@@ -194,14 +195,19 @@ export function GoalNewPage() {
       className="mx-auto flex w-full max-w-xl flex-col gap-6"
     >
       <div>
-        <Link to="/cards" className="inline-flex h-10 items-center text-sm text-slate-500">
+        {/* 돌아가는 링크라 모바일 · PC 모두 둡니다. 이 화면은 헤더에 ‹ 뒤로를 두지 않습니다. (2026-10-22) */}
+        <Link to="/cards" className="mb-2 inline-flex h-10 items-center text-sm text-slate-500">
           ← 카드
         </Link>
-        <h1 className="mt-2 text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">
-          목표 만들기
-        </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          {stepIndex + 1} / {GOAL_STEPS.length} · {stepInfo.letter} {stepInfo.label}
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight">목표 만들기</h1>
+        {/* 몇 단계 중 몇 번째인지. 끝이 보이면 끝까지 가게 됩니다. (목표 기울기 효과) */}
+        <p className="mt-3 flex items-baseline justify-between text-[13px]">
+          <span className="font-semibold text-slate-900">
+            {stepInfo.letter} {stepInfo.label}
+          </span>
+          <span className="text-slate-500 tabular-nums">
+            {stepIndex + 1} / {GOAL_STEPS.length} 단계
+          </span>
         </p>
         <ProgressBar value={((stepIndex + 1) / GOAL_STEPS.length) * 100} className="mt-2" />
       </div>
@@ -209,7 +215,7 @@ export function GoalNewPage() {
       <Card>
         {step === 'wish' && (
           <div className="flex flex-col gap-5">
-            <h2 className="text-lg font-semibold break-keep text-slate-900">
+            <h2 className="text-[17px] font-semibold break-keep text-slate-900">
               D-day 까지 이루고 싶은 게 뭐예요?
             </h2>
             <SegmentedToggle
@@ -277,7 +283,7 @@ export function GoalNewPage() {
 
         {step === 'outcome' && (
           <div className="flex flex-col gap-5">
-            <h2 className="text-lg font-semibold break-keep text-slate-900">
+            <h2 className="text-[17px] font-semibold break-keep text-slate-900">
               「{draft.title.trim()}」 를 이루면 어떻게 될까요?
             </h2>
             <Input
@@ -303,7 +309,7 @@ export function GoalNewPage() {
 
         {step === 'obstacle' && (
           <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-semibold break-keep text-slate-900">
+            <h2 className="text-[17px] font-semibold break-keep text-slate-900">
               나를 가장 많이 막는 건 뭐예요?
             </h2>
             <p className="text-sm break-keep text-slate-600">
@@ -335,7 +341,7 @@ export function GoalNewPage() {
 
         {step === 'plan' && (
           <div className="flex flex-col gap-5">
-            <h2 className="text-lg font-semibold break-keep text-slate-900">
+            <h2 className="text-[17px] font-semibold break-keep text-slate-900">
               「{draft.obstacle.trim()}」 일 때 어떻게 할까요?
             </h2>
             <Input
@@ -381,9 +387,10 @@ export function GoalNewPage() {
                       aria-pressed={picked.includes(index)}
                       onClick={() => handleTogglePick(index)}
                       className={cn(
-                        'flex w-full cursor-pointer items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+                        'flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3 text-left transition-colors',
+                        // 고른 카드는 연한 brand 바탕 + 테두리 (2차 규칙 1)
                         picked.includes(index)
-                          ? 'border-brand bg-brand/5'
+                          ? 'border-brand bg-brand-light ring-brand ring-1'
                           : 'border-slate-200 hover:border-slate-300',
                       )}
                     >
@@ -392,7 +399,7 @@ export function GoalNewPage() {
                         className={cn(
                           'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs',
                           picked.includes(index)
-                            ? 'border-brand bg-brand text-white'
+                            ? 'border-brand text-brand bg-white font-bold'
                             : 'border-slate-300',
                         )}
                       >
@@ -422,16 +429,17 @@ export function GoalNewPage() {
         )}
       </Card>
 
-      <div className="flex gap-2">
+      {/* 1순위 [다음] · [목표 저장] 은 모바일에서 하단 탭 바로 위(엄지 자리)에 붙여 둡니다. (피츠의 법칙) */}
+      <StickyActionBar aboveTabBar className="flex-row gap-2">
         {stepIndex > 0 && (
-          <Button variant="secondary" size="lg" className="shrink-0" onClick={handlePrev}>
+          <Button variant="ghost" size="lg" className="shrink-0" onClick={handlePrev}>
             이전
           </Button>
         )}
         <Button type="submit" size="lg" className="min-w-0 flex-1">
           {step === 'plan' ? '목표 저장' : '다음'}
         </Button>
-      </div>
+      </StickyActionBar>
     </form>
   )
 }

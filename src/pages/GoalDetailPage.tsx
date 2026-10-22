@@ -94,16 +94,16 @@ export function GoalDetailPage() {
             {STATUS_LABELS[goal.status]}
           </span>
         </div>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight break-keep sm:text-3xl">
+        <h1 className="mt-2 text-[28px] leading-tight font-bold tracking-tight break-keep">
           {goal.title}
         </h1>
-        <p className="text-brand mt-1 text-sm font-semibold">
+        <p className="text-brand mt-1 text-sm font-semibold tabular-nums">
           {goal.dDay} · {formatDday(daysUntil)}
         </p>
       </div>
 
       {savedMessage !== '' && (
-        <p role="status" className="rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+        <p role="status" className="rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
           {savedMessage}
         </p>
       )}
@@ -182,6 +182,7 @@ export function GoalDetailPage() {
 function BackToCards() {
   return (
     // h-10 = 40px: 글자는 작아도 누르는 영역은 손가락으로 누를 만하게 합니다.
+    // 돌아가는 링크라 모바일 · PC 모두 둡니다. 이 화면은 헤더에 ‹ 뒤로를 두지 않습니다. (2026-10-22)
     <Link to="/cards" className="text-brand inline-flex h-10 items-center text-sm font-medium">
       ‹ 카드
     </Link>
@@ -234,7 +235,7 @@ function CompletionProgressCard({ goal, todayKey, onSave }: CompletionProgressCa
   return (
     <Card title="진척">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-2xl font-bold text-slate-900">
+        <p className="text-2xl font-bold text-slate-900 tabular-nums">
           {progress.done}
           <span className="text-base font-medium text-slate-500">
             {' '}
@@ -497,7 +498,7 @@ function GoalCheck({ goal, step, todayKey, onStep, onKeep, onChange, onGiveUp }:
   return (
     <Card title="목표 점검">
       {/* 지금 페이스 */}
-      <div className="rounded-lg bg-slate-50 px-3 py-3 text-sm break-keep text-slate-700">
+      <div className="rounded-xl bg-slate-50 px-3 py-3 text-sm break-keep text-slate-700">
         {progress !== null ? (
           <>
             {progress.done}/{progress.total}
@@ -521,7 +522,12 @@ function GoalCheck({ goal, step, todayKey, onStep, onKeep, onChange, onGiveUp }:
           <Button variant="secondary" className="w-full" onClick={() => onStep('change')}>
             목표를 바꿀래요
           </Button>
-          <Button variant="ghost" className="w-full" onClick={() => onStep('giveUp')}>
+          {/* 되돌리기 어려운 길은 맨 아래 빨간 글자로 둡니다. (2차 규칙 3) */}
+          <Button
+            variant="ghost"
+            className="w-full text-red-700 hover:bg-red-50"
+            onClick={() => onStep('giveUp')}
+          >
             그만둘래요
           </Button>
         </div>
@@ -530,7 +536,7 @@ function GoalCheck({ goal, step, todayKey, onStep, onKeep, onChange, onGiveUp }:
       {(step === 'change' || step === 'giveUp') && (
         <div className="mt-4 flex flex-col gap-4">
           {/* 바꾸거나 그만두기 전에, 처음 적은 이루면 좋은 점을 먼저 보여 줍니다. */}
-          <div className="bg-brand/10 rounded-lg px-3 py-3">
+          <div className="bg-brand-light rounded-xl px-3 py-3">
             <p className="text-brand-dark text-sm font-semibold">처음에 적은 '이루면 좋은 점'</p>
             <p className="mt-1 text-sm break-keep text-slate-900">{goal.benefit || '—'}</p>
             {step === 'giveUp' && goal.cost && (
@@ -580,7 +586,7 @@ function GoalCheck({ goal, step, todayKey, onStep, onKeep, onChange, onGiveUp }:
               maxLength={CHECK_REASON_MAX_LENGTH}
               onChange={(event) => setReason(event.target.value)}
               rows={3}
-              className="focus:border-brand w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none"
+              className="focus:border-brand w-full rounded-xl border border-slate-300 px-3 py-2 text-base outline-none"
             />
             <p className="text-xs text-slate-500">
               {reason.trim().length} / {CHECK_REASON_MAX_LENGTH}자 · 원래 목표는 지우지 않고
@@ -598,7 +604,9 @@ function GoalCheck({ goal, step, todayKey, onStep, onKeep, onChange, onGiveUp }:
                 이렇게 바꿀게요
               </Button>
             ) : (
+              // 목표를 그만두는 것은 되돌리기 어려워서 빨간 버튼입니다. (2차 규칙 3)
               <Button
+                variant="danger"
                 className="w-full sm:w-auto"
                 disabled={!isReasonOk}
                 onClick={() => onGiveUp(reason)}

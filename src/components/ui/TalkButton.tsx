@@ -49,7 +49,8 @@ export function TalkButton({
       type="button"
       onClick={handleClick}
       className={cn(
-        'border-brand/30 text-brand flex h-10 cursor-pointer items-center justify-center gap-1 rounded-full border bg-white px-4 text-sm font-semibold transition-transform active:scale-[0.98]',
+        // 화면의 1순위 행동이 아니라서 채우지 않은 버튼(흰 바탕 + 회색 선)으로 둡니다. (2026-10-22)
+        'flex h-10 cursor-pointer items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 transition-transform hover:bg-slate-50 active:scale-[0.98]',
         className,
       )}
     >

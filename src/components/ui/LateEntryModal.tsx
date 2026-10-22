@@ -44,7 +44,7 @@ export function LateEntryModal({
             max={maxMinutes}
             value={Number.isNaN(minutes) ? '' : minutes}
             onChange={(event) => setMinutes(Number(event.target.value))}
-            className="h-10 rounded-lg border border-slate-300 px-3"
+            className="h-11 rounded-xl border border-slate-300 px-3 text-base tabular-nums sm:text-sm"
           />
         </label>
         {checklist.length > 0 && (
@@ -53,7 +53,7 @@ export function LateEntryModal({
             {checklist.map((item) => (
               <label
                 key={item.id}
-                className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-slate-50"
+                className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-2 hover:bg-slate-50"
               >
                 <input
                   type="checkbox"
@@ -79,18 +79,23 @@ export function LateEntryModal({
             onChange={(event) => setProof(event.target.value)}
             rows={3}
             maxLength={300}
-            className="rounded-lg border border-slate-300 p-3 text-sm"
+            className="rounded-xl border border-slate-300 p-3 text-base sm:text-sm"
           />
         </label>
         <p className="text-xs text-slate-500">
           증빙이 없으면 '나중에 적었어요' 로 남아요. 잰 시간과 적은 시간은 분석에서 따로 보여 줘요.
         </p>
-        <div className="grid grid-cols-2 gap-3">
-          <Button variant="secondary" onClick={onClose}>
-            그만두기
-          </Button>
-          <Button disabled={!isValid} onClick={() => onSave(minutes, checkedIds, proof)}>
+        {/* 1순위 [적기] 하나만 채운 버튼으로, 폭 전체. [그만두기] 는 그 아래 글자 버튼입니다. */}
+        <div className="mt-1 flex flex-col gap-2">
+          <Button
+            className="w-full"
+            disabled={!isValid}
+            onClick={() => onSave(minutes, checkedIds, proof)}
+          >
             적기
+          </Button>
+          <Button variant="ghost" className="w-full" onClick={onClose}>
+            그만두기
           </Button>
         </div>
       </div>

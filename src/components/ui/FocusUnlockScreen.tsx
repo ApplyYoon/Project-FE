@@ -63,10 +63,10 @@ export function FocusUnlockScreen({ onStay, onUnlock }: FocusUnlockScreenProps) 
           >
             {secondsLeft}초
           </div>
-          <h2 id="focus-unlock-title" className="text-2xl font-bold text-slate-900">
+          <h2 id="focus-unlock-title" className="text-[28px] font-bold text-slate-900">
             정말 나갈 거야?
           </h2>
-          <p className="text-sm break-keep text-slate-600">
+          <p className="text-[15px] break-keep text-slate-600">
             {isWaiting
               ? `${UNLOCK_WAIT_SECONDS}초만 기다려 줘. 그동안 한 번 더 생각해 봐.`
               : `${UNLOCK_WAIT_SECONDS}초 기다렸어. 이제 이유를 적으면 나갈 수 있어.`}
@@ -88,7 +88,7 @@ export function FocusUnlockScreen({ onStay, onUnlock }: FocusUnlockScreenProps) 
                   'h-10 cursor-pointer rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors',
                   'disabled:cursor-not-allowed disabled:opacity-50',
                   reason === quickReason
-                    ? 'border-brand bg-brand-light text-brand'
+                    ? 'border-brand bg-brand-light text-brand ring-brand font-semibold ring-1'
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
                 )}
               >
@@ -123,19 +123,19 @@ export function FocusUnlockScreen({ onStay, onUnlock }: FocusUnlockScreenProps) 
 
         {/* mt-auto: 버튼을 화면 아래쪽으로 밀어 둡니다. (시안처럼) */}
         <div className="mt-auto flex flex-col gap-3 pt-8">
-          <Button size="lg" className="h-12 w-full" onClick={onStay}>
+          {/* 1순위 [계속 집중하기] 는 엄지 자리에 h-14 로 크게, 나가는 [해제하기] 는 낮은 빨간 글자 버튼으로 둡니다. (2차 규칙 3) */}
+          <Button size="lg" className="w-full" onClick={onStay}>
             계속 집중하기
           </Button>
           <Button
-            variant="secondary"
-            size="lg"
-            className="h-12 w-full"
+            variant="ghost"
+            className="w-full text-red-700 hover:bg-red-50"
             disabled={!canUnlock}
             onClick={handleUnlock}
           >
             해제하기
           </Button>
-          <p className="text-sm break-keep text-slate-500">
+          <p className="text-[13px] break-keep text-slate-500">
             해제 기록은 벌이 아니라 나를 알기 위한 데이터야. 어떤 시간에 약한지 리포트에서 보여줄게.
           </p>
         </div>

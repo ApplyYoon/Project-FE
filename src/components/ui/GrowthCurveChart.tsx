@@ -72,7 +72,14 @@ export function GrowthCurveChart({ curve, examLabel, className }: GrowthCurveCha
         aria-label={`지금까지 누적 ${curve.actual[curve.actual.length - 1].cumulativeMinutes}분, 지금 페이스면 ${examLabel}까지 ${curve.currentPaceTotalMinutes}분, 하루 ${EXTRA_MINUTES_PER_DAY}분 더하면 ${curve.withExtraTotalMinutes}분`}
       >
         {/* 지금까지 (실선) */}
-        <polyline points={actualPoints} fill="none" className="stroke-brand" strokeWidth={3} />
+        <polyline
+          points={actualPoints}
+          fill="none"
+          className="stroke-brand"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
 
         {/* 지금 페이스 (점선, 지금까지와 같은 색) */}
         <line
@@ -130,7 +137,8 @@ export function GrowthCurveChart({ curve, examLabel, className }: GrowthCurveCha
       </div>
 
       {/* 범례 */}
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+      {/* 범례는 그래프보다 한 단계 작은 글자로 둡니다. (위계) */}
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-slate-600 tabular-nums">
         <span className="flex items-center gap-1.5">
           <span className="bg-brand h-0.5 w-4" aria-hidden /> 지금까지
         </span>

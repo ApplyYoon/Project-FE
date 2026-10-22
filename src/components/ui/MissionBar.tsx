@@ -22,21 +22,22 @@ export function MissionBar({ missions, onOpen, className }: MissionBarProps) {
       onClick={onOpen}
       aria-label={`오늘의 미션 ${missions.length}개 중 ${done}개 끝. 눌러서 코치에게 보기`}
       className={cn(
-        'flex min-h-14 w-full shrink-0 cursor-pointer items-center gap-3 rounded-3xl bg-white px-4 py-2 text-left transition-transform active:scale-[0.99]',
+        'flex min-h-14 w-full shrink-0 cursor-pointer items-center gap-3 rounded-2xl bg-white px-4 py-2 text-left transition-transform active:scale-[0.99]',
         className,
       )}
     >
       <span
         aria-hidden
         className={cn(
-          'flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold',
-          next ? 'bg-brand-light text-brand' : 'bg-emerald-50 text-emerald-700',
+          'flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums',
+          // 보조 정보라 brand 색 대신 회색 동그라미로 조용하게 둡니다. 다 끝내면 초록. (2026-10-22)
+          next ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700',
         )}
       >
         {done}/{missions.length}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-xs font-medium text-slate-500">오늘의 미션</span>
+        <span className="block text-[13px] font-medium text-slate-500">오늘의 미션</span>
         <span className="block truncate text-[15px] font-semibold text-slate-900">
           {next ? next.title : '오늘 미션 다 끝냈어요 👏'}
         </span>

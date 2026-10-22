@@ -1,6 +1,8 @@
 import { PlainLayout } from '@/components/layout/PlainLayout'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { OnboardingStepper } from '@/components/ui/OnboardingStepper'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { TalkButton } from '@/components/ui/TalkButton'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { AUTO_SETTING_ROWS } from '@/lib/autoSettingOptions'
@@ -74,7 +76,7 @@ interface TraitListProps {
 function TraitList({ lines, note }: TraitListProps) {
   return (
     <>
-      <ul className="flex flex-col gap-2 text-sm break-keep text-slate-800 sm:text-base">
+      <ul className="flex max-w-prose flex-col gap-2 text-[15px] break-keep text-slate-800">
         {lines.map((line) => (
           <li key={line} className="flex gap-2">
             <span aria-hidden className="text-brand">
@@ -84,7 +86,7 @@ function TraitList({ lines, note }: TraitListProps) {
           </li>
         ))}
       </ul>
-      {note && <p className="mt-2 text-xs break-keep text-slate-400">{note}</p>}
+      {note && <p className="mt-2 text-[13px] break-keep text-slate-500">{note}</p>}
     </>
   )
 }
@@ -142,12 +144,10 @@ export function OnboardingResultPage() {
   return (
     <PlainLayout>
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-        <div>
-          <p className="text-brand text-sm font-semibold">결과</p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight break-keep sm:text-3xl">
-            지금의 너는 이런 편이야
-          </h1>
-        </div>
+        <OnboardingStepper current={5} />
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight break-keep">
+          지금의 너는 이런 편이야
+        </h1>
 
         <Card title="성향 요약">
           {/* 진짜 로그인이면 서버 AI 가 쓴 문장을, 받는 동안 · 못 받으면 코드가 고른 기본 문장을 보여 줍니다 */}
@@ -160,34 +160,36 @@ export function OnboardingResultPage() {
           ) : (
             <TraitList lines={traitLines} />
           )}
-          <p className="mt-3 text-xs break-keep text-slate-500">
+          <p className="mt-3 text-[13px] break-keep text-slate-500">
             처음 검사로 본 첫 짐작이에요. 성격이 아니라 지금의 공부 습관이에요.
           </p>
         </Card>
 
         <Card title="그래서 이렇게 맞춰 뒀어요">
-          <ul className="flex flex-col gap-4">
+          {/* 한 묶음 안에서 줄마다 선으로 나눕니다. (근접성) */}
+          <ul className="flex flex-col divide-y divide-slate-200">
             {[careLine, ...settingLines].map((line) => (
-              <li key={line.title}>
+              <li key={line.title} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <p className="text-sm font-semibold text-slate-900">{line.title}</p>
-                  <p className="text-brand-dark text-sm font-semibold">{line.value}</p>
+                  <p className="text-[15px] font-semibold text-slate-900">{line.title}</p>
+                  <p className="text-brand-dark text-[15px] font-semibold">{line.value}</p>
                 </div>
-                <p className="mt-0.5 text-sm break-keep text-slate-500">{line.reason}</p>
+                <p className="mt-0.5 text-[13px] break-keep text-slate-500">{line.reason}</p>
               </li>
             ))}
           </ul>
           {settingLines.length === 0 && (
-            <p className="mt-4 text-sm break-keep text-slate-500">
+            <p className="mt-4 text-[13px] break-keep text-slate-500">
               나머지는 검사 결과가 대부분 보통이라 기본 설정으로 시작해요.
             </p>
           )}
-          <p className="mt-4 text-xs break-keep text-slate-500">
+          <p className="mt-4 text-[13px] break-keep text-slate-500">
             설정에서 언제든 바꿀 수 있고, 바꾼 것은 AI 가 다시 건드리지 않아요.
           </p>
         </Card>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* 1순위 [시작하기] 는 화면 아래 엄지 자리에 붙여 둡니다. (피츠의 법칙) */}
+        <StickyActionBar className="sm:flex-row sm:items-center sm:gap-3">
           <Button size="lg" className="w-full sm:w-auto" onClick={handleStart}>
             시작하기
           </Button>
@@ -204,7 +206,7 @@ export function OnboardingResultPage() {
               return getOnboardingResumePath()
             }}
           />
-        </div>
+        </StickyActionBar>
       </div>
     </PlainLayout>
   )

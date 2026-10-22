@@ -82,13 +82,13 @@ interface SourceBadgeProps {
 function SourceBadge({ source }: SourceBadgeProps) {
   if (source === 'ai') {
     return (
-      <span className="bg-brand-light text-brand rounded px-1.5 py-0.5 text-xs font-medium">
+      <span className="bg-brand-light text-brand rounded-full px-2 py-0.5 text-xs font-semibold">
         AI 가 쓴 글
       </span>
     )
   }
   return (
-    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
       {source === 'loading' ? 'AI 가 읽는 중…' : '숫자로 정리'}
     </span>
   )
@@ -135,38 +135,42 @@ function AnalysisCardView({ view, className }: AnalysisCardViewProps) {
     <Card className={className} aria-busy={source === 'loading'}>
       {/* flex-wrap: 375px 에서 표시가 제목 아래로 내려갑니다. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-bold text-slate-900">AI 분석</h2>
+        <h2 className="text-[17px] font-bold tracking-tight text-slate-900">AI 분석</h2>
         <SourceBadge source={source} />
       </div>
       <p className="mt-1 text-sm break-keep text-slate-500">
         최근 {ANALYSIS_DAYS}일 기록을 읽고 나를 정리했어요.
       </p>
 
-      <p className="mt-4 text-base font-semibold break-keep text-slate-900 sm:text-lg">
+      {/* 요약 한 줄이 이 카드의 결론이라 가장 크게, 줄 사이는 넉넉하게 둡니다. */}
+      <p className="mt-4 text-[17px] leading-relaxed font-semibold break-keep text-slate-900 sm:text-lg">
         {analysis.summary}
       </p>
 
-      <ul className="mt-4 flex flex-col gap-4">
+      {/* 묶음 다섯 개를 선(divide-y)으로만 나눕니다. (근접성) 처음에는 제목만 보이고 누르면 펼쳐집니다. */}
+      <ul className="mt-4 divide-y divide-slate-100 border-t border-slate-100">
         {analysis.sections.map((section) => (
-          <li key={section.group} className="border-t border-slate-100 pt-4">
+          <li key={section.group} className="py-1">
             <AnalysisSectionView section={section} view={view} />
           </li>
         ))}
       </ul>
 
       {analysis.nextExperiment && (
-        <div className="bg-brand-light mt-5 rounded-lg p-4">
+        <div className="bg-brand-light mt-5 rounded-xl p-4">
           <p className="text-brand text-xs font-semibold">다음 2주 실험 제안</p>
-          <p className="mt-1 font-semibold break-keep text-slate-900">
+          <p className="mt-1 leading-relaxed font-semibold break-keep text-slate-900">
             {analysis.nextExperiment.ifText} → {analysis.nextExperiment.thenText}
           </p>
-          <p className="mt-1 text-sm break-keep text-slate-600">{analysis.nextExperiment.why}</p>
+          <p className="mt-1 text-sm leading-relaxed break-keep text-slate-600">
+            {analysis.nextExperiment.why}
+          </p>
         </div>
       )}
 
       {source === 'ai' && (
-        <p className="mt-4 text-xs break-keep text-slate-400">
-          AI 가 쓴 글은 틀릴 수 있어요. 묶음마다 근거 숫자를 같이 확인해 주세요.
+        <p className="mt-4 text-xs break-keep text-slate-500">
+          AI 가 쓴 글은 틀릴 수 있어요. 묶음을 펼쳐 근거 숫자를 같이 확인해 주세요.
         </p>
       )}
 
@@ -185,33 +189,50 @@ interface AnalysisSectionViewProps {
   view: AnalysisView
 }
 
-/** 묶음 하나: 이름표 · 한 줄 · 본문 · 근거 숫자(펼치기) */
+/** 묶음 하나: 이름표 · 한 줄 제목만 먼저 보이고, 누르면 본문 · 근거 숫자가 펼쳐집니다. (점진적 공개) */
 function AnalysisSectionView({ section, view }: AnalysisSectionViewProps) {
   const evidence = view.facts.filter((fact) => section.evidenceKeys.includes(fact.key))
   return (
-    <>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-        {GROUP_LABELS.get(section.group)}
-      </span>
-      <p className="mt-2 font-semibold break-keep text-slate-900">{section.headline}</p>
-      <p className="mt-1 text-sm break-keep text-slate-600">{section.body}</p>
+    // group: 펼쳤을 때(open) 오른쪽 ⌄ 표시를 뒤집으려고 붙입니다.
+    <details className="group">
+      {/* 제목 줄 전체가 누르는 곳입니다. min-h-11 = 44px. 기본 ▶ 표시는 숨기고 오른쪽에 ⌄ 를 둡니다. */}
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] font-medium text-slate-500">
+            {GROUP_LABELS.get(section.group)}
+          </span>
+          <span className="mt-0.5 block text-[15px] leading-snug font-semibold break-keep text-slate-900">
+            {section.headline}
+          </span>
+        </span>
+        <span
+          aria-hidden
+          className="shrink-0 text-slate-400 transition-transform group-open:rotate-180"
+        >
+          ⌄
+        </span>
+      </summary>
+      <p className="max-w-prose pb-1 text-sm leading-relaxed break-keep text-slate-600">
+        {section.body}
+      </p>
       {evidence.length > 0 && (
         <details className="mt-1 text-sm">
-          {/* min-h-10: 누르는 영역을 40px 로 둡니다. */}
-          <summary className="text-brand flex min-h-10 cursor-pointer items-center font-medium">
+          {/* min-h-11: 누르는 영역을 44px 로 둡니다. */}
+          <summary className="text-brand flex min-h-11 cursor-pointer items-center font-medium">
             근거 숫자 {evidence.length}개
           </summary>
-          <ul className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3">
+          <ul className="flex flex-col gap-1 rounded-xl bg-slate-50 p-3">
             {evidence.map((fact) => (
-              <li key={fact.key} className="break-keep text-slate-600">
-                <span className="font-medium text-slate-700">{fact.label}</span> {fact.value}{' '}
-                <span className="text-slate-400">({fact.basis})</span>
+              <li key={fact.key} className="break-keep text-slate-600 tabular-nums">
+                <span className="font-medium text-slate-700">{fact.label}</span>{' '}
+                <span className="font-semibold text-slate-900">{fact.value}</span>{' '}
+                <span className="text-slate-500">({fact.basis})</span>
               </li>
             ))}
           </ul>
         </details>
       )}
-    </>
+    </details>
   )
 }
 
@@ -296,11 +317,13 @@ export function AnalysisExperimentSuggestion({ className }: AnalysisExperimentSu
           <div className={className}>
             {experiment ? (
               <>
-                <p className="flex flex-wrap items-center gap-2 font-semibold break-keep text-slate-900">
+                <p className="flex flex-wrap items-center gap-2 leading-relaxed font-semibold break-keep text-slate-900">
                   {experiment.ifText} → {experiment.thenText}
                   <SourceBadge source={view.source} />
                 </p>
-                <p className="mt-1 text-sm break-keep text-slate-600">{experiment.why}</p>
+                <p className="mt-1 text-sm leading-relaxed break-keep text-slate-600">
+                  {experiment.why}
+                </p>
               </>
             ) : (
               <p className="text-sm break-keep text-slate-500">

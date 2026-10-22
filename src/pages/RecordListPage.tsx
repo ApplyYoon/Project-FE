@@ -157,14 +157,10 @@ export function RecordListPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">기록·통계</h1>
+      {/* 바로 위 하위 탭 [기록] 이 화면 이름을 대신해서, 큰 제목은 화면 낭독기에만 읽어 줍니다. (같은 글자가 두 번 보이지 않게) */}
+      <h1 className="sr-only">기록·통계</h1>
 
-      {/* 내 숲: 가운데 전체 나무 + 둘레의 목표 나무. 공부한 시간이 쌓이면 자랍니다. */}
-      <ForestCard forest={forest} />
-
-      {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
-      <AiAnalysisCard />
-
+      {/* 묶음 순서: 매일 보는 숫자(실행률 · 7일 공부 시간) → 내 숲 → AI 분석 (가장 자주 보는 것을 위로) */}
       {/* 최근 4주 실행률 · 최근 7일 막대그래프 · 주간 리포트 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       {/* items-start: 높이가 다른 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
@@ -173,12 +169,25 @@ export function RecordListPage() {
         <FocusWeekCard now={now} />
 
         <Card title="주간 리포트">
-          <p className="text-sm text-slate-600">이번 주를 숫자와 발견으로 정리해서 보여줘요.</p>
-          <Button className="mt-4 w-full sm:w-auto" onClick={() => navigate('/records?tab=report')}>
+          <p className="text-sm break-keep text-slate-600">
+            이번 주를 숫자와 발견으로 정리해서 보여줘요.
+          </p>
+          {/* 위의 [리포트] 탭과 같은 곳으로 가는 보조 길이라 채우지 않은 버튼으로 둡니다. */}
+          <Button
+            variant="outline"
+            className="mt-4 w-full sm:w-auto"
+            onClick={() => navigate('/records?tab=report')}
+          >
             주간 리포트 보기
           </Button>
         </Card>
       </div>
+
+      {/* 내 숲: 가운데 전체 나무 + 둘레의 목표 나무. 공부한 시간이 쌓이면 자랍니다. */}
+      <ForestCard forest={forest} />
+
+      {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
+      <AiAnalysisCard />
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 기록 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -207,7 +216,7 @@ export function RecordListPage() {
                     >
                       {/* min-w-0: 과목이 많아도 줄이 가로로 튀어나가지 않게 합니다. */}
                       <span className="flex min-w-0 flex-col gap-1.5">
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className="text-[15px] font-semibold text-slate-900">
                           {formatDateLabel(day.date)}
                         </span>
                         {/* 접혀 있을 때도 과목별 시간이 보입니다. */}
@@ -221,7 +230,7 @@ export function RecordListPage() {
                               <SubjectTag
                                 subject={subjects.find((item) => item.id === record.subjectId)}
                               />
-                              <span className="shrink-0 text-xs text-slate-500">
+                              <span className="shrink-0 text-xs text-slate-500 tabular-nums">
                                 {formatMinutes(record.minutes)}
                               </span>
                             </span>
@@ -230,7 +239,7 @@ export function RecordListPage() {
                       </span>
 
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-sm font-bold text-slate-900">
+                        <span className="text-[17px] font-bold text-slate-900 tabular-nums">
                           {formatMinutes(day.totalMinutes)}
                         </span>
                         <span aria-hidden className="text-xs text-slate-400">
@@ -243,7 +252,7 @@ export function RecordListPage() {
                     {isOpen && (
                       <div
                         id={panelId}
-                        className="mb-3 flex flex-col gap-3 rounded-lg bg-slate-50 p-3"
+                        className="mb-3 flex flex-col gap-3 rounded-xl bg-slate-50 p-3"
                       >
                         {day.subjects.map((record) => (
                           <div key={record.subjectId}>
@@ -251,7 +260,7 @@ export function RecordListPage() {
                               <SubjectTag
                                 subject={subjects.find((item) => item.id === record.subjectId)}
                               />
-                              <span className="shrink-0 text-sm font-semibold text-slate-900">
+                              <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
                                 {formatMinutes(record.minutes)}
                               </span>
                             </div>
@@ -260,7 +269,7 @@ export function RecordListPage() {
                                 <li
                                   // id 에 시작 시각을 붙입니다. 저장된 기록의 id 가 겹쳐도 화면이 경고 없이 둘 다 보여줍니다.
                                   key={`${session.id}-${session.startedAt}`}
-                                  className="flex items-center justify-between gap-3 text-sm text-slate-600"
+                                  className="flex items-center justify-between gap-3 text-sm text-slate-600 tabular-nums"
                                 >
                                   <span>
                                     {formatClock(session.startedAt)} ~{' '}
@@ -387,7 +396,7 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
                   <DayUnderstanding understanding={callNotes[summary.date]?.understanding} />
                 </span>
                 {/* break-words: 긴 문장도 화면 폭을 넘지 않고 줄바꿈됩니다. */}
-                <span className="text-sm font-semibold break-words text-slate-900">
+                <span className="text-[15px] leading-relaxed font-semibold break-words text-slate-900">
                   {summary.headline}
                 </span>
               </button>
@@ -450,7 +459,12 @@ function SummaryRow({ label, value, emptyText }: SummaryRowProps) {
   return (
     <div>
       <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className={cn('mt-0.5 text-sm break-words', value ? 'text-slate-900' : 'text-slate-400')}>
+      <dd
+        className={cn(
+          'mt-0.5 text-[15px] leading-relaxed break-words',
+          value ? 'text-slate-900' : 'text-slate-500',
+        )}
+      >
         {value ?? emptyText}
       </dd>
     </div>
@@ -505,9 +519,9 @@ function RunRateCard({ summary }: RunRateCardProps) {
     <Card>
       {/* flex-wrap: 375px 에서 카드 수가 길어지면 제목 아래 줄로 내려갑니다. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 className="text-base font-semibold text-slate-900">최근 4주 실행률</h3>
+        <h3 className="text-[17px] font-bold tracking-tight text-slate-900">최근 4주 실행률</h3>
         {summary.cardCount > 0 && (
-          <p className="text-sm text-slate-500">카드 {summary.cardCount}장</p>
+          <p className="text-sm text-slate-500 tabular-nums">카드 {summary.cardCount}장</p>
         )}
       </div>
 
@@ -517,7 +531,11 @@ function RunRateCard({ summary }: RunRateCardProps) {
         </p>
       ) : (
         <>
-          <p className="mt-2 text-3xl font-bold text-slate-900 tabular-nums">{percent}%</p>
+          {/* 숫자는 크게, 단위·설명은 작게 해서 숫자가 먼저 읽히게 합니다. */}
+          <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900 tabular-nums">
+            {percent}
+            <span className="ml-0.5 text-xl font-semibold text-slate-500">%</span>
+          </p>
           <ProgressBar value={percent} className="mt-2" />
           <p className="mt-2 text-sm break-keep text-slate-500">
             계획한 시간 중 실제로 한 비율이에요. 휴식한 날은 빼고 셉니다.
@@ -525,21 +543,27 @@ function RunRateCard({ summary }: RunRateCardProps) {
         </>
       )}
 
-      {/* 상태별 날 수. 네 칸을 같은 크기로 놓습니다. grid-cols-4: 375px 에서도 한 줄 */}
-      <ul className="mt-4 grid grid-cols-4 gap-2">
+      {/* 상태별 날 수. 작은 카드 네 장 대신 한 묶음 안을 세로 선(divide-x)으로 나눕니다. (근접성)
+          grid-cols-4: 375px 에서도 한 줄. 색만으로 구분하지 않게 모양(○ △ ✕ −)과 글자를 같이 씁니다. */}
+      <ul className="mt-4 grid grid-cols-4 divide-x divide-slate-200 rounded-xl bg-slate-50 py-3">
         {DAY_STATUSES.map((status) => (
-          <li
-            key={status}
-            className={cn(
-              'flex flex-col items-center gap-0.5 rounded-lg py-2 text-xs font-semibold',
-              statusColors[status],
-            )}
-          >
-            <span>
-              <span aria-hidden>{DAY_STATUS_INFO[status].symbol}</span>{' '}
+          <li key={status} className="flex min-w-0 flex-col items-center gap-1 px-1">
+            <span className="text-xl font-bold text-slate-900 tabular-nums">
+              {summary.dayCounts[status]}
+              <span className="ml-0.5 text-xs font-medium text-slate-500">일</span>
+            </span>
+            <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+              <span
+                aria-hidden
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none',
+                  statusColors[status],
+                )}
+              >
+                {DAY_STATUS_INFO[status].symbol}
+              </span>
               {DAY_STATUS_INFO[status].label}
             </span>
-            <span className="text-sm tabular-nums">{summary.dayCounts[status]}일</span>
           </li>
         ))}
       </ul>
@@ -559,9 +583,12 @@ function WeeklyBarCard({ sessions }: WeeklyBarCardProps) {
     <Card>
       {/* flex-wrap: 375px 에서 합계가 길어지면 제목 아래 줄로 내려갑니다. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 className="text-base font-semibold text-slate-900">최근 7일 공부 시간</h3>
+        <h3 className="text-[17px] font-bold tracking-tight text-slate-900">최근 7일 공부 시간</h3>
         <p className="text-sm text-slate-500">
-          합계 {totalMinutes === 0 ? '0분' : formatMinutes(totalMinutes)}
+          합계{' '}
+          <span className="text-[17px] font-bold text-slate-900 tabular-nums">
+            {totalMinutes === 0 ? '0분' : formatMinutes(totalMinutes)}
+          </span>
         </p>
       </div>
 
@@ -583,8 +610,8 @@ function WeeklyBarCard({ sessions }: WeeklyBarCardProps) {
               <div
                 className={cn(
                   'absolute inset-x-0 bottom-0 rounded-t-md',
-                  // 오늘은 아직 끝나지 않은 날이라 연한 색으로 구분합니다.
-                  day.isToday ? 'bg-indigo-300' : 'bg-brand',
+                  // 평소 막대는 연하게, 오늘 막대만 진한 brand 로 눈에 띄게 합니다. (폰 레스토프 효과)
+                  day.isToday ? 'bg-brand' : 'bg-indigo-200',
                   day.minutes > 0 && 'min-h-0.5',
                 )}
                 style={{ height: `${day.percent}%` }}
@@ -610,7 +637,7 @@ function WeeklyBarCard({ sessions }: WeeklyBarCardProps) {
       <p className="mt-4 text-sm break-keep text-slate-500">
         {totalMinutes === 0
           ? '최근 7일 동안 공부 기록이 없어요. 타이머로 공부하면 막대가 생겨요.'
-          : '연한 막대가 오늘이에요. 오늘은 아직 진행 중이에요.'}
+          : '진한 막대가 오늘이에요. 오늘은 아직 진행 중이라 더 늘 수 있어요.'}
       </p>
     </Card>
   )
@@ -686,7 +713,7 @@ function StudyCalendar({ getDay, records, checkIns }: StudyCalendarProps) {
     // p-3: 375px 화면에서 달력 칸(7칸)이 40px 보다 작아지지 않게 모바일에서는 안쪽 여백을 줄입니다.
     <Card className="p-3 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-slate-900">
+        <h3 className="text-[17px] font-bold tracking-tight text-slate-900">
           {view.year}년 {view.month + 1}월
         </h3>
         <div className="flex gap-1">
@@ -694,17 +721,17 @@ function StudyCalendar({ getDay, records, checkIns }: StudyCalendarProps) {
             type="button"
             aria-label="이전 달"
             onClick={() => handleMoveMonth(-1)}
-            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-xl text-slate-600 hover:bg-slate-100"
           >
-            ◀
+            ‹
           </button>
           <button
             type="button"
             aria-label="다음 달"
             onClick={() => handleMoveMonth(1)}
-            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-xl text-slate-600 hover:bg-slate-100"
           >
-            ▶
+            ›
           </button>
         </div>
       </div>
@@ -735,10 +762,10 @@ function StudyCalendar({ getDay, records, checkIns }: StudyCalendarProps) {
               aria-pressed={selectedDate === date}
               onClick={() => handleSelectDate(date)}
               className={cn(
-                'flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg text-sm font-semibold transition-colors',
+                'flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg text-sm font-semibold tabular-nums transition-colors',
                 status
                   ? cn(statusColors[status], 'hover:opacity-80')
-                  : 'text-slate-400 hover:bg-slate-100',
+                  : 'text-slate-500 hover:bg-slate-100',
                 // 오늘은 진한 테두리로 표시합니다.
                 date === todayKey && 'border-2 border-slate-900',
                 // 누른 날짜는 바깥쪽 고리로 표시합니다.
@@ -803,7 +830,7 @@ interface CalendarDayDetailProps {
 /** 달력에서 누른 날: 상태 · 감정 태그 · 순공 · 카드마다 결과와 사유 */
 function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailProps) {
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-lg bg-slate-50 p-3">
+    <div className="mt-4 flex flex-col gap-3 rounded-xl bg-slate-50 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold text-slate-900">{formatDateLabel(day.dateKey)}</span>
         {day.status && <StatusBadge status={day.status} />}
@@ -825,7 +852,12 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
       )}
 
       {studyMinutes !== undefined && (
-        <p className="text-xs text-slate-500">이날 순공 {formatMinutes(studyMinutes)}</p>
+        <p className="text-xs text-slate-500">
+          이날 순공{' '}
+          <span className="text-[15px] font-bold text-slate-900 tabular-nums">
+            {formatMinutes(studyMinutes)}
+          </span>
+        </p>
       )}
 
       {day.cards.length === 0 ? (
@@ -835,9 +867,10 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
             : '이날은 결과를 볼 카드가 없어요.'}
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        // 카드 결과를 작은 상자 여러 개 대신 흰 묶음 하나 안에서 선(divide-y)으로 나눕니다. (근접성)
+        <ul className="flex flex-col divide-y divide-slate-100 rounded-xl bg-white ring-1 ring-slate-200">
           {day.cards.map((item) => (
-            <li key={item.card.id} className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+            <li key={item.card.id} className="p-3">
               {/* 카드 이름과 결과. 좁은 화면에서는 결과가 아래 줄로 내려갑니다. */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="min-w-0 text-sm font-semibold break-words text-slate-900">
@@ -847,7 +880,7 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
               </div>
               {/* 휴식한 카드는 집계에서 빠지므로 실행률을 보여주지 않습니다. */}
               {item.status !== 'rest' && (
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 tabular-nums">
                   {item.card.startTime ?? '시간 미정'} · {formatMinutes(item.card.durationMinutes)}{' '}
                   · 실행률 {Math.round(item.runRate * 100)}% · 체크리스트 {item.checkedCount}/
                   {item.card.checklist.length}
@@ -859,7 +892,7 @@ function CalendarDayDetail({ day, studyMinutes, emotions }: CalendarDayDetailPro
             </li>
           ))}
           {day.pendingCount > 0 && (
-            <li className="text-xs text-slate-500">
+            <li className="p-3 text-xs text-slate-500">
               아직 결과가 나오지 않은 카드 {day.pendingCount}장
             </li>
           )}
@@ -893,9 +926,12 @@ function FocusWeekCard({ now }: FocusWeekCardProps) {
   return (
     <Card>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h3 className="text-base font-semibold text-slate-900">최근 7일 집중도</h3>
+        <h3 className="text-[17px] font-bold tracking-tight text-slate-900">최근 7일 집중도</h3>
         {summary.average !== null && (
-          <p className="text-2xl font-bold text-slate-900 tabular-nums">{summary.average}%</p>
+          <p className="text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
+            {summary.average}
+            <span className="ml-0.5 text-lg font-semibold text-slate-500">%</span>
+          </p>
         )}
       </div>
       {summary.average === null ? (
@@ -903,17 +939,14 @@ function FocusWeekCard({ now }: FocusWeekCardProps) {
           타이머로 1분 넘게 공부하면, 폰을 들거나 다른 탭에 간 시간을 빼고 집중도를 보여 줘요.
         </p>
       ) : (
-        // 시간대별 집중도. 네 칸을 같은 크기로 놓습니다. grid-cols-4: 375px 에서도 한 줄
-        <ul className="mt-3 grid grid-cols-4 gap-2">
+        // 시간대별 집중도. 한 묶음 안을 세로 선으로 나눕니다. (근접성) grid-cols-4: 375px 에서도 한 줄
+        <ul className="mt-3 grid grid-cols-4 divide-x divide-slate-200 rounded-xl bg-slate-50 py-3">
           {summary.bands.map((band) => (
-            <li
-              key={band.key}
-              className="flex flex-col items-center gap-0.5 rounded-lg bg-slate-50 py-2 text-xs font-semibold text-slate-600"
-            >
-              <span>{band.label}</span>
-              <span className="text-sm text-slate-900 tabular-nums">
+            <li key={band.key} className="flex min-w-0 flex-col items-center gap-1 px-1">
+              <span className="text-lg font-bold text-slate-900 tabular-nums">
                 {band.average === null ? '–' : `${band.average}%`}
               </span>
+              <span className="text-xs font-medium text-slate-500">{band.label}</span>
             </li>
           ))}
         </ul>
@@ -942,14 +975,14 @@ function ForestCard({ forest }: ForestCardProps) {
   return (
     <Card>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-slate-900">내 숲</h3>
-        <p className="text-sm text-slate-500">
+        <h3 className="text-[17px] font-bold tracking-tight text-slate-900">내 숲</h3>
+        <p className="text-sm text-slate-500 tabular-nums">
           {main.stageName} · {main.stage + 1}단계
           {main.isWilted && <span className="font-semibold text-amber-700"> · 시듦</span>}
         </p>
       </div>
 
-      <div className="mt-3 flex justify-center rounded-lg bg-slate-50 px-4 py-3">
+      <div className="mt-3 flex justify-center rounded-xl bg-slate-50 px-4 py-3">
         <TreeDrawing tree={main} />
       </div>
 
@@ -959,20 +992,24 @@ function ForestCard({ forest }: ForestCardProps) {
         </p>
       )}
 
-      <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-        <span>
-          <span className="font-semibold text-green-700">잎 {main.leafCount}</span> · 회고·인사이트
-        </span>
-        <span>
-          <span className="font-semibold text-orange-600">열매 {main.fruitCount}</span> · 효과가
-          확인된 방법
-        </span>
-      </p>
+      {/* 잎 · 열매 개수. 숫자는 크게, 무엇인지는 작게 (위계) · 한 묶음 안을 선으로 나눔 (근접성) */}
+      <dl className="mt-3 grid grid-cols-2 divide-x divide-slate-200 rounded-xl bg-slate-50 py-3">
+        <div className="flex min-w-0 flex-col-reverse items-center gap-0.5 px-2 text-center">
+          <dt className="text-xs font-medium break-keep text-slate-500">잎 · 회고·인사이트</dt>
+          <dd className="text-2xl font-bold text-green-700 tabular-nums">{main.leafCount}</dd>
+        </div>
+        <div className="flex min-w-0 flex-col-reverse items-center gap-0.5 px-2 text-center">
+          <dt className="text-xs font-medium break-keep text-slate-500">
+            열매 · 효과가 확인된 방법
+          </dt>
+          <dd className="text-2xl font-bold text-orange-600 tabular-nums">{main.fruitCount}</dd>
+        </div>
+      </dl>
 
       <div className="mt-4 flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2 text-sm text-slate-600">
+        <div className="flex items-baseline justify-between gap-2 text-sm text-slate-600">
           <span>다음 단계까지</span>
-          <span>
+          <span className="text-[15px] font-semibold text-slate-900 tabular-nums">
             {main.isFullGrown ? '다 자랐어!' : `${formatMinutes(main.minutesToNextStage)} 남음`}
           </span>
         </div>
@@ -981,19 +1018,20 @@ function ForestCard({ forest }: ForestCardProps) {
 
       {forest.goals.length > 0 && (
         <div className="mt-5 border-t border-slate-100 pt-4">
-          <p className="text-sm font-semibold text-slate-900">목표 나무</p>
+          <p className="text-[15px] font-bold text-slate-900">목표 나무</p>
           {/* 375px 에서도 3그루가 한 줄에 들어가고, 지난 목표가 늘면 다음 줄로 내려갑니다. (가로 스크롤 없음) */}
           <ul className="mt-2 grid grid-cols-3 gap-2">
             {forest.goals.map((tree) => (
               <li
                 key={tree.goalId}
                 className={cn(
-                  'flex min-w-0 flex-col items-center rounded-lg bg-slate-50 px-1 py-2',
+                  'flex min-w-0 flex-col items-center rounded-xl bg-slate-50 px-1 py-2',
                   tree.isFinished && 'opacity-60',
                 )}
               >
                 <TreeDrawing tree={tree} className="h-16" />
-                <p className="mt-1 w-full truncate text-center text-xs font-medium text-slate-800">
+                {/* line-clamp-2: 목표 이름이 길면 두 줄까지 보여 주고 그 뒤만 '…' 로 줄입니다. */}
+                <p className="mt-1 line-clamp-2 w-full text-center text-xs leading-snug font-medium text-slate-800">
                   {tree.title}
                 </p>
                 <p
