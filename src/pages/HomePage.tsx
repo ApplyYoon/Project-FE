@@ -29,7 +29,7 @@ import {
   schoolNoticesQuery,
   type SchoolNotice,
 } from '@/lib/schoolNotices'
-import { loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
+import { dayLabelOf, loadSchoolClass, schoolTodayQuery, type SchoolClass } from '@/lib/schoolToday'
 import {
   clearSettingChanges,
   describeSettingChange,
@@ -546,7 +546,10 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <section className={sectionCardClass}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-[17px] font-bold text-slate-900">오늘 시간표</h2>
+            {/* 주말에는 서버가 다음 월요일 시간표를 줘서 "월요일 시간표" 로 적습니다. (schoolDay, 2026-10-22) */}
+            <h2 className="text-[17px] font-bold text-slate-900">
+              {dayLabelOf(data.schoolDay, todayKey)} 시간표
+            </h2>
             {/* 어느 반 시간표인지 글자로만 보여 줍니다. 반은 설정에서 바꿉니다. */}
             {schoolClass && !data.isDemo && (
               <p className="shrink-0 text-sm font-medium text-slate-500">
@@ -582,7 +585,8 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
                 ))}
               </ol>
               <p className="mt-2 text-xs break-keep text-slate-500">
-                반 시간표 기준이에요. 선택과목은 다를 수 있어요.
+                {data.schoolDay !== data.date && '주말이라 다음 수업일 시간표를 미리 보여 줘요. '}반
+                시간표 기준이에요. 선택과목은 다를 수 있어요.
                 {data.timetablePartial && ' 지금은 5교시까지만 보여요.'}
               </p>
             </>
@@ -602,7 +606,7 @@ function SchoolTodayView({ todayKey, isServerData, schoolClass }: SchoolTodayVie
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] font-semibold text-slate-900">
-                      {meal.date === todayKey ? '오늘' : '내일'} {meal.kind}
+                      {dayLabelOf(meal.date, todayKey)} {meal.kind}
                     </span>
                     <span className="line-clamp-2 block text-sm break-keep text-slate-500">
                       {meal.dishes.join(' · ')}
