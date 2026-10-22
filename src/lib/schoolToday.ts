@@ -60,8 +60,31 @@ export interface SchoolToday {
   timetablePartial: boolean
   meals: SchoolMeal[]
   events: SchoolTodayEvent[]
+  /**
+   * 시간표 · 급식을 보여 주는 날 (YYYY-MM-DD, BE 2026-10-22). 평일이면 date 와 같고, 토 · 일이면 다음 월요일입니다.
+   * 그래서 주말에는 timetable 이 월요일 시간표, meals 가 월 · 화 급식입니다. 화면은 dayLabelOf 로 "월요일 시간표" 처럼 적습니다.
+   * 옛 서버는 이 칸이 없어서 date 와 같은 값으로 채웁니다.
+   */
+  schoolDay: string
   /** true 면 테스트 로그인용 시연 예시입니다. (서버에서 받은 것이 아님) */
   isDemo: boolean
+}
+
+const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
+
+/**
+ * 날짜를 "오늘" · "내일" · "월요일" 처럼 부릅니다. (주말에 다음 월요일 시간표 · 급식을 보여 줄 때, 2026-10-22)
+ * 요일은 날짜 글자(YYYY-MM-DD)를 UTC 로 읽어 계산해서, 기기 시간대와 상관없이 같은 요일이 나옵니다.
+ *
+ *   dayLabelOf('2026-10-24', '2026-10-24') -> '오늘'
+ *   dayLabelOf('2026-10-25', '2026-10-24') -> '내일'
+ *   dayLabelOf('2026-10-26', '2026-10-24') -> '월요일'
+ */
+export function dayLabelOf(dateKey: string, todayKey: string): string {
+  if (dateKey === todayKey) return '오늘'
+  if (dateKey === moveDateKey(todayKey, 1)) return '내일'
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return `${WEEKDAY_NAMES[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]}요일`
 }
 
 /** 이 기기에 저장해 두는 학년 · 반 */
@@ -220,6 +243,7 @@ function toSchoolToday(value: unknown): SchoolToday {
     timetablePartial: record.timetablePartial,
     meals: record.meals,
     events: record.events,
+    schoolDay: typeof record.schoolDay === 'string' ? record.schoolDay : record.date,
     isDemo: false,
   }
 }
@@ -279,6 +303,8 @@ export function buildDemoSchoolToday(todayKey: string): SchoolToday {
         dDay: 13,
       },
     ],
+    // 시연 예시는 주말에도 "오늘" 시간표 · 급식으로 보여 줍니다. (지금까지와 같음)
+    schoolDay: todayKey,
     isDemo: true,
   }
 }
