@@ -529,8 +529,8 @@ export function CardTimerPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-[26px] leading-snug font-bold tracking-tight sm:text-3xl">타이머</h1>
-        <p className="mt-2 text-slate-600">
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight">타이머</h1>
+        <p className="mt-2 max-w-prose text-[15px] break-keep text-slate-600">
           카드를 누르면 바로 시작해요. 시계는 카드가 끝나는 시각까지 줄어들어요.
         </p>
       </div>
@@ -598,17 +598,18 @@ export function CardTimerPage() {
               return (
                 <li
                   key={card.id}
-                  className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium text-slate-900">{card.title}</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-slate-600 tabular-nums">
                       {card.startTime} · {formatMinutes(card.durationMinutes)}
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                  {/* 자주 쓰는 [미루기] 를 위에, 되돌리기 어려운 [실패로 기록] 은 맨 아래 빨간 글자로 떨어뜨려 둡니다. (2차 규칙 3) */}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                     <Button
-                      variant="secondary"
+                      variant="outline"
                       disabled={left === 0}
                       onClick={() => setMissTarget({ card, action: 'postpone' })}
                     >
@@ -618,21 +619,21 @@ export function CardTimerPage() {
                           ? '미루기 잠김'
                           : `미루기 (${left}회 남음)`}
                     </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setMissTarget({ card, action: 'fail' })}
-                    >
-                      실패로 기록
-                    </Button>
                     {lateEntryOf(card).ok && (
                       <Button
-                        variant="ghost"
-                        className="col-span-2 border border-slate-300"
+                        variant="outline"
                         onClick={() => setMissTarget({ card, action: 'late' })}
                       >
                         폰을 내서 못 켰어요 · 나중에 적기
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      className="text-red-700 hover:bg-red-50"
+                      onClick={() => setMissTarget({ card, action: 'fail' })}
+                    >
+                      실패로 기록
+                    </Button>
                   </div>
                 </li>
               )
@@ -641,30 +642,33 @@ export function CardTimerPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <Card title="오늘 남은 카드">
-          {waitingCards.length === 0 ? (
+      {/* 이 화면의 1순위 행동은 "다음 카드 시작" 하나입니다. 맨 위 카드만 brand 색 블록으로 크게, 나머지는 목록 행으로 작게 둡니다. (2026-10-22)
+          PC 에서는 왼쪽에 카드, 오른쪽에 "카드 없이 지금 시작" 을 나란히 둡니다. */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:items-start">
+        {waitingCards.length === 0 ? (
+          <Card title="오늘 남은 카드">
             <p className="text-sm text-slate-600">
               오늘 할 카드가 없어요. 카드 없이 바로 시작해도 돼요.
             </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {waitingCards.map(withStage4).map((card, index) => (
-                <WaitingCardRow
-                  key={card.id}
-                  card={card}
-                  isNext={index === 0}
-                  postponeLeft={postponeLeft(card)}
-                  experimentRule={experimentRuleOf(card.id)}
-                  onStart={() => beginCard(card)}
-                  onPostpone={() => setMissTarget({ card, action: 'postpone' })}
-                  onFail={() => setMissTarget({ card, action: 'fail' })}
-                  onStartOffline={() => session.start(card, todayKey, 'offline')}
-                />
-              ))}
-            </ul>
-          )}
-        </Card>
+          </Card>
+        ) : (
+          // 눈에 보이는 제목은 없지만, 화면 낭독기가 목록 이름을 읽도록 aria-label 을 둡니다.
+          <ul aria-label="오늘 남은 카드" className="flex flex-col gap-3">
+            {waitingCards.map(withStage4).map((card, index) => (
+              <WaitingCardRow
+                key={card.id}
+                card={card}
+                isNext={index === 0}
+                postponeLeft={postponeLeft(card)}
+                experimentRule={experimentRuleOf(card.id)}
+                onStart={() => beginCard(card)}
+                onPostpone={() => setMissTarget({ card, action: 'postpone' })}
+                onFail={() => setMissTarget({ card, action: 'fail' })}
+                onStartOffline={() => session.start(card, todayKey, 'offline')}
+              />
+            ))}
+          </ul>
+        )}
 
         <InstantStart onStart={handleStartNow} />
       </div>
@@ -816,74 +820,110 @@ function WaitingCardRow({
   onStartOffline,
 }: WaitingCardRowProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  return (
-    <li
-      className={cn(
-        'flex items-center justify-between gap-3 rounded-lg border px-3 py-2',
-        isNext ? 'border-brand bg-brand/5' : 'border-slate-200',
+
+  // ⋯ 메뉴 (미루기 · 못 했다고 기록 · 폰 내고 시작). 다음 카드 블록과 목록 행이 같이 씁니다.
+  const menu = (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={`${card.title} 메뉴`}
+        aria-expanded={isMenuOpen}
+        onClick={() => setIsMenuOpen((value) => !value)}
+        className={cn(
+          'flex h-10 w-10 items-center justify-center rounded-xl text-lg',
+          isNext ? 'text-white hover:bg-white/15' : 'text-slate-500 hover:bg-slate-100',
+        )}
+      >
+        <span aria-hidden>⋯</span>
+      </button>
+      {isMenuOpen && (
+        <div className="absolute top-11 right-0 z-10 flex w-44 flex-col rounded-xl border border-slate-200 bg-white p-1 text-slate-900 shadow-md">
+          {card.priority !== 'absolute' && (
+            <button
+              type="button"
+              disabled={postponeLeft === 0}
+              onClick={() => {
+                setIsMenuOpen(false)
+                onPostpone()
+              }}
+              className="h-10 rounded-lg px-3 text-left text-sm hover:bg-slate-50 disabled:text-slate-400"
+            >
+              미루기 ({postponeLeft}회 남음)
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              onStartOffline()
+            }}
+            className="h-10 rounded-lg px-3 text-left text-sm hover:bg-slate-50"
+          >
+            폰 내고 시작 (오프라인)
+          </button>
+          {/* 되돌리기 어려운 기록은 메뉴 맨 아래, 선으로 떨어뜨리고 빨간 글자로 둡니다. (2차 규칙 3) */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              onFail()
+            }}
+            className="mt-1 h-10 rounded-lg border-t border-slate-100 px-3 text-left text-sm text-red-700 hover:bg-red-50"
+          >
+            못 했다고 기록
+          </button>
+        </div>
       )}
-    >
+    </div>
+  )
+
+  // 다음 카드: 앱의 얼굴인 brand 색 블록. 형광펜 "다음" 칩 · 큰 제목 · 폭 전체 흰 [▶ 시작] (홈의 "지금 할 카드" 와 같은 모양)
+  if (isNext) {
+    return (
+      <li className="bg-brand rounded-2xl p-5 text-white sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <span className="bg-now inline-flex h-6 items-center rounded-full px-2.5 text-[13px] font-semibold text-slate-900">
+              다음
+            </span>
+            <p className="mt-3 text-[24px] leading-snug font-bold tracking-tight break-keep sm:text-[28px]">
+              {card.title}
+            </p>
+          </div>
+          {menu}
+        </div>
+        <p className="mt-2 text-[15px] text-white/85 tabular-nums">
+          {card.startTime ?? '시간 미정'} · {formatMinutes(card.durationMinutes)}
+          {card.priority === 'absolute' && ' · 꼭 해야 함'}
+        </p>
+        {experimentRule && (
+          <p className="mt-1 truncate text-[13px] text-white/85">실험: {experimentRule}</p>
+        )}
+        <Button variant="inverse" size="lg" className="mt-5 w-full" onClick={onStart}>
+          ▶ 시작
+        </Button>
+      </li>
+    )
+  }
+
+  // 그다음 카드들: 흰 목록 행 + 작은 선 버튼. 같은 무게의 큰 버튼을 여러 개 두지 않습니다. (힉의 법칙)
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200">
       <div className="min-w-0">
-        {isNext && <p className="text-brand text-xs font-semibold">다음 카드</p>}
-        <p className="truncate font-medium text-slate-900">{card.title}</p>
+        <p className="truncate text-[15px] font-semibold text-slate-900">{card.title}</p>
         {experimentRule && (
           <p className="truncate text-xs text-violet-700">실험: {experimentRule}</p>
         )}
-        <p className="text-sm text-slate-600">
+        <p className="text-[13px] text-slate-500 tabular-nums">
           {card.startTime ?? '시간 미정'} · {formatMinutes(card.durationMinutes)}
           {card.priority === 'absolute' && ' · 꼭 해야 함'}
         </p>
       </div>
-      <div className="relative flex shrink-0 items-center gap-1">
-        <Button size={isNext ? 'md' : 'sm'} className="h-10" onClick={onStart}>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button variant="outline" size="sm" onClick={onStart}>
           시작
         </Button>
-        <button
-          type="button"
-          aria-label={`${card.title} 메뉴`}
-          aria-expanded={isMenuOpen}
-          onClick={() => setIsMenuOpen((value) => !value)}
-          className="h-10 w-10 rounded-lg text-lg text-slate-500 hover:bg-slate-100"
-        >
-          ⋯
-        </button>
-        {isMenuOpen && (
-          <div className="absolute top-11 right-0 z-10 flex w-40 flex-col rounded-lg border border-slate-200 bg-white p-1 shadow-md">
-            {card.priority !== 'absolute' && (
-              <button
-                type="button"
-                disabled={postponeLeft === 0}
-                onClick={() => {
-                  setIsMenuOpen(false)
-                  onPostpone()
-                }}
-                className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50 disabled:text-slate-400"
-              >
-                미루기 ({postponeLeft}회 남음)
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setIsMenuOpen(false)
-                onFail()
-              }}
-              className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50"
-            >
-              못 했다고 기록
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsMenuOpen(false)
-                onStartOffline()
-              }}
-              className="h-10 rounded-md px-3 text-left text-sm hover:bg-slate-50"
-            >
-              폰 내고 시작 (오프라인)
-            </button>
-          </div>
-        )}
+        {menu}
       </div>
     </li>
   )
@@ -897,9 +937,10 @@ interface InstantStartProps {
 function InstantStart({ onStart }: InstantStartProps) {
   const [minutes, setMinutes] = useState(DEFAULT_INSTANT_MINUTES)
   return (
+    // 보조 경로라서 채운 버튼 대신 선 버튼(outline)을 씁니다. 화면의 채운 버튼은 "다음 카드" 의 [▶ 시작] 하나입니다.
     <Card title="카드 없이 지금 시작">
       <p className="text-sm text-slate-600">제목과 할 일은 끝날 때 한 줄로 적어요.</p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div role="group" aria-label="공부할 시간" className="mt-3 grid grid-cols-3 gap-2">
         {INSTANT_MINUTES.map((value) => (
           <button
             key={value}
@@ -907,18 +948,18 @@ function InstantStart({ onStart }: InstantStartProps) {
             aria-pressed={minutes === value}
             onClick={() => setMinutes(value)}
             className={cn(
-              'h-10 rounded-lg border text-sm font-medium',
+              'h-10 rounded-full border text-sm font-medium tabular-nums transition active:scale-[0.97]',
               minutes === value
-                ? 'border-brand bg-brand/10 text-brand'
-                : 'border-slate-200 text-slate-700',
+                ? 'border-brand bg-brand-light text-brand ring-brand font-semibold ring-1'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
             )}
           >
             {value}분
           </button>
         ))}
       </div>
-      <Button size="lg" className="mt-4 w-full" onClick={() => onStart(minutes)}>
-        ▷ 지금 시작
+      <Button variant="outline" className="mt-4 w-full" onClick={() => onStart(minutes)}>
+        ▷ {minutes}분 지금 시작
       </Button>
     </Card>
   )
@@ -1065,7 +1106,8 @@ function SessionView({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+    // pb-28: 모바일에서 화면 아래에 고정된 일시정지 · 끝내기 막대가 마지막 내용을 가리지 않게 비워 둡니다.
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6 pb-28 sm:pb-0">
       <Card className="flex flex-col items-center gap-4 py-8 text-center">
         <p className="max-w-full truncate text-lg font-semibold text-slate-900">
           {card?.title ?? '공부'}
@@ -1113,40 +1155,22 @@ function SessionView({
               폰을 오래 들고 있어서 잠깐 멈췄어요. 폰을 엎어 두고 다시 시작해요.
             </p>
           )}
+        {/* 남은 시간이 이 화면의 주인공입니다. 숫자 폭이 바뀌어도 흔들리지 않게 tabular-nums. */}
         <p
-          className="text-6xl font-bold tracking-tight text-slate-900 tabular-nums sm:text-7xl"
+          className="text-[76px] leading-none font-semibold tracking-tight text-slate-900 tabular-nums sm:text-8xl"
           aria-live="off"
         >
           {formatRemaining(remainingMs)}
         </p>
-        <p className="font-medium text-slate-700">
+        <p className="font-medium text-slate-700 tabular-nums">
           {active.plannedMinutes}분 중 {runMinutes}분 했어요
         </p>
         <ProgressBar value={progress} className="w-full max-w-sm" />
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 tabular-nums">
           {formatClock(active.startedAt)} 시작 · {formatClock(active.endAt)}에 끝나요 · 일시정지{' '}
           {active.pauses.length + (isPaused ? 1 : 0)}번
         </p>
 
-        <div className="grid w-full max-w-sm grid-cols-2 gap-3">
-          {isPaused ? (
-            <Button size="lg" onClick={session.resume}>
-              다시 시작
-            </Button>
-          ) : (
-            <Button size="lg" variant="secondary" onClick={() => setIsPauseOpen(true)}>
-              일시정지
-            </Button>
-          )}
-          <Button
-            size="lg"
-            variant="ghost"
-            className="border border-slate-300"
-            onClick={() => setIsEndOpen(true)}
-          >
-            끝내기
-          </Button>
-        </div>
         <p className="text-xs text-slate-500">
           공부 중에는 화면이 꺼지지 않아요. 일시정지해도 끝나는 시각은 그대로예요.
         </p>
@@ -1170,6 +1194,31 @@ function SessionView({
         )}
       </Card>
 
+      {/* 일시정지 · 끝내기는 엄지가 닿는 화면 아래쪽에 붙여 둡니다. (피츠의 법칙)
+          모바일: 내용 길이와 상관없이 늘 화면 맨 아래에 고정(fixed). 세션 중에는 하단 탭이 숨어 있어 겹치지 않습니다. PC: 시계 묶음 바로 아래.
+          끝내기는 되돌릴 수 없어서 일시정지보다 작고 조용하게(글자 버튼) 두고, 누르면 확인 창이 뜹니다. */}
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-slate-100 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:pt-0 sm:pb-0">
+        <div className="mx-auto grid w-full max-w-xl grid-cols-3 gap-2">
+          {isPaused ? (
+            <Button size="lg" className="col-span-2" onClick={session.resume}>
+              ▶ 다시 시작
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              variant="outline"
+              className="col-span-2"
+              onClick={() => setIsPauseOpen(true)}
+            >
+              ❚❚ 일시정지
+            </Button>
+          )}
+          <Button size="lg" variant="ghost" onClick={() => setIsEndOpen(true)}>
+            끝내기
+          </Button>
+        </div>
+      </div>
+
       {phone.stage === 1 && (
         <PhoneLiftNotice seconds={phone.liftedSeconds} onDismiss={phone.dismiss} />
       )}
@@ -1186,10 +1235,10 @@ function SessionView({
           <ul className="flex flex-col gap-1">
             {checklist.map((item) => (
               <li key={item.id}>
-                <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-slate-50">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-2 py-1 hover:bg-slate-50">
                   <input
                     type="checkbox"
-                    className="accent-brand size-5"
+                    className="accent-brand size-5 shrink-0"
                     checked={Boolean(active.checked[item.id])}
                     onChange={() => session.toggleCheck(item.id)}
                   />
@@ -1219,9 +1268,11 @@ function SessionView({
               onChange={(event) => setMemo(event.target.value)}
               maxLength={100}
               placeholder="예: 엄마한테 문자하기"
-              className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-base sm:text-sm"
             />
-            <Button onClick={handleSaveMemo}>적기</Button>
+            <Button variant="secondary" size="sm" onClick={handleSaveMemo}>
+              적기
+            </Button>
           </div>
           {active.memos.length > 0 && (
             <p className="mt-2 text-sm text-slate-500">{active.memos.length}개 적어 뒀어요</p>
@@ -1241,18 +1292,21 @@ function SessionView({
           아직 {formatMinutes(Math.ceil(remainingMs / MS_PER_MINUTE))} 남았어요. 지금 끝내면 '중간에
           끝냈어요'로 남아요.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <Button variant="secondary" onClick={() => setIsEndOpen(false)}>
+        {/* 되돌릴 수 없는 [끝내기] 보다 [계속하기] 를 1순위(채운 버튼)로 둡니다. */}
+        <div className="mt-5 flex flex-col gap-2">
+          <Button className="w-full" onClick={() => setIsEndOpen(false)}>
             계속하기
           </Button>
           <Button
+            variant="outline"
+            className="w-full"
             onClick={() => {
               setIsEndOpen(false)
               const record = session.finish()
               if (record) onFinished(record, finishAwayTrack(record, phone.isAvailable))
             }}
           >
-            끝내기
+            지금 끝내기
           </Button>
         </div>
       </Modal>
@@ -1321,11 +1375,11 @@ function PausePicker({ isOpen, onClose, onFirstPick, onChange }: PausePickerProp
           maxLength={100}
           placeholder="기타 이유를 한 줄로 적어요 (안 적어도 돼요)"
           aria-label="기타 이유"
-          className="mt-3 h-10 w-full rounded-lg border border-slate-300 px-3 text-base sm:text-sm"
+          className="mt-3 h-11 w-full rounded-xl border border-slate-300 px-3 text-base sm:text-sm"
         />
       )}
       {isPaused && (
-        <Button className="mt-4 w-full" onClick={handleClose}>
+        <Button className="mt-5 w-full" onClick={handleClose}>
           확인
         </Button>
       )}
@@ -1517,11 +1571,11 @@ function EndPopup({
                 onChange={(event) => setLine(event.target.value)}
                 maxLength={100}
                 placeholder="예: 수학, 문제집 42쪽, 오답 정리"
-                className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                className="h-11 w-full rounded-xl border border-slate-300 px-3 text-base sm:text-sm"
               />
               {isAskingQuickCard && <p className="text-xs text-slate-500">AI 가 정리하는 중…</p>}
               {currentDraft && (
-                <div className="flex flex-col gap-2 rounded-lg bg-violet-50 px-3 py-3 text-sm">
+                <div className="flex flex-col gap-2 rounded-xl bg-violet-50 px-3 py-3 text-sm">
                   <p className="break-keep text-slate-700">
                     <span className="text-xs font-semibold text-violet-700">AI 추천</span> 이렇게
                     정리할까요? 한 일과 다르면 &quot;내가 쓴 그대로&quot; 를 골라 주세요.
@@ -1552,10 +1606,10 @@ function EndPopup({
               <ul className="flex flex-col gap-1">
                 {checklist.map((item) => (
                   <li key={item.id}>
-                    <label className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-slate-50">
+                    <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-2 py-1 hover:bg-slate-50">
                       <input
                         type="checkbox"
-                        className="accent-brand size-5"
+                        className="accent-brand size-5 shrink-0"
                         checked={checked[item.id] !== undefined}
                         onChange={() =>
                           setChecked((prev) => {
@@ -1575,7 +1629,12 @@ function EndPopup({
                 <div className="flex flex-col gap-2">
                   <p className="text-sm font-medium text-slate-800">다 못 한 건 왜 그랬을까요?</p>
                   {/* 이유를 칩으로 고르는 대신 코치와 말로 나누면, AI 가 이유를 짐작해서 "맞아?" 로 확인받습니다. */}
-                  <Button size="lg" onClick={handleTalk}>
+                  {/* 이유를 직접 고르는 중이면 [다음] 이 1순위라서, 이 버튼은 선 버튼으로 낮춥니다. */}
+                  <Button
+                    size="lg"
+                    variant={isPickingReasons ? 'outline' : 'primary'}
+                    onClick={handleTalk}
+                  >
                     💬 {talkRoom.name} 방에서 후기 나누기
                   </Button>
                   <button
@@ -1613,12 +1672,12 @@ function EndPopup({
       {step === 'with' && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-700">공부하면서 같이 한 게 있나요?</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {WITH_WHAT_OPTIONS.map((item) => (
               <Button
                 key={item.key}
-                variant="secondary"
-                className="h-12"
+                variant="outline"
+                className="h-12 px-2"
                 onClick={() => {
                   save({ withWhat: item.key })
                   setStep('proof')
@@ -1644,14 +1703,18 @@ function EndPopup({
             maxLength={300}
             rows={3}
             placeholder="예: 42~45쪽 풀고 틀린 3문제 다시 풂"
-            className="w-full rounded-lg border border-slate-300 p-3 text-sm"
+            className="w-full rounded-xl border border-slate-300 p-3 text-base sm:text-sm"
           />
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="secondary" onClick={() => handleProofDone(true)}>
-              {proofRequired ? '증빙 없이 끝내기 (안 한 것으로)' : '건너뛰기'}
-            </Button>
-            <Button disabled={proofText.trim() === ''} onClick={() => handleProofDone(false)}>
+          <div className="flex flex-col gap-2">
+            <Button
+              className="w-full"
+              disabled={proofText.trim() === ''}
+              onClick={() => handleProofDone(false)}
+            >
               남기기
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => handleProofDone(true)}>
+              {proofRequired ? '증빙 없이 끝내기 (안 한 것으로)' : '건너뛰기'}
             </Button>
           </div>
         </div>
@@ -1670,6 +1733,8 @@ function EndPopup({
             label="잘 된 이유"
           />
           <Button
+            size="lg"
+            className="w-full"
             disabled={goodPicks.length === 0}
             onClick={() => {
               save({ goodReasons: goodPicks })
@@ -1684,17 +1749,27 @@ function EndPopup({
       {step === 'next' && (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-slate-700">다음은 무엇을 할까요?</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* 채운 버튼은 1순위 하나(확인 통화, 없으면 다음 카드)만. 나머지는 선 · 글자 버튼입니다. */}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {canCheckCall && (
-              <Button onClick={onCall} className="sm:col-span-2">
+              <Button size="lg" onClick={onCall} className="sm:col-span-2">
                 📞 확인 통화 받기
               </Button>
             )}
-            <Button variant={canCheckCall ? 'secondary' : 'primary'} onClick={onClose}>
+            <Button
+              size={canCheckCall ? 'md' : 'lg'}
+              variant={canCheckCall ? 'outline' : 'primary'}
+              className={cn(!canCheckCall && 'sm:col-span-2')}
+              onClick={onClose}
+            >
               다음 카드 보기
             </Button>
             {/* 다 한 공부도 어땠는지 말로 나누면 코치가 다음 계획에 씁니다. (#582) */}
-            <Button variant="secondary" onClick={handleTalk}>
+            <Button
+              variant="outline"
+              className={cn(!canCheckCall && 'sm:col-span-2')}
+              onClick={handleTalk}
+            >
               💬 {talkRoom.name} 방에서 후기 나누기
             </Button>
             <Button variant="ghost" onClick={onClose} className="sm:col-span-2">
@@ -1770,19 +1845,17 @@ function CountdownView({ card, onDone, onCancel }: CountdownViewProps) {
         <p className="text-sm font-medium text-slate-500">{card.title} · 이것만 먼저 해요</p>
         <p className="text-2xl font-bold break-keep text-slate-900 sm:text-3xl">{shownStep}</p>
         {aiSteps[level] && <span className="text-xs font-semibold text-violet-700">AI 추천</span>}
-        <p className="text-brand text-7xl font-bold tabular-nums" aria-live="polite">
+        <p
+          className="text-brand text-8xl leading-none font-semibold tabular-nums"
+          aria-live="polite"
+        >
           {Math.max(0, seconds)}
         </p>
         <div className="grid w-full max-w-sm grid-cols-2 gap-3">
-          <Button
-            size="lg"
-            variant="secondary"
-            disabled={level >= MAX_SHRINK}
-            onClick={handleShrink}
-          >
+          <Button size="lg" variant="outline" disabled={level >= MAX_SHRINK} onClick={handleShrink}>
             더 작게
           </Button>
-          <Button size="lg" variant="ghost" className="border border-slate-300" onClick={onCancel}>
+          <Button size="lg" variant="ghost" onClick={onCancel}>
             그만
           </Button>
         </div>
@@ -1885,12 +1958,7 @@ function PhoneFlipView({ card, liftStrength, onStart, onCancel }: PhoneFlipViewP
       </div>
       <div className="mx-auto flex w-full max-w-xl flex-col gap-2">
         {/* 바탕이 회색이라 버튼은 흰색으로 둡니다. */}
-        <Button
-          size="lg"
-          variant="secondary"
-          className="w-full bg-white hover:bg-slate-50"
-          onClick={handleJustStart}
-        >
+        <Button size="lg" variant="outline" className="w-full" onClick={handleJustStart}>
           그냥 시작
         </Button>
         <Button variant="ghost" className="w-full" onClick={onCancel}>

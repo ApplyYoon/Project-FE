@@ -75,9 +75,10 @@ export function MinutesPicker({
   const buttonClass = (isSelected: boolean) =>
     cn(
       // flex-1 + min-w-0: 버튼이 몇 개든 한 줄에서 같은 너비로 나눠 가집니다. (375px 에서도 한 줄)
-      'h-10 min-w-0 flex-1 cursor-pointer rounded-lg border px-1 text-sm font-medium whitespace-nowrap transition-colors',
+      'h-10 min-w-0 flex-1 cursor-pointer rounded-xl border px-1 text-sm font-medium whitespace-nowrap tabular-nums transition-colors',
       isSelected
-        ? 'border-brand bg-brand-light text-brand'
+        ? // 고른 칸: 연한 brand 바탕 + 테두리 + 굵게 (2차 규칙 1)
+          'border-brand bg-brand-light text-brand ring-brand font-semibold ring-1'
         : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
     )
 

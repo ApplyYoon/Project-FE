@@ -1,6 +1,7 @@
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { useCards } from '@/hooks/useCards'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { ApiError, getApiErrorMessage } from '@/lib/api'
@@ -176,18 +177,17 @@ export function CardsFromPhotoPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-4 pb-28">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
       <div>
+        {/* 돌아가는 링크라 모바일 · PC 모두 둡니다. 이 화면은 헤더에 ‹ 뒤로를 두지 않습니다. (2026-10-22) */}
         <Link
           to="/cards"
-          className="text-brand inline-flex h-11 items-center gap-1 text-sm font-medium hover:underline"
+          className="text-brand mb-1 inline-flex h-11 items-center gap-1 text-sm font-medium hover:underline"
         >
           <span aria-hidden>‹</span> 카드
         </Link>
-        <h1 className="mt-1 text-[26px] leading-snug font-bold tracking-tight">
-          사진으로 카드 만들기
-        </h1>
-        <p className="mt-1 text-sm break-keep text-slate-500">
+        <h1 className="text-[28px] leading-tight font-bold tracking-tight">사진으로 카드 만들기</h1>
+        <p className="mt-2 max-w-prose text-[15px] break-keep text-slate-600">
           시험 범위표나 학습지를 찍으면, AI 가 시험 전날까지 공부 카드로 나눠 줘요.
         </p>
       </div>
@@ -228,7 +228,7 @@ export function CardsFromPhotoPage() {
           </p>
 
           {previewUrl !== null && read.isPending && (
-            <div role="status" className="flex items-center gap-3 rounded-3xl bg-white p-4">
+            <div role="status" className="flex items-center gap-3 rounded-2xl bg-white p-4">
               <img
                 src={previewUrl}
                 alt="고른 사진"
@@ -309,7 +309,7 @@ export function CardsFromPhotoPage() {
               <li
                 key={`${row.date}-${index}`}
                 className={cn(
-                  'flex flex-col gap-3 rounded-3xl bg-white p-4',
+                  'flex flex-col gap-3 rounded-2xl bg-white p-4',
                   !row.picked && 'opacity-60',
                 )}
               >
@@ -321,10 +321,12 @@ export function CardsFromPhotoPage() {
                     aria-label={`${row.title} 카드로 만들기`}
                     className="accent-brand size-6 shrink-0"
                   />
-                  <span className="text-sm font-semibold text-slate-500">
+                  <span className="text-sm font-semibold text-slate-500 tabular-nums">
                     {formatDay(row.date)}
                   </span>
-                  <span className="ml-auto text-sm text-slate-500">{row.durationMinutes}분</span>
+                  <span className="ml-auto text-sm text-slate-500 tabular-nums">
+                    {row.durationMinutes}분
+                  </span>
                 </div>
                 <input
                   value={row.title}
@@ -340,7 +342,7 @@ export function CardsFromPhotoPage() {
                     value={row.time}
                     onChange={(event) => updateRow(index, { time: event.target.value })}
                     className={cn(
-                      'h-10 rounded-xl bg-slate-100 px-3 text-base',
+                      'h-11 rounded-xl bg-slate-100 px-3 text-base tabular-nums',
                       row.startTime === null && 'ring-2 ring-amber-300',
                     )}
                   />
@@ -362,16 +364,17 @@ export function CardsFromPhotoPage() {
             다른 사진으로 다시 하기
           </button>
 
-          {/* 주 행동은 아래에 붙입니다. 모바일에서는 하단 탭(h-14) 위, safe-area 여백 */}
-          <div className="fixed inset-x-0 bottom-14 z-20 mx-auto w-full max-w-xl px-4 pb-[env(safe-area-inset-bottom)] sm:bottom-4">
+          {/* 주 행동은 아래에 붙입니다. 모바일에서는 하단 탭 바로 위(엄지 자리) (다른 화면과 같은 StickyActionBar) */}
+          <StickyActionBar aboveTabBar>
             <Button
-              className="h-14 w-full rounded-2xl text-[17px] font-semibold active:scale-[0.98]"
+              size="lg"
+              className="w-full"
               disabled={pickedRows.length === 0}
               onClick={handleSave}
             >
               카드 {pickedRows.length}장 만들기
             </Button>
-          </div>
+          </StickyActionBar>
         </>
       )}
     </div>
