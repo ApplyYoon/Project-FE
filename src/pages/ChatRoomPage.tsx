@@ -1750,7 +1750,7 @@ function RoomChat({ room }: RoomChatProps) {
       return
     }
     if (chip.kind === 'checkCall') {
-      // 통화 화면이 문(오늘 끝낸 공부)을 확인합니다. 방금 공부한 기록은 거기서 바로 서버로 보냅니다. (lib/checkCall.ts)
+      // 통화 화면이 오늘 끝낸 공부를 확인합니다. 방금 공부한 기록은 거기서 바로 서버로 보냅니다. (lib/checkCall.ts)
       navigate('/call')
       return
     }

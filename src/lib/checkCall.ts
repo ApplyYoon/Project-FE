@@ -1,4 +1,4 @@
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
 import { pushPendingCards } from '@/lib/cardSync'
 import { loadSavedCards } from '@/lib/cards'
 import { loadAllSessions } from '@/lib/dailyRecords'
@@ -9,25 +9,25 @@ import { queryOptions } from '@tanstack/react-query'
 import type { Card, StudySession } from '@/types'
 
 /**
- * "확인 통화" 의 문입니다. (2026-10-18, 이슈 #577 · BE #327)
- * 사용자: "공부를 하게 하고 완료한 조건으로 통화할 수 있게"
- * AI 음성 통화는 오늘 공부를 하나 끝내야 열립니다. 통화에서는 방금 공부한 것을 말로 설명하고(설명하면서 복습),
- * 코치가 질문 2~3개로 이해했는지 확인합니다. 채팅은 문이 없습니다. (힘들 때 말할 곳은 늘 열려 있어야 해서)
+ * "확인 통화" 에 쓸 오늘 끝낸 공부입니다. (2026-10-18, 이슈 #577 · BE #327)
+ * 오늘 끝낸 공부가 있으면 통화에서 방금 공부한 것을 말로 설명하고(설명하면서 복습),
+ * 코치가 질문 2~3개로 이해했는지 확인합니다.
  *
- * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "확인 통화")
- *   GET  /realtime/check-call -> { open, studied: { title, minutes, endedAt } | null, reason: null | 'NO_STUDY_TODAY' }
- *        open 이 true 인데 studied 가 null 이면 최근 위기 표현이 있어서 "위로하는 통화" 로 열린 것입니다.
- *   POST /realtime/session    -> 문이 닫혀 있으면 403 { error: { code: 'CALL_LOCKED', message } }
+ * ■ 통화는 공부를 안 했어도 걸 수 있습니다. (2026-10-22 사용자 "AI 전화 조건 제거")
+ *   처음에는 "오늘 공부를 하나 끝내야 열림" 문이 있었는데 서버(BE CheckCall)와 함께 뺐습니다.
+ *   끝낸 공부가 없으면 보통 통화로 시작합니다.
+ *
+ * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "확인 통화 열림 확인")
+ *   GET  /realtime/check-call -> { open: true, studied: { title, minutes, endedAt } | null, reason: null }
+ *        open · reason 은 옛 모양이라 남아 있고, 지금은 studied 만 씁니다.
  *
  * ■ 서버 규칙(BE CheckCall)과 같은 규칙을 이 기기 기록으로도 계산합니다. (countsForCheckCall · localCheckCall)
- *   한쪽을 고치면 다른 쪽도 같이 고쳐 주세요. 이 기기 계산은 테스트 로그인(시연)과 "기록이 아직 서버에 안 갔을 때" 안내에 씁니다.
- * ■ 공부 기록은 보통 끝나고 10분 뒤에 서버로 갑니다(lib/sessionSync.ts). 그래서 문을 확인하기 전에 바로 보냅니다.
+ *   한쪽을 고치면 다른 쪽도 같이 고쳐 주세요. 이 기기 계산은 테스트 로그인(시연)과 서버에 못 물었을 때 씁니다.
+ * ■ 공부 기록은 보통 끝나고 10분 뒤에 서버로 갑니다(lib/sessionSync.ts). 그래서 서버에 묻기 전에 바로 보냅니다.
  */
 
-/** 이만큼(분) 넘게 공부한 기록이 있어야 열립니다. (BE CheckCall.MIN_STUDY_MINUTES 와 같음) */
+/** 이만큼(분) 넘게 공부한 기록만 확인 통화의 공부로 칩니다. (BE CheckCall.MIN_STUDY_MINUTES 와 같음) */
 export const MIN_CHECK_STUDY_MINUTES = 10
-/** 문이 닫혔을 때 보여 줄 말 (서버의 403 문장과 같음) */
-export const CALL_LOCKED_TEXT = '오늘 공부 하나를 끝내면 확인 통화가 열려요'
 
 /** 방금 끝낸 공부 하나 */
 export interface StudiedInfo {
@@ -39,28 +39,24 @@ export interface StudiedInfo {
   endedAt: number
 }
 
-/** 문을 확인한 결과 */
+/** 오늘 끝낸 공부를 확인한 결과 */
 export interface CheckCallState {
-  /** true 면 통화를 걸 수 있습니다. */
-  open: boolean
-  /** 오늘 가장 최근에 끝낸 공부. 없거나 위로하는 통화로 열렸으면 null */
+  /** 오늘 가장 최근에 끝낸 공부. 없으면 null (그러면 보통 통화) */
   studied: StudiedInfo | null
   /**
    * 어디서 판정했는지
-   *   server — 서버가 판정함
-   *   device — 서버에 묻지 못해서 이 기기 기록으로 판정함 (닫혀 보여도 막지 않음 — 서버가 403 으로 다시 막음)
-   *   demo   — 테스트 로그인(시연). 이 기기 기록으로 보여 주기만 하고 막지 않음
+   *   server — 서버 기록으로 봄
+   *   device — 서버에 묻지 못해서 이 기기 기록으로 봄
+   *   demo   — 테스트 로그인(시연). 이 기기 기록으로 봄
    */
   source: 'server' | 'device' | 'demo'
-  /** true 면 서버는 닫혔다는데 이 기기에는 오늘 끝낸 공부가 있습니다. (기록이 아직 서버에 덜 갔을 수 있음) */
-  isSyncPending: boolean
 }
 
 /**
  * "오늘 끝낸 공부" 로 치는 기록인지. (BE CheckCall.counts 와 같은 규칙)
  *   - 공부 기록만 (노는 기록은 빼요)
  *   - 타이머 · 오프라인으로 잰 것만 (끝난 뒤 사후 입력은 빼요 — 앱이 잰 것이 아니라서)
- *   - 순공시간(끝 − 시작 − 일시정지)이 10분 이상 (1~2분 켰다 끈 것으로 통화를 여는 것을 막으려는 숫자)
+ *   - 순공시간(끝 − 시작 − 일시정지)이 10분 이상 (1~2분 켰다 끈 것은 확인할 거리가 없어서)
  *
  *   타이머 40분 -> true · 타이머 5분 -> false · 사후 입력 60분 -> false
  */
@@ -71,23 +67,22 @@ export function countsForCheckCall(session: StudySession): boolean {
 }
 
 /**
- * 이 기기 기록으로 본 문. 오늘(새벽 4시 기준) 시작한 기록 중 "끝낸 공부" 로 치는 가장 늦게 끝난 것 하나를 씁니다.
+ * 이 기기 기록으로 본 오늘 끝낸 공부. 오늘(새벽 4시 기준) 시작한 기록 중 "끝낸 공부" 로 치는 가장 늦게 끝난 것 하나를 씁니다.
  *
- *   [19:00~19:40 타이머 '미적분' 40분, 20:00~20:05 타이머 5분] -> { open: true, studied: { title: '미적분', minutes: 40 } }
- *   [사후 입력 60분]                                              -> { open: false, studied: null }
+ *   [19:00~19:40 타이머 '미적분' 40분, 20:00~20:05 타이머 5분] -> { studied: { title: '미적분', minutes: 40 } }
+ *   [사후 입력 60분]                                              -> { studied: null }
  */
 export function localCheckCall(
   sessions: StudySession[],
   cards: Card[],
   todayKey: string,
-): { open: boolean; studied: StudiedInfo | null } {
+): { studied: StudiedInfo | null } {
   const latest = sessions
     .filter((session) => toDayKey(session.startedAt) === todayKey && countsForCheckCall(session))
     .sort((a, b) => b.endedAt - a.endedAt)[0]
-  if (!latest) return { open: false, studied: null }
+  if (!latest) return { studied: null }
   const card = latest.cardId ? cards.find((item) => item.id === latest.cardId) : undefined
   return {
-    open: true,
     studied: {
       title: card?.title ?? null,
       minutes: Math.floor(getStudyMs(latest) / 60_000),
@@ -96,10 +91,8 @@ export function localCheckCall(
   }
 }
 
-/** 서버가 준 문 응답을 확인합니다. 모양이 틀리면 null (서버 응답도 그대로 믿지 않고 확인합니다) */
-export function readCheckCall(
-  value: unknown,
-): { open: boolean; studied: StudiedInfo | null } | null {
+/** 서버가 준 응답을 확인합니다. 모양이 틀리면 null (서버 응답도 그대로 믿지 않고 확인합니다) */
+export function readCheckCall(value: unknown): { studied: StudiedInfo | null } | null {
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
   if (typeof record.open !== 'boolean') return null
@@ -114,55 +107,47 @@ export function readCheckCall(
       }
     }
   }
-  return { open: record.open, studied }
-}
-
-/** 통화를 시작할 때 서버가 "문이 닫혀 있다" 고 거절한 것인지 (403 CALL_LOCKED) */
-export function isCallLockedError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 403 && error.code === 'CALL_LOCKED'
+  return { studied }
 }
 
 /**
  * 방금 끝낸 공부 기록을 기다리지 않고 서버로 보냅니다.
  * 카드 세션은 그 카드가 서버에 먼저 있어야 받아 주므로 카드부터 보냅니다. (lib/sessionSync.ts)
- * 보내다 실패해도 던지지 않습니다. (문 확인은 그대로 하고, 닫혀 있으면 화면이 "다시 확인" 을 보여 줌)
+ * 보내다 실패해도 던지지 않습니다. (그래도 서버에 묻기는 계속합니다)
  */
 async function sendStudyNow(): Promise<void> {
   try {
     await pushPendingCards()
     await pushPendingSessions(0)
   } catch {
-    // 실패해도 문 확인은 계속합니다.
+    // 실패해도 서버에 묻기는 계속합니다.
   }
 }
 
 /**
- * 확인 통화의 문을 확인합니다.
- *   테스트 로그인: 이 기기 기록으로 보여 주기만 합니다. (서버에 기록이 없어서, 막으면 시연이 안 됨)
- *   진짜 로그인: 방금 공부한 기록을 먼저 보내고 서버에 묻습니다. 서버에 못 물으면 막지 않습니다.
+ * 오늘 끝낸 공부를 확인합니다. 통화는 결과와 상관없이 걸 수 있습니다.
+ *   테스트 로그인: 이 기기 기록으로 봅니다. (서버에 기록이 없어서)
+ *   진짜 로그인: 방금 공부한 기록을 먼저 보내고 서버에 묻습니다. 서버에 못 물으면 이 기기 기록으로 봅니다.
  */
 export async function loadCheckCall(isServerData: boolean): Promise<CheckCallState> {
   const local = localCheckCall(loadAllSessions(), loadSavedCards() ?? [], getTodayKey())
-  if (!isServerData) return { ...local, source: 'demo', isSyncPending: false }
+  if (!isServerData) return { ...local, source: 'demo' }
   await sendStudyNow()
-  let server: { open: boolean; studied: StudiedInfo | null } | null = null
+  let server: { studied: StudiedInfo | null } | null = null
   try {
     server = readCheckCall(await api<unknown>('/realtime/check-call'))
   } catch {
     server = null
   }
-  // 서버에 못 물었으면(옛 서버 · 연결 끊김) 막지 않습니다. 정말 닫혀 있으면 통화를 걸 때 서버가 403 으로 막습니다.
-  if (server === null)
-    return { open: true, studied: local.studied, source: 'device', isSyncPending: false }
+  // 서버에 못 물었으면(옛 서버 · 연결 끊김) 이 기기 기록으로 봅니다.
+  if (server === null) return { studied: local.studied, source: 'device' }
   return {
-    open: server.open,
     // 서버가 카드 제목을 모르면(카드 없이 잰 기록 등) 이 기기의 제목을 빌려 씁니다.
     studied:
       server.studied && server.studied.title === null && local.studied
         ? { ...server.studied, title: local.studied.title }
         : server.studied,
     source: 'server',
-    isSyncPending: !server.open && local.open,
   }
 }
 
