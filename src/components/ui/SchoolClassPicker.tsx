@@ -1,5 +1,14 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { cn } from '@/lib/cn'
-import { getDefaultGrade, MAX_CLASS_NO, type SchoolClass } from '@/lib/schoolToday'
+import {
+  classNosOf,
+  getDefaultGrade,
+  schoolClassOptionsQuery,
+  type SchoolClass,
+} from '@/lib/schoolToday'
+import { useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 interface SchoolClassPickerProps {
@@ -16,7 +25,8 @@ interface SchoolClassPickerProps {
 
 /**
  * 학년 · 반을 고르는 작은 칸입니다. 고른 반은 서버에 저장하지 않고 이 기기에만 둡니다. (lib/schoolToday.ts)
- * 홈(시간표 보기)과 설정의 계정 묶음이 같이 씁니다. 두 곳 다 같은 저장소(study-school-class)를 씁니다.
+ * 설정의 계정 묶음이 씁니다. 홈 시간표와 같은 저장소(study-school-class)를 씁니다.
+ * 반 칸에는 우리 학교 그 학년에 실제로 있는 반만 나옵니다. (NEIS 학급정보, 2026-10-23) 목록을 받는 동안은 회색 칸입니다.
  *
  *   <SchoolClassPicker initial={schoolClass} onSave={handleSave} description="몇 학년 몇 반이야?" saveLabel="저장" />
  */
@@ -27,12 +37,40 @@ export function SchoolClassPicker({
   saveLabel,
   className,
 }: SchoolClassPickerProps) {
-  const [grade, setGrade] = useState(initial?.grade ?? getDefaultGrade())
-  const [classNo, setClassNo] = useState(initial?.classNo ?? 1)
-
   return (
     <div className={cn('flex flex-col gap-2', className)}>
       <p className="text-[13px] break-keep text-slate-500">{description}</p>
+      <AsyncBoundary pendingFallback={<Skeleton className="h-11 w-full rounded-xl" />}>
+        <ClassFields initial={initial} onSave={onSave} saveLabel={saveLabel} />
+      </AsyncBoundary>
+    </div>
+  )
+}
+
+interface ClassFieldsProps {
+  initial: SchoolClass | null
+  onSave: (next: SchoolClass) => void
+  saveLabel: string
+}
+
+/** 학년 · 반 · 저장 한 줄. 학교의 반 목록을 받은 뒤에 그립니다. (AsyncBoundary 안) */
+function ClassFields({ initial, onSave, saveLabel }: ClassFieldsProps) {
+  const isServerData = useIsServerData()
+  // 못 받으면 1 ~ 30반이 와서 에러가 나지 않습니다. (lib/schoolToday.ts)
+  const { data: classNosByGrade } = useSuspenseQuery(schoolClassOptionsQuery(isServerData))
+  const [grade, setGrade] = useState(initial?.grade ?? getDefaultGrade())
+  const [classNo, setClassNo] = useState(initial?.classNo ?? 1)
+
+  const classNos = classNosOf(classNosByGrade, grade)
+  // 고른 반이 이 학년 목록에 없으면(예전에 고른 30반 · 학년을 바꿈) 첫 반을 골라 둔 것으로 보여 줍니다.
+  const isMissing = !classNos.includes(classNo)
+  const shownClassNo = isMissing ? (classNos[0] ?? 1) : classNo
+  // 저장해 둔 반이 우리 학교에 없는 반이면 알려 줍니다. 이 반이면 홈 시간표가 늘 비어 있었습니다.
+  const isSavedClassMissing =
+    isMissing && initial !== null && initial.grade === grade && initial.classNo === classNo
+
+  return (
+    <>
       {/* 학년 · 반 · 저장을 한 줄에 둡니다. 저장은 자주 누르는 행동이 아니라서 꽉 찬 brand 버튼 대신 선만 있는 버튼입니다. (2026-10-22) */}
       <div className="flex gap-2">
         <label className="sr-only" htmlFor="school-grade">
@@ -55,11 +93,11 @@ export function SchoolClassPicker({
         </label>
         <select
           id="school-class-no"
-          value={classNo}
+          value={shownClassNo}
           onChange={(event) => setClassNo(Number(event.target.value))}
           className="h-11 min-w-0 flex-1 rounded-xl bg-slate-100 px-3 text-base text-slate-900"
         >
-          {Array.from({ length: MAX_CLASS_NO }, (_, index) => index + 1).map((value) => (
+          {classNos.map((value) => (
             <option key={value} value={value}>
               {value}반
             </option>
@@ -67,12 +105,17 @@ export function SchoolClassPicker({
         </select>
         <button
           type="button"
-          onClick={() => onSave({ grade, classNo })}
+          onClick={() => onSave({ grade, classNo: shownClassNo })}
           className="h-11 shrink-0 cursor-pointer rounded-xl border border-slate-200 bg-white px-4 text-[15px] font-semibold text-slate-900 transition hover:bg-slate-50 active:scale-[0.98]"
         >
           {saveLabel}
         </button>
       </div>
-    </div>
+      {isSavedClassMissing && (
+        <p className="text-[13px] font-medium break-keep text-amber-700">
+          {`${classNo}반은 우리 학교 ${grade}학년에 없어요. 맞는 반을 골라 [${saveLabel}]을 눌러 주세요.`}
+        </p>
+      )}
+    </>
   )
 }
