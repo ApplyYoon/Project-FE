@@ -29,6 +29,7 @@ import { formatClock } from '@/lib/away'
 import {
   LONG_PAUSE_MINUTES,
   createInstantCardNow,
+  getEndAtWithPauses,
   getRemainingMs,
   getRunMs,
   shouldAlertLongPause,
@@ -1082,7 +1083,7 @@ function SessionView({
     if (!isInApp()) {
       void showSystemNotification({
         title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
-        body: '다시 시작할까요? 끝나는 시각은 그대로예요.',
+        body: '다시 시작할까요? 남은 시간은 멈춘 그대로예요.',
         tag: 'card-pause-long',
         url: '/timer',
       })
@@ -1166,13 +1167,14 @@ function SessionView({
           {active.plannedMinutes}분 중 {runMinutes}분 했어요
         </p>
         <ProgressBar value={progress} className="w-full max-w-sm" />
+        {/* 끝나는 시각은 멈춘 만큼 늦춰집니다. 멈춰 있는 동안에는 이 시각이 같이 늦어져요. */}
         <p className="text-sm text-slate-500 tabular-nums">
-          {formatClock(active.startedAt)} 시작 · {formatClock(active.endAt)}에 끝나요 · 일시정지{' '}
-          {active.pauses.length + (isPaused ? 1 : 0)}번
+          {formatClock(active.startedAt)} 시작 · {formatClock(getEndAtWithPauses(active, now))}에
+          끝나요 · 일시정지 {active.pauses.length + (isPaused ? 1 : 0)}번
         </p>
 
         <p className="text-xs text-slate-500">
-          공부 중에는 화면이 꺼지지 않아요. 일시정지해도 끝나는 시각은 그대로예요.
+          공부 중에는 화면이 꺼지지 않아요. 일시정지하면 시계도 멈추고, 멈춘 만큼 늦게 끝나요.
         </p>
         {phone.isAvailable && (
           <p className="text-xs break-keep text-slate-500">
@@ -1384,7 +1386,7 @@ function PausePicker({ isOpen, onClose, onFirstPick, onChange }: PausePickerProp
         </Button>
       )}
       <p className="mt-3 text-xs text-slate-500">
-        멈춘 시간은 한 시간에서 빠지고, 끝나는 시각은 그대로예요.
+        멈춘 동안은 시계도 멈춰요. 다시 시작하면 남은 시간부터 이어 가요.
       </p>
     </Modal>
   )
