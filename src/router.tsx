@@ -142,7 +142,7 @@ export const router = createBrowserRouter([
       // 상담 탭(/counsel) · 상담 채팅(/counsel/chat)은 2026-10-18 에 AI 코치로 합쳤습니다. 옛 주소는 채팅의 상담 방으로 보냅니다.
       { path: 'counsel', element: <OldCoachRedirect /> },
       { path: 'counsel/chat', element: <OldCoachRedirect /> },
-      // 기록 탭(예전 '분석'). [기록] · [리포트] 는 이 화면 안의 하위 탭입니다. (?tab=)
+      // 기록 탭(예전 '분석'). 하위 탭 [리포트] 는 2026-10-23 에 빼서 [기록] 화면 하나입니다.
       { path: 'records', element: <RecordsPage /> },
       // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)
       { path: 'check', element: <Navigate to="/" replace /> },
@@ -171,7 +171,8 @@ export const router = createBrowserRouter([
       { path: 'planner', element: <RedirectWithQuery to="/cards" /> },
       // 탭 이름을 '분석' 에서 '기록' 으로 바꾸기 전 주소(2026-10-18). ?tab= 같은 값은 그대로 가져갑니다.
       { path: 'analysis', element: <RedirectWithQuery to={RECORDS_PATH} /> },
-      { path: 'report', element: <RedirectWithQuery to={RECORDS_PATH} tab="report" /> },
+      // 리포트(/report · /records?tab=report)는 2026-10-23 에 뺐습니다. 옛 링크로 오면 기록 화면이 보입니다.
+      { path: 'report', element: <RedirectWithQuery to={RECORDS_PATH} /> },
       { path: 'manual', element: <RedirectWithQuery to={RECORDS_PATH} /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
