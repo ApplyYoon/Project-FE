@@ -71,38 +71,46 @@ function ClassFields({ initial, onSave, saveLabel }: ClassFieldsProps) {
 
   return (
     <>
-      {/* 학년 · 반 · 저장을 한 줄에 둡니다. 저장은 자주 누르는 행동이 아니라서 꽉 찬 brand 버튼 대신 선만 있는 버튼입니다. (2026-10-22) */}
+      {/* 학년 · 반 · 저장을 한 줄에 둡니다. 저장은 자주 누르는 행동이 아니라서 꽉 찬 brand 버튼 대신 선만 있는 버튼입니다. (2026-10-22)
+          학년 · 반 칸은 브라우저 기본 화살표가 칸 오른쪽 끝에 붙어서(여백 px-3 을 무시함), 기본 화살표를 끄고(appearance-none)
+          안쪽(right-3)에 화살표를 직접 그립니다. 글자가 화살표에 닿지 않게 오른쪽 여백은 pr-9 입니다. (2026-10-23) */}
       <div className="flex gap-2">
         <label className="sr-only" htmlFor="school-grade">
           학년
         </label>
-        <select
-          id="school-grade"
-          value={grade}
-          onChange={(event) => setGrade(Number(event.target.value))}
-          className="h-11 min-w-0 flex-1 rounded-xl bg-slate-100 px-3 text-base text-slate-900"
-        >
-          {[1, 2, 3].map((value) => (
-            <option key={value} value={value}>
-              {value}학년
-            </option>
-          ))}
-        </select>
+        <div className="relative min-w-0 flex-1">
+          <select
+            id="school-grade"
+            value={grade}
+            onChange={(event) => setGrade(Number(event.target.value))}
+            className="h-11 w-full cursor-pointer appearance-none rounded-xl bg-slate-100 pr-9 pl-3 text-base text-slate-900"
+          >
+            {[1, 2, 3].map((value) => (
+              <option key={value} value={value}>
+                {value}학년
+              </option>
+            ))}
+          </select>
+          <SelectArrow />
+        </div>
         <label className="sr-only" htmlFor="school-class-no">
           반
         </label>
-        <select
-          id="school-class-no"
-          value={shownClassNo}
-          onChange={(event) => setClassNo(Number(event.target.value))}
-          className="h-11 min-w-0 flex-1 rounded-xl bg-slate-100 px-3 text-base text-slate-900"
-        >
-          {classNos.map((value) => (
-            <option key={value} value={value}>
-              {value}반
-            </option>
-          ))}
-        </select>
+        <div className="relative min-w-0 flex-1">
+          <select
+            id="school-class-no"
+            value={shownClassNo}
+            onChange={(event) => setClassNo(Number(event.target.value))}
+            className="h-11 w-full cursor-pointer appearance-none rounded-xl bg-slate-100 pr-9 pl-3 text-base text-slate-900"
+          >
+            {classNos.map((value) => (
+              <option key={value} value={value}>
+                {value}반
+              </option>
+            ))}
+          </select>
+          <SelectArrow />
+        </div>
         <button
           type="button"
           onClick={() => onSave({ grade, classNo: shownClassNo })}
@@ -117,5 +125,21 @@ function ClassFields({ initial, onSave, saveLabel }: ClassFieldsProps) {
         </p>
       )}
     </>
+  )
+}
+
+/** 학년 · 반 칸 오른쪽 안쪽의 ▾ 화살표. 누르는 건 아래의 select 가 받도록 pointer-events-none 입니다. */
+function SelectArrow() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-slate-500"
+    >
+      <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
