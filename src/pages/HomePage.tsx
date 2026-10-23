@@ -741,7 +741,15 @@ function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTod
             </Link>
           </>
         ) : data.timetable === null || data.timetable.length === 0 ? (
-          <p className="text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
+          <>
+            <p className="text-[15px] text-slate-500">오늘은 수업이 없어요.</p>
+            {/* 우리 학교에 없는 반(예: 예전에 고른 30반)이면 늘 비어 보여서, 반을 확인하는 길을 둡니다. (2026-10-23) */}
+            {schoolClass && !data.isDemo && (
+              <Link to="/settings" className={textLinkClass}>
+                {schoolClass.grade}학년 {schoolClass.classNo}반이 맞는지 설정에서 확인하기 ›
+              </Link>
+            )}
+          </>
         ) : (
           <>
             {/* 주말에는 서버가 다음 월요일 시간표를 줘서 "월요일 시간표" 로 적습니다. (schoolDay, 2026-10-22) */}
