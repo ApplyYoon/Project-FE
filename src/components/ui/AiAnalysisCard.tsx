@@ -23,8 +23,8 @@ import type { Insight, StudySession } from '@/types'
  * AI 자기 분석을 보여 주는 조각들입니다. (#419 표 14번, 최종 기획서 「2 자기분석의 목표」 · 「4.6 분석」)
  *
  * - AiAnalysisCard              분석 › 기록 맨 위. 요약 + 묶음 5개(성향 · 생각과 실제 · 약속 지키기 · 공부 효율 · 실패 원인) + 다음 실험 제안
- * - AnalysisInsight             주간 리포트 ③ 인사이트 1개 (생각과 실제를 먼저)
- * - AnalysisExperimentSuggestion 주간 리포트 ⑤ 다음 실험 제안
+ * - AnalysisInsight             기록 › AI 분석 아래 '이번 발견' 1개 + 반응 버튼 (생각과 실제를 먼저)
+ *   (주간 리포트에 있던 것을 리포트를 뺀 2026-10-23 에 옮겼습니다. 리포트의 '다음 실험 제안' 은 AiAnalysisCard 에도 있어서 지웠습니다)
  *
  * 숫자는 코드가 계산하고(lib/analysisFacts.ts), 서버의 AI 가 그 숫자를 말로 풉니다(lib/aiAnalysisApi.ts).
  * AI 를 기다리는 동안이나 못 받으면 코드가 만든 기본 문장이 보입니다. 화면이 비지 않습니다.
@@ -243,7 +243,7 @@ interface AnalysisInsightProps {
 }
 
 /**
- * 주간 리포트 ③ 인사이트 1개입니다. 생각과 실제가 있으면 그것을, 없으면 첫 묶음을 보여 줍니다. (「4.6」 인사이트 1개)
+ * 기록 화면의 '이번 발견' 1개입니다. 생각과 실제가 있으면 그것을, 없으면 첫 묶음을 보여 줍니다. (「4.6」 인사이트 1개)
  * 반응 버튼 · [틀렸어] → 실험 제안은 InsightCard 가 그대로 합니다.
  *
  * <AnalysisInsight sessions={sessions} />
@@ -280,57 +280,6 @@ export function AnalysisInsight({ sessions, className }: AnalysisInsightProps) {
             sessions={sessions}
             className={className}
           />
-        )
-      }}
-    </WithAnalysis>
-  )
-}
-
-interface AnalysisExperimentSuggestionProps {
-  className?: string
-}
-
-/**
- * 주간 리포트 ⑤ 다음 실험 제안입니다. 고르는 일은 가설·실험 탭에서 하므로 그리로 안내합니다.
- *
- * <AnalysisExperimentSuggestion />
- */
-
-export function AnalysisExperimentSuggestion({ className }: AnalysisExperimentSuggestionProps) {
-  const material = useAnalysisMaterial()
-
-  if (material.facts.length < MIN_FACTS) {
-    return (
-      <div className={className}>
-        <p className="text-sm break-keep text-slate-500">
-          기록이 더 쌓이면 다음에 해 볼 실험을 내 기록으로 골라 줘요.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <WithAnalysis material={material}>
-      {(view) => {
-        const experiment = view.analysis.nextExperiment
-        return (
-          <div className={className}>
-            {experiment ? (
-              <>
-                <p className="flex flex-wrap items-center gap-2 leading-relaxed font-semibold break-keep text-slate-900">
-                  {experiment.ifText} → {experiment.thenText}
-                  <SourceBadge source={view.source} />
-                </p>
-                <p className="mt-1 text-sm leading-relaxed break-keep text-slate-600">
-                  {experiment.why}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm break-keep text-slate-500">
-                기록이 더 쌓이면 다음에 해 볼 실험을 내 기록으로 골라 줘요.
-              </p>
-            )}
-          </div>
         )
       }}
     </WithAnalysis>

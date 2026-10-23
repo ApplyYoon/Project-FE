@@ -106,7 +106,6 @@ export function Layout() {
       >
         {/* 아이폰 "홈 화면에 추가" 안내(components/layout/IosInstallGuide.tsx, #105)는 2026-10-19 에 껐습니다.
             시연을 모바일 웹 · 앱(WebView)으로 하기로 해서입니다. 다시 켜려면 홈('/')일 때 <IosInstallGuide /> 를 여기에 그립니다. */}
-        {/* 기록 탭의 하위 탭 막대(기록 · 리포트)는 RecordsPage 가 직접 그립니다. */}
         {backToTab && <BackToTabLink to={backToTab.to} label={backToTab.label} />}
 
         {/* 집중 모드가 자동으로 풀렸을 때(설정을 껐거나 안전 브레이크) 한 번 알려 줍니다. */}
