@@ -8,8 +8,8 @@
  *   채팅 탭: /chat (대화방 목록) + 방 3개 /chat/plan · /chat/counsel · /chat/tutor (lib/chatRooms.ts, #582)
  *            2026-10-18 저녁에 '코치' 탭(/coach) 하나를 대화방 3개로 나누며 이름 · 주소를 바꿨습니다.
  *            예전 /coach · /counsel 은 계획 이야기(?plan=)면 계획 방, 그 밖은 상담 방으로 넘깁니다. (router.tsx)
- *   기록 탭: /records (하위 탭: 기록 · 리포트). 2026-10-18 에 '분석' 에서 이름을 바꾸며 주소도 맞췄습니다.
- *   (사용설명서 · 가설·실험 하위 탭은 시연 범위 밖이라 2026-10-18 에 지웠습니다)
+ *   기록 탭: /records. 2026-10-18 에 '분석' 에서 이름을 바꾸며 주소도 맞췄습니다.
+ *   (하위 탭은 사용설명서 · 가설·실험을 2026-10-18 에, 리포트를 2026-10-23 에 지워서 이제 없습니다)
  */
 
 /** 홈 탭(첫 화면)의 주소 */
@@ -22,37 +22,6 @@ export const CHAT_PATH = '/chat'
 
 /** 기록 탭의 주소 */
 export const RECORDS_PATH = '/records'
-
-/** 기록 탭 안의 하위 탭 이름. 주소의 ?tab= 값입니다. */
-export type RecordsTab = 'records' | 'report'
-
-/** 기록 탭 위쪽의 하위 탭 막대에 나오는 순서와 글자. 첫 번째(기록)가 기본입니다. */
-export const recordsTabs: { tab: RecordsTab; label: string }[] = [
-  { tab: 'records', label: '기록' },
-  { tab: 'report', label: '리포트' },
-]
-
-/**
- * 주소에서 받은 ?tab= 값을 하위 탭 이름으로 바꿉니다. 모르는 값이면 기본(기록)으로 봅니다.
- * (주소는 누구나 손으로 고칠 수 있어서, 받은 값을 그대로 믿지 않습니다)
- *
- *   toRecordsTab('report')  -> 'report'
- *   toRecordsTab('hello')   -> 'records'
- */
-export function toRecordsTab(value: string): RecordsTab {
-  const found = recordsTabs.find((item) => item.tab === value)
-  return found ? found.tab : 'records'
-}
-
-/**
- * 하위 탭으로 가는 주소. 기본 탭(기록)은 ?tab= 을 적지 않습니다. (useQueryParam 이 기본값을 주소에 안 적는 것과 같게)
- *
- *   getRecordsTabPath('records')  -> '/records'
- *   getRecordsTabPath('report')   -> '/records?tab=report'
- */
-export function getRecordsTabPath(tab: RecordsTab): string {
-  return tab === 'records' ? RECORDS_PATH : `${RECORDS_PATH}?tab=${tab}`
-}
 
 /** 기록 탭 아래에 묶인 화면. 위에 "‹ 기록" 돌아가기 링크가 나옵니다. (시험은 2026-10-18 에 지워서 지금은 없습니다) */
 const recordsChildPaths: string[] = []

@@ -15,8 +15,7 @@ import { useLocation, useNavigationType } from 'react-router-dom'
  *
  * ■ 예시
  *   홈에서 아래로 내린 뒤 "기록" 탭을 누름       -> 기록 화면이 맨 위부터 보임
- *   리포트에서 주간 → 월간 (?view=monthly)        -> 그대로 (경로는 /records 그대로)
- *   분석 안에서 기록 → 리포트 (?tab=report)       -> 그대로 (하위 탭 막대가 맨 위에 있어서 이미 위쪽입니다)
+ *   카드 화면에서 날짜만 바꿈 (?date=…)           -> 그대로 (경로는 /cards 그대로)
  *   카드 → 분석 → 뒤로 가기                       -> 올리지 않음
  */
 export function useScrollToTopOnPageChange() {

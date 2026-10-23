@@ -14,7 +14,6 @@ import type { FocusScoreRecord } from '@/lib/focusScore'
 import { getScaleLevel, psychScales, type PsychScale } from '@/lib/psychTest'
 import { SHORTFALL_REASONS } from '@/lib/sessionTags'
 import type { QuizAnswer, QuizQuestion } from '@/lib/studyQuiz'
-import type { WeeklyNumbers } from '@/lib/weeklyCardStats'
 import type { Card, ShortfallReason, StudySession } from '@/types'
 
 /** 보기 번호 글자 (문제 말풍선과 같음) */
@@ -123,28 +122,8 @@ export function cardFailLines(card: Card, dateKey: string, failCountThisWeek: nu
 }
 
 /**
- * 주간 리포트 숫자 (WEEKLY_REPORT)
- *
- *   weeklyReportLines('이번 주', { cardCount: 12, runRate: 75, onTimeRate: 60, … })
- *     -> ['이번 주 카드 12장 · 실행률 75%', '정시 시작 60% (3/5)', …]
- */
-export function weeklyReportLines(weekName: string, numbers: WeeklyNumbers): string[] {
-  const lines = [
-    `${weekName} 카드 ${numbers.cardCount}장 · 실행률 ${numbers.runRate === null ? '-' : `${numbers.runRate}%`}`,
-  ]
-  if (numbers.onTimeRate !== null) {
-    lines.push(`정시 시작 ${numbers.onTimeRate}% (${numbers.onTimeCount}/${numbers.startedCount})`)
-  }
-  if (numbers.checklistRate !== null) lines.push(`체크리스트 달성 ${numbers.checklistRate}%`)
-  if (numbers.startDelayMinutes !== null) {
-    lines.push(`평균 시작 지연 ${numbers.startDelayMinutes}분`)
-  }
-  lines.push(`타이머로 잰 공부 ${formatMinutes(numbers.measuredMinutes)}`)
-  return lines
-}
-
-/**
  * AI 분석 카드 (WEEKLY_REPORT) — 요약 한 줄과 묶음마다 제목 한 줄
+ * (리포트 화면의 주간 숫자 줄 weeklyReportLines 는 리포트를 뺀 2026-10-23 에 지웠습니다)
  *
  *   analysisLines({ summary: '저녁에 잘 되는 편', sections: [{ headline: '9시 이후 실행률 80%', … }], … })
  *     -> ['최근 28일 분석: 저녁에 잘 되는 편', '9시 이후 실행률 80%', …]

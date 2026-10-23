@@ -1,7 +1,6 @@
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { AiAnalysisCard } from '@/components/ui/AiAnalysisCard'
+import { AiAnalysisCard, AnalysisInsight } from '@/components/ui/AiAnalysisCard'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -102,8 +101,6 @@ function SubjectTag({ subject }: SubjectTagProps) {
 }
 
 export function RecordListPage() {
-  const navigate = useNavigate()
-
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
   const subjects = useSubjects()
@@ -157,30 +154,16 @@ export function RecordListPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 바로 위 하위 탭 [기록] 이 화면 이름을 대신해서, 큰 제목은 화면 낭독기에만 읽어 줍니다. (같은 글자가 두 번 보이지 않게) */}
-      <h1 className="sr-only">기록·통계</h1>
+      {/* 예전에는 위의 하위 탭 [기록 | 리포트] 가 화면 이름을 대신했는데, 리포트를 빼면서(2026-10-23) 제목을 보이게 했습니다. */}
+      <h1 className="text-[28px] leading-tight font-bold tracking-tight">기록</h1>
 
       {/* 묶음 순서: 매일 보는 숫자(실행률 · 7일 공부 시간) → 내 숲 → AI 분석 (가장 자주 보는 것을 위로) */}
-      {/* 최근 4주 실행률 · 최근 7일 막대그래프 · 주간 리포트 카드. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
+      {/* 최근 4주 실행률 · 최근 7일 막대그래프 · 7일 집중도. 모바일은 한 줄에 하나, PC 는 두 칸으로 카드를 놓습니다. */}
       {/* items-start: 높이가 다른 카드를 억지로 같은 높이로 늘리지 않습니다. (시안처럼) */}
       <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <RunRateCard summary={recentRunRate} />
         <WeeklyBarCard sessions={sessions} />
         <FocusWeekCard now={now} />
-
-        <Card title="주간 리포트">
-          <p className="text-sm break-keep text-slate-600">
-            이번 주를 숫자와 발견으로 정리해서 보여줘요.
-          </p>
-          {/* 위의 [리포트] 탭과 같은 곳으로 가는 보조 길이라 채우지 않은 버튼으로 둡니다. */}
-          <Button
-            variant="outline"
-            className="mt-4 w-full sm:w-auto"
-            onClick={() => navigate('/records?tab=report')}
-          >
-            주간 리포트 보기
-          </Button>
-        </Card>
       </div>
 
       {/* 내 숲: 가운데 전체 나무 + 둘레의 목표 나무. 공부한 시간이 쌓이면 자랍니다. */}
@@ -188,6 +171,13 @@ export function RecordListPage() {
 
       {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
       <AiAnalysisCard />
+
+      {/* 발견 1개와 반응 버튼 [몰랐는데 맞아 · 이미 알던 거야 · 틀렸어]. 리포트 탭에 있던 것을 2026-10-23 에 옮겼습니다.
+          "몰랐는데 맞아" 는 기획서 「4.6」 의 핵심 경험 지표라서, 리포트를 빼도 이 카드는 남깁니다. */}
+      <section>
+        <h2 className="text-[17px] font-semibold tracking-tight text-slate-900">이번 발견</h2>
+        <AnalysisInsight sessions={sessions} className="mt-3" />
+      </section>
 
       {/* 시안처럼 PC(lg)에서는 두 칸으로 나눕니다. 다른 기록 카드가 생기면 이 안에 이어서 넣으면 됩니다. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
