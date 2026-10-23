@@ -22,7 +22,10 @@ import { queryOptions } from '@tanstack/react-query'
 /** 서버 응답을 기다리는 최대 시간(밀리초). 서버가 NEIS 를 부르는 동안 조금 넉넉히 기다립니다. */
 const REQUEST_TIMEOUT_MS = 20000
 
-/** 반 번호로 받는 가장 큰 값 (서버와 같은 기준) */
+/**
+ * 반 번호로 받는 가장 큰 값 (서버와 같은 기준)
+ * 넘으면 안 되는 범위일 뿐이고, 실제로 있는 반은 학교마다 달라서 schoolClassOptionsQuery 로 묻습니다. (2026-10-23)
+ */
 export const MAX_CLASS_NO = 30
 
 /** 시간표 한 칸 */
@@ -123,6 +126,78 @@ export function saveSchoolClass(schoolClass: SchoolClass): void {
  */
 export function clearSchoolClass(): void {
   removeData(CLASS_STORAGE_KEY)
+}
+
+/** 학년마다 고를 수 있는 반 번호 (작은 것부터). 예: { 1: [1, …, 10], 2: [1, …, 12], 3: [1, …, 11] } */
+export type ClassNosByGrade = Record<number, number[]>
+
+/** 반 목록을 못 받았을 때 쓰는 1 ~ 30반 (예전에 늘 보여 주던 칸) */
+function allClassNos(): number[] {
+  return Array.from({ length: MAX_CLASS_NO }, (_, index) => index + 1)
+}
+
+/**
+ * 그 학년에 고를 수 있는 반 번호. 목록에 그 학년이 없으면 1 ~ 30반입니다.
+ *
+ *   classNosOf({ 2: [1, 2, 3] }, 2) -> [1, 2, 3]
+ *   classNosOf({ 2: [1, 2, 3] }, 3) -> [1, 2, …, 30]
+ */
+export function classNosOf(byGrade: ClassNosByGrade, grade: number): number[] {
+  return byGrade[grade] ?? allClassNos()
+}
+
+/** 서버의 반 목록 응답에서 반 번호만 꺼냅니다. 모양이 이상하면 ApiError(502) */
+function toClassNos(value: unknown): number[] {
+  const broken = new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+  if (typeof value !== 'object' || value === null) throw broken
+  const classNos = (value as Record<string, unknown>).classNos
+  if (!Array.isArray(classNos)) throw broken
+  return classNos.filter((classNo): classNo is number =>
+    isWholeNumberBetween(classNo, 1, MAX_CLASS_NO),
+  )
+}
+
+/**
+ * 한 학년의 반 번호를 서버에서 받습니다. 못 받으면 1 ~ 30반입니다.
+ * (반을 못 고르면 시간표를 아예 못 보니까, 실패해도 예전처럼 고를 수 있게 둡니다)
+ */
+async function fetchClassNos(grade: number): Promise<number[]> {
+  try {
+    const result = await api<unknown>(`/school/classes?grade=${grade}`, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    const classNos = toClassNos(result)
+    // 학교를 안 골랐거나 그 학년에 반이 없으면 빈 목록이 와서, 그때도 1 ~ 30반을 둡니다.
+    return classNos.length > 0 ? classNos : allClassNos()
+  } catch {
+    return allClassNos()
+  }
+}
+
+/**
+ * 반 고르기 칸(설정)에 보여 줄 학년별 반 번호 쿼리입니다. (BE GET /school/classes, 2026-10-23)
+ * 서버가 NEIS 학급정보로 우리 학교에 실제로 있는 반만 줍니다.
+ * 예전에는 학교와 상관없이 1 ~ 30반을 다 보여 줘서, 없는 반(예: 30반)을 고르면 홈 시간표가 늘 "수업이 없어요" 였습니다.
+ * 학년을 바꿀 때마다 기다리지 않게 1 · 2 · 3학년을 한 번에 받습니다.
+ * 테스트 로그인(isServerData false)이면 서버를 부르지 않고 1 ~ 30반입니다.
+ *
+ *   분당고 -> { 1: [1, …, 10], 2: [1, …, 12], 3: [1, …, 11] }
+ */
+export function schoolClassOptionsQuery(isServerData: boolean) {
+  return queryOptions({
+    queryKey: ['school-classes', isServerData],
+    queryFn: async (): Promise<ClassNosByGrade> => {
+      if (!isServerData) return {}
+      const [first, second, third] = await Promise.all([
+        fetchClassNos(1),
+        fetchClassNos(2),
+        fetchClassNos(3),
+      ])
+      return { 1: first, 2: second, 3: third }
+    },
+    // 서버가 24시간 받아 두는 목록이라, 화면에서도 한 시간 동안 다시 받지 않습니다.
+    staleTime: 60 * 60 * 1000,
+  })
 }
 
 /**
