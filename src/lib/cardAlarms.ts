@@ -2,6 +2,7 @@ import type { Alarm } from '@/lib/appBridge'
 import { getCardsOnDate, loadSavedCards, migratePlansToCards } from '@/lib/cards'
 import {
   LONG_PAUSE_MINUTES,
+  getEndAtWithPauses,
   loadActiveCardSession,
   type ActiveCardSession,
 } from '@/lib/cardSession'
@@ -138,13 +139,15 @@ const SESSION_URL = '/timer'
  * 공부 끝 · 15분 일시정지 알림은 원래 웹 화면이 돌아야 울려서, 앱이 뒤에 있으면(아이폰은 몇 초 만에 웹이 멈춤)
  * 폰을 잠그고 공부할 때 아무것도 오지 않았습니다. 앱에 미리 예약해 두면 웹이 멈춰도 휴대폰이 띄웁니다.
  *
- *   - 공부 끝: 세션이 끝나는 시각(endAt = 시작 + 카드 길이, 일시정지해도 그대로)
- *   - 15분 멈춤: 일시정지 중이고 아직 복귀 알림을 안 보냈으면 멈춘 지 15분 뒤 (끝나는 시각보다 앞일 때만)
+ *   - 공부 끝: 세션이 끝나는 시각(시작 + 카드 길이 + 멈춘 시간, getEndAtWithPauses)
+ *     멈춰 있는 동안은 언제 끝날지 몰라서 넣지 않습니다. [다시 시작] 하면 늦춰진 시각으로 다시 예약됩니다.
+ *   - 15분 멈춤: 일시정지 중이고 아직 복귀 알림을 안 보냈으면 멈춘 지 15분 뒤
  *   - 학생이 스스로 시작한 공부라 연락 금지 시간에도 빼지 않고 보냅니다. 이미 지난 시각은 뺍니다.
  *
  *   buildSessionAlarms(null, '수학', now) -> []
  *   buildSessionAlarms({ startedAt: 19:00, endAt: 19:30, … }, '수학', 19:05)
  *     -> [ { id: 'session-…-end', at: 19:30, title: '공부 끝! 🎉', body: '수학 30분을 마쳤어요. 들어와서 마무리해요.' } ]
+ *   19:10 에 멈춘 채로 19:12 -> [ { id: 'session-…-pause', at: 19:25, … } ]   (공부 끝 알림은 다시 시작할 때)
  */
 export function buildSessionAlarms(
   active: ActiveCardSession | null,
@@ -154,27 +157,24 @@ export function buildSessionAlarms(
   if (active === null) return []
   const title = cardTitle?.trim() || '공부'
   const idPrefix = `session-${active.startedAt}`
-  const alarms: Alarm[] = [
-    {
+  const alarms: Alarm[] = []
+  const paused = active.pausedNow
+  if (!paused) {
+    alarms.push({
       id: `${idPrefix}-end`,
-      at: active.endAt,
+      at: getEndAtWithPauses(active, now),
       title: '공부 끝! 🎉',
       body: `${title} ${active.plannedMinutes}분을 마쳤어요. 들어와서 마무리해요.`,
       url: SESSION_URL,
-    },
-  ]
-  const paused = active.pausedNow
-  if (paused && !paused.alerted) {
-    const pauseAlertAt = paused.startedAt + LONG_PAUSE_MINUTES * MINUTE_MS
-    if (pauseAlertAt < active.endAt) {
-      alarms.push({
-        id: `${idPrefix}-pause`,
-        at: pauseAlertAt,
-        title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
-        body: '다시 시작할까요? 끝나는 시각은 그대로예요.',
-        url: SESSION_URL,
-      })
-    }
+    })
+  } else if (!paused.alerted) {
+    alarms.push({
+      id: `${idPrefix}-pause`,
+      at: paused.startedAt + LONG_PAUSE_MINUTES * MINUTE_MS,
+      title: `${LONG_PAUSE_MINUTES}분째 멈춰 있어요`,
+      body: '다시 시작할까요? 남은 시간은 멈춘 그대로예요.',
+      url: SESSION_URL,
+    })
   }
   return alarms.filter((alarm) => alarm.at > now)
 }
