@@ -416,9 +416,10 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
             <CareBadge level={selected.careLevel} />
             <SummaryRow label="어제 요약" value={selected.headline} />
             <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
-            {/* 평가(evaluations)에 한마디가 없으면 그날 통화 요약을 씁니다. (이해도 줄은 뗀 것) */}
+            {/* 평가(evaluations)에 한마디가 없으면 그날 통화 요약을 씁니다. (이해도 줄은 뗀 것)
+                통화 요약은 "~했다고 함" 같은 기록용 문장이라 이름을 "대화 요약" 으로 바꿔 보여 줍니다. */}
             <SummaryRow
-              label="AI 한마디"
+              label={selected.aiComment !== null ? 'AI 한마디' : '대화 요약'}
               value={selected.aiComment ?? (selectedNote?.summary || null)}
               emptyText="아직 없어요"
             />
