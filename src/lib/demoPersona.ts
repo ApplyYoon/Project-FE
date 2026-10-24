@@ -1,8 +1,11 @@
 import { buildJudgedCardDays } from '@/lib/cardDays'
 import type { CardDayMarkRecord, CardFailCause } from '@/lib/cardMarks'
 import type { SavedCareStage } from '@/lib/careStage'
+import { formatMinutes } from '@/lib/dailyRecords'
 import { moveDateKey } from '@/lib/date'
+import { getDaySummary } from '@/lib/daySummary'
 import { judgeExperiment, type Experiment } from '@/lib/experiments'
+import type { FocusScoreRecord } from '@/lib/focusScore'
 import { scorePsychTest } from '@/lib/psychTest'
 import { getCardDayMarkInfo, type RestDay } from '@/lib/restDays'
 import { getWeekday } from '@/lib/routines'
@@ -156,6 +159,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['20쪽 외우기', '어제 외운 것 다시 보기'],
     subjectId: 'english',
     rates: { done: 0.86, late: 0.08, early: 0.02 },
+    failCause: 'tired',
     shortfall: 'tired',
   },
   {
@@ -169,6 +173,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     subjectId: 'math',
     lecture: true,
     rates: { done: 0.7, late: 0.15, early: 0.1 },
+    failCause: 'phone',
     shortfall: 'mindWander',
   },
   {
@@ -200,6 +205,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     // 시간은 다 채우는데 체크리스트가 남는 카드 → 계획 패턴 '과대'
     rates: { done: 0.8, late: 0.12, early: 0.04 },
     usualChecked: 2,
+    failCause: 'tooMuch',
     shortfall: 'tooMuch',
   },
   {
@@ -211,6 +217,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['지문 3개 읽기', '지문마다 한 줄 요약'],
     subjectId: 'korean',
     rates: { done: 0.6, late: 0.15, early: 0.05, selfReport: 0.08 },
+    failCause: 'procrastinated',
     shortfall: 'mindWander',
   },
   {
@@ -223,6 +230,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['듣기 1회분 풀기', '틀린 문항 다시 듣기'],
     subjectId: 'english',
     rates: { done: 0.45, late: 0.2, early: 0.25 },
+    failCause: 'tired',
     shortfall: 'tired',
   },
   {
@@ -247,6 +255,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['지문 5개 풀기', '모르는 단어 정리'],
     subjectId: 'english',
     rates: { done: 0.6, late: 0.2, early: 0.05 },
+    failCause: 'phone',
     shortfall: 'mindWander',
   },
   {
@@ -259,6 +268,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['이번 주 100쪽 다시 보기'],
     subjectId: 'english',
     rates: { done: 0.7, late: 0.15, early: 0.05 },
+    failCause: 'phone',
     shortfall: 'tired',
   },
   {
@@ -270,6 +280,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['작품 1개 읽기', '표현 3개 정리'],
     subjectId: 'korean',
     rates: { done: 0.6, late: 0.2, early: 0.05 },
+    failCause: 'event',
     shortfall: 'mindWander',
   },
   {
@@ -281,6 +292,7 @@ const DEMO_CARDS: DemoCardSpec[] = [
     checklist: ['이번 주 카드 돌아보기', '다음 주 카드 고치기'],
     subjectId: 'korean',
     rates: { done: 0.75, late: 0.15, early: 0 },
+    failCause: 'tooMuch',
     shortfall: 'tooMuch',
   },
 ]
@@ -339,6 +351,10 @@ export interface DemoPersona {
   fixedBlocks: FixedBlock[]
   /** 공부 기록 + 노는 기록 */
   sessions: StudySession[]
+  /** 공부 기록마다의 집중도 (나중에 적은 기록은 타이머로 재지 않아서 없음) */
+  focusScores: FocusScoreRecord[]
+  /** 알림 화면의 "어제 순공" 메시지 글 (기록 탭과 같은 숫자) */
+  yesterdayMessage: string
   /** 홈 화면이 아직 읽는 옛 계획 (카드 하루치마다 하나, 날짜별) */
   plansByDate: Record<string, StudyPlan[]>
   marks: CardDayMarkRecord[]
@@ -546,6 +562,65 @@ function buildStudySession(
   }
 }
 
+/**
+ * 공부 기록 하나의 집중도 (lib/focusScore.ts 와 같은 모양). 폰을 든 시간의 비율을 카드마다 정한 범위에서 고릅니다.
+ *   실험(폰을 다른 방에) 전의 밤 수학 오답 → 12 ~ 30% (폰을 자주 듦)
+ *   실험 뒤의 밤 수학 오답               → 0 ~ 6%
+ *   나머지 카드                         → 2 ~ 14%
+ */
+function buildFocusScore(
+  session: StudySession,
+  specKey: string,
+  dayIndex: number,
+): FocusScoreRecord {
+  const random = createRandom(hashSeed(`${specKey}|${dayIndex}|focus`))
+  const runMs = session.endedAt - session.startedAt - (session.pausedMs ?? 0)
+  const isNightMath = specKey === 'night-math'
+  const ratio =
+    isNightMath && dayIndex < EXPERIMENT_START_INDEX
+      ? 0.12 + random() * 0.18
+      : isNightMath
+        ? random() * 0.06
+        : 0.02 + random() * 0.12
+  // 초 단위로 맞춥니다.
+  const distractedMs = Math.round((runMs * ratio) / 1000) * 1000
+  return {
+    sessionId: session.id,
+    startedAt: session.startedAt,
+    score: Math.round(((runMs - distractedMs) / runMs) * 100),
+    runMs,
+    distractedMs,
+    measuredBy: 'lift',
+    // 폰을 든 횟수: 들었으면 1 ~ 4번
+    count: distractedMs === 0 ? 0 : 1 + Math.floor(random() * 4),
+    // 든 시간 중 앱 밖에 나가 있던 시간 (근거 글에만 씀)
+    outsideMs: Math.round((distractedMs * random() * 0.5) / 1000) * 1000,
+  }
+}
+
+/**
+ * 알림 화면의 "어제 순공" 한 줄. 기록 탭 · 통화 요약과 같은 계산(getDaySummary)이라 숫자가 같습니다.
+ * (예전에는 '어제 순공 3시간 10분, 계획의 80%' 로 박혀 있어서 기록 탭과 숫자가 달랐습니다)
+ *   -> '어제 순공 1시간 43분, 계획의 85%야. 폰은 다른 방에 두기 15일째!'
+ */
+function buildYesterdayMessage(
+  todayKey: string,
+  plansByDate: Record<string, StudyPlan[]>,
+  sessions: StudySession[],
+): string {
+  const yesterday = moveDateKey(todayKey, -1)
+  const { studyMinutes, achievementRate } = getDaySummary(
+    yesterday,
+    plansByDate[yesterday] ?? [],
+    sessions,
+  )
+  // 실험은 EXPERIMENT_START_INDEX 번째 날에 시작했고, 오늘은 DEMO_DAYS - 1 번째 날입니다.
+  const experimentLine = ` 폰은 다른 방에 두기 ${DEMO_DAYS - EXPERIMENT_START_INDEX}일째!`
+  if (studyMinutes === 0) return `어제는 쉬어 가는 날이었지.${experimentLine}`
+  const rateText = achievementRate === null ? '' : `, 계획의 ${achievementRate}%`
+  return `어제 순공 ${formatMinutes(studyMinutes)}${rateText}야.${experimentLine}`
+}
+
 /** 실패 원인 → 체크인의 "어제 못 한 이유" (미루기는 '하기 싫음' 으로) */
 function toMissReason(cause: CardFailCause): MissReason {
   return cause === 'procrastinated' ? 'unwilling' : cause
@@ -586,6 +661,7 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
   const cards = specs.map((spec) => toCard(spec, startKey, createdAt))
 
   const sessions: StudySession[] = []
+  const focusScores: FocusScoreRecord[] = []
   const plansByDate: Record<string, StudyPlan[]> = {}
   const marks: CardDayMarkRecord[] = []
   /** 날짜 → 그날 실패로 적은 원인들 (다음 날 체크인의 "어제 못 한 이유") */
@@ -626,12 +702,17 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
           kind: 'study',
         },
       ]
-      if (didIt) sessions.push(buildStudySession(spec, card, dateKey, dayIndex, outcome))
+      if (didIt) {
+        const session = buildStudySession(spec, card, dateKey, dayIndex, outcome)
+        sessions.push(session)
+        // 나중에 적은 기록(selfReport)은 타이머로 재지 않아서 집중도가 없습니다.
+        if (outcome !== 'selfReport') focusScores.push(buildFocusScore(session, spec.key, dayIndex))
+      }
       if (outcome === 'failed') {
         const random = createRandom(hashSeed(`${spec.key}|${dayIndex}|cause`))
-        // 재발 신호 ① 의 두 번째 실패는 폰 때문 (폰이 가장 큰 방해)
+        // 재발 신호 ① 의 두 번째 실패는 폰 때문. 나머지도 45% 는 폰 (폰이 가장 큰 방해가 되게)
         const cause: CardFailCause =
-          dayIndex === story.relapseIndexes[1] || random() < 0.35
+          dayIndex === story.relapseIndexes[1] || random() < 0.45
             ? 'phone'
             : (spec.failCause ?? 'tired')
         marks.push({ cardId: card.id, dateKey, mark: 'failed', at: cardEnd + 60 * MINUTE, cause })
@@ -878,6 +959,8 @@ export function buildDemoPersona(todayKey: string, now: number): DemoPersona {
     goals,
     fixedBlocks,
     sessions,
+    focusScores,
+    yesterdayMessage: buildYesterdayMessage(todayKey, plansByDate, sessions),
     plansByDate,
     marks,
     restDays,
