@@ -13,7 +13,7 @@ interface ImportMetaEnv {
   readonly VITE_DEMO_CODE_LOGIN?: string
   /** 이 서버 사용자 번호로 로그인하면 가상 28일을 자동으로 넣습니다. 비워 두면 꺼집니다. (lib/demoAutoSeed.ts) */
   readonly VITE_DEMO_SEED_USER_ID?: string
-  /** 구글 로그인 · 가입에 쓰는 OAuth 클라이언트 ID. (lib/googleClient.ts) 구글 캘린더 연동은 #417 에서 지웠습니다 */
+  /** 구글 로그인 · 가입과 홈 달력의 구글 캘린더 연결에 쓰는 OAuth 클라이언트 ID. (lib/googleClient.ts) */
   readonly VITE_GOOGLE_CLIENT_ID?: string
   /** 웹 푸시 공개 키(VAPID). 비우면 서버(GET /push/public-key)에서 받습니다. (lib/webPush.ts) */
   readonly VITE_VAPID_PUBLIC_KEY?: string
