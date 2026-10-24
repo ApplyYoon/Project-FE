@@ -281,6 +281,31 @@ export async function fetchAnswerChecks(date: string): Promise<AnswerCheck[]> {
   }
 }
 
+/**
+ * from ~ to(둘 다 포함) 동안의 채점 결과를 한 번에 받아옵니다. 기록 탭의 주간 리포트(정답률)가 씁니다.
+ * 서버는 한 번에 31일까지 줍니다. (BE GET /answer-checks?from=&to=, Project-BE#377)
+ * 기간 조회가 아직 배포되지 않은 서버(400 · 404)면 리포트 전체에 실패 안내를 띄우지 않고 "결과 없음" 으로 봅니다.
+ */
+export async function fetchAnswerChecksBetween(from: string, to: string): Promise<AnswerCheck[]> {
+  if (!isServerDataMode()) {
+    const byDate = loadDemoChecks()
+    return Object.entries(byDate)
+      .filter(([date]) => date >= from && date <= to)
+      .flatMap(([, checks]) => checks)
+  }
+
+  try {
+    const result = await api<unknown>(
+      `/answer-checks?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    )
+    if (!Array.isArray(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+    return result.map(toAnswerCheck).filter((check): check is AnswerCheck => check !== null)
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return []
+    throw error
+  }
+}
+
 /** 문제 하나의 결과를 학생이 고칩니다. 고친 뒤의 결과 한 장을 돌려줍니다. */
 export async function fixAnswerCheckItem(input: {
   checkId: string
@@ -327,5 +352,13 @@ export function answerChecksQuery(date: string) {
   return queryOptions({
     queryKey: ['answer-checks', date],
     queryFn: () => fetchAnswerChecks(date),
+  })
+}
+
+/** 기간 채점 결과 쿼리. 기록 탭의 주간 리포트가 지난주 ~ 이번 주(14일)를 한 번에 받습니다. */
+export function answerChecksBetweenQuery(from: string, to: string) {
+  return queryOptions({
+    queryKey: ['answer-checks', from, to],
+    queryFn: () => fetchAnswerChecksBetween(from, to),
   })
 }
