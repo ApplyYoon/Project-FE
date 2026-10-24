@@ -72,22 +72,26 @@ BE 를 켜지 않아도 서버 데이터와 구글 로그인을 써 볼 수 있�
 브라우저에서 `http://localhost:8080/swagger-ui.html` 을 열면 BE 가 만든 API 목록이 보입니다.
 코드를 쓰기 전에 여기서 먼저 직접 불러 보세요. 어떤 값을 보내고 무엇이 돌아오는지 눈으로 볼 수 있습니다.
 
-**2) FE 가 내 컴퓨터의 BE 를 보게 하기** — 저장소 맨 위에 `.env.development.local` 파일을 만들고 한 줄을 적습니다.
+구글 로그인까지 써 보려면 BE 를 켤 때 `GOOGLE_CLIENT_ID` 에 FE 의 `.env.localbe` 에 적힌 클라이언트 ID 를 넣습니다.
+
+**2) FE 를 내 컴퓨터의 BE 로 켜기** — `pnpm run dev` 대신 아래 명령으로 켭니다. 파일을 만들 필요가 없습니다.
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8080/api/v1
+pnpm run dev:local
 ```
 
-이 파일이 `.env.development` 보다 먼저 쓰입니다. 다 쓰고 나면 이 파일을 지우면 다시 Render 를 봅니다.
+`.env.development` 대신 저장소의 `.env.localbe` 를 읽어서 `localhost:8080` 을 부릅니다. 다시 Render 를 보려면 `pnpm run dev` 로 켜면 됩니다.
+⚠️ 내 컴퓨터의 BE 는 켤 때마다 DB 가 비어서, BE 를 끄면 가입 · 기록이 사라집니다.
 
 **환경변수 파일 정리**
 
-| 파일                     | 언제 읽나              | GitHub    | 무엇                                          |
-| ------------------------ | ---------------------- | --------- | --------------------------------------------- |
-| `.env.development`       | `pnpm run dev`         | 올라감    | BE 주소(Render)                               |
-| `.env.production`        | `pnpm run build`(배포) | 올라감    | BE 주소(Render) + 테스트 로그인 끄기          |
-| `.env.development.local` | `pnpm run dev`         | 안 올라감 | 내 컴퓨터에서만 바꿀 값 (위 두 파일보다 우선) |
-| `.env.example`           | 읽지 않음              | 올라감    | 어떤 값을 넣을 수 있는지 설명하는 견본        |
+| 파일                     | 언제 읽나              | GitHub    | 무엇                                                      |
+| ------------------------ | ---------------------- | --------- | --------------------------------------------------------- |
+| `.env.development`       | `pnpm run dev`         | 올라감    | BE 주소(Render) + 구글 클라이언트 ID                      |
+| `.env.localbe`           | `pnpm run dev:local`   | 올라감    | BE 주소(내 컴퓨터) + 구글 클라이언트 ID                   |
+| `.env.production`        | `pnpm run build`(배포) | 올라감    | BE 주소(Render) + 구글 클라이언트 ID + 테스트 로그인 끄기 |
+| `.env.development.local` | `pnpm run dev`         | 안 올라감 | 내 컴퓨터에서만 바꿀 값 (위 두 파일보다 우선)             |
+| `.env.example`           | 읽지 않음              | 올라감    | 어떤 값을 넣을 수 있는지 설명하는 견본                    |
 
 - 환경변수 파일을 고친 뒤에는 개발 서버(`pnpm run dev`)를 **껐다가 다시 켜야** 적용됩니다.
 - ⚠️ `VITE_` 로 시작하는 값은 빌드 결과물에 들어가서 **누구나 볼 수 있습니다.** 비밀번호·API 키는 넣지 마세요.
@@ -104,6 +108,7 @@ VITE_API_BASE_URL=http://localhost:8080/api/v1
 | 명령                    | 하는 일                              |
 | ----------------------- | ------------------------------------ |
 | `pnpm run dev`          | 개발 서버 켜기 (작업할 때 쓰는 것)   |
+| `pnpm run dev:local`    | 개발 서버 켜기 — 내 컴퓨터의 BE 사용 |
 | `pnpm run build`        | 배포용으로 빌드 → `dist/` 폴더 생성  |
 | `pnpm run preview`      | 빌드 결과를 실제 서비스처럼 미리보기 |
 | `pnpm run typecheck`    | 타입이 안 맞는 곳 찾기               |
