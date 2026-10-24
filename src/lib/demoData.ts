@@ -103,6 +103,8 @@ export function addDemoData(): void {
   )
   saveCards([...(loadSavedCards() ?? []), ...cards])
   appendList('sessions', persona.sessions)
+  // 공부 기록마다의 집중도 (기록 탭의 "집중도" · 분석이 읽습니다, lib/focusScore.ts)
+  appendList('focus-scores', persona.focusScores)
   appendList('fixed-blocks', persona.fixedBlocks)
   appendList('card-day-marks', persona.marks)
   appendList('experiments', persona.experiments)
@@ -162,9 +164,14 @@ export function addDemoData(): void {
   }
 
   // 5) 알림 화면의 예시 메시지 (id 앞에 'demo-')
+  //    '어제 순공' 메시지(message-4)는 기록 탭과 숫자가 같도록 가상 기록으로 만든 글로 바꿉니다.
   saveAiMessages([
     ...loadAiMessages(),
-    ...mockAiMessages.map((message) => ({ ...message, id: `${DEMO_ID_PREFIX}${message.id}` })),
+    ...mockAiMessages.map((message) => ({
+      ...message,
+      id: `${DEMO_ID_PREFIX}${message.id}`,
+      ...(message.id === 'message-4' ? { text: persona.yesterdayMessage } : {}),
+    })),
   ])
 
   saveData(MANIFEST_KEY, manifest)
@@ -181,6 +188,7 @@ export function removeDemoData(): void {
     loadGoals().filter((goal) => !goal.id.startsWith(DEMO_ID_PREFIX) || Boolean(goal.serverId)),
   )
   removeDemoItems<{ id: string }>('sessions', (item) => item.id)
+  removeDemoItems<{ sessionId: string }>('focus-scores', (item) => item.sessionId)
   removeDemoItems<{ id: string }>('fixed-blocks', (item) => item.id)
   removeDemoItems<{ cardId: string }>('card-day-marks', (item) => item.cardId)
   removeDemoItems<{ id: string }>('experiments', (item) => item.id)
