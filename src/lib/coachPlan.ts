@@ -931,6 +931,8 @@ export interface LongPlanText {
  *
  *   parseLongPlanText('11월 2일 중간고사 미적분 1~3단원 계획 짜 줘', '2026-10-18')
  *   -> { goal: '중간고사 미적분 1~3단원', endDate: '2026-11-02', isEventDate: true, farEventDate: null }
+ *   parseLongPlanText('11월 5일에 수학 중간고사야. 미적분 1~3단원이야. 시험날까지 계획 짜 줘', …)
+ *   -> { goal: '수학 중간고사 미적분 1~3단원', … }   (날짜 뒤 '에' · 마침표 · '시험날' 은 지움)
  *   parseLongPlanText('12월 25일 토익 계획', …) -> { goal: '토익', endDate: '2026-11-17', isEventDate: false, farEventDate: '2026-12-25' }
  *   parseLongPlanText('기말 계획 짜 줘', …)     -> { goal: '기말', endDate: null, … }   (날짜는 화면에서 고름)
  *   parseLongPlanText('오늘 피곤해', …)         -> null
@@ -940,9 +942,12 @@ export function parseLongPlanText(text: string, todayKey: string): LongPlanText 
   let saidDate: string | null = null
   let rest = text
 
-  const monthDay = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(text) ?? /(\d{1,2})\/(\d{1,2})/.exec(text)
-  const dDay = /[Dd]\s*-\s*(\d{1,3})/.exec(text)
-  const after = /(\d{1,3})\s*일\s*(뒤|후)/.exec(text)
+  // 날짜 바로 뒤의 '에' · '에는' 도 같이 찾아서, 날짜를 지울 때 함께 지웁니다. ('11월 5일에 수학 …' → '수학 …')
+  const monthDay =
+    /(\d{1,2})\s*월\s*(\d{1,2})\s*일(에는|에)?/.exec(text) ??
+    /(\d{1,2})\/(\d{1,2})(에는|에)?/.exec(text)
+  const dDay = /[Dd]\s*-\s*(\d{1,3})(에는|에)?/.exec(text)
+  const after = /(\d{1,3})\s*일\s*(뒤|후)(에는|에)?/.exec(text)
   const isMonthLong = ['30일', '한 달', '한달'].some((word) => text.includes(word))
   if (monthDay) {
     const [year] = todayKey.split('-').map(Number)
@@ -988,6 +993,12 @@ export function parseLongPlanText(text: string, todayKey: string): LongPlanText 
       ' ',
     )
     .replace(/까지|이야|이에요|인데|있어|준비하고|준비해|준비/g, ' ')
+    // '중간고사야.' 처럼 문장부호 바로 앞의 '야' (낱말 속 '야' 는 남깁니다. 예: '분야를')
+    .replace(/야(?=[.,!?])/g, ' ')
+    // '시험날' · '시험 당일' 은 날짜를 가리키는 말이라 목표 이름에서 뺍니다.
+    .replace(/시험\s?날|시험\s?당일/g, ' ')
+    // 문장 끝 마침표 · 쉼표 · 물음표 ('1~3단원' 의 물결표는 남깁니다)
+    .replace(/[.,!?]+(?=\s|$)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, MAX_PLAN_TEXT_LENGTH)
