@@ -7,22 +7,29 @@ import { ChipButton } from '@/components/ui/ChipButton'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { MissionBar } from '@/components/ui/MissionBar'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { useCalendarAlarmSync } from '@/hooks/useCalendarAlarmSync'
+import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { useQueryParam } from '@/hooks/useQueryParam'
+import { isInApp } from '@/lib/appBridge'
 import { loadCardMarks } from '@/lib/cardMarks'
+import { getCardsOnDate } from '@/lib/cards'
 import { getCareLimits } from '@/lib/careLimits'
 import { localCheckCall, type StudiedInfo } from '@/lib/checkCall'
 import { cn } from '@/lib/cn'
 import { runDailyCareStage } from '@/lib/dailyCareRun'
 import { loadDailyMissions } from '@/lib/dailyMission'
 import { loadAllSessions } from '@/lib/dailyRecords'
-import { getTodayKey, toDayDate } from '@/lib/date'
+import { getTodayKey, isDateKey, moveDateKey, toDayDate } from '@/lib/date'
 import { formatDday, getDaysUntil } from '@/lib/exams'
+import { weekEventsQuery, type CalendarEvent } from '@/lib/googleCalendar'
 import { getUpcomingMyEvents } from '@/lib/myEvents'
 import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
+import { toDayMinutes } from '@/lib/planConflict'
 import { loadRestDays } from '@/lib/restDays'
+import { getWeekday, getWeekdayName } from '@/lib/routines'
 import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
 import {
   isContestNotice,
@@ -79,7 +86,8 @@ const textLinkClass =
  * 사용자: "일단 홈 정도도 필요하지 않나", "달력 위치도 좀 바꾸거나", "홈 화면 수정도 좀 하자"
  *
  *   ① 인사 + 오늘의 미션 한 줄 (누르면 코치 화면으로)
- *   ② 오늘 계획: 오늘 카드를 시간 순서로 + [시작]. 카드가 없으면 [코치와 오늘 계획 짜기] · [사진으로 만들기]
+ *   ② 지금 할 카드 + 달력: 이번 주 7일 줄과 고른 날의 카드 · 구글 캘린더 일정 (2026-10-24, 주소 ?day=)
+ *      오늘을 고르면 예전 "오늘 계획" 목록 그대로 [시작] 이 붙습니다. 카드가 없으면 [코치와 오늘 계획 짜기] · [사진으로 만들기]
  *   ③ 학교 정보 한 묶음: 위 탭 [시간표 | 급식 | 일정 | 공지] 중 하나만 펼침 (2026-10-22, 주소 ?school=)
  *      일정 = 학교 일정 + 내 일정을 날짜 순서로 D-day 와 함께, 공지 = 학교 홈페이지 글 제목 · 대회 글은 🏆
  *   맨 아래: 지금 관리 모드와 이유 · AI 가 바꾼 설정 알림
@@ -162,6 +170,8 @@ function HomeView() {
           {/* ② 지금 할 카드 → 오늘 계획. 홈에서 가장 먼저 · 가장 크게 보이는 것은 "지금 할 카드" 하나입니다. */}
           <TodayPlanSection
             state={todayCards}
+            cards={cards}
+            todayKey={todayKey}
             onStart={(card) => navigate(`/timer?card=${encodeURIComponent(card.id)}`)}
             // ?plan=today: 코치 화면이 열리자마자 오늘 계획을 짜 줍니다. (계획 핑퐁)
             onPlanWithCoach={() => navigate(`${PLAN_CHAT_PATH}?plan=today`)}
@@ -274,6 +284,9 @@ function cardTimeText(card: CardModel): string {
 
 interface TodayPlanSectionProps {
   state: TodayCardsState
+  /** 내 카드 전부. 달력에서 다른 날을 고르면 그날 카드를 여기서 찾습니다 */
+  cards: CardModel[]
+  todayKey: string
   /** 카드로 시작 — 타이머가 그 카드로 엽니다 (/timer?card=…) */
   onStart: (card: CardModel) => void
   /** 카드가 없을 때: 코치와 오늘 계획 짜기 */
@@ -283,12 +296,19 @@ interface TodayPlanSectionProps {
 }
 
 /**
- * ② 지금 할 카드 + 오늘 계획 (「4.2」).
+ * ② 지금 할 카드 + 달력 (「4.2」).
  *   - 맨 위 "지금 할 카드" 묶음(brand 색): 지금 할 카드, 없으면 다음 카드를 크게 + [▶ 시작]. 홈에서 채운 버튼은 이것 하나입니다.
  *     카드가 없으면 같은 자리에서 계획을 만드는 길(코치와 짜기 · 사진으로 만들기)을 보여 줍니다.
- *   - 그 아래 "오늘 계획" 목록: 오늘 카드를 시작 시각 순서로. 아직 할 카드에는 작은 ▶ 버튼만 붙입니다. (미리 시작해도 됩니다)
+ *   - 그 아래 달력 묶음: 이번 주 7일 줄 + 고른 날의 카드 · 구글 캘린더 일정. (HomeCalendarSection)
  */
-function TodayPlanSection({ state, onStart, onPlanWithCoach, onPhoto }: TodayPlanSectionProps) {
+function TodayPlanSection({
+  state,
+  cards,
+  todayKey,
+  onStart,
+  onPlanWithCoach,
+  onPhoto,
+}: TodayPlanSectionProps) {
   // 위 묶음에 크게 보여 줄 카드: 지금 할 카드가 먼저, 없으면 다음 카드
   const heroCard = state.current ?? state.next
   return (
@@ -301,50 +321,470 @@ function TodayPlanSection({ state, onStart, onPlanWithCoach, onPhoto }: TodayPla
         onPhoto={onPhoto}
       />
 
-      {state.items.length > 0 && (
-        <section className={sectionCardClass}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-[17px] font-bold text-slate-900">오늘 계획</h2>
-            <p className="text-sm text-slate-500 tabular-nums">
-              {state.doneCount}/{state.total} 끝
-            </p>
-          </div>
+      <HomeCalendarSection
+        state={state}
+        cards={cards}
+        todayKey={todayKey}
+        heroCard={heroCard}
+        onStart={onStart}
+      />
+    </>
+  )
+}
 
-          {/* 줄 사이를 1px 선으로 나눠, 줄마다 따로 떠 보이지 않게 합니다. */}
-          <ul className="mt-2 flex flex-col divide-y divide-slate-100">
-            {state.items.map((item) => (
-              <PlanRow
-                key={item.card.id}
-                item={item}
-                isHero={item.card === heroCard}
-                onStart={onStart}
-              />
-            ))}
-          </ul>
+interface HomeCalendarSectionProps {
+  state: TodayCardsState
+  cards: CardModel[]
+  todayKey: string
+  /** 위 "지금 할 카드" 묶음에 크게 나온 카드 */
+  heroCard: CardModel | undefined
+  onStart: (card: CardModel) => void
+}
 
-          {/* 위 묶음이 카드를 보여 줄 때만 여기서 알려 줍니다. (할 카드가 없으면 위 묶음이 이 안내를 대신 크게 보여 줌) */}
-          {heroCard && state.unhandled.length > 0 && (
-            <Link
-              to="/timer"
-              className="mt-3 flex min-h-10 items-center rounded-xl bg-amber-50 px-3 text-sm break-keep text-amber-900"
+// 달력 머리의 ‹ › 버튼 (누르기 쉽게 40px 정사각형)
+const weekNavButtonClass =
+  'flex size-10 items-center justify-center rounded-xl text-lg text-slate-600 hover:bg-slate-100'
+
+/**
+ * 달력 묶음: 이번 주 7일 줄 + 고른 날의 일정 (2026-10-24)
+ * 사용자: "구글 캘린더 연동 필요 캘린더 UI도 보다 좀 더 잘 보이는 홈에 배치"
+ *
+ *   - 고른 날의 내 카드와 구글 캘린더 일정을 시각 순서로 한 목록에 보여 줍니다.
+ *     오늘을 고르면 예전 "오늘 계획" 목록(PlanRow)과 같아서 [▶] 로 바로 시작할 수 있습니다.
+ *   - 고른 날은 주소에 둡니다. (/?day=2026-10-27) 새로고침해도 보던 날이 그대로입니다.
+ *   - 구글 캘린더를 연결하지 않았으면 카드만 보이고, 아래에 [구글 캘린더 연결] 이 있습니다. (lib/googleCalendar.ts)
+ */
+function HomeCalendarSection({
+  state,
+  cards,
+  todayKey,
+  heroCard,
+  onStart,
+}: HomeCalendarSectionProps) {
+  // replace: 날짜를 여러 번 눌러도 뒤로 가기 한 번이면 홈을 떠납니다. (학교 탭 ?school= 와 같게)
+  const [dayParam, setDayParam] = useQueryParam('day', todayKey, { replace: true })
+  // 주소는 누구나 고칠 수 있어서, 진짜 날짜가 아니면 오늘로 봅니다.
+  const selectedKey = isDateKey(dayParam) ? dayParam : todayKey
+  // 고른 날이 들어 있는 주의 일요일 (getWeekday: 0 = 일요일)
+  const weekStartKey = moveDateKey(selectedKey, -getWeekday(selectedKey))
+  const connection = useCalendarConnect()
+  // 연결돼 있으면 앞으로 7일 일정을 서버에 올려서, 시작 10분 전에 푸시가 오게 합니다. (2026-10-24)
+  useCalendarAlarmSync(connection.status === 'on')
+
+  // 달력 몸통(7일 줄 + 목록)에 똑같이 넘기는 값. 구글 일정만 상황마다 달라집니다.
+  const bodyProps: Omit<CalendarBodyProps, 'googleEvents'> = {
+    state,
+    cards,
+    todayKey,
+    selectedKey,
+    weekStartKey,
+    heroCard,
+    onStart,
+    onSelectDay: setDayParam,
+  }
+
+  return (
+    // p-4: 375px 화면에서 7일 칸이 40px 보다 좁아지지 않게 모바일은 안쪽 여백을 한 단계 줄입니다.
+    <section className={cn(sectionCardClass, 'p-4 sm:p-5')}>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[17px] font-bold text-slate-900 tabular-nums">
+          <span className="sr-only">달력, </span>
+          {formatWeekRange(weekStartKey)}
+        </h2>
+        <div className="flex shrink-0 items-center gap-1">
+          {selectedKey !== todayKey && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="px-3"
+              onClick={() => setDayParam(todayKey)}
             >
-              시간이 끝난 카드 {state.unhandled.length}개 — 타이머에서 미루거나 실패로 남겨요 ›
-            </Link>
+              오늘
+            </Button>
           )}
+          <button
+            type="button"
+            aria-label="지난주"
+            className={weekNavButtonClass}
+            onClick={() => setDayParam(moveDateKey(selectedKey, -7))}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="다음 주"
+            className={weekNavButtonClass}
+            onClick={() => setDayParam(moveDateKey(selectedKey, 7))}
+          >
+            ›
+          </button>
+        </div>
+      </div>
 
-          {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
-          <div className="mt-1 flex justify-end">
-            <Link to="/cards" className={textLinkClass}>
-              카드 · 목표 모두 보기 ›
-            </Link>
-          </div>
-        </section>
+      {/* 구글 캘린더를 연결했을 때만 구글 일정을 받아옵니다. 받는 동안 · 실패해도 내 카드는 그대로 보입니다. */}
+      {connection.status === 'on' ? (
+        <AsyncBoundary
+          pendingFallback={<CalendarBody {...bodyProps} googleEvents={[]} isGoogleLoading />}
+          errorMessage="구글 일정을 불러오지 못했어요. 계속 안 되면 아래 연결 끊기를 누른 뒤 다시 연결해 주세요."
+          errorExtra={<CalendarBody {...bodyProps} googleEvents={[]} />}
+          resetKeys={[weekStartKey]}
+        >
+          <GoogleCalendarBody {...bodyProps} />
+        </AsyncBoundary>
+      ) : (
+        <CalendarBody {...bodyProps} googleEvents={[]} />
+      )}
+
+      {/* 위 묶음이 카드를 보여 줄 때만 여기서 알려 줍니다. (할 카드가 없으면 위 묶음이 이 안내를 대신 크게 보여 줌) */}
+      {selectedKey === todayKey && heroCard && state.unhandled.length > 0 && (
+        <Link
+          to="/timer"
+          className="mt-3 flex min-h-10 items-center rounded-xl bg-amber-50 px-3 text-sm break-keep text-amber-900"
+        >
+          시간이 끝난 카드 {state.unhandled.length}개 — 타이머에서 미루거나 실패로 남겨요 ›
+        </Link>
+      )}
+
+      <GoogleConnectRow connection={connection} />
+
+      {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
+      <div className="mt-1 flex justify-end">
+        <Link to="/cards" className={textLinkClass}>
+          카드 · 목표 모두 보기 ›
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+/** 구글 일정을 받아와서 달력 몸통에 넘깁니다. (AsyncBoundary 안에서 씁니다) */
+function GoogleCalendarBody(props: Omit<CalendarBodyProps, 'googleEvents'>) {
+  const { data: googleEvents } = useSuspenseQuery(weekEventsQuery(props.weekStartKey))
+  return <CalendarBody {...props} googleEvents={googleEvents} />
+}
+
+interface CalendarBodyProps {
+  state: TodayCardsState
+  cards: CardModel[]
+  todayKey: string
+  /** 고른 날 'YYYY-MM-DD' */
+  selectedKey: string
+  /** 보고 있는 주의 일요일 'YYYY-MM-DD' */
+  weekStartKey: string
+  heroCard: CardModel | undefined
+  onStart: (card: CardModel) => void
+  onSelectDay: (dateKey: string) => void
+  /** 이번 주 구글 일정. 연결 안 했거나 받는 중이면 빈 목록 */
+  googleEvents: CalendarEvent[]
+  /** 구글 일정을 받는 중인지 */
+  isGoogleLoading?: boolean
+}
+
+/** 달력 목록 한 줄. 오늘 카드(시작 버튼 있음) · 다른 날 카드 · 구글 일정 셋 중 하나입니다 */
+type DayRow =
+  | { kind: 'today'; order: number; item: TodayCardItem }
+  | { kind: 'card'; order: number; card: CardModel }
+  | { kind: 'google'; order: number; event: CalendarEvent }
+
+/**
+ * 목록 순서에 쓰는 숫자. 하루 종일 일정이 맨 위, 그다음 시작 시각 순서, 시각이 없는 카드는 맨 아래입니다.
+ * 하루는 새벽 4시에 시작해서, 새벽 1시 일정은 밤 11시 일정보다 뒤에 놓입니다. (toDayMinutes)
+ */
+function getRowOrder(startTime: string | null | undefined, isAllDay = false): number {
+  if (isAllDay) return -1
+  return toDayMinutes(startTime ?? undefined) ?? Number.MAX_SAFE_INTEGER
+}
+
+/** 7일 줄 + 고른 날의 카드 · 구글 일정 목록 */
+function CalendarBody({
+  state,
+  cards,
+  todayKey,
+  selectedKey,
+  weekStartKey,
+  heroCard,
+  onStart,
+  onSelectDay,
+  googleEvents,
+  isGoogleLoading = false,
+}: CalendarBodyProps) {
+  const weekKeys = Array.from({ length: 7 }, (_, i) => moveDateKey(weekStartKey, i))
+  const isToday = selectedKey === todayKey
+
+  // 고른 날의 줄. 오늘이면 오늘 계획(시작 버튼 · 상태가 붙음)을, 다른 날이면 그날 카드를 씁니다.
+  const cardRows: DayRow[] = isToday
+    ? state.items.map((item) => ({
+        kind: 'today' as const,
+        order: getRowOrder(item.card.startTime),
+        item,
+      }))
+    : getCardsOnDate(cards, selectedKey).map((card) => ({
+        kind: 'card' as const,
+        order: getRowOrder(card.startTime),
+        card,
+      }))
+  const googleRows: DayRow[] = googleEvents
+    .filter((event) => event.dayKey === selectedKey)
+    .map((event) => ({
+      kind: 'google' as const,
+      order: getRowOrder(event.startTime, event.isAllDay),
+      event,
+    }))
+  // 시각이 같으면 카드가 먼저 옵니다. (sort 는 순서가 같은 것끼리 원래 순서를 지킵니다)
+  const rows = [...cardRows, ...googleRows].sort((a, b) => a.order - b.order)
+
+  return (
+    <>
+      <ul className="mt-3 grid grid-cols-7 gap-1">
+        {weekKeys.map((dateKey) => {
+          const cardCount = getCardsOnDate(cards, dateKey).length
+          const googleCount = googleEvents.filter((event) => event.dayKey === dateKey).length
+          const isSelected = dateKey === selectedKey
+          const weekday = getWeekday(dateKey)
+          return (
+            <li key={dateKey}>
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                aria-label={`${formatDayTitle(dateKey, todayKey)}, 카드 ${cardCount}개, 구글 일정 ${googleCount}개`}
+                onClick={() => onSelectDay(dateKey)}
+                className={cn(
+                  'flex h-16 w-full flex-col items-center justify-center gap-0.5 rounded-xl text-slate-700 hover:bg-slate-100',
+                  isSelected && 'bg-slate-900 text-white hover:bg-slate-900',
+                )}
+              >
+                <span
+                  className={cn(
+                    'text-xs',
+                    !isSelected && weekday === 0 && 'text-red-500',
+                    !isSelected && weekday !== 0 && 'text-slate-500',
+                  )}
+                >
+                  {getWeekdayName(weekday)}
+                </span>
+                <span
+                  className={cn(
+                    'text-[15px] font-semibold tabular-nums',
+                    // 오늘은 고르지 않았을 때도 brand 색 글자로 알아보게 합니다.
+                    dateKey === todayKey && !isSelected && 'text-brand font-bold',
+                  )}
+                >
+                  {Number(dateKey.slice(8, 10))}
+                </span>
+                {/* 점: 파랑 = 내 카드가 있는 날, 초록 = 구글 일정이 있는 날 (글자는 aria-label 이 읽어 줌) */}
+                <span aria-hidden className="flex h-1.5 gap-0.5">
+                  {cardCount > 0 && (
+                    <span
+                      className={cn('bg-brand size-1.5 rounded-full', isSelected && 'bg-white')}
+                    />
+                  )}
+                  {googleCount > 0 && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+
+      {/* 점 색 안내. 구글 일정이 한 개라도 있을 때만 (점이 두 가지일 때만 헷갈립니다) */}
+      {googleEvents.length > 0 && (
+        <p aria-hidden className="mt-2 flex justify-end gap-3 text-xs text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="bg-brand size-1.5 rounded-full" /> 내 카드
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="size-1.5 rounded-full bg-emerald-500" /> 구글 일정
+          </span>
+        </p>
+      )}
+
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <h3 className="text-[15px] font-bold text-slate-900">
+          {formatDayTitle(selectedKey, todayKey)}
+        </h3>
+        {isToday && state.total > 0 && (
+          <p className="shrink-0 text-sm text-slate-500 tabular-nums">
+            {state.doneCount}/{state.total} 끝
+          </p>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="py-3 text-sm text-slate-500">
+          {isToday ? '오늘은 카드도 일정도 없어요.' : '이 날은 카드도 일정도 없어요.'}
+        </p>
+      ) : (
+        // 줄 사이를 1px 선으로 나눠, 줄마다 따로 떠 보이지 않게 합니다.
+        <ul className="mt-1 flex flex-col divide-y divide-slate-100">
+          {rows.map((row) => {
+            if (row.kind === 'today') {
+              return (
+                <PlanRow
+                  key={row.item.card.id}
+                  item={row.item}
+                  isHero={row.item.card === heroCard}
+                  onStart={onStart}
+                />
+              )
+            }
+            if (row.kind === 'card') return <CardDayRow key={row.card.id} card={row.card} />
+            // 며칠짜리 하루 종일 일정은 같은 id 가 날마다 나와서, 날짜를 붙여 구분합니다.
+            return <GoogleEventRow key={`${row.event.id}-${row.event.dayKey}`} event={row.event} />
+          })}
+        </ul>
+      )}
+
+      {isGoogleLoading && (
+        <p role="status" className="mt-2 text-sm text-slate-500">
+          구글 일정을 불러오는 중이에요…
+        </p>
       )}
     </>
   )
 }
 
-interface NowCardBlockProps extends TodayPlanSectionProps {
+/** 오늘이 아닌 날의 카드 한 줄 (시작 버튼 없이 보기만) */
+function CardDayRow({ card }: { card: CardModel }) {
+  return (
+    <li className="flex min-h-14 items-center gap-3 py-2">
+      <span aria-hidden className={rowIconClass}>
+        📖
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold text-slate-900">
+          {card.title}
+        </span>
+        <span className="block text-sm text-slate-500 tabular-nums">{cardTimeText(card)}</span>
+      </span>
+    </li>
+  )
+}
+
+/** 구글 캘린더 일정 한 줄. 카드와 헷갈리지 않게 📅 와 '구글 캘린더' 글자를 붙입니다 */
+function GoogleEventRow({ event }: { event: CalendarEvent }) {
+  // 예) '하루 종일' / '18:00~20:00' / 끝 시각이 없으면 '18:00'
+  const timeText = event.isAllDay
+    ? '하루 종일'
+    : event.endTime
+      ? `${event.startTime}~${event.endTime}`
+      : (event.startTime ?? '')
+  return (
+    <li className="flex min-h-14 items-center gap-3 py-2">
+      <span aria-hidden className={rowIconClass}>
+        📅
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold text-slate-700">
+          {event.title}
+        </span>
+        <span className="block text-sm text-slate-500 tabular-nums">{timeText} · 구글 캘린더</span>
+      </span>
+    </li>
+  )
+}
+
+interface GoogleConnectRowProps {
+  connection: CalendarConnection
+}
+
+/**
+ * 달력 아래 구글 캘린더 연결 줄. (hooks/useCalendarConnect.ts)
+ *   - 클라이언트 ID 가 없으면(구글 설정 전) 아무것도 안 보입니다.
+ *   - 앱(WebView) 안에서는 구글이 연결 창을 막아서, 버튼 대신 안내만 보입니다.
+ */
+function GoogleConnectRow({ connection }: GoogleConnectRowProps) {
+  const { status, isReady, isConnecting, errorMessage, connect, disconnect } = connection
+  const isServerData = useIsServerData()
+  if (status === 'unavailable') return null
+  if (isInApp()) {
+    return (
+      <p className="mt-3 text-[13px] break-keep text-slate-500">
+        구글 캘린더 연결은 지금은 웹 브라우저에서만 돼요.
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-xl bg-slate-50 p-3">
+      {status === 'on' ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 text-sm break-keep text-slate-600">
+            구글 캘린더 연결됨
+            {/* 시작 10분 전 푸시는 서버가 보내서, 진짜 로그인일 때만 안내합니다. (테스트 로그인은 서버를 안 씀) */}
+            {isServerData && (
+              <span className="block text-[13px] text-slate-500">
+                일정 시작 10분 전에 알림을 보내요. 설정에서 푸시 알림을 켜 두세요.
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            className="h-10 shrink-0 px-2 text-sm font-medium text-slate-500 underline underline-offset-4"
+            onClick={disconnect}
+          >
+            연결 끊기
+          </button>
+        </div>
+      ) : (
+        // 모바일은 글 아래에 버튼을 꽉 차게, PC 는 한 줄에 나란히 둡니다.
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm break-keep text-slate-600">
+            {status === 'off'
+              ? '구글 캘린더를 연결하면 학원 · 약속 같은 일정이 여기 같이 보여요.'
+              : '구글 연결은 한 시간마다 끝나요. 다시 연결하면 일정을 다시 불러와요.'}
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 sm:flex-none"
+              disabled={isConnecting || !isReady}
+              onClick={connect}
+            >
+              {isConnecting ? '연결하는 중…' : status === 'off' ? '구글 캘린더 연결' : '다시 연결'}
+            </Button>
+            {status === 'expired' && (
+              <Button variant="ghost" size="sm" onClick={disconnect}>
+                연결 끊기
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      {errorMessage && (
+        <p role="status" className="mt-2 text-sm break-keep text-red-700">
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** 'YYYY-MM-DD' → '오늘 · 10월 24일 금요일' / '내일 · …' / '10월 27일 월요일' */
+function formatDayTitle(dateKey: string, todayKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const text = new Date(year, month - 1, day).toLocaleDateString('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  })
+  if (dateKey === todayKey) return `오늘 · ${text}`
+  if (dateKey === moveDateKey(todayKey, 1)) return `내일 · ${text}`
+  return text
+}
+
+/** 주의 일요일 → '10월 19일 ~ 25일' / 달이 바뀌면 '10월 26일 ~ 11월 1일' */
+function formatWeekRange(startKey: string): string {
+  const endKey = moveDateKey(startKey, 6)
+  const [, startMonth, startDay] = startKey.split('-').map(Number)
+  const [, endMonth, endDay] = endKey.split('-').map(Number)
+  return startMonth === endMonth
+    ? `${startMonth}월 ${startDay}일 ~ ${endDay}일`
+    : `${startMonth}월 ${startDay}일 ~ ${endMonth}월 ${endDay}일`
+}
+
+// 위 묶음은 오늘 카드만 써서, 달력에 쓰는 cards · todayKey 는 받지 않습니다.
+interface NowCardBlockProps extends Omit<TodayPlanSectionProps, 'cards' | 'todayKey'> {
   /** 크게 보여 줄 카드 (지금 할 카드 → 다음 카드). 없으면 undefined */
   heroCard: CardModel | undefined
 }

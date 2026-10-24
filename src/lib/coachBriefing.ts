@@ -155,10 +155,14 @@ function shorten(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`
 }
 
-/** 시각에 맞는 첫인사 */
-function greetingOf(hour: number): string {
+/**
+ * 시각에 맞는 첫인사. 낮에 "수업" 이야기는 오늘이 학교 가는 날일 때만 합니다.
+ * (주말 · 방학에는 서버가 다음 학교 가는 날의 시간표를 줘서 schoolDay 가 오늘과 다릅니다. 학교를 모르면 수업 이야기는 안 함)
+ */
+function greetingOf(hour: number, school: SchoolToday | null): string {
+  const isSchoolDayToday = school !== null && school.schoolDay === school.date
   if (hour < 11) return '좋은 아침!'
-  if (hour < 17) return '오늘 수업 잘 듣고 있어?'
+  if (hour < 17) return isSchoolDayToday ? '오늘 수업 잘 듣고 있어?' : '오늘 하루 잘 보내고 있어?'
   if (hour < 22) return '오늘 하루 수고했어!'
   return '늦었네, 오늘은 마무리만 해 보자.'
 }
@@ -205,7 +209,7 @@ export function isTiredToday(checkIn: CheckIn | undefined): boolean {
 
 /** 코치 화면을 열면 보여 줄 첫 말과 칩을 만듭니다. */
 export function buildMorningBriefing(input: BriefingInput): CoachMessage {
-  const lines: string[] = [greetingOf(input.hour)]
+  const lines: string[] = [greetingOf(input.hour, input.school)]
 
   const subjects = subjectsOf(input.school)
   // 주말에는 서버가 다음 월요일 시간표를 줘서 "월요일엔 … 수업이 있어" 로 말합니다. (schoolDay, 2026-10-22)

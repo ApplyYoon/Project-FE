@@ -48,6 +48,7 @@ import { loadFocusScores, summarizeFocusWeek } from '@/lib/focusScore'
 import type { ForestState, ForestTree } from '@/lib/forest'
 import { loadForestState } from '@/lib/forestData'
 import { useSubjects } from '@/hooks/useSubjects'
+import { mockSubjects } from '@/lib/mock'
 import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
 import { loadRoutines } from '@/lib/routines'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
@@ -86,6 +87,18 @@ function loadSessions(): StudySession[] {
 
 interface SubjectTagProps {
   subject: Subject | undefined
+}
+
+/**
+ * 기록의 과목을 찾습니다. 내 과목에 없으면 예시 과목(국어 · 수학 …, lib/mock.ts)에서 한 번 더 찾습니다.
+ * 시연용 가상 기록(lib/demoPersona.ts)은 예시 과목 id('math' 등)로 저장되는데,
+ * 진짜 로그인(시연 코드 로그인 포함)의 과목 id 는 서버 번호라서 그대로는 못 찾기 때문입니다.
+ */
+function findSubject(subjects: Subject[], subjectId: string): Subject | undefined {
+  return (
+    subjects.find((item) => item.id === subjectId) ??
+    mockSubjects.find((item) => item.id === subjectId)
+  )
 }
 
 /** 과목 태그. 과목을 지워서 찾을 수 없으면 "삭제된 과목" 으로 보여줍니다. */
@@ -217,9 +230,7 @@ export function RecordListPage() {
                               key={record.subjectId}
                               className="inline-flex max-w-full items-center gap-1"
                             >
-                              <SubjectTag
-                                subject={subjects.find((item) => item.id === record.subjectId)}
-                              />
+                              <SubjectTag subject={findSubject(subjects, record.subjectId)} />
                               <span className="shrink-0 text-xs text-slate-500 tabular-nums">
                                 {formatMinutes(record.minutes)}
                               </span>
@@ -247,9 +258,7 @@ export function RecordListPage() {
                         {day.subjects.map((record) => (
                           <div key={record.subjectId}>
                             <div className="flex items-center justify-between gap-3">
-                              <SubjectTag
-                                subject={subjects.find((item) => item.id === record.subjectId)}
-                              />
+                              <SubjectTag subject={findSubject(subjects, record.subjectId)} />
                               <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
                                 {formatMinutes(record.minutes)}
                               </span>
@@ -416,9 +425,10 @@ function CallSummaryCard({ summaries }: CallSummaryCardProps) {
             <CareBadge level={selected.careLevel} />
             <SummaryRow label="어제 요약" value={selected.headline} />
             <SummaryRow label="미달 원인" value={selected.missReason} emptyText="고르지 않았어요" />
-            {/* 평가(evaluations)에 한마디가 없으면 그날 통화 요약을 씁니다. (이해도 줄은 뗀 것) */}
+            {/* 평가(evaluations)에 한마디가 없으면 그날 통화 요약을 씁니다. (이해도 줄은 뗀 것)
+                통화 요약은 "~했다고 함" 같은 기록용 문장이라 이름을 "대화 요약" 으로 바꿔 보여 줍니다. */}
             <SummaryRow
-              label="AI 한마디"
+              label={selected.aiComment !== null ? 'AI 한마디' : '대화 요약'}
               value={selected.aiComment ?? (selectedNote?.summary || null)}
               emptyText="아직 없어요"
             />

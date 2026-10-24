@@ -825,7 +825,9 @@ function RoomChat({ room }: RoomChatProps) {
       // AI 가 고른 빠른 답 · 행동이 있으면 그 칩을, 없으면 코드가 칩을 붙입니다. (핑계 협상 · 계획 · 시험)
       const studentText = variables.lines[variables.lines.length - 1]?.text ?? ''
       const serverChips = chipsFromServer(reply, nowCard)
-      const chips = serverChips.length > 0 ? serverChips : codeChipsFor(studentText)
+      const studyChips = serverChips.length > 0 ? serverChips : codeChipsFor(studentText)
+      // 위기 안내(showHelp)에는 공부 칩을 붙이지 않습니다. 공부 이야기는 멈추고 도움 안내만 보여 줍니다.
+      const chips = reply.showHelp ? [] : studyChips
       setThread((current) => {
         const reasonCheck = reasonCheckOf(current, reply.tags)
         return {
@@ -856,7 +858,8 @@ function RoomChat({ room }: RoomChatProps) {
         const opened = withBubble(current, {
           speaker: 'ai',
           text: reply.reply,
-          chips: chipsFromServer(reply, nowCard),
+          // 위기 안내에는 공부 칩을 붙이지 않습니다. (위의 talk 와 같은 규칙)
+          chips: reply.showHelp ? [] : chipsFromServer(reply, nowCard),
           ...(reply.showHelp ? {} : { typing: true }),
           ...(reasonCheck ? { reasonCheck } : {}),
           ...(reply.sources.length > 0 ? { sources: reply.sources } : {}),

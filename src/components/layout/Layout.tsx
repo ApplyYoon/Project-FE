@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCallReminder } from '@/hooks/useCallReminder'
 import { useCardAlerts } from '@/hooks/useCardAlerts'
 import { useCardSync } from '@/hooks/useCardSync'
+import { useDemoAutoSeed } from '@/hooks/useDemoAutoSeed'
 import { useUnsentCheckInRetry } from '@/hooks/useCheckInSync'
 import { useFocusMode, useFocusModeAutoUnlock } from '@/hooks/useFocusMode'
 import { useGoalSync } from '@/hooks/useGoalSync'
@@ -44,6 +45,8 @@ export function Layout() {
   useCardSync()
   // 진짜 로그인이면 목표도 서버와 맞춥니다. (카드의 목표 번호가 서버에서도 맞게, #516)
   useGoalSync()
+  // 시연 계정(VITE_DEMO_SEED_USER_ID)으로 로그인하면 이 기기에 가상 28일을 넣습니다. 카드 · 목표를 받아 맞춘 뒤라서 이 자리입니다.
+  useDemoAutoSeed()
   // 진짜 로그인이면 끝난 공부 기록을 서버로 보냅니다. (끝나고 10분 뒤, 받아 오지는 않습니다, #516)
   useSessionSync()
   // 진짜 로그인이면 미루기 · 실패 · 휴식 · 사후 입력도 서버로 보냅니다. (한도 · 기한은 서버가 다시 봅니다, #516)
