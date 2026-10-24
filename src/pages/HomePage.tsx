@@ -7,6 +7,7 @@ import { ChipButton } from '@/components/ui/ChipButton'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { MissionBar } from '@/components/ui/MissionBar'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { useCalendarAlarmSync } from '@/hooks/useCalendarAlarmSync'
 import { useCalendarConnect, type CalendarConnection } from '@/hooks/useCalendarConnect'
 import { useCards } from '@/hooks/useCards'
 import { useGoals } from '@/hooks/useGoals'
@@ -367,6 +368,8 @@ function HomeCalendarSection({
   // 고른 날이 들어 있는 주의 일요일 (getWeekday: 0 = 일요일)
   const weekStartKey = moveDateKey(selectedKey, -getWeekday(selectedKey))
   const connection = useCalendarConnect()
+  // 연결돼 있으면 앞으로 7일 일정을 서버에 올려서, 시작 10분 전에 푸시가 오게 합니다. (2026-10-24)
+  useCalendarAlarmSync(connection.status === 'on')
 
   // 달력 몸통(7일 줄 + 목록)에 똑같이 넘기는 값. 구글 일정만 상황마다 달라집니다.
   const bodyProps: Omit<CalendarBodyProps, 'googleEvents'> = {
@@ -691,6 +694,7 @@ interface GoogleConnectRowProps {
  */
 function GoogleConnectRow({ connection }: GoogleConnectRowProps) {
   const { status, isReady, isConnecting, errorMessage, connect, disconnect } = connection
+  const isServerData = useIsServerData()
   if (status === 'unavailable') return null
   if (isInApp()) {
     return (
@@ -704,7 +708,15 @@ function GoogleConnectRow({ connection }: GoogleConnectRowProps) {
     <div className="mt-3 rounded-xl bg-slate-50 p-3">
       {status === 'on' ? (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm text-slate-600">구글 캘린더 연결됨</p>
+          <p className="min-w-0 text-sm break-keep text-slate-600">
+            구글 캘린더 연결됨
+            {/* 시작 10분 전 푸시는 서버가 보내서, 진짜 로그인일 때만 안내합니다. (테스트 로그인은 서버를 안 씀) */}
+            {isServerData && (
+              <span className="block text-[13px] text-slate-500">
+                일정 시작 10분 전에 알림을 보내요. 설정에서 푸시 알림을 켜 두세요.
+              </span>
+            )}
+          </p>
           <button
             type="button"
             className="h-10 shrink-0 px-2 text-sm font-medium text-slate-500 underline underline-offset-4"

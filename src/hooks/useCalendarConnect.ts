@@ -1,6 +1,8 @@
 import { hasGrantedAllScopesGoogle, useGoogleLogin, useGoogleOAuth } from '@react-oauth/google'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useIsServerData } from '@/hooks/useIsServerData'
+import { clearCalendarAlarms } from '@/lib/calendarAlarmsApi'
 import {
   CALENDAR_SCOPE,
   disconnectCalendar,
@@ -15,10 +17,11 @@ import {
  *   const connection = useCalendarConnect()
  *   connection.status        -> 'unavailable' | 'off' | 'expired' | 'on'
  *   connection.connect()     -> 구글 창을 띄워 캘린더 권한 받기 (버튼을 누른 그 순간에 불러야 합니다)
- *   connection.disconnect()  -> 연결 끊기 (구글 쪽 허락도 취소)
+ *   connection.disconnect()  -> 연결 끊기 (구글 쪽 허락도 취소 · 서버에 올린 알림용 일정도 지움)
  */
 export function useCalendarConnect() {
   const queryClient = useQueryClient()
+  const isServerData = useIsServerData()
   // 구글 연결 창 스크립트가 준비됐는지. (App.tsx 의 GoogleOAuthProvider 가 미리 불러 둡니다)
   const { scriptLoadedSuccessfully } = useGoogleOAuth()
   // 지금 연결 상태. 연결 · 끊기 뒤에 다시 읽어서 바꿉니다.
@@ -68,6 +71,8 @@ export function useCalendarConnect() {
   function disconnect() {
     disconnectCalendar()
     queryClient.removeQueries({ queryKey: ['google-calendar'] })
+    // 서버에 올려 둔 일정(10분 전 알림용)도 지웁니다. 실패해도 지난 일정은 하루 뒤 서버가 지웁니다.
+    if (isServerData) void clearCalendarAlarms().catch(() => {})
     setErrorMessage(null)
     setStatus(getCalendarStatus())
   }

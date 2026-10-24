@@ -14,7 +14,8 @@
  *  - 구글 클라우드 콘솔이 "테스트 모드" 라서, 콘솔의 "테스트 사용자" 에 넣은 계정만 연결할 수 있습니다.
  *  - 클라이언트 ID 는 lib/googleClient.ts 에서 가져옵니다.
  *
- * ⚠️ 일정 제목은 화면에 보여 주기만 합니다. 이 기기 저장소에 넣지 않고, 우리 서버(GPT 포함)에도 보내지 않습니다.
+ * ⚠️ 일정 제목은 이 기기 저장소에 넣지 않습니다. 우리 서버에는 "시작 10분 전 알림" 에 쓰려고 앞으로 7일 일정의
+ *    제목 · 시작 시각만 올립니다. (2026-10-24 사용자 "알림에 일정 제목 넣자", lib/calendarAlarmsApi.ts) GPT 에는 보내지 않습니다.
  * ⚠️ 출입증과 일정 내용을 console.log 로 찍지 않습니다.
  */
 import { queryOptions } from '@tanstack/react-query'
@@ -168,6 +169,8 @@ export interface CalendarEvent {
   /** 시작 · 끝 시각 'HH:MM'. 하루 종일 일정이면 null */
   startTime: string | null
   endTime: string | null
+  /** 시작하는 순간 (Date.now() 값). 하루 종일 일정이면 null. 10분 전 알림을 서버에 올릴 때 씁니다 (lib/calendarAlarmsApi.ts) */
+  startAt: number | null
 }
 
 /** Date 를 'HH:MM' 으로 바꿉니다. (이 기기의 시간대 기준) */
@@ -188,7 +191,7 @@ function toClock(date: Date): string {
  *
  * ■ 예시 (dayKeys = ['2026-10-24', '2026-10-25'])
  *   { summary: '학원', start: { dateTime: '2026-10-24T18:00:00+09:00' }, end: { dateTime: '2026-10-24T20:00:00+09:00' } }
- *     -> [{ dayKey: '2026-10-24', isAllDay: false, startTime: '18:00', endTime: '20:00', title: '학원', … }]
+ *     -> [{ dayKey: '2026-10-24', isAllDay: false, startTime: '18:00', endTime: '20:00', title: '학원', startAt: …, … }]
  *   { summary: '수학여행', start: { date: '2026-10-24' }, end: { date: '2026-10-26' } }
  *     -> 10-24 · 10-25 두 칸 (isAllDay: true)
  *   { summary: '밤 스터디', start: { dateTime: '2026-10-26T01:00:00+09:00' }, … }
@@ -215,6 +218,7 @@ export function toCalendarEvents(items: GoogleEventItem[], dayKeys: string[]): C
         isAllDay: false,
         startTime: toClock(start),
         endTime: end && !Number.isNaN(end.getTime()) ? toClock(end) : null,
+        startAt: start.getTime(),
       })
       return
     }
@@ -226,7 +230,15 @@ export function toCalendarEvents(items: GoogleEventItem[], dayKeys: string[]): C
     const endDate = item.end?.date ?? moveDateKey(startDate, 1)
     for (const dayKey of dayKeys) {
       if (dayKey >= startDate && dayKey < endDate) {
-        events.push({ id, title, dayKey, isAllDay: true, startTime: null, endTime: null })
+        events.push({
+          id,
+          title,
+          dayKey,
+          isAllDay: true,
+          startTime: null,
+          endTime: null,
+          startAt: null,
+        })
       }
     }
   })
