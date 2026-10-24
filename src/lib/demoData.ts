@@ -1,6 +1,8 @@
 import { loadAiMessages, saveAiMessages } from '@/lib/aiMessages'
+import { loadSavedCards, saveCards } from '@/lib/cards'
 import { getTodayKey } from '@/lib/date'
 import { DEMO_ID_PREFIX, buildDemoOnboarding, buildDemoPersona } from '@/lib/demoPersona'
+import { loadGoals, saveGoals } from '@/lib/goals'
 import { mockAiMessages } from '@/lib/mock'
 import { loadData, removeData, saveData } from '@/lib/storage'
 import type { StudySession } from '@/types'
@@ -12,6 +14,8 @@ import type { StudySession } from '@/types'
  *
  * ■ 넣을 때
  *   - 카드 · 세션 · 목표 같은 목록은 내 기록 뒤에 붙입니다. 가상 데이터의 id 는 모두 'demo-' 로 시작합니다.
+ *   - 카드 · 목표는 saveCards · saveGoals 로 저장합니다. 그래야 진짜 로그인(시연 코드 로그인)에서 서버와 맞춰집니다.
+ *     (saveData 로 바로 쓰면 서버에 "지웠다" 가 안 가서, 다시 넣을 때마다 서버의 옛 카드가 되돌아와 겹쳤습니다)
  *   - 체크인 · 관리 단계 기록처럼 날짜별로 저장하는 값은, 내 기록이 없는 날짜에만 넣습니다.
  *   - 온보딩 답 · 심리검사처럼 하나뿐인 값은, 비어 있을 때만 넣습니다. (온보딩을 끝낸 사람의 답은 건드리지 않음)
  *   - 무엇을 넣었는지 'demo-manifest' 에 적어 둡니다.
@@ -83,9 +87,22 @@ export function addDemoData(): void {
   }
 
   // 1) id 가 있는 목록 — 내 기록 뒤에 붙입니다.
-  appendList('cards', persona.cards)
+  // 목표: 서버에는 목표를 지우는 주소가 없어서, 예전에 넣은 가상 목표가 이미 있을 수 있습니다. (removeDemoData 참고)
+  // 같은 제목의 목표가 있으면 새로 넣지 않고 그 목표를 씁니다. (목표가 두 개로 겹치지 않게)
+  const savedGoals = loadGoals()
+  const goalIdMap: Record<string, string> = {}
+  const newGoals = persona.goals.filter((goal) => {
+    const sameGoal = savedGoals.find((saved) => saved.title === goal.title)
+    if (sameGoal) goalIdMap[goal.id] = sameGoal.id
+    return !sameGoal
+  })
+  saveGoals([...savedGoals, ...newGoals])
+  // 카드는 위에서 고른 목표에 연결합니다.
+  const cards = persona.cards.map((card) =>
+    card.goalId && goalIdMap[card.goalId] ? { ...card, goalId: goalIdMap[card.goalId] } : card,
+  )
+  saveCards([...(loadSavedCards() ?? []), ...cards])
   appendList('sessions', persona.sessions)
-  appendList('goals', persona.goals)
   appendList('fixed-blocks', persona.fixedBlocks)
   appendList('card-day-marks', persona.marks)
   appendList('experiments', persona.experiments)
@@ -155,9 +172,15 @@ export function addDemoData(): void {
 
 /** 가상 데이터만 뺍니다. 'demo-' 로 시작하는 것과 'demo-manifest' 에 적힌 것만 지우고, 내 기록은 남깁니다. */
 export function removeDemoData(): void {
-  removeDemoItems<{ id: string }>('cards', (item) => item.id)
+  // 카드는 saveCards 로 지워야 서버(진짜 로그인)에서도 지워집니다. 한 번도 저장한 적 없으면 건드리지 않습니다.
+  const savedCards = loadSavedCards()
+  if (savedCards) saveCards(savedCards.filter((card) => !card.id.startsWith(DEMO_ID_PREFIX)))
+  // 목표: 서버에 이미 올라간 가상 목표(serverId 가 있음)는 남깁니다.
+  // 서버에는 목표를 지우는 주소가 없어서, 여기서만 지우면 다음에 앱을 열 때 다른 id 로 되돌아와 겹치기 때문입니다.
+  saveGoals(
+    loadGoals().filter((goal) => !goal.id.startsWith(DEMO_ID_PREFIX) || Boolean(goal.serverId)),
+  )
   removeDemoItems<{ id: string }>('sessions', (item) => item.id)
-  removeDemoItems<{ id: string }>('goals', (item) => item.id)
   removeDemoItems<{ id: string }>('fixed-blocks', (item) => item.id)
   removeDemoItems<{ cardId: string }>('card-day-marks', (item) => item.cardId)
   removeDemoItems<{ id: string }>('experiments', (item) => item.id)
