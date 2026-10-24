@@ -97,8 +97,8 @@ function releasePhoto(photo: PhotoItem) {
 }
 
 /**
- * 폰에서 사진으로 채점하기 화면입니다. (주소: /records/answer-check · 2026-10-24)
- * PC 기록 탭의 QR 을 폰 카메라로 찍으면 이 주소가 열립니다. 로그인 안 했으면 로그인한 뒤 여기로 돌아옵니다. (RequireAuth)
+ * 폰에서 사진으로 채점하기 화면입니다. (주소: /stats/answer-check · 2026-10-24)
+ * PC 통계 탭의 QR 을 폰 카메라로 찍으면 이 주소가 열립니다. 로그인 안 했으면 로그인한 뒤 여기로 돌아옵니다. (RequireAuth)
  *
  *   1. 어떤 사진인지 고릅니다. (채점했어요 / 아직 안 했어요) → 주소에 ?mode= 로 둡니다.
  *   2. [사진 찍기] 또는 [앨범에서 고르기]. 앨범에서는 여러 장을 한 번에 고를 수 있고, 더 찍어서 보탤 수도 있습니다.
@@ -177,7 +177,7 @@ export function AnswerCheckPage() {
       await runWithLimit(input.photos, MAX_SENDING_AT_ONCE, (photo) => sendOne(photo, input.mode))
     },
     onSettled: () => {
-      // 같은 폰에서 기록 탭을 열어도 새 결과가 보이게 합니다.
+      // 같은 폰에서 통계 탭을 열어도 새 결과가 보이게 합니다.
       void queryClient.invalidateQueries({ queryKey: answerChecksQuery(todayKey).queryKey })
     },
   })
@@ -237,10 +237,10 @@ export function AnswerCheckPage() {
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
       <div>
         <Link
-          to="/records"
+          to="/stats"
           className="text-brand mb-1 inline-flex h-11 items-center gap-1 text-sm font-medium hover:underline"
         >
-          <span aria-hidden>‹</span> 기록
+          <span aria-hidden>‹</span> 통계
         </Link>
         <h1 className="text-[28px] leading-tight font-bold tracking-tight">사진 채점</h1>
       </div>
