@@ -1,6 +1,7 @@
 import { loadAiMessages, saveAiMessages } from '@/lib/aiMessages'
 import { loadSavedCards, saveCards } from '@/lib/cards'
 import { getTodayKey } from '@/lib/date'
+import { buildDemoHistory } from '@/lib/demoHistory'
 import { DEMO_ID_PREFIX, buildDemoOnboarding, buildDemoPersona } from '@/lib/demoPersona'
 import { loadGoals, saveGoals } from '@/lib/goals'
 import { mockAiMessages } from '@/lib/mock'
@@ -76,6 +77,8 @@ export function addDemoData(): void {
   const now = Date.now()
   const todayKey = getTodayKey()
   const persona = buildDemoPersona(todayKey, now)
+  // 기록 탭(History 리포트)용: 쉬어 간 주 · 확인 문제 결과 · 이번 주에 고른 것 · 사용설명서 출처 (lib/demoHistory.ts)
+  const history = buildDemoHistory(persona, todayKey, now)
   const manifest: DemoManifest = {
     seededAt: now,
     setKeys: [],
@@ -102,13 +105,15 @@ export function addDemoData(): void {
     card.goalId && goalIdMap[card.goalId] ? { ...card, goalId: goalIdMap[card.goalId] } : card,
   )
   saveCards([...(loadSavedCards() ?? []), ...cards])
-  appendList('sessions', persona.sessions)
+  appendList('sessions', [...history.sessions, ...persona.sessions])
   // 공부 기록마다의 집중도 (통계 탭의 "집중도" · 분석이 읽습니다, lib/focusScore.ts)
   appendList('focus-scores', persona.focusScores)
   appendList('fixed-blocks', persona.fixedBlocks)
   appendList('card-day-marks', persona.marks)
   appendList('experiments', persona.experiments)
-  appendList('manual-items', persona.manualItems)
+  appendList('manual-items', history.manualItems)
+  appendList('quiz-results', history.quizResults)
+  appendList('weekly-picks', history.picks)
 
   // 홈 화면이 아직 읽는 옛 계획 (날짜 → 계획 목록)
   const plansByDate = loadData<Record<string, unknown[]>>('plans', {})
@@ -134,7 +139,7 @@ export function addDemoData(): void {
 
   // 3) 날짜별 저장값 — 내 기록이 없는 날짜에만
   const checkins = loadData<Record<string, unknown>>('checkins', {})
-  for (const [dateKey, checkin] of Object.entries(persona.checkins)) {
+  for (const [dateKey, checkin] of Object.entries({ ...history.checkins, ...persona.checkins })) {
     if (checkins[dateKey]) continue
     checkins[dateKey] = checkin
     manifest.checkinDates.push(dateKey)
@@ -193,6 +198,8 @@ export function removeDemoData(): void {
   removeDemoItems<{ cardId: string }>('card-day-marks', (item) => item.cardId)
   removeDemoItems<{ id: string }>('experiments', (item) => item.id)
   removeDemoItems<{ id: string }>('manual-items', (item) => item.id)
+  removeDemoItems<{ id: string }>('quiz-results', (item) => item.id)
+  removeDemoItems<{ id: string }>('weekly-picks', (item) => item.id)
 
   const plansByDate = loadData<Record<string, { id: string }[]>>('plans', {})
   const nextPlans: Record<string, { id: string }[]> = {}
