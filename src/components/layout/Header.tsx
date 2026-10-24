@@ -31,7 +31,9 @@ function hasOwnBackLink(pathname: string): boolean {
   return (
     pathname.startsWith('/cards/') ||
     pathname.startsWith('/goals') ||
-    pathname.startsWith('/settings/')
+    pathname.startsWith('/settings/') ||
+    // 사진 채점(/records/answer-check)은 폰에서 QR 로 바로 열려 "바로 전 화면" 이 없어서, 화면 안의 "‹ 기록" 으로 돌아갑니다.
+    pathname.startsWith('/records/')
   )
 }
 
