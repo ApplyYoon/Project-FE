@@ -81,18 +81,21 @@ import { Link } from 'react-router-dom'
 /**
  * 공부 기록 하나의 과목 이름을 찾습니다.
  *   1. 기록에 과목이 있으면 그 과목 (내 과목 → 예시 과목. 시연용 가상 기록은 예시 과목 id 로 저장됨)
- *   2. 카드 타이머 기록은 과목 칸이 비어 있어서(카드에 과목 칸이 아직 없음), 카드 제목 · 목표 제목에 든 과목 이름
+ *   2. 기록에 과목이 없으면 그 카드의 과목 (과목을 고르기 전에 잰 기록 · 사후 입력, #652)
+ *   3. 과목을 고르지 않은 옛 카드만 카드 제목 · 목표 제목에 든 과목 이름으로 찾습니다
  *      예) 카드 '수학 문제집 2쪽' → 수학 · 목표 '11월 학평 영어 2등급' 에 붙은 카드 → 영어
- *   3. 그래도 없으면 '기타'
+ *   4. 그래도 없으면 '기타'
  */
 function makeSubjectOf(subjects: Subject[], cards: CardData[], goals: Goal[]) {
   const names = [...new Set([...subjects, ...mockSubjects].map((subject) => subject.name))]
   return (session: StudySession): string => {
-    const byId =
-      subjects.find((item) => item.id === session.subjectId) ??
-      mockSubjects.find((item) => item.id === session.subjectId)
-    if (byId) return byId.name
     const card = cards.find((item) => item.id === session.cardId)
+    const subjectId = session.subjectId || card?.subjectId
+    const byId =
+      subjects.find((item) => item.id === subjectId) ??
+      mockSubjects.find((item) => item.id === subjectId)
+    if (byId) return byId.name
+    // 여기부터는 과목이 없는(또는 지워진) 카드라서 제목으로 짐작합니다.
     const goal = goals.find((item) => item.id === card?.goalId)
     const text = `${card?.title ?? ''} ${goal?.title ?? ''}`
     return names.find((name) => text.includes(name)) ?? '기타'
