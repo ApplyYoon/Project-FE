@@ -5,6 +5,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
+import { useIsServerData } from '@/hooks/useIsServerData'
 import { loadManualItems, useManualItems } from '@/hooks/useManualItems'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useSubjects } from '@/hooks/useSubjects'
@@ -45,16 +46,19 @@ import {
   type WeekReport,
 } from '@/lib/historyReport'
 import { loadGoals } from '@/lib/goals'
+import { getServerRanges, mergeServerSessions } from '@/lib/historySessions'
 import { mockSubjects } from '@/lib/mock'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { buildCardIdByPlanId } from '@/lib/sessionRecords'
+import { sessionsByRangeQuery } from '@/lib/sessionsApi'
+import { loadSessionSyncState } from '@/lib/sessionSync'
 import { loadRoutines } from '@/lib/routines'
 import { loadRecord } from '@/lib/storage'
 import { loadQuizResults, type QuizResult } from '@/lib/studyQuiz'
 import { CHAT_PATH, MANUAL_PATH, QUIZ_REPORT_PATH } from '@/lib/tabMenu'
 import { findWeeklyPick, loadWeeklyPicks, saveWeeklyPick, type WeeklyPick } from '@/lib/weeklyPicks'
 import type { Card as CardData, Goal, StudyPlan, StudySession, Subject } from '@/types'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { useSuspenseQueries, useSuspenseQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -69,6 +73,7 @@ import { Link } from 'react-router-dom'
  *   기록한 날이 14일이 안 되면 리포트 대신 카운트다운을 보여 줍니다.
  *
  * 숫자 계산은 lib/historyReport.ts 가 합니다. 이 파일은 그리기만 합니다.
+ * 진짜 로그인이면 서버의 공부 기록(최근 6개월)도 받아서 이 기기 기록과 합쳐 봅니다. (lib/historySessions.ts, #659)
  * 예전 기록 탭의 그래프 · AI 분석은 통계 탭(pages/StatsPage.tsx)으로 옮겼습니다.
  * 옛 주소 /report 는 여기로, /manual 은 나 사용설명서(/records/manual, pages/ManualPage.tsx)로 옵니다. (router.tsx)
  */
@@ -95,6 +100,49 @@ function makeSubjectOf(subjects: Subject[], cards: CardData[], goals: Goal[]) {
 }
 
 export function RecordsPage() {
+  // 이 기기의 공부 기록은 화면을 처음 그릴 때 한 번만 읽습니다.
+  const [localSessions] = useState(loadStudySessions)
+  const isServerData = useIsServerData()
+
+  // 테스트 로그인은 서버가 없어서 이 기기 기록만 봅니다.
+  if (!isServerData) return <HistoryView sessions={localSessions} />
+
+  // 진짜 로그인은 서버 기록(최근 6개월)도 받아서 합칩니다. (#659)
+  // 받는 동안에는 이 기기 기록으로 먼저 그리고, 못 받으면 안내와 함께 이 기기 기록만 보여 줍니다.
+  return (
+    <AsyncBoundary
+      pendingFallback={<HistoryView sessions={localSessions} />}
+      errorMessage="서버의 공부 기록을 받아오지 못했어요. 이 기기에 있는 기록만 보여 드려요."
+      errorExtra={<HistoryView sessions={localSessions} />}
+    >
+      <ServerHistory localSessions={localSessions} />
+    </AsyncBoundary>
+  )
+}
+
+/** 서버의 공부 기록을 31일씩 나눠 받아서(useSuspenseQueries) 이 기기 기록과 합친 뒤 그립니다. */
+function ServerHistory({ localSessions }: { localSessions: StudySession[] }) {
+  const [todayKey] = useState(getTodayKey)
+  const { cards } = useCards()
+  const results = useSuspenseQueries({
+    queries: getServerRanges(todayKey).map((range) => sessionsByRangeQuery(range.from, range.to)),
+  })
+  const sessions = mergeServerSessions({
+    local: localSessions,
+    server: results.flatMap((result) => result.data),
+    sentServerIds: Object.values(loadSessionSyncState().sent),
+    cards,
+  })
+  return <HistoryView sessions={sessions} />
+}
+
+interface HistoryViewProps {
+  /** 리포트에 쓸 공부 기록 (노는 기록 뺀 것) */
+  sessions: StudySession[]
+}
+
+/** 기록 탭 화면 본체. 공부 기록만 밖에서 받고, 나머지(카드 · 체크인 · 고른 것 …)는 여기서 읽습니다. */
+function HistoryView({ sessions }: HistoryViewProps) {
   // 오늘 · 지금 시각은 화면을 처음 그릴 때 한 번만 정합니다. (다시 그릴 때마다 바뀌면 숫자가 흔들립니다)
   const [todayKey] = useState(getTodayKey)
   const [now] = useState(Date.now)
@@ -108,7 +156,6 @@ export function RecordsPage() {
   const weekStart = getWeekStart(selectedDate)
 
   // 저장된 기록은 화면을 처음 그릴 때 한 번만 읽습니다. (카드 · 과목은 훅이 서버와 맞춰 줍니다)
-  const [sessions] = useState(loadStudySessions)
   const [checkIns] = useState(loadCheckInsByDate)
   const [restDays] = useState(loadRestDays)
   const [marks] = useState(loadCardMarks)
