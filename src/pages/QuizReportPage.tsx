@@ -1,10 +1,13 @@
+import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Card } from '@/components/ui/Card'
 import { ChipButton } from '@/components/ui/ChipButton'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
 import { useSubjects } from '@/hooks/useSubjects'
+import { answerChecksQuery } from '@/lib/answerChecksApi'
 import { cn } from '@/lib/cn'
 import { formatMinutes } from '@/lib/dailyRecords'
 import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
@@ -24,6 +27,7 @@ import {
   type UnitStat,
 } from '@/lib/quizReport'
 import { loadQuizResults } from '@/lib/studyQuiz'
+import { useSuspenseQueries } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 
 /** '2026-10-19' -> '10월 19일 (월)' */
@@ -52,25 +56,14 @@ function minutesText(minutes: number): string {
  * - 보고 있는 주 · 과목 · 요일은 주소(?week= &subject= &day=)에 둡니다. 숫자 계산은 lib/quizReport.ts 가 합니다.
  */
 export function QuizReportPage() {
-  const subjects = useSubjects()
-  const { cards } = useCards()
-  const { sessions } = useStudySessions()
-  // 문제 결과는 이 기기에만 있어서(lib/studyQuiz.ts) 화면을 열 때 한 번 읽습니다.
-  const [results] = useState(loadQuizResults)
-
   const thisWeekStart = weekStartOf(getTodayKey())
   const [weekParam, setWeekParam] = useQueryParam('week', thisWeekStart, { replace: true })
-  const [subjectParam, setSubjectParam] = useQueryParam('subject', '', { replace: true })
-  const [dayParam, setDayParam] = useQueryParam('day', '', { replace: true })
+  const [, setDayParam] = useQueryParam('day', '', { replace: true })
 
   // 주소의 값은 누구나 고칠 수 있어서, 날짜가 아니거나 앞으로의 주면 이번 주로 봅니다.
   const weekStart =
     isDateKey(weekParam) && weekParam <= thisWeekStart ? weekStartOf(weekParam) : thisWeekStart
   const dates = weekDates(weekStart)
-  const weeks = buildQuizWeeks({ results, sessions, cards, subjects, weekStart })
-  const week = weeks.find((item) => item.name === subjectParam) ?? weeks[0]
-  // 'day' 는 0(월) ~ 6(일). 그 밖의 값이면 요일을 안 고른 것(전체 평균)으로 봅니다.
-  const dayIndex = /^[0-6]$/.test(dayParam) ? Number(dayParam) : null
 
   function handleMoveWeek(days: number) {
     setWeekParam(moveDateKey(weekStart, days))
@@ -104,87 +97,135 @@ export function QuizReportPage() {
         </button>
       </div>
 
-      {!week ? (
-        <Card>
-          <p className="font-semibold text-slate-900">이 주에 푼 확인 문제가 없어요</p>
-          <p className="mt-1 text-sm text-slate-500">
-            채팅에서 확인 문제를 풀면 과목별 점수가 여기에 쌓여요.
-          </p>
-        </Card>
-      ) : (
-        <>
-          <div role="group" aria-label="과목 고르기" className="flex flex-wrap gap-2">
-            {weeks.map((item) => (
-              <ChipButton
-                key={item.name}
-                selected={item.name === week.name}
-                onClick={() => setSubjectParam(item.name)}
-              >
-                {item.name}
-              </ChipButton>
-            ))}
+      {/* 사진 채점 결과는 서버에서 받아옵니다. 받아오는 동안은 자리 표시, 못 받아오면 다시 시도 안내가 나옵니다. */}
+      <AsyncBoundary
+        pendingFallback={
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-10 w-48 rounded-full" />
+            <Skeleton className="h-80 w-full rounded-2xl" />
           </div>
-
-          {/* PC 는 [그래프 | 오른쪽 창] 두 칸, 모바일은 위아래로 쌓습니다. */}
-          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-            <Card>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-[17px] font-bold tracking-tight text-slate-900">
-                    {week.name} 점수
-                  </h2>
-                  <p className="mt-0.5 text-sm text-slate-500">
-                    요일별 문제 풀이 점수 (100점 만점)
-                  </p>
-                </div>
-                <ChipButton
-                  selected={dayIndex === null}
-                  onClick={() => setDayParam('')}
-                  className="shrink-0"
-                >
-                  전체 평균
-                </ChipButton>
-              </div>
-              <ScoreChart
-                week={week}
-                dates={dates}
-                selected={dayIndex}
-                onSelect={(index) => setDayParam(String(index))}
-                className="mt-4"
-              />
-            </Card>
-
-            <Card aria-live="polite">
-              {dayIndex === null ? (
-                <WeekPanel week={week} dates={dates} />
-              ) : (
-                <DayPanel
-                  week={week}
-                  index={dayIndex}
-                  date={dates[dayIndex]}
-                  onBack={() => setDayParam('')}
-                />
-              )}
-            </Card>
-          </div>
-
-          <Card title={`${week.name} 주간 정리표`}>
-            <SummaryTable
-              week={week}
-              dates={dates}
-              selected={dayIndex}
-              onSelect={(index) => setDayParam(String(index))}
-            />
-          </Card>
-
-          <p className="text-xs leading-relaxed text-slate-500">
-            점수는 그날 처음 푼 문제의 정답률이에요. 틀린 문제를 다시 풀어 맞힌 건 점수에 넣지 않고
-            &lsquo;오답 다시 풀기&rsquo;로 따로 보여 줘요. 단원은 문제를 낼 때 적은 주제로 나눠요.
-            문제 결과는 이 기기에만 저장돼요.
-          </p>
-        </>
-      )}
+        }
+        errorMessage="사진 채점 결과를 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요."
+        resetKeys={[weekStart]}
+      >
+        <QuizReportBody weekStart={weekStart} />
+      </AsyncBoundary>
     </div>
+  )
+}
+
+interface QuizReportBodyProps {
+  /** 보고 있는 주의 월요일 'YYYY-MM-DD' */
+  weekStart: string
+}
+
+/** 과목 버튼 · 그래프 · 오른쪽 창 · 정리표. 사진 채점 결과를 받아오는(useSuspenseQueries) 부분이라 AsyncBoundary 안에 둡니다. */
+function QuizReportBody({ weekStart }: QuizReportBodyProps) {
+  const subjects = useSubjects()
+  const { cards } = useCards()
+  const { sessions } = useStudySessions()
+  // 채팅 확인 문제 결과는 이 기기에만 있어서(lib/studyQuiz.ts) 화면을 열 때 한 번 읽습니다.
+  const [results] = useState(loadQuizResults)
+  const [subjectParam, setSubjectParam] = useQueryParam('subject', '', { replace: true })
+  const [dayParam, setDayParam] = useQueryParam('day', '', { replace: true })
+
+  const dates = weekDates(weekStart)
+  // 지난주 점수도 내야 해서 지난주 7일 + 이번 주 7일의 사진 채점 결과를 받아옵니다. (서버 약속이 날짜 하나씩이라 요청 14개)
+  const checkQueries = useSuspenseQueries({
+    queries: [...weekDates(moveDateKey(weekStart, -7)), ...dates].map((date) =>
+      answerChecksQuery(date),
+    ),
+  })
+  const answerChecks = checkQueries.flatMap((query) => query.data)
+
+  const weeks = buildQuizWeeks({ results, answerChecks, sessions, cards, subjects, weekStart })
+  const week = weeks.find((item) => item.name === subjectParam) ?? weeks[0]
+  // 'day' 는 0(월) ~ 6(일). 그 밖의 값이면 요일을 안 고른 것(전체 평균)으로 봅니다.
+  const dayIndex = /^[0-6]$/.test(dayParam) ? Number(dayParam) : null
+
+  if (!week) {
+    return (
+      <Card>
+        <p className="font-semibold text-slate-900">이 주에 푼 문제가 없어요</p>
+        <p className="mt-1 text-sm text-slate-500">
+          채팅에서 확인 문제를 풀거나, 기록 탭에서 문제집 사진을 채점하면 과목별 점수가 여기에
+          쌓여요.
+        </p>
+      </Card>
+    )
+  }
+
+  return (
+    <>
+      <div role="group" aria-label="과목 고르기" className="flex flex-wrap gap-2">
+        {weeks.map((item) => (
+          <ChipButton
+            key={item.name}
+            selected={item.name === week.name}
+            onClick={() => setSubjectParam(item.name)}
+          >
+            {item.name}
+          </ChipButton>
+        ))}
+      </div>
+
+      {/* PC 는 [그래프 | 오른쪽 창] 두 칸, 모바일은 위아래로 쌓습니다. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <Card>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-[17px] font-bold tracking-tight text-slate-900">
+                {week.name} 점수
+              </h2>
+              <p className="mt-0.5 text-sm text-slate-500">요일별 문제 풀이 점수 (100점 만점)</p>
+            </div>
+            <ChipButton
+              selected={dayIndex === null}
+              onClick={() => setDayParam('')}
+              className="shrink-0"
+            >
+              전체 평균
+            </ChipButton>
+          </div>
+          <ScoreChart
+            week={week}
+            dates={dates}
+            selected={dayIndex}
+            onSelect={(index) => setDayParam(String(index))}
+            className="mt-4"
+          />
+        </Card>
+
+        <Card aria-live="polite">
+          {dayIndex === null ? (
+            <WeekPanel week={week} dates={dates} />
+          ) : (
+            <DayPanel
+              week={week}
+              index={dayIndex}
+              date={dates[dayIndex]}
+              onBack={() => setDayParam('')}
+            />
+          )}
+        </Card>
+      </div>
+
+      <Card title={`${week.name} 주간 정리표`}>
+        <SummaryTable
+          week={week}
+          dates={dates}
+          selected={dayIndex}
+          onSelect={(index) => setDayParam(String(index))}
+        />
+      </Card>
+
+      <p className="text-xs leading-relaxed text-slate-500">
+        점수는 그날 처음 푼 문제(채팅 확인 문제 + 사진 채점)의 정답률이에요. 사진 채점의
+        &lsquo;애매&rsquo;는 빼요. 틀린 확인 문제를 다시 풀어 맞힌 건 점수에 넣지 않고 &lsquo;오답
+        다시 풀기&rsquo;로 따로 보여 줘요. 단원은 확인 문제를 낼 때 적은 주제로 나누고, 사진 채점은
+        한 칸으로 모아요. 풀이 속도는 확인 문제에만 있어요. 확인 문제 결과는 이 기기에만 저장돼요.
+      </p>
+    </>
   )
 }
 
@@ -512,7 +553,11 @@ function DayPanel({ week, index, date, onBack }: DayPanelProps) {
   }
 
   const averageMinutes = Math.round(sumOf(week.minutes) / 7)
-  const weekSeconds = new Map((week.week?.units ?? []).map((unit) => [unit.name, unit.seconds]))
+  // 단원 이름 → 이번 주 평균(초). 시간을 잰 문제가 없는 단원(사진 채점)은 넣지 않습니다.
+  const weekSeconds = new Map<string, number>()
+  for (const unit of week.week?.units ?? []) {
+    if (unit.seconds !== null) weekSeconds.set(unit.name, unit.seconds)
+  }
 
   return (
     <div>
@@ -716,15 +761,24 @@ interface SpeedBarsProps {
 
 /** 단원별로 문제 하나에 걸린 평균 시간 막대 + "빨리 풀고 틀림" 안내 */
 function SpeedBars({ units, weekSeconds }: SpeedBarsProps) {
+  // 풀이 시간은 채팅 확인 문제에만 있어서, 시간을 잰 단원만 그립니다. (사진 채점 칸은 빠집니다)
+  const timedUnits = units.flatMap((unit) =>
+    unit.seconds === null ? [] : [{ ...unit, seconds: unit.seconds }],
+  )
+  if (timedUnits.length === 0) {
+    return <p className="text-sm text-slate-500">풀이 시간은 채팅 확인 문제를 풀어야 생겨요.</p>
+  }
   // 가장 긴 값이 막대 끝에 붙지 않게 조금 여유를 둡니다.
   const longest =
-    Math.max(1, ...units.map((unit) => Math.max(unit.seconds, weekSeconds?.get(unit.name) ?? 0))) *
-    1.1
-  const fastUnits = units.filter((unit) => unit.fastWrong > 0)
+    Math.max(
+      1,
+      ...timedUnits.map((unit) => Math.max(unit.seconds, weekSeconds?.get(unit.name) ?? 0)),
+    ) * 1.1
+  const fastUnits = timedUnits.filter((unit) => unit.fastWrong > 0)
   return (
     <>
       <ul className="flex flex-col gap-2.5">
-        {units.map((unit) => {
+        {timedUnits.map((unit) => {
           const average = weekSeconds?.get(unit.name)
           return (
             <li
@@ -899,7 +953,9 @@ function SummaryTable({ week, dates, selected, onSelect }: SummaryTableProps) {
                   <td className="px-3 text-right whitespace-nowrap">
                     {minutesText(week.minutes[index])}
                   </td>
-                  <td className="px-3 text-right">{stat ? `${stat.seconds}초` : '–'}</td>
+                  <td className="px-3 text-right">
+                    {stat && stat.seconds !== null ? `${stat.seconds}초` : '–'}
+                  </td>
                   <td className="pl-3">
                     {stat && previous ? <Delta value={stat.rate - previous.rate} unit="점" /> : '–'}
                   </td>
@@ -924,7 +980,9 @@ function SummaryTable({ week, dates, selected, onSelect }: SummaryTableProps) {
                 <td className="px-3 text-right whitespace-nowrap">
                   {minutesText(sumOf(week.minutes))}
                 </td>
-                <td className="px-3 text-right">{total.seconds}초</td>
+                <td className="px-3 text-right">
+                  {total.seconds !== null ? `${total.seconds}초` : '–'}
+                </td>
                 <td className="pl-3">
                   {week.lastWeekRate === null ? (
                     '–'
