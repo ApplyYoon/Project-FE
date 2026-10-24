@@ -114,7 +114,11 @@ function SubjectTag({ subject }: SubjectTagProps) {
   return <SubjectBadge name={subject.name} color={subject.color} />
 }
 
-export function RecordListPage() {
+/**
+ * 통계 탭 화면(/stats)입니다. (2026-10-24)
+ * 2026-10-24 까지 기록 탭(/records)이던 화면을 그대로 옮겼습니다. 기록 탭은 일간 · 주간 리포트(History)가 됩니다.
+ */
+export function StatsPage() {
   // 공부 기록은 타이머가 저장해 둔 것을 읽기만 합니다. 과목은 계획 화면에서 저장한 목록을 씁니다.
   const [sessions] = useState<StudySession[]>(loadSessions)
   const subjects = useSubjects()
@@ -168,8 +172,7 @@ export function RecordListPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* 예전에는 위의 하위 탭 [기록 | 리포트] 가 화면 이름을 대신했는데, 리포트를 빼면서(2026-10-23) 제목을 보이게 했습니다. */}
-      <h1 className="text-[28px] leading-tight font-bold tracking-tight">기록</h1>
+      <h1 className="text-[28px] leading-tight font-bold tracking-tight">통계</h1>
 
       {/* 오늘 푼 문제 사진 채점: [사진 올리기] → (PC) QR 창 → 폰으로 찍어 올리면 아래에 결과 카드 (2026-10-24) */}
       <AnswerCheckCard />

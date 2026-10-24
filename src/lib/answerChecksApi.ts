@@ -1,8 +1,8 @@
 /**
  * "사진 채점" 의 서버 약속 · 타입 · 함수를 모아 둔 곳입니다. (2026-10-24)
- * 화면은 pages/AnswerCheckPage.tsx(폰에서 찍어 올리기)와 components/ui/AnswerCheckCard.tsx(기록 탭의 결과)입니다.
+ * 화면은 pages/AnswerCheckPage.tsx(폰에서 찍어 올리기)와 components/ui/AnswerCheckCard.tsx(통계 탭의 결과)입니다.
  *
- * 흐름: PC 기록 탭에서 QR 을 띄움 → 폰으로 찍어 올림(POST) → PC 가 3초마다 오늘 결과를 물어봄(GET) → 결과 카드
+ * 흐름: PC 통계 탭에서 QR 을 띄움 → 폰으로 찍어 올림(POST) → PC 가 3초마다 오늘 결과를 물어봄(GET) → 결과 카드
  *
  * 서버와 정한 약속 (BE, 로그인 필요 · 계약 초안 v1.1) — 약속이 바뀌면 이 파일만 고치면 됩니다.
  *   POST  /answer-checks                         { mode, image: 'data:image/jpeg;base64,…', date: '2026-10-24' }
@@ -275,7 +275,7 @@ export async function fetchAnswerChecks(date: string): Promise<AnswerCheck[]> {
     if (!Array.isArray(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
     return result.map(toAnswerCheck).filter((check): check is AnswerCheck => check !== null)
   } catch (error) {
-    // 서버에 이 기능이 아직 배포되지 않았으면 404 입니다. 기록 탭 전체에 실패 안내를 띄우지 않고 "결과 없음" 으로 봅니다.
+    // 서버에 이 기능이 아직 배포되지 않았으면 404 입니다. 통계 탭 전체에 실패 안내를 띄우지 않고 "결과 없음" 으로 봅니다.
     if (error instanceof ApiError && error.status === 404) return []
     throw error
   }
@@ -322,7 +322,7 @@ export async function fixAnswerCheckItem(input: {
   return toAnswerCheck(result)
 }
 
-/** 그날 채점 결과 쿼리. 기록 탭의 결과 카드와 QR 창(3초마다 다시 묻기)이 같이 씁니다. */
+/** 그날 채점 결과 쿼리. 통계 탭의 결과 카드와 QR 창(3초마다 다시 묻기)이 같이 씁니다. */
 export function answerChecksQuery(date: string) {
   return queryOptions({
     queryKey: ['answer-checks', date],

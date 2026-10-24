@@ -21,7 +21,7 @@ import { cn } from '@/lib/cn'
 import { getTodayKey } from '@/lib/date'
 
 /** 폰에서 여는 주소 (QR 에 담깁니다) */
-const ANSWER_CHECK_PATH = '/records/answer-check'
+const ANSWER_CHECK_PATH = '/stats/answer-check'
 /** QR 창이 열린 동안 오늘 결과를 다시 묻는 간격 */
 const POLL_INTERVAL_MS = 3000
 /** 이만큼 지나도 폰이 안 올리면 기다리기를 멈춥니다. (10분) */
@@ -46,11 +46,11 @@ function formatDate(dateKey: string): string {
 }
 
 /**
- * 기록 탭 맨 위의 "오늘 푼 문제 채점" 카드와 오늘 채점 결과입니다. (2026-10-24)
- * 기록 화면 파일(pages/RecordListPage.tsx)이 이미 아주 길어서, AI 분석 카드처럼 따로 둡니다.
+ * 통계 탭 맨 위의 "오늘 푼 문제 채점" 카드와 오늘 채점 결과입니다. (2026-10-24)
+ * 통계 화면 파일(pages/StatsPage.tsx)이 이미 아주 길어서, AI 분석 카드처럼 따로 둡니다.
  *
  *   PC: [사진 올리기] → QR 창 → 폰으로 찍어 올리면 창이 닫히고 아래에 결과 카드가 생깁니다.
- *   폰: QR 을 찍을 수 없으니 [사진 올리기] 가 바로 찍기 화면(/records/answer-check)으로 갑니다.
+ *   폰: QR 을 찍을 수 없으니 [사진 올리기] 가 바로 찍기 화면(/stats/answer-check)으로 갑니다.
  */
 export function AnswerCheckCard() {
   // 오늘 날짜는 화면을 처음 그릴 때 한 번만 정합니다. (새벽 4시 기준, lib/date.ts)

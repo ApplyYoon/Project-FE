@@ -103,7 +103,7 @@ export function addDemoData(): void {
   )
   saveCards([...(loadSavedCards() ?? []), ...cards])
   appendList('sessions', persona.sessions)
-  // 공부 기록마다의 집중도 (기록 탭의 "집중도" · 분석이 읽습니다, lib/focusScore.ts)
+  // 공부 기록마다의 집중도 (통계 탭의 "집중도" · 분석이 읽습니다, lib/focusScore.ts)
   appendList('focus-scores', persona.focusScores)
   appendList('fixed-blocks', persona.fixedBlocks)
   appendList('card-day-marks', persona.marks)
@@ -164,7 +164,7 @@ export function addDemoData(): void {
   }
 
   // 5) 알림 화면의 예시 메시지 (id 앞에 'demo-')
-  //    '어제 순공' 메시지(message-4)는 기록 탭과 숫자가 같도록 가상 기록으로 만든 글로 바꿉니다.
+  //    '어제 순공' 메시지(message-4)는 통계 탭과 숫자가 같도록 가상 기록으로 만든 글로 바꿉니다.
   saveAiMessages([
     ...loadAiMessages(),
     ...mockAiMessages.map((message) => ({
