@@ -128,6 +128,17 @@ export function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: ['server-cards'] })
     },
   })
+  // 서버 기록을 지우는 동안 새로고침 · 창 닫기를 하면 지우기가 중간에 끊겨서, 지운 카드 일부가 서버에 남습니다.
+  // 그동안은 브라우저가 "이 페이지에서 나가시겠습니까?" 를 한 번 묻게 합니다.
+  const isDeletingServer = deleteServer.isPending
+  useEffect(() => {
+    if (!isDeletingServer) return
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDeletingServer])
   // 계정 카드에 보여줄 닉네임·이메일·학교. 가입 정보가 이 기기에 없으면 null 입니다.
   const [profile] = useState(loadSignupProfile)
   // "로그아웃할까요?" 확인창이 열려 있는지
@@ -271,7 +282,10 @@ export function SettingsPage() {
     setMessage({ isSuccess, text: doneText })
     // 모든 기록을 지울 때는 서버에 저장된 체크인 · 카드 · 공부 기록도 지웁니다. (#321, #516)
     if (pendingKind === 'all' && canSyncCheckIns(token)) {
-      setMessage({ isSuccess, text: '서버에 저장된 체크인 · 카드 · 공부 기록도 지우는 중이에요…' })
+      setMessage({
+        isSuccess,
+        text: '서버에 저장된 체크인 · 카드 · 공부 기록도 지우는 중이에요… 끝날 때까지 새로고침하거나 화면을 닫지 마세요.',
+      })
       deleteServerCheckInsWithMessage(doneText)
     }
     setPendingKind(null)
@@ -585,8 +599,9 @@ export function SettingsPage() {
               variant="outline"
               className="w-full border-red-200 text-red-700 hover:bg-red-50 sm:w-auto"
               onClick={() => setPendingKind('all')}
+              disabled={isDeletingServer}
             >
-              모든 기록 지우기
+              {isDeletingServer ? '지우는 중…' : '모든 기록 지우기'}
             </Button>
             {/* role="status": 지운 결과가 바뀌면 스크린리더가 읽어 줍니다. */}
             {message && (
@@ -604,7 +619,7 @@ export function SettingsPage() {
         </Card>
 
         {/* 발표 시연용 가상 데이터 (#418). 주소 끝에 ?demo=on 을 붙였을 때만 보입니다 */}
-        <DemoDataSection />
+        <DemoDataSection isServerDeleting={isDeletingServer} />
       </div>
 
       {/* 로그아웃 · 탈퇴는 앱 설정 화면 관례대로 맨 아래에 따로 둡니다. 자주 누르는 칸과 멀리 두어 실수로 누르지 않게 합니다. (2026-10-22, 2차 규칙 3)
@@ -994,7 +1009,12 @@ function WebPushSection() {
  * 학생이 실수로 누르지 않도록, 설정 주소 끝에 ?demo=on 을 붙였을 때(/settings?demo=on)만 보입니다.
  * 이미 넣은 상태거나 개발 중(pnpm dev)이면 언제나 보여서 지울 수 있습니다.
  */
-function DemoDataSection() {
+interface DemoDataSectionProps {
+  /** "모든 기록 지우기" 가 서버 기록을 지우는 중인지. 그동안은 버튼을 잠급니다. */
+  isServerDeleting: boolean
+}
+
+function DemoDataSection({ isServerDeleting }: DemoDataSectionProps) {
   const [demoParam] = useQueryParam('demo', 'off')
   const [isSeeded] = useState(isDemoSeeded)
   // 발표 화면에 잡다한 칸이 보이지 않게, 주소 끝에 ?demo=on 을 붙였을 때만 보입니다. (지울 때도 ?demo=on 으로)
@@ -1018,12 +1038,23 @@ function DemoDataSection() {
         실험)을 넣어요. 온보딩이 비어 있으면 끝낸 상태로 채워요. 지우기를 누르면 넣은 것만 빠지고 내
         기록은 남아요.
       </p>
+      {/* 넣기 · 지우기는 바로 새로고침해서, 서버 기록을 지우는 중에 누르면 지우기가 끊깁니다. 그동안은 잠급니다. */}
+      {isServerDeleting && (
+        <p className="mt-3 text-sm break-keep text-slate-600">
+          서버 기록을 다 지운 뒤에 누를 수 있어요.
+        </p>
+      )}
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <Button className="h-11 w-full sm:flex-1" onClick={handleAdd}>
+        <Button className="h-11 w-full sm:flex-1" onClick={handleAdd} disabled={isServerDeleting}>
           {isSeeded ? '가상 데이터 다시 넣기' : '가상 데이터 넣기'}
         </Button>
         {isSeeded && (
-          <Button variant="secondary" className="h-11 w-full sm:flex-1" onClick={handleRemove}>
+          <Button
+            variant="secondary"
+            className="h-11 w-full sm:flex-1"
+            onClick={handleRemove}
+            disabled={isServerDeleting}
+          >
             가상 데이터 지우기
           </Button>
         )}
