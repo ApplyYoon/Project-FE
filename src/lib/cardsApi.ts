@@ -244,10 +244,11 @@ export async function deleteServerCard(serverId: string): Promise<void> {
 /**
  * 서버에 있는 내 카드를 모두 지웁니다. 설정의 "모든 기록 지우기" 가 부릅니다.
  * (안 지우면 다음에 앱을 열 때 서버의 카드가 이 기기로 다시 들어옵니다)
- * 서버에 한꺼번에 지우는 주소가 없어서 하나씩 지웁니다. 실패하면 에러를 던집니다.
+ * 서버에 한꺼번에 지우는 주소가 없어서 카드마다 지우기를 보냅니다. 하나라도 실패하면 에러를 던집니다.
+ * 한 장씩 차례로 기다리면 카드가 많을 때 수십 초가 걸려서, 그사이 새로고침하면 중간에 끊겼습니다.
+ * 그래서 지우기 요청을 한꺼번에 보내고(Promise.all) 모두 끝날 때까지 기다립니다.
  */
 export async function deleteAllServerCards(): Promise<void> {
-  for (const card of await fetchServerCards()) {
-    await deleteServerCard(card.id)
-  }
+  const cards = await fetchServerCards()
+  await Promise.all(cards.map((card) => deleteServerCard(card.id)))
 }
