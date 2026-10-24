@@ -30,6 +30,9 @@ const RecordsPage = lazy(() =>
   import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
 )
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
+const QuizReportPage = lazy(() =>
+  import('@/pages/QuizReportPage').then((m) => ({ default: m.QuizReportPage })),
+)
 const ManualPage = lazy(() => import('@/pages/ManualPage').then((m) => ({ default: m.ManualPage })))
 const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
@@ -153,6 +156,8 @@ export const router = createBrowserRouter([
       { path: 'stats/answer-check', element: <AnswerCheckPage /> },
       // 기록 탭 (일간 · 주간 리포트). 2026-10-24 시안대로 History 화면으로 바뀝니다.
       { path: 'records', element: <RecordsPage /> },
+      // 문제 풀이 주간 리포트 (과목별 점수 그래프 · 주간 정리표, 2026-10-24). 기록 탭의 입구에서 들어옵니다.
+      { path: 'records/quiz', element: <QuizReportPage /> },
       // 나 사용설명서 (2026-10-24 History 시안 ⑤). 기록 탭 아래쪽 줄과 주간 리포트의 [사용설명서에 넣기] 뒤에서 들어옵니다.
       { path: 'records/manual', element: <ManualPage /> },
       // 사진 채점의 옛 주소(통계 탭으로 옮기기 전). 이미 띄워 둔 QR 로 열어도 같은 화면이 나오게 넘겨 줍니다.

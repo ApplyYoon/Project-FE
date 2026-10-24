@@ -51,7 +51,7 @@ import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { loadRoutines } from '@/lib/routines'
 import { loadRecord } from '@/lib/storage'
 import { loadQuizResults, type QuizResult } from '@/lib/studyQuiz'
-import { CHAT_PATH, MANUAL_PATH } from '@/lib/tabMenu'
+import { CHAT_PATH, MANUAL_PATH, QUIZ_REPORT_PATH } from '@/lib/tabMenu'
 import { findWeeklyPick, loadWeeklyPicks, saveWeeklyPick, type WeeklyPick } from '@/lib/weeklyPicks'
 import type { Card as CardData, Goal, StudyPlan, StudySession, Subject } from '@/types'
 import { useSuspenseQuery } from '@tanstack/react-query'
@@ -213,6 +213,23 @@ export function RecordsPage() {
           pick={findWeeklyPick(picks, weekStart)}
         />
       )}
+
+      {/* 문제 풀이 주간 리포트(과목별 점수 그래프 · 주간 정리표)로 가는 입구 (2026-10-24, pages/QuizReportPage.tsx)
+          통계 화면에 있던 것을, 주소(/records/quiz)대로 기록 탭으로 옮겼습니다. */}
+      <Link
+        to={QUIZ_REPORT_PATH}
+        className="flex min-h-14 items-center justify-between gap-3 rounded-2xl bg-white px-5 py-4 hover:bg-slate-50"
+      >
+        <span className="min-w-0">
+          <span className="block text-[15px] font-semibold text-slate-900">문제 풀이 리포트</span>
+          <span className="mt-0.5 block text-sm text-slate-500">
+            과목별 점수 변화 · 취약 단원 · 주간 정리표
+          </span>
+        </span>
+        <span aria-hidden className="shrink-0 text-slate-400">
+          ›
+        </span>
+      </Link>
 
       {/* 나 사용설명서로 가는 길. 주간 리포트에서 [사용설명서에 넣기] 한 것이 여기에 쌓입니다. */}
       <Link

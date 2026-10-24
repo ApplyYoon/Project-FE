@@ -3,6 +3,7 @@ import { loadSavedCards, saveCards } from '@/lib/cards'
 import { getTodayKey } from '@/lib/date'
 import { buildDemoHistory } from '@/lib/demoHistory'
 import { DEMO_ID_PREFIX, buildDemoOnboarding, buildDemoPersona } from '@/lib/demoPersona'
+import { buildDemoQuizResults } from '@/lib/demoQuiz'
 import { loadGoals, saveGoals } from '@/lib/goals'
 import { mockAiMessages } from '@/lib/mock'
 import { loadData, removeData, saveData } from '@/lib/storage'
@@ -77,7 +78,7 @@ export function addDemoData(): void {
   const now = Date.now()
   const todayKey = getTodayKey()
   const persona = buildDemoPersona(todayKey, now)
-  // 기록 탭(History 리포트)용: 쉬어 간 주 · 확인 문제 결과 · 이번 주에 고른 것 · 사용설명서 출처 (lib/demoHistory.ts)
+  // 기록 탭(History 리포트)용: 쉬어 간 주 · 이번 주에 고른 것 · 사용설명서 출처 (lib/demoHistory.ts)
   const history = buildDemoHistory(persona, todayKey, now)
   const manifest: DemoManifest = {
     seededAt: now,
@@ -108,11 +109,15 @@ export function addDemoData(): void {
   appendList('sessions', [...history.sessions, ...persona.sessions])
   // 공부 기록마다의 집중도 (통계 탭의 "집중도" · 분석이 읽습니다, lib/focusScore.ts)
   appendList('focus-scores', persona.focusScores)
+  // 최근 2주 공부 뒤에 푼 확인 문제 (기록 › 문제 풀이 리포트 · 코치의 "틀린 문제 다시" 가 읽습니다, lib/demoQuiz.ts)
+  appendList(
+    'quiz-results',
+    buildDemoQuizResults({ sessions: persona.sessions, cards: persona.cards, todayKey, now }),
+  )
   appendList('fixed-blocks', persona.fixedBlocks)
   appendList('card-day-marks', persona.marks)
   appendList('experiments', persona.experiments)
   appendList('manual-items', history.manualItems)
-  appendList('quiz-results', history.quizResults)
   appendList('weekly-picks', history.picks)
 
   // 홈 화면이 아직 읽는 옛 계획 (날짜 → 계획 목록)
@@ -194,11 +199,11 @@ export function removeDemoData(): void {
   )
   removeDemoItems<{ id: string }>('sessions', (item) => item.id)
   removeDemoItems<{ sessionId: string }>('focus-scores', (item) => item.sessionId)
+  removeDemoItems<{ id: string }>('quiz-results', (item) => item.id)
   removeDemoItems<{ id: string }>('fixed-blocks', (item) => item.id)
   removeDemoItems<{ cardId: string }>('card-day-marks', (item) => item.cardId)
   removeDemoItems<{ id: string }>('experiments', (item) => item.id)
   removeDemoItems<{ id: string }>('manual-items', (item) => item.id)
-  removeDemoItems<{ id: string }>('quiz-results', (item) => item.id)
   removeDemoItems<{ id: string }>('weekly-picks', (item) => item.id)
 
   const plansByDate = loadData<Record<string, { id: string }[]>>('plans', {})

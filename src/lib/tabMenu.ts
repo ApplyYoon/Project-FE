@@ -31,11 +31,14 @@ export const STATS_PATH = '/stats'
 /** 기록 탭(일간 · 주간 리포트)의 주소 */
 export const RECORDS_PATH = '/records'
 
-/** 나 사용설명서 (기록 탭 아래 화면, 2026-10-24) */
+/** 문제 풀이 주간 리포트 주소 (2026-10-24, pages/QuizReportPage.tsx) */
+export const QUIZ_REPORT_PATH = '/records/quiz'
+
+/** 나 사용설명서 (2026-10-24, pages/ManualPage.tsx). 화면 안에 "‹ 기록" 링크가 따로 있습니다. */
 export const MANUAL_PATH = `${RECORDS_PATH}/manual`
 
-/** 기록 탭 아래에 묶인 다른 주소. (/records/… 는 isUnder 로 이미 기록 탭입니다. 시험은 2026-10-18 에 지워서 지금은 없습니다) */
-const recordsChildPaths: string[] = []
+/** 기록 탭 아래에 묶인 화면. 위에 "‹ 기록" 돌아가기 링크가 나옵니다. (시험은 2026-10-18 에 지웠습니다) */
+const recordsChildPaths: string[] = [QUIZ_REPORT_PATH]
 
 /** 카드 탭 아래에 묶인 화면. 목표는 카드 목록에서, 타이머는 카드의 [시작] 에서 들어갑니다. */
 const cardsChildPaths = ['/goals', '/timer']
@@ -90,9 +93,10 @@ export function isStatsPath(pathname: string): boolean {
 
 /**
  * 화면 위에 보여 줄 돌아가기 링크. 탭 아래에 묶인 화면에서만 있고, 나머지는 null 입니다.
- * (묶인 화면이던 시험 · 일기를 지워서 지금은 늘 null 입니다. 카드 · 목표 화면은 자기 화면에 돌아가기 링크가 있습니다)
+ * (카드 · 목표 화면은 자기 화면에 돌아가기 링크가 있습니다)
  *
- *   getBackToTabLink('/timer')   -> null
+ *   getBackToTabLink('/records/quiz') -> { to: '/records', label: '기록' }
+ *   getBackToTabLink('/timer')        -> null
  */
 export function getBackToTabLink(pathname: string): { to: string; label: string } | null {
   if (recordsChildPaths.some((path) => isUnder(pathname, path))) {
