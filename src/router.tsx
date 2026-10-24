@@ -49,6 +49,9 @@ const CardEditPage = lazy(() =>
   import('@/pages/CardEditPage').then((m) => ({ default: m.CardEditPage })),
 )
 const CardsPage = lazy(() => import('@/pages/CardsPage').then((m) => ({ default: m.CardsPage })))
+const AnswerCheckPage = lazy(() =>
+  import('@/pages/AnswerCheckPage').then((m) => ({ default: m.AnswerCheckPage })),
+)
 const CardsFromPhotoPage = lazy(() =>
   import('@/pages/CardsFromPhotoPage').then((m) => ({ default: m.CardsFromPhotoPage })),
 )
@@ -149,6 +152,8 @@ export const router = createBrowserRouter([
       { path: 'records', element: <RecordsPage /> },
       // 문제 풀이 주간 리포트 (과목별 점수 그래프 · 주간 정리표, 2026-10-24). 기록 화면 위의 입구에서 들어옵니다.
       { path: 'records/quiz', element: <QuizReportPage /> },
+      // 사진 채점 (2026-10-24). PC 기록 탭의 QR 을 폰으로 찍으면 열립니다. 사진은 저장하지 않고 채점 뒤 버립니다.
+      { path: 'records/answer-check', element: <AnswerCheckPage /> },
       // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)
       { path: 'check', element: <Navigate to="/" replace /> },
       // 일기 · 성찰일기는 최종 기획서 MVP 밖이라 #417 에서 지웠습니다. 옛 링크는 홈으로 보냅니다.

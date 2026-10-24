@@ -2,6 +2,7 @@ import { useQueryParam } from '@/hooks/useQueryParam'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AiAnalysisCard, AnalysisInsight } from '@/components/ui/AiAnalysisCard'
+import { AnswerCheckCard } from '@/components/ui/AnswerCheckCard'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Modal } from '@/components/ui/Modal'
@@ -171,6 +172,9 @@ export function RecordListPage() {
     <div className="flex flex-col gap-6">
       {/* 예전에는 위의 하위 탭 [기록 | 리포트] 가 화면 이름을 대신했는데, 리포트를 빼면서(2026-10-23) 제목을 보이게 했습니다. */}
       <h1 className="text-[28px] leading-tight font-bold tracking-tight">기록</h1>
+
+      {/* 오늘 푼 문제 사진 채점: [사진 올리기] → (PC) QR 창 → 폰으로 찍어 올리면 아래에 결과 카드 (2026-10-24) */}
+      <AnswerCheckCard />
 
       {/* 문제 풀이 주간 리포트(과목별 점수 그래프 · 주간 정리표)로 가는 입구 (2026-10-24, pages/QuizReportPage.tsx) */}
       <Link
