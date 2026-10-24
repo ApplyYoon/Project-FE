@@ -10,7 +10,7 @@ import { SubjectBadge } from '@/components/ui/SubjectBadge'
 import { TalkButton } from '@/components/ui/TalkButton'
 import { UnderstandingBadge } from '@/components/ui/UnderstandingBadge'
 import { useCards } from '@/hooks/useCards'
-import { loadManualItems } from '@/hooks/useManualItems'
+import { countTrustedManualItems } from '@/hooks/useManualItems'
 import { usePlans } from '@/hooks/usePlans'
 import {
   buildCalendarDay,
@@ -141,7 +141,7 @@ export function StatsPage() {
   const [forest] = useState(() => {
     const todayKey = getTodayKey()
     runDailyCareStage(todayKey, now)
-    return loadForestState(todayKey, now, loadManualItems().length)
+    return loadForestState(todayKey, now, countTrustedManualItems())
   })
   // 옛 계획으로 잰 기록도 그 카드의 기록으로 보려고 "옛 계획 id → 카드 id" 표를 만듭니다. (lib/sessionRecords.ts)
   const [cardIdByPlanId] = useState(() =>

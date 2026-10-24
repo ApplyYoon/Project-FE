@@ -5,7 +5,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCards } from '@/hooks/useCards'
-import { useManualItems } from '@/hooks/useManualItems'
+import { loadManualItems, useManualItems } from '@/hooks/useManualItems'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useSubjects } from '@/hooks/useSubjects'
 import { answerChecksBetweenQuery, answerChecksQuery } from '@/lib/answerChecksApi'
@@ -51,7 +51,7 @@ import { buildCardIdByPlanId } from '@/lib/sessionRecords'
 import { loadRoutines } from '@/lib/routines'
 import { loadRecord } from '@/lib/storage'
 import { loadQuizResults, type QuizResult } from '@/lib/studyQuiz'
-import { CHAT_PATH } from '@/lib/tabMenu'
+import { CHAT_PATH, MANUAL_PATH } from '@/lib/tabMenu'
 import { findWeeklyPick, loadWeeklyPicks, saveWeeklyPick, type WeeklyPick } from '@/lib/weeklyPicks'
 import type { Card as CardData, Goal, StudyPlan, StudySession, Subject } from '@/types'
 import { useSuspenseQuery } from '@tanstack/react-query'
@@ -70,7 +70,7 @@ import { Link } from 'react-router-dom'
  *
  * 숫자 계산은 lib/historyReport.ts 가 합니다. 이 파일은 그리기만 합니다.
  * 예전 기록 탭의 그래프 · 숲 · AI 분석은 통계 탭(pages/StatsPage.tsx)으로 옮겼습니다.
- * 옛 주소 /report · /manual 은 여기로 옵니다. (router.tsx)
+ * 옛 주소 /report 는 여기로, /manual 은 나 사용설명서(/records/manual, pages/ManualPage.tsx)로 옵니다. (router.tsx)
  */
 
 /**
@@ -117,6 +117,8 @@ export function RecordsPage() {
     buildCardIdByPlanId(loadRecord<StudyPlan[]>('plans'), loadRoutines()),
   )
   const [picks, setPicks] = useState(loadWeeklyPicks)
+  // 아래 "나 사용설명서" 줄에 보일 항목 수 (주간 리포트에서 넣으면 다음에 열 때 늘어납니다)
+  const [manualCount] = useState(() => loadManualItems().length)
   const [goals] = useState(loadGoals)
   const { cards } = useCards()
   const subjects = useSubjects()
@@ -211,6 +213,17 @@ export function RecordsPage() {
           pick={findWeeklyPick(picks, weekStart)}
         />
       )}
+
+      {/* 나 사용설명서로 가는 길. 주간 리포트에서 [사용설명서에 넣기] 한 것이 여기에 쌓입니다. */}
+      <Link
+        to={MANUAL_PATH}
+        className="flex min-h-14 items-center justify-between gap-3 rounded-2xl bg-white px-5 py-4 hover:bg-slate-50"
+      >
+        <span className="text-[15px] font-semibold text-slate-900">나 사용설명서</span>
+        <span className="flex shrink-0 items-center gap-1 text-sm text-slate-500">
+          확인된 것 {manualCount}개<span aria-hidden>›</span>
+        </span>
+      </Link>
     </div>
   )
 }
@@ -1031,6 +1044,14 @@ function PickResultCard({
           {isInManual ? '사용설명서에 넣었어요' : '사용설명서에 넣기'}
         </Button>
       </div>
+      {isInManual && (
+        <Link
+          to={MANUAL_PATH}
+          className="text-brand mt-3 inline-flex h-10 items-center text-sm font-semibold hover:underline"
+        >
+          사용설명서 보기 ›
+        </Link>
+      )}
     </Card>
   )
 }

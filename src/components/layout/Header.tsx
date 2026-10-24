@@ -33,7 +33,9 @@ function hasOwnBackLink(pathname: string): boolean {
     pathname.startsWith('/goals') ||
     pathname.startsWith('/settings/') ||
     // 사진 채점(/stats/answer-check)은 폰에서 QR 로 바로 열려 "바로 전 화면" 이 없어서, 화면 안의 "‹ 통계" 로 돌아갑니다.
-    pathname.startsWith('/stats/')
+    pathname.startsWith('/stats/') ||
+    // 나 사용설명서(/records/manual)는 화면 안의 "‹ 기록" 으로 돌아갑니다.
+    pathname.startsWith('/records/')
   )
 }
 

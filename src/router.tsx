@@ -10,7 +10,7 @@ import {
 } from '@/lib/onboardingProgress'
 import { CONSENT_PATH } from '@/lib/consentApi'
 import { PSYCH_TEST_PATH } from '@/lib/psychTest'
-import { RECORDS_PATH, STATS_PATH } from '@/lib/tabMenu'
+import { MANUAL_PATH, RECORDS_PATH, STATS_PATH } from '@/lib/tabMenu'
 import { PageBoundary } from '@/components/layout/PageBoundary'
 import { SubjectsGate } from '@/components/layout/SubjectsGate'
 import { ErrorPage } from '@/pages/ErrorPage'
@@ -30,6 +30,7 @@ const RecordsPage = lazy(() =>
   import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })),
 )
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
+const ManualPage = lazy(() => import('@/pages/ManualPage').then((m) => ({ default: m.ManualPage })))
 const CallActivePage = lazy(() =>
   import('@/pages/CallActivePage').then((m) => ({ default: m.CallActivePage })),
 )
@@ -152,6 +153,8 @@ export const router = createBrowserRouter([
       { path: 'stats/answer-check', element: <AnswerCheckPage /> },
       // 기록 탭 (일간 · 주간 리포트). 2026-10-24 시안대로 History 화면으로 바뀝니다.
       { path: 'records', element: <RecordsPage /> },
+      // 나 사용설명서 (2026-10-24 History 시안 ⑤). 기록 탭 아래쪽 줄과 주간 리포트의 [사용설명서에 넣기] 뒤에서 들어옵니다.
+      { path: 'records/manual', element: <ManualPage /> },
       // 사진 채점의 옛 주소(통계 탭으로 옮기기 전). 이미 띄워 둔 QR 로 열어도 같은 화면이 나오게 넘겨 줍니다.
       { path: 'records/answer-check', element: <RedirectWithQuery to="/stats/answer-check" /> },
       // v2 체크인(/check)은 #417 에서 지웠습니다. 옛 링크 · 즐겨찾기로 오면 홈으로 보냅니다. (그날 컨디션은 코치가 채팅에서 묻습니다)
@@ -183,7 +186,7 @@ export const router = createBrowserRouter([
       { path: 'analysis', element: <RedirectWithQuery to={STATS_PATH} /> },
       // 리포트(/report · /records?tab=report)는 2026-10-23 에 뺐습니다. 옛 링크로 오면 기록 화면이 보입니다.
       { path: 'report', element: <RedirectWithQuery to={RECORDS_PATH} /> },
-      { path: 'manual', element: <RedirectWithQuery to={RECORDS_PATH} /> },
+      { path: 'manual', element: <RedirectWithQuery to={MANUAL_PATH} /> },
       // 없는 주소는 404 화면으로. 이 줄은 항상 맨 마지막에 둡니다.
       { path: '*', element: <NotFoundPage /> },
     ],

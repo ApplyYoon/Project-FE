@@ -31,7 +31,10 @@ export const STATS_PATH = '/stats'
 /** 기록 탭(일간 · 주간 리포트)의 주소 */
 export const RECORDS_PATH = '/records'
 
-/** 기록 탭 아래에 묶인 화면. 위에 "‹ 기록" 돌아가기 링크가 나옵니다. (시험은 2026-10-18 에 지워서 지금은 없습니다) */
+/** 나 사용설명서 (기록 탭 아래 화면, 2026-10-24) */
+export const MANUAL_PATH = `${RECORDS_PATH}/manual`
+
+/** 기록 탭 아래에 묶인 다른 주소. (/records/… 는 isUnder 로 이미 기록 탭입니다. 시험은 2026-10-18 에 지워서 지금은 없습니다) */
 const recordsChildPaths: string[] = []
 
 /** 카드 탭 아래에 묶인 화면. 목표는 카드 목록에서, 타이머는 카드의 [시작] 에서 들어갑니다. */
