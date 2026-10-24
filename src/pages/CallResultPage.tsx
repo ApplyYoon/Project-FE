@@ -596,8 +596,9 @@ function SummaryCard({ conclusion }: ConclusionViewProps) {
       <dl className="mt-3 divide-y divide-slate-100">
         <SummaryRow label="어제 요약" value={card.headline} />
         {card.missReason !== null && <SummaryRow label="못 채운 이유" value={card.missReason} />}
+        {/* 서버 요약은 "~했다고 함" 같은 기록용 문장이라, AI 가 하는 말처럼 따옴표로 감싸지 않습니다. */}
         {parsed !== null && parsed.summary !== '' && (
-          <SummaryRow label="AI 한마디" value={`"${parsed.summary}"`} />
+          <SummaryRow label="대화 요약" value={parsed.summary} />
         )}
       </dl>
     </Card>
