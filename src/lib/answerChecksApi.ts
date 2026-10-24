@@ -15,6 +15,7 @@
  *     - showHelp 가 true 면 사진의 글에 위기 표현이 있어서, 화면이 상담 전화 안내를 먼저 보여 줍니다.
  *
  * mode: MARKED = "채점했어요" (O · X 표시를 읽음) / UNMARKED = "아직 안 했어요" (AI 가 풂)
+ * 사진을 여러 장 고르면 사진마다 POST 를 한 번씩 부릅니다. (사진 1장 = 채점 결과 1개, 서버 약속은 그대로)
  *
  * ⚠️ 사진은 어디에도 저장하지 않습니다. 브라우저 저장소에도 넣지 않고, 서버도 채점 뒤 버립니다.
  * 테스트 로그인(서버 없음)이면 서버 대신 시연용 예시를 이 기기(브라우저 저장소)에 만들어 씁니다. 사진은 여기에도 넣지 않습니다.
@@ -242,6 +243,32 @@ function wait(ms: number): Promise<void> {
 // ---------------------------------------------------------------------------
 // 서버 부르기
 // ---------------------------------------------------------------------------
+
+/**
+ * 여러 일을 limit 개까지만 동시에 합니다. 하나가 끝나면 남은 것 중 다음 것을 시작합니다.
+ * 사진 여러 장을 한꺼번에 보내면 장마다 25초쯤 걸리는 AI 채점이 겹치고 폰 데이터도 몰려서, 몇 장씩만 보냅니다.
+ * task 가 에러를 던지지 않게 쓰는 쪽에서 장마다 잡아야, 한 장이 실패해도 나머지를 계속 보냅니다.
+ *
+ *   runWithLimit([사진1, 사진2, 사진3], 2, sendOne)
+ *   → 사진1 · 사진2 를 보내고, 둘 중 먼저 끝난 자리에서 사진3 을 보냅니다.
+ */
+export async function runWithLimit<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>,
+): Promise<void> {
+  // 다음에 보낼 차례 (여러 일꾼이 같이 보고 하나씩 가져갑니다)
+  let nextIndex = 0
+  async function worker() {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex]
+      nextIndex += 1
+      await task(item)
+    }
+  }
+  const workerCount = Math.min(limit, items.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+}
 
 /** 찍은 사진(줄인 data URL)을 보내 채점을 부탁합니다. */
 export async function sendAnswerCheck(input: {
