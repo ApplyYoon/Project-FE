@@ -617,11 +617,13 @@ function RoomChat({ room }: RoomChatProps) {
   // 매일 코치 방만 브리핑 · 미션 · 코치 알림 · 공부 끝 회고를 합니다.
   const isDailyCoach = roomInfo.isDailyCoach
   // 미션 알림을 누르고 들어오면 ?mission=morning 처럼 옵니다. 코치가 그 미션 이야기를 먼저 합니다.
-  const [missionParam, setMissionParam] = useQueryParam('mission', '')
+  // 아래 넷(?mission= · ?nudge= · ?talk= · ?plan=)은 한 번 읽고 지우는 값이라 replace 로 지웁니다.
+  // 지울 때 기록을 새로 쌓으면, 뒤로 가기가 지우기 전 주소로 돌아가서 또 지우고 쌓여 이 방에 갇힙니다. (#723)
+  const [missionParam, setMissionParam] = useQueryParam('mission', '', { replace: true })
   // 코치 알림을 누르고 들어오면 ?nudge=evening 처럼 옵니다. 코치의 첫 말이 그 알림 글입니다. (lib/coachNudges.ts)
-  const [nudgeParam, setNudgeParam] = useQueryParam('nudge', '')
+  const [nudgeParam, setNudgeParam] = useQueryParam('nudge', '', { replace: true })
   // 다른 화면의 [이야기하기] 로 들어오면 ?talk=SESSION_REVIEW 처럼 옵니다. 맡겨 둔 사실 줄로 그 주제의 새 대화를 엽니다.
-  const [talkParam, setTalkParam] = useQueryParam('talk', '')
+  const [talkParam, setTalkParam] = useQueryParam('talk', '', { replace: true })
   // 후기 · 못 한 카드 대화에서 AI 가 짐작한 이유를 확인받으면 그 공부 기록에 저장합니다. (lib/talkLines.ts)
   const { updateSession } = useStudySessions()
 
@@ -661,7 +663,7 @@ function RoomChat({ room }: RoomChatProps) {
     .filter((card) => card.date === todayKey && !(card.repeatDays && card.repeatDays.length > 0))
   const todaySubjects = todaySubjectsOf(school)
   // 홈의 [코치와 계획 짜기] 로 들어오면 ?plan=today 로 옵니다. 코치가 바로 오늘 계획을 짜 줍니다.
-  const [planParam, setPlanParam] = useQueryParam('plan', '')
+  const [planParam, setPlanParam] = useQueryParam('plan', '', { replace: true })
   // 긴 계획 칸 (목표 · 날짜 · 하루 시간 · 사진). null 이면 닫혀 있습니다.
   const [longForm, setLongForm] = useState<LongPlanForm | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
