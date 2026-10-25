@@ -25,6 +25,7 @@ import {
   type PhoneLiftSummary,
 } from '@/lib/liftAlerts'
 import { getTodayCareLevel } from '@/lib/todayCare'
+import { splitRecordedCards } from '@/lib/todayCards'
 import { formatClock } from '@/lib/away'
 import {
   LONG_PAUSE_MINUTES,
@@ -188,7 +189,7 @@ export function CardTimerPage() {
   const [pageSettings] = useState(loadAutoSettings)
 
   const todayKey = getTodayKey()
-  // 오늘 이미 세션을 한 카드 (반복 카드도 오늘 것만)
+  // 오늘 이미 세션을 한 카드 (반복 카드도 오늘 것만). 나중에 적기 · 4단계 카드 고르기에 씁니다.
   const doneTodayIds = new Set(
     allSessions
       .filter((record) => toDayKey(record.startedAt) === todayKey)
@@ -253,11 +254,18 @@ export function CardTimerPage() {
   const [isRecoveryCheckOpen, setIsRecoveryCheckOpen] = useState(false)
   const isTodayRest = restDays.some((day) => day.date === todayKey)
   const restLeft = getRestLeft(restDays, todayKey)
+  // 대기 목록에서 뺄 카드: 오늘 끝낸 카드. [끝내기] 로 일찍 끝냈고 카드 시간이 남은 카드는 이어서 하게 남깁니다. (#709)
+  const finishedTodayIds = splitRecordedCards(
+    todayCards,
+    allSessions,
+    todayKey,
+    listNow,
+  ).finishedIds
   const openCards = isTodayRest
     ? []
     : todayCards.filter(
         (card) =>
-          !doneTodayIds.has(card.id) &&
+          !finishedTodayIds.has(card.id) &&
           !isHandledOnDate(card, getCardDayMark(marks, card.id, todayKey), todayKey),
       )
   // 카드 시간이 끝났는데 시작도 처리도 안 한 카드 → [미루기] / [실패로 기록] 을 고르게 합니다.
