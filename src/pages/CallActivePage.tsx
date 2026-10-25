@@ -31,7 +31,13 @@ import {
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { saveMyEvent } from '@/lib/myEvents'
 import { loadLocalCheckIn } from '@/lib/quickCheckIn'
-import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
+import {
+  CALL_ENDING_NOTICE,
+  isCallEndingSoon,
+  RealtimeCallError,
+  startRealtimeCall,
+  type RealtimeCall,
+} from '@/lib/realtimeCall'
 import { loadSchoolClass, schoolTodayOrNullQuery, todaySubjectsOf } from '@/lib/schoolToday'
 import { FOCUS_NAME_MAX, loadStudyFocus } from '@/lib/studyFocus'
 import { COACH_PATH } from '@/lib/chatRooms'
@@ -284,8 +290,11 @@ export function CallActivePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [seconds, setSeconds] = useState(0)
-  // 서버가 정한 통화 한 번의 최대 길이(초). 연결된 뒤에 정해집니다. 서버가 안 알려 줬으면 null (제한 없음)
+  // 통화 한 번의 최대 길이(초). 연결된 뒤에 서버 값으로 정해집니다. (서버 값이 없거나 이상하면 180초, lib/realtimeCall.ts)
+  // 연결 전에는 null 입니다.
   const [maxCallSeconds, setMaxCallSeconds] = useState<number | null>(null)
+  // 끝나기 30초 전 "마무리해" 안내를 이번 통화에서 이미 AI 에게 보냈는지. (한 통화에 한 번만, 다시 시도하면 새 통화라 다시 보냄)
+  const hasSentEndingNoticeRef = useRef(false)
   const [isMuted, setIsMuted] = useState(false)
   // 오늘의 관리 강도입니다. 아직 진짜 값이 없어서 고정값이에요. (자세한 건 todayCare.ts)
   // 0~3 으로 바꿔 보면 색·표정·인사말이 달라집니다.
@@ -551,6 +560,15 @@ export function CallActivePage() {
     navigate('/call/result', { replace: true, state: toResultState(callId, messages) })
   }
 
+  // 끝나기 30초 전에 AI 에게 "새 질문 말고 약속 하나로 마무리해" 를 한 번 알립니다. (#699)
+  // 말 중간에 갑자기 끊기지 않게, AI 가 미리 마무리하게 하려는 것입니다. 바로 말하게 하지는 않아서 학생 말을 끊지 않습니다.
+  useEffect(() => {
+    if (connection !== 'connected' || maxCallSeconds === null) return
+    if (hasSentEndingNoticeRef.current || !isCallEndingSoon(seconds, maxCallSeconds)) return
+    hasSentEndingNoticeRef.current = true
+    callRef.current?.sendAppNotice(CALL_ENDING_NOTICE)
+  }, [connection, maxCallSeconds, seconds])
+
   // 서버가 정한 최대 길이가 되면 통화를 끊고 결과 화면으로 갑니다. 음성 통화는 길수록 돈이 많이 들기 때문입니다.
   // (화면을 떠나면 위 useEffect 의 정리 코드가 연결과 마이크를 끕니다)
   useEffect(() => {
@@ -576,9 +594,10 @@ export function CallActivePage() {
   // 다시 시도: "연결 중"으로 돌려놓고 attempt 를 올리면 위 useEffect 가 새로 연결합니다.
   function handleRetry() {
     setConnection('connecting')
-    // 새 통화라서 통화 시간과 지난 대화 말풍선을 처음으로 돌립니다.
+    // 새 통화라서 통화 시간과 지난 대화 말풍선을 처음으로 돌립니다. (끝나기 전 안내도 새 통화에서 다시 보냄)
     setSeconds(0)
     setMessages([])
+    hasSentEndingNoticeRef.current = false
     setAttempt((prev) => prev + 1)
   }
 

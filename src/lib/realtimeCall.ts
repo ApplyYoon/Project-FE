@@ -27,9 +27,10 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
 //   요청  POST /realtime/session   { careLevel, maxHarshness, card, studySignals, otherRooms? }
-//   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
+//   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
 //   - otherRooms(선택, #699 · BE #434): 오늘 채팅 방들에서 학생이 한 말 몇 줄 ('계획: …' 모양, 12줄 · 한 줄 200자까지)
-//     서버가 아직 배포 전이면 이 칸은 무시됩니다. 그래도 통화는 됩니다.
+//   - maxSeconds(#699 · BE #434, 서버 설정 · 기본 300초): 옛 서버는 이 칸 대신 maxCallSeconds(기본 180초)를 줍니다.
+//     서버가 아직 배포 전이면 otherRooms 는 무시되고 maxSeconds 는 안 옵니다. 둘 다 그래도 통화는 됩니다. (readCallMaxSeconds)
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 //         403 CALL_LOCKED (옛 서버만. 공부 조건은 2026-10-22 에 BE 에서 뺐습니다)
 //
@@ -46,6 +47,69 @@ const CONNECT_TIMEOUT_MS = 15_000
 
 // OpenAI 와 SDP 를 주고받는 주소입니다. (문서의 현재 주소. 버전이 바뀌면 문서를 다시 확인하세요)
 const OPENAI_CALLS_URL = 'https://api.openai.com/v1/realtime/calls'
+
+// ---- 통화 길이 (#699) ----
+
+/** 서버가 통화 길이를 안 알려 주거나 이상한 값을 주면 쓰는 길이(초). 예전 서버의 기본값 3분입니다. */
+export const DEFAULT_CALL_SECONDS = 180
+// 서버가 준 길이로 믿는 범위(초). 1분보다 짧거나 15분보다 길면 잘못 온 값으로 봅니다.
+const MIN_CALL_SECONDS = 60
+const MAX_CALL_SECONDS = 900
+
+/** 정수이고 60 ~ 900 이면 true */
+function isCallSeconds(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= MIN_CALL_SECONDS &&
+    value <= MAX_CALL_SECONDS
+  )
+}
+
+/**
+ * 서버 응답에서 통화 한 번의 최대 길이(초)를 꺼냅니다.
+ * 새 칸 maxSeconds → 옛 칸 maxCallSeconds → 180초 순서입니다. 둘 다 정수 60 ~ 900 일 때만 씁니다.
+ *
+ *   readCallMaxSeconds({ maxSeconds: 300 })                       -> 300
+ *   readCallMaxSeconds({ maxSeconds: 30, maxCallSeconds: 180 })   -> 180 (30초는 이상한 값)
+ *   readCallMaxSeconds({ maxSeconds: '300' })                     -> 180
+ */
+export function readCallMaxSeconds(record: Record<string, unknown>): number {
+  if (isCallSeconds(record.maxSeconds)) return record.maxSeconds
+  if (isCallSeconds(record.maxCallSeconds)) return record.maxCallSeconds
+  return DEFAULT_CALL_SECONDS
+}
+
+/** 끝나기 몇 초 전에 AI 에게 "마무리해" 를 알릴지 */
+export const CALL_ENDING_NOTICE_SECONDS = 30
+/** 끝나기 30초 전에 AI 에게 보내는 앱 안내. 학생에게는 보이지 않고, AI 가 다음에 말할 때 이 안내를 따릅니다. */
+export const CALL_ENDING_NOTICE =
+  '(앱 안내) 30초 남았어. 새 질문은 하지 말고, 약속 하나로 짧게 마무리해.'
+
+/**
+ * 지금 "끝나기 30초 전" 안에 들어왔는지. (화면이 이 값이 처음 true 가 될 때 한 번만 알립니다)
+ *   isCallEndingSoon(269, 300) -> false   isCallEndingSoon(270, 300) -> true   isCallEndingSoon(300, 300) -> false (이미 끝)
+ */
+export function isCallEndingSoon(seconds: number, maxSeconds: number): boolean {
+  return seconds >= maxSeconds - CALL_ENDING_NOTICE_SECONDS && seconds < maxSeconds
+}
+
+/**
+ * AI 에게 앱의 안내 한 줄을 대화에 끼워 넣는 이벤트입니다. (OpenAI Realtime 의 conversation.item.create)
+ * role 은 system 입니다. 문서에 "대화 중 언제든 넣을 수 있는 시스템 메시지" 로 나와 있습니다.
+ * ⚠️ response.create 는 같이 보내지 않습니다. 바로 말하게 하면 학생 말을 끊을 수 있어서, AI 가 다음 차례에 말할 때 반영됩니다.
+ * ⚠️ 진짜 서버(GPT 음성)로는 아직 확인하지 못했습니다.
+ */
+export function appNoticeEvent(text: string): Record<string, unknown> {
+  return {
+    type: 'conversation.item.create',
+    item: {
+      type: 'message',
+      role: 'system',
+      content: [{ type: 'input_text', text }],
+    },
+  }
+}
 
 /**
  * 연결이 실패한 이유. 화면에서 이유별로 다른 안내를 보여주려고 나눕니다.
@@ -75,8 +139,13 @@ export interface RealtimeCall {
   close: () => void
   /** true 면 내 마이크 소리를 AI 에게 보내지 않습니다. (마이크는 켜 둔 채 소리만 끊깁니다) */
   setMuted: (muted: boolean) => void
-  /** 서버가 정한 통화 한 번의 최대 길이(초). 이 시간이 되면 화면이 통화를 끊습니다. 서버가 안 알려 줬으면 null */
-  maxCallSeconds: number | null
+  /** 통화 한 번의 최대 길이(초). 이 시간이 되면 화면이 통화를 끊습니다. 서버 값이 없거나 이상하면 180초 (readCallMaxSeconds) */
+  maxCallSeconds: number
+  /**
+   * AI 에게 앱의 안내 한 줄을 보냅니다. (예: 끝나기 30초 전 "마무리해") 학생 화면 · 자막에는 나오지 않습니다.
+   * AI 에게 바로 말하라고 하지는 않아서, AI 가 다음에 말할 때 따릅니다. 통로가 닫혔으면 보내지 않습니다.
+   */
+  sendAppNotice: (text: string) => void
   /** 서버의 통화 기록 번호. 통화가 끝나면 이 번호로 자막을 보내 결론을 받습니다. (lib/callReview.ts) 서버가 안 알려 줬으면 null */
   callId: string | null
 }
@@ -117,8 +186,8 @@ export function unlockCallAudio(): void {
 interface CallSession {
   /** 임시 키. 이 값으로 OpenAI 에 연결합니다. */
   key: string
-  /** 통화 한 번의 최대 길이(초). 서버가 안 알려 줬으면 null */
-  maxCallSeconds: number | null
+  /** 통화 한 번의 최대 길이(초). 서버 값이 없거나 이상하면 180초 */
+  maxCallSeconds: number
   /** 통화 기록 번호. 서버가 안 알려 줬으면 null */
   callId: string | null
 }
@@ -162,10 +231,7 @@ async function requestCallSession(
     // sk- 로 시작하면 서버가 진짜 API 키를 그대로 내려준 것입니다. 노출 사고이므로 절대 쓰지 않고 멈춥니다.
     if (value.startsWith('sk-')) throw new Error('서버가 API 키를 그대로 보냈습니다')
 
-    const maxCallSeconds =
-      typeof record.maxCallSeconds === 'number' && record.maxCallSeconds > 0
-        ? record.maxCallSeconds
-        : null
+    const maxCallSeconds = readCallMaxSeconds(record)
     const callId = typeof record.callId === 'string' && record.callId !== '' ? record.callId : null
     return { key: value, maxCallSeconds, callId }
   } catch (error) {
@@ -417,5 +483,17 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
     })
   }
 
-  return { close, setMuted, maxCallSeconds: session.maxCallSeconds, callId: session.callId }
+  // AI 에게 앱의 안내 한 줄을 보냅니다. 통화가 끝나 통로가 닫혔으면 보내지 않습니다.
+  function sendAppNotice(text: string) {
+    if (dataChannel === null || dataChannel.readyState !== 'open') return
+    dataChannel.send(JSON.stringify(appNoticeEvent(text)))
+  }
+
+  return {
+    close,
+    setMuted,
+    sendAppNotice,
+    maxCallSeconds: session.maxCallSeconds,
+    callId: session.callId,
+  }
 }
