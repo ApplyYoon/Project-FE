@@ -454,6 +454,9 @@ export function CallActivePage() {
       tone: getCallTone(),
       // 내 기록을 숫자로 정리한 "학생 카드" 를 같이 보냅니다. AI 가 이걸 보고 묻는 것과 말투를 바꿉니다. (lib/callCard.ts)
       card: loadCallCard(),
+      // 오늘 채팅 방(계획 · 상담 · 과목 쌤)에서 한 말 몇 줄. 통화는 어느 방도 아니라서 모든 방의 말을 모읍니다. (#699)
+      // AI 가 채팅에서 이미 정한 것을 또 묻지 않게 합니다.
+      otherRooms: otherRoomLines(user?.id ?? 'unknown', null, getTodayKey()),
       // 대화 글자가 올 때마다 말풍선 목록에 반영합니다.
       onTranscript: (event) => setMessages((prev) => applyTranscript(prev, event)),
       // 통화 중 "계획 짜 줘" 를 위한 도구 (오늘 날짜를 알려 줘야 AI 가 날짜를 셀 수 있음)

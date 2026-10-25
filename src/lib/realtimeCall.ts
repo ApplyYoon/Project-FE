@@ -26,8 +26,10 @@ import { parseTranscriptEvent, type TranscriptEvent } from '@/lib/transcript'
 
 // 우리 서버에서 임시 키를 받는 경로입니다. 서버 주소(VITE_API_BASE_URL) 뒤에 붙습니다. (lib/api.ts)
 // 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "AI 통화", BE 이슈 #27)
-//   요청  POST /realtime/session   { careLevel, maxHarshness, card, studySignals }
+//   요청  POST /realtime/session   { careLevel, maxHarshness, card, studySignals, otherRooms? }
 //   응답  { "value": "임시 키", "expiresAt": 끝나는 순간, "maxCallSeconds": 통화 최대 길이(초), "callId": "통화 기록 번호" }
+//   - otherRooms(선택, #699 · BE #434): 오늘 채팅 방들에서 학생이 한 말 몇 줄 ('계획: …' 모양, 12줄 · 한 줄 200자까지)
+//     서버가 아직 배포 전이면 이 칸은 무시됩니다. 그래도 통화는 됩니다.
 //   실패  429 (오늘 통화를 다 씀) / 503 (통화가 꺼져 있음 · AI 와 연결 못 함)
 //         403 CALL_LOCKED (옛 서버만. 공부 조건은 2026-10-22 에 BE 에서 뺐습니다)
 //
@@ -128,12 +130,14 @@ interface CallSession {
  *
  * 오늘의 말투(tone)와 학생 카드(card)를 같이 보냅니다. 서버는 이것으로 AI 의 지침을 만들어 임시 키에 묶습니다.
  * 그래서 같은 날이라도 내 기록에 따라 AI 가 묻는 것과 말투가 달라집니다. (lib/callCard.ts)
+ * 오늘 채팅 방들에서 한 말(otherRooms)도 보내서, AI 가 채팅에서 이미 한 이야기를 또 묻지 않게 합니다. (#699)
  * ⚠️ 주소 뒤(?a=b)가 아니라 본문에 담아 보냅니다. 주소는 서버 기록에 남기 쉽기 때문입니다.
  */
 async function requestCallSession(
   signal: AbortSignal,
   tone: CallTone,
   card: CallCard | null,
+  otherRooms: string[],
 ): Promise<CallSession> {
   try {
     const data = await api<unknown>(SESSION_PATH, {
@@ -145,6 +149,8 @@ async function requestCallSession(
         // 기기에만 있는 최근 7일 집중도 · 폰 든 횟수 · 확인 문제 결과 (lib/studySignals.ts, BE #334)
         studySignals: loadStudySignals(),
         // 생각 습관 테스트(selfReportedBiases · selfReportedWeaknesses)는 #417 에서 지워서 보내지 않습니다. (서버에서 선택 칸)
+        // 오늘 채팅 방들에서 한 말 (lib/coachThread.ts 의 otherRoomLines, #699). 없으면 칸을 빼고 보냅니다.
+        ...(otherRooms.length > 0 ? { otherRooms } : {}),
       }),
       signal,
     })
@@ -254,6 +260,8 @@ export interface StartCallOptions {
   tone?: CallTone
   /** 학생 카드(내 기록을 숫자로 정리한 것). 서버가 이것으로 질문과 말투를 정합니다. 기록이 없으면 null (lib/callCard.ts) */
   card?: CallCard | null
+  /** 오늘 채팅 방들에서 학생이 한 말 몇 줄 ('계획: …' 모양, lib/coachThread.ts 의 otherRoomLines). 없으면 보내지 않습니다. (#699) */
+  otherRooms?: string[]
   /** AI 가 통화 중에 부를 수 있는 도구 (예: 계획 짜서 화면에 띄우기, lib/callTools.ts). 없으면 알리지 않습니다. */
   tools?: RealtimeTool[]
   /**
@@ -279,7 +287,12 @@ export async function startRealtimeCall(options: StartCallOptions = {}): Promise
   let session: CallSession
   let microphone: MediaStream
   try {
-    session = await requestCallSession(signal, options.tone ?? DEFAULT_TONE, options.card ?? null)
+    session = await requestCallSession(
+      signal,
+      options.tone ?? DEFAULT_TONE,
+      options.card ?? null,
+      options.otherRooms ?? [],
+    )
     microphone = await openMicrophone()
   } catch (error) {
     clearTimeout(timeoutId)
