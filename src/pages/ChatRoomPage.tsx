@@ -136,7 +136,7 @@ import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quic
 import { toggleReason } from '@/lib/reasons'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
-import { loadSchoolClass, schoolTodayOrNullQuery, type SchoolToday } from '@/lib/schoolToday'
+import { loadSchoolClass, schoolTodayOrNullQuery, todaySubjectsOf } from '@/lib/schoolToday'
 import { SHORTFALL_REASONS } from '@/lib/sessionTags'
 import { loadData, saveData } from '@/lib/storage'
 import {
@@ -442,19 +442,6 @@ function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanReq
     typing: true,
     ...(result.isDemo ? { isDemo: true } : {}),
   })
-}
-
-/**
- * 오늘 시간표의 과목 (겹치지 않게). AI 가 오늘 계획의 카드 글을 쓸 때 "오늘 배운 과목" 으로 참고합니다.
- * 주말에는 시간표가 다음 월요일 것이라 오늘 배운 과목이 아니어서 빈 목록입니다. (schoolDay, 2026-10-22)
- */
-function todaySubjectsOf(school: SchoolToday | null): string[] {
-  const subjects: string[] = []
-  if (school && school.schoolDay !== school.date) return subjects
-  for (const period of school?.timetable ?? []) {
-    if (!subjects.includes(period.subject)) subjects.push(period.subject)
-  }
-  return subjects
 }
 
 // ---- 문제 말풍선 (lib/studyQuiz.ts, 2026-10-18 확인 문제) ----
