@@ -79,6 +79,8 @@ function loadSessions(): StudySession[] {
 
 interface SubjectTagProps {
   subject: Subject | undefined
+  /** 기록에 적힌 과목 id. 빈 글자('')면 처음부터 과목 없이 한 공부입니다 (과목을 안 고른 카드 · 카드 없이 시작) */
+  subjectId: string
 }
 
 /**
@@ -93,12 +95,17 @@ function findSubject(subjects: Subject[], subjectId: string): Subject | undefine
   )
 }
 
-/** 과목 태그. 과목을 지워서 찾을 수 없으면 "삭제된 과목" 으로 보여줍니다. */
-function SubjectTag({ subject }: SubjectTagProps) {
+/**
+ * 과목 태그.
+ *   - 과목 없이 한 공부(subjectId '')면 "과목 없음"
+ *   - 과목 id 는 있는데 찾을 수 없으면(과목을 지움) "삭제된 과목"
+ * 둘을 한데 "삭제된 과목" 으로 보여 줘서, 과목을 지운 적이 없는데도 떴습니다. (#746)
+ */
+function SubjectTag({ subject, subjectId }: SubjectTagProps) {
   if (!subject) {
     return (
       <span className="inline-block max-w-full truncate rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-        삭제된 과목
+        {subjectId === '' ? '과목 없음' : '삭제된 과목'}
       </span>
     )
   }
@@ -230,7 +237,10 @@ export function StatsPage() {
                               key={record.subjectId}
                               className="inline-flex max-w-full items-center gap-1"
                             >
-                              <SubjectTag subject={findSubject(subjects, record.subjectId)} />
+                              <SubjectTag
+                                subject={findSubject(subjects, record.subjectId)}
+                                subjectId={record.subjectId}
+                              />
                               <span className="shrink-0 text-xs text-slate-500 tabular-nums">
                                 {formatMinutes(record.minutes)}
                               </span>
@@ -258,7 +268,10 @@ export function StatsPage() {
                         {day.subjects.map((record) => (
                           <div key={record.subjectId}>
                             <div className="flex items-center justify-between gap-3">
-                              <SubjectTag subject={findSubject(subjects, record.subjectId)} />
+                              <SubjectTag
+                                subject={findSubject(subjects, record.subjectId)}
+                                subjectId={record.subjectId}
+                              />
                               <span className="shrink-0 text-sm font-semibold text-slate-900 tabular-nums">
                                 {formatMinutes(record.minutes)}
                               </span>
