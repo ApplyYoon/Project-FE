@@ -4,6 +4,7 @@ import { SchoolEventsCard } from '@/components/ui/SchoolEventsCard'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { StickyActionBar } from '@/components/ui/StickyActionBar'
 import { useCards } from '@/hooks/useCards'
+import { useGoalLimit } from '@/hooks/useGoalLimit'
 import { useGoals } from '@/hooks/useGoals'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
@@ -23,7 +24,8 @@ import {
 import { cn } from '@/lib/cn'
 import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
 import { formatDday, getDaysUntil } from '@/lib/exams'
-import { MAX_ACTIVE_GOALS } from '@/lib/goals'
+import { isGoalResultDue } from '@/lib/goalProgress'
+import { MAX_ACTIVE_GOALS, getDoneGoals } from '@/lib/goals'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { getWeekday, getWeekdayName } from '@/lib/routines'
 import type { Card as CardData, FixedBlock, Goal, StudySession } from '@/types'
@@ -40,15 +42,27 @@ function formatGap(totalMinutes: number): string {
 }
 
 interface GoalListProps {
-  /** 진행 중인 목표 (최대 3개) */
+  /** 진행 중인 목표 (보통 최대 3개. 서버 · 시연 데이터 때문에 더 많을 수도 있음) */
   goals: Goal[]
+  /** 결과를 적고 마무리한 목표 (#672) */
+  doneGoals: Goal[]
+  todayKey: string
 }
 
-/** 진행 중인 목표 목록과 [목표 만들기] 버튼 (최종 기획서 3장 카드 탭 「목표 목록(최대 3개)」, #391) */
-function GoalList({ goals }: GoalListProps) {
-  const isFull = goals.length >= MAX_ACTIVE_GOALS
+/**
+ * 진행 중인 목표 목록과 [목표 만들기] 버튼 (최종 기획서 3장 카드 탭 「목표 목록(최대 3개)」, #391)
+ * 맨 아래에 마무리한 목표를 접어서 보관합니다. (#672)
+ */
+function GoalList({ goals, doneGoals, todayKey }: GoalListProps) {
+  // 서버에만 있는 진행 중 목표까지 세어서 판단합니다. (이 기기에서 2개여도 서버가 3개면 만들 수 없음)
+  const { canAdd, activeCount, serverOnlyCount, localOnlyCount } = useGoalLimit(goals)
+  const isFull = !canAdd
+  // 서버나 시연 데이터로 진행 중 목표가 3개보다 많이 들어올 수 있습니다.
+  // 그때 '목표 9/3' 은 헷갈려서, 개수만 '목표 9개' 로 보여 주고 아래에 권하는 수를 한 줄로 적습니다. (#672)
+  const isOverMax = goals.length > MAX_ACTIVE_GOALS
+  const title = isOverMax ? `목표 ${goals.length}개` : `목표 ${goals.length}/${MAX_ACTIVE_GOALS}`
   return (
-    <Card title={`목표 ${goals.length}/${MAX_ACTIVE_GOALS}`}>
+    <Card title={title}>
       {goals.length === 0 ? (
         <p className="text-[15px] break-keep text-slate-500">
           아직 목표가 없어요. 목표를 세우면 카드를 목표별로 묶어서 볼 수 있어요.
@@ -68,17 +82,33 @@ function GoalList({ goals }: GoalListProps) {
                 <span className="min-w-0 flex-1 truncate font-medium text-slate-900">
                   {goal.title}
                 </span>
-                <span className="shrink-0 text-xs text-slate-500">
-                  {goal.kind === 'score' ? '점수형' : '완주형'}
-                </span>
+                {/* D-day 가 됐으면 유형 대신 할 일을 보여 줍니다. (누르면 상세에서 결과를 적음) */}
+                {isGoalResultDue(goal, todayKey) ? (
+                  <span className="shrink-0 text-xs font-semibold text-amber-700">결과 적기</span>
+                ) : (
+                  <span className="shrink-0 text-xs text-slate-500">
+                    {goal.kind === 'score' ? '점수형' : '완주형'}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
         </ul>
       )}
+      {localOnlyCount > 0 && (
+        <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs break-keep text-amber-800">
+          이 기기에만 있는 목표가 {localOnlyCount}개 있어요. 서버에는 진행 중인 목표가{' '}
+          {MAX_ACTIVE_GOALS}
+          개까지라 올리지 못했어요. 필요 없는 목표는 눌러서 그만두기로 정리해 주세요.
+        </p>
+      )}
       {isFull ? (
         <p className="mt-3 text-xs break-keep text-slate-500">
-          목표는 동시에 {MAX_ACTIVE_GOALS}개까지예요.
+          {isOverMax
+            ? `목표는 동시에 ${MAX_ACTIVE_GOALS}개까지 권해요.`
+            : `목표는 동시에 ${MAX_ACTIVE_GOALS}개까지예요.`}
+          {serverOnlyCount > 0 &&
+            ` 다른 기기나 예전 기록으로 서버에 진행 중인 목표가 ${activeCount}개 있어요. 끝내거나 그만둔 목표가 생기면 새로 만들 수 있어요.`}
         </p>
       ) : (
         <Link
@@ -87,6 +117,29 @@ function GoalList({ goals }: GoalListProps) {
         >
           + 목표 만들기
         </Link>
+      )}
+      {doneGoals.length > 0 && (
+        // 자주 보지 않으니 접어 둡니다. <details> 는 누르면 펼쳐지는 HTML 기본 태그입니다.
+        <details className="mt-3 border-t border-slate-100 pt-1">
+          <summary className="flex h-10 cursor-pointer items-center text-sm font-medium text-slate-600">
+            완료한 목표 {doneGoals.length}개
+          </summary>
+          <ul className="flex flex-col divide-y divide-slate-100">
+            {doneGoals.map((goal) => (
+              <li key={goal.id}>
+                <Link
+                  to={`/goals/${goal.id}`}
+                  className="-mx-2 flex min-h-11 items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"
+                >
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{goal.title}</span>
+                  <span className="max-w-[45%] shrink-0 truncate text-xs text-slate-500">
+                    {goal.result || '완료'}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </Card>
   )
@@ -440,7 +493,7 @@ export function CardsPage() {
   // 카드 (최종 기획서 「4.3」, #392)
   const { cards } = useCards()
   // 목표 (최종 기획서 「4.7」, #391)
-  const { activeGoals } = useGoals()
+  const { goals, activeGoals } = useGoals()
   // 공부 기록. 블록의 "한 시간" · 결과와 계획 패턴에 씁니다.
   const { sessions } = useStudySessions()
 
@@ -531,8 +584,8 @@ export function CardsPage() {
         onSelectDate={setSelectedDate}
       />
 
-      {/* 진행 중인 목표 (#391) */}
-      <GoalList goals={activeGoals} />
+      {/* 진행 중인 목표 (#391) · 완료한 목표 (#672) */}
+      <GoalList goals={activeGoals} doneGoals={getDoneGoals(goals)} todayKey={todayKey} />
 
       {/* 학교 학사일정 · 시험이 다가오면 계획 다시 짜기 (#508) */}
       <SchoolEventsCard />
