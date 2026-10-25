@@ -435,7 +435,11 @@ function HomeCalendarSection({
       <GoogleConnectRow connection={connection} />
 
       {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
-      <div className="mt-1 flex justify-end">
+      {/* 타이머 탭도 빠져서(2026-10-24), 카드 없이 시작 · 미루기 · 폰 내고 시작은 여기서 타이머로 들어갑니다. (#717) */}
+      <div className="mt-1 flex flex-wrap justify-end gap-x-4">
+        <Link to="/timer" className={textLinkClass}>
+          타이머 · 카드 없이 시작 ›
+        </Link>
         <Link to="/cards" className={textLinkClass}>
           카드 · 목표 모두 보기 ›
         </Link>
