@@ -41,7 +41,7 @@ import { mockSubjects } from '@/lib/mock'
 import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
 import { getCardDayMarkInfo, loadRestDays } from '@/lib/restDays'
 import { loadRoutines } from '@/lib/routines'
-import { buildCardIdByPlanId } from '@/lib/sessionRecords'
+import { buildCardIdByPlanId, fillSessionSubjects } from '@/lib/sessionRecords'
 import { loadData, loadRecord } from '@/lib/storage'
 import { dayReviewLines } from '@/lib/talkLines'
 import { formatHoursMinutes, getWeeklyStudy } from '@/lib/weeklyStudy'
@@ -121,14 +121,15 @@ export function StatsPage() {
   const [sessions] = useState<StudySession[]>(loadSessions)
   const subjects = useSubjects()
 
-  // 최근 날짜가 맨 앞에 오도록 날짜별로 묶습니다.
-  const days = groupSessionsByDate(sessions)
-
   // 달력의 그날 감정 표시에 체크인을 씁니다.
   const [checkIns] = useState(loadCheckInsByDate)
 
   // 달력과 4주 실행률은 카드 결과(실행 · 지연 · 미실행 · 휴식)로 정합니다. (#410, lib/calendarDay.ts)
   const { cards } = useCards()
+
+  // 최근 날짜가 맨 앞에 오도록 날짜별로 묶습니다.
+  // 과목 없이 저장된 기록은 그 카드의 과목 → 카드 제목에 든 과목 이름으로 채워서 보여 줍니다. (#746)
+  const days = groupSessionsByDate(fillSessionSubjects(sessions, cards, subjects))
   // 지금 시각은 화면을 처음 그릴 때 한 번만 읽습니다. (다시 그릴 때마다 바뀌면 결과가 흔들립니다)
   const [now] = useState(Date.now)
   // 옛 계획으로 잰 기록도 그 카드의 기록으로 보려고 "옛 계획 id → 카드 id" 표를 만듭니다. (lib/sessionRecords.ts)
