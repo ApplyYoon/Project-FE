@@ -9,6 +9,7 @@ import { useCards } from '@/hooks/useCards'
 import { useSendCheckIn } from '@/hooks/useCheckInSync'
 import { useQueryParam } from '@/hooks/useQueryParam'
 import { useStudySessions } from '@/hooks/useStudySessions'
+import { requestSettingsFromText } from '@/lib/aiSettingsApi'
 import { ApiError, getApiErrorMessage } from '@/lib/api'
 import { finishCall, type CallLine } from '@/lib/callReview'
 import { addCardMark, CARD_FAIL_CAUSES, loadCardMarks } from '@/lib/cardMarks'
@@ -37,6 +38,18 @@ import {
   type PlanHandoffChip,
   type TalkRequest,
 } from '@/lib/chatRooms'
+import {
+  applyNotifyChange,
+  buildNotifyChange,
+  getNotifyChangeRows,
+  loadTalkableSettings,
+  notifyDoneText,
+  notifyProposalText,
+  notifySummaryOf,
+  parseNotifyRequest,
+  type NotifyChange,
+  type NotifyRequest,
+} from '@/lib/chatNotifySettings'
 import { canSyncCheckIns, todayCheckInForCoachQuery } from '@/lib/checkInsApi'
 import {
   SKIP_FOCUS_NAME_LABEL,
@@ -48,13 +61,12 @@ import {
   buildMissionProgress,
   buildMorningBriefing,
   buildSessionRecap,
-  chipsFromServer,
-  codeChipsFor,
   findRecapSession,
   loadPhoneLift,
   PLAN_CHIP,
   QUIZ_CHIP,
   quizChipForCard,
+  replyChipsFor,
   type CoachChip,
   type CoachMessage,
 } from '@/lib/coachBriefing'
@@ -67,6 +79,8 @@ import {
   LIGHTER_REQUEST,
   MAX_LONG_PLAN_DAYS,
   MAX_PLAN_TEXT_LENGTH,
+  dayPlanAskOf,
+  dayPlanAskText,
   makeDemoDayPlan,
   makeDemoLongPlan,
   parseLongPlanText,
@@ -80,6 +94,7 @@ import {
   reviseLongPlan,
   withDemoFallback,
   type CoachPlan,
+  type DayPlanAsk,
   type LongPlanInput,
   type PlanReply,
   type PlanStatus,
@@ -92,6 +107,7 @@ import {
   newSessionStart,
   nextBubbleId,
   otherRoomLines,
+  planTalkLines,
   saveCoachThread,
   sessionLines,
   type CoachThread,
@@ -120,7 +136,7 @@ import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quic
 import { toggleReason } from '@/lib/reasons'
 import { loadRestDays } from '@/lib/restDays'
 import { gradeNumberOf } from '@/lib/schoolEvents'
-import { loadSchoolClass, schoolTodayOrNullQuery, type SchoolToday } from '@/lib/schoolToday'
+import { loadSchoolClass, schoolTodayOrNullQuery, todaySubjectsOf } from '@/lib/schoolToday'
 import { SHORTFALL_REASONS } from '@/lib/sessionTags'
 import { loadData, saveData } from '@/lib/storage'
 import {
@@ -330,13 +346,21 @@ function withBubble(thread: CoachThread, bubble: Omit<ThreadBubble, 'id' | 'at'>
 /**
  * 계획을 짜거나 고쳐 달라는 요청 하나
  *   day    — 오늘 계획 (light 면 가볍게, date 가 있으면 그날 — 밤 정리 알림의 내일 계획)
+ *            ask 가 있으면 AI 가 채팅에서 학생과 정한 값(day_plan)대로 짭니다. (#695)
  *   long   — 시험 · 대회 날까지의 긴 계획 (notice 가 있으면 코치의 답 앞에 붙임)
  *   revise — 열려 있는 계획(bubbleId 의 말풍선)을 학생의 요청대로 고치기
+ * planTalkLines 는 계획 방에서 오늘 나눈 말입니다. (lib/coachThread.ts 의 planTalkLines, 서버의 planTalk)
  */
 type PlanRequest =
-  | { type: 'day'; light: boolean; date?: string }
+  | { type: 'day'; light: boolean; date?: string; ask?: DayPlanAsk; planTalkLines?: string[] }
   | { type: 'long'; input: LongPlanInput; notice: string | null }
-  | { type: 'revise'; bubbleId: number; plan: CoachPlan; request: string }
+  | {
+      type: 'revise'
+      bubbleId: number
+      plan: CoachPlan
+      request: string
+      planTalkLines?: string[]
+    }
 
 /** 긴 계획 칸에 적는 것 */
 interface LongPlanForm {
@@ -350,6 +374,8 @@ interface LongPlanForm {
 
 /** 위기 표현이 감지돼서 계획 대신 하는 말 (아래에 상담 전화 한 줄이 같이 보임) */
 const PLAN_HELP_REPLY = '계획은 잠깐 미뤄 두자. 마음이 힘들면 아래 번호로 언제든 이야기해도 돼.'
+/** AI 가 정한 값으로 지금 오늘 카드를 바로 고칠 때, 고치기 전 카드를 보여 주는 말 (#695) */
+const BEFORE_PLAN_REPLY = '지금 오늘 계획이야. 이야기한 대로 바로 고쳐 볼게.'
 
 /** 내일 계획이면 코치의 말을 "내일 계획" 으로 바꿉니다. (서버 · 시연용 계획의 말은 "오늘 계획을 짜 봤어" 로 정해져 있음) */
 function asTomorrowReply(result: PlanReply): PlanReply {
@@ -376,6 +402,22 @@ function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanReq
   if (result.showHelp) {
     return withBubble({ ...thread, isHelpShown: true }, { speaker: 'ai', text: PLAN_HELP_REPLY })
   }
+  const { before, ...rest } = result
+  if (before) {
+    // AI 가 정한 값으로 지금 오늘 카드를 바로 고쳤으면(#695), 지금 카드를 먼저 계획 말풍선으로 보여 주고
+    // 그 말풍선을 고친 것처럼 이어 붙입니다. (못 고쳤으면 지금 카드 말풍선이 열린 채로 남아서 이어서 고칠 수 있음)
+    const beforeId = nextBubbleId(thread.bubbles)
+    const closed = withPlanStatus(thread, (bubble) =>
+      bubble.plan?.status === 'open' ? 'closed' : null,
+    )
+    const shown = withBubble(closed, { speaker: 'ai', text: BEFORE_PLAN_REPLY, plan: before })
+    return applyPlanReply(shown, rest, {
+      type: 'revise',
+      bubbleId: beforeId,
+      plan: before,
+      request: '',
+    })
+  }
   if (result.plan) {
     // 새 계획이 나오면 열려 있던 계획은 끝납니다. 고친 계획이면 그 전 것은 '고치기 전', 나머지는 '닫음'
     const closed = withPlanStatus(thread, (bubble) => {
@@ -400,19 +442,6 @@ function applyPlanReply(thread: CoachThread, result: PlanReply, request: PlanReq
     typing: true,
     ...(result.isDemo ? { isDemo: true } : {}),
   })
-}
-
-/**
- * 오늘 시간표의 과목 (겹치지 않게). AI 가 오늘 계획의 카드 글을 쓸 때 "오늘 배운 과목" 으로 참고합니다.
- * 주말에는 시간표가 다음 월요일 것이라 오늘 배운 과목이 아니어서 빈 목록입니다. (schoolDay, 2026-10-22)
- */
-function todaySubjectsOf(school: SchoolToday | null): string[] {
-  const subjects: string[] = []
-  if (school && school.schoolDay !== school.date) return subjects
-  for (const period of school?.timetable ?? []) {
-    if (!subjects.includes(period.subject)) subjects.push(period.subject)
-  }
-  return subjects
 }
 
 // ---- 문제 말풍선 (lib/studyQuiz.ts, 2026-10-18 확인 문제) ----
@@ -456,11 +485,20 @@ function closeOpenQuizzes(thread: CoachThread): CoachThread {
   return { ...thread, bubbles }
 }
 
-/** 문제 말풍선을 대화방 끝에 붙입니다. (서버를 부르지 않는 "틀린 문제 다시" 도 이걸로) */
+/**
+ * 문제 말풍선을 대화방 끝에 붙입니다. (서버를 부르지 않는 "틀린 문제 다시" 도 이걸로)
+ * 단원(unit)은 AI 가 낸 문제에만 있습니다. 단원이 있는 결과만 서버에 저장됩니다. (lib/quizResultsApi.ts)
+ */
 function withNewQuiz(
   thread: CoachThread,
   text: string,
-  quiz: { topic: string; cardId: string | null; questions: QuizQuestion[]; isDemo: boolean },
+  quiz: {
+    topic: string
+    cardId: string | null
+    unit?: string | null
+    questions: QuizQuestion[]
+    isDemo: boolean
+  },
 ): CoachThread {
   const made = newQuiz({ ...quiz, now: Date.now() })
   return withBubble(closeOpenQuizzes(thread), { speaker: 'ai', text, quiz: made, typing: true })
@@ -492,6 +530,7 @@ function applyQuizReply(thread: CoachThread, result: QuizReply, input: QuizInput
   return withNewQuiz(thread, lines.join('\n'), {
     topic: input.topic,
     cardId: input.cardId,
+    unit: result.unit,
     questions: result.questions,
     isDemo: result.isDemo,
   })
@@ -530,6 +569,28 @@ function withReasonCheck(
 }
 
 /** 계획 이야기인지 (매일 코치 방 등에서 누르면 계획 방으로 넘깁니다) */
+const NOTIFY_HELP_REPLY = '알림은 잠깐 미뤄 두자. 마음이 힘들면 아래 번호로 언제든 이야기해도 돼.'
+const NOTIFY_FAILED_REPLY = '그건 채팅으로 못 바꿨어. 설정 → 알림에서 직접 바꿔 줘.'
+
+/** 알림 설정 변경안을 코치 말풍선으로 붙입니다. 바뀌는 칸이 없으면 그렇다고만 말합니다. (#594) */
+function withNotifyProposal(thread: CoachThread, change: NotifyChange): CoachThread {
+  const rows = getNotifyChangeRows(change, loadTalkableSettings())
+  if (rows.length === 0) {
+    return withBubble(thread, {
+      speaker: 'ai',
+      text: '이미 그렇게 돼 있어서 바꿀 게 없어. 설정 → 알림에서 자세히 볼 수 있어.',
+    })
+  }
+  return withBubble(thread, {
+    speaker: 'ai',
+    text: notifyProposalText(notifySummaryOf(change), rows),
+    chips: [
+      { kind: 'notifySettings', label: '✅ 바꿀게', change },
+      { kind: 'notifySettings', label: '그대로 둘게', change: null },
+    ],
+  })
+}
+
 function isPlanChip(chip: CoachChip): chip is PlanHandoffChip {
   return chip.kind === 'dayPlan' || chip.kind === 'longPlan' || chip.kind === 'makePlan'
 }
@@ -823,11 +884,14 @@ function RoomChat({ room }: RoomChatProps) {
     },
     onSuccess: ({ openId, reply }, variables) => {
       // AI 가 고른 빠른 답 · 행동이 있으면 그 칩을, 없으면 코드가 칩을 붙입니다. (핑계 협상 · 계획 · 시험)
+      // 위기 안내에는 칩이 없고, 계획 방에는 계획 칩이 늘 붙습니다. (lib/coachBriefing.ts)
       const studentText = variables.lines[variables.lines.length - 1]?.text ?? ''
-      const serverChips = chipsFromServer(reply, nowCard)
-      const studyChips = serverChips.length > 0 ? serverChips : codeChipsFor(studentText)
-      // 위기 안내(showHelp)에는 공부 칩을 붙이지 않습니다. 공부 이야기는 멈추고 도움 안내만 보여 줍니다.
-      const chips = reply.showHelp ? [] : studyChips
+      const chips = replyChipsFor({
+        reply,
+        studentText,
+        isPlanner: roomInfo.isPlanner,
+        nowCard,
+      })
       setThread((current) => {
         const reasonCheck = reasonCheckOf(current, reply.tags)
         return {
@@ -846,6 +910,31 @@ function RoomChat({ room }: RoomChatProps) {
           isHelpShown: current.isHelpShown || reply.showHelp,
         }
       })
+      // AI 가 학생과 오늘 계획을 정했으면(day_plan) 칩을 기다리지 않고 바로 짭니다. (계획 방만, #695)
+      const ask = roomInfo.isPlanner && !reply.showHelp ? dayPlanAskOf(reply.action) : null
+      if (ask) startAskedPlan(ask, reply.reply)
+    },
+  })
+
+  // 시각이 든 알림 부탁("밤 10시 이후엔 연락하지 마")은 서버 AI 가 변경안을 만듭니다. 바꾸는 건 [✅ 바꿀게] 를 누른 뒤입니다. (#594)
+  const settingsTalk = useMutation({
+    mutationFn: requestSettingsFromText,
+    onSuccess: (result) => {
+      setThread((current) => {
+        if (result.kind === 'proposal') {
+          return withNotifyProposal(current, { settings: result.proposal, nudge: null })
+        }
+        if (result.kind === 'help') {
+          return withBubble(
+            { ...current, isHelpShown: true },
+            { speaker: 'ai', text: NOTIFY_HELP_REPLY },
+          )
+        }
+        return withBubble(current, { speaker: 'ai', text: NOTIFY_FAILED_REPLY })
+      })
+    },
+    onError: () => {
+      setThread((current) => withBubble(current, { speaker: 'ai', text: NOTIFY_FAILED_REPLY }))
     },
   })
 
@@ -859,7 +948,7 @@ function RoomChat({ room }: RoomChatProps) {
           speaker: 'ai',
           text: reply.reply,
           // 위기 안내에는 공부 칩을 붙이지 않습니다. (위의 talk 와 같은 규칙)
-          chips: reply.showHelp ? [] : chipsFromServer(reply, nowCard),
+          chips: replyChipsFor({ reply, studentText: '', isPlanner: roomInfo.isPlanner, nowCard }),
           ...(reply.showHelp ? {} : { typing: true }),
           ...(reasonCheck ? { reasonCheck } : {}),
           ...(reply.sources.length > 0 ? { sources: reply.sources } : {}),
@@ -889,7 +978,11 @@ function RoomChat({ room }: RoomChatProps) {
         return withDemoFallback(
           () =>
             request.plan.kind === 'day'
-              ? reviseDayPlan(request.plan, request.request, { focus, subjects: todaySubjects })
+              ? reviseDayPlan(request.plan, request.request, {
+                  focus,
+                  subjects: todaySubjects,
+                  planTalk: request.planTalkLines,
+                })
               : reviseLongPlan(request.plan, request.request),
           () => reviseDemoPlan(request.plan, request.request),
         )
@@ -917,7 +1010,14 @@ function RoomChat({ room }: RoomChatProps) {
         : cards.filter((card) => card.date === planDate && !(card.repeatDays?.length ?? 0))
       if (editableCards.length > 0) {
         const current = planFromCards(editableCards)
-        if (!request.light) {
+        // AI 가 채팅에서 학생과 정한 값(day_plan)이 있으면 되묻지 않고 그 값대로 바로 고칩니다. (#695)
+        // 고치는 말은 코드가 만듭니다. (예: '총 120분, 21:00부터, 수학 먼저')
+        const revision = request.ask
+          ? dayPlanAskText(request.ask)
+          : request.light
+            ? LIGHTER_REQUEST
+            : null
+        if (revision === null) {
           return {
             showHelp: false,
             reply: `지금 ${isToday ? '오늘' : '내일'} 계획이야. 고칠 곳을 말해 줘. (예: 영어는 빼 줘, 8시부터)`,
@@ -926,11 +1026,19 @@ function RoomChat({ room }: RoomChatProps) {
             isDemo: false,
           }
         }
-        if (!isServerData) return reviseDemoPlan(current, LIGHTER_REQUEST)
-        return withDemoFallback(
-          () => reviseDayPlan(current, LIGHTER_REQUEST, { focus, subjects: todaySubjects }),
-          () => reviseDemoPlan(current, LIGHTER_REQUEST),
-        )
+        const revised = !isServerData
+          ? reviseDemoPlan(current, revision)
+          : await withDemoFallback(
+              () =>
+                reviseDayPlan(current, revision, {
+                  focus,
+                  subjects: todaySubjects,
+                  planTalk: request.planTalkLines,
+                }),
+              () => reviseDemoPlan(current, revision),
+            )
+        // day_plan 이면 고치기 전 지금 카드도 같이 돌려줘서 화면이 먼저 보여 줍니다. (applyPlanReply)
+        return request.ask ? { ...revised, before: current } : revised
       }
       // 내일 계획은 내일 시간표 · 컨디션을 아직 몰라서 보내지 않습니다.
       const planSubjects = isToday ? todaySubjects : []
@@ -957,6 +1065,9 @@ function RoomChat({ room }: RoomChatProps) {
             condition,
             // 상담 · 과목 쌤에서 오늘 한 이야기(예: 미적분 극한)를 계획에 넣게 같이 보냅니다. (2026-10-22)
             otherRooms: otherRoomLines(user?.id ?? 'unknown', room, todayKey),
+            // 채팅에서 정한 총 분 · 시작 시각 · 먼저 할 것과 계획 방 대화 (#695)
+            ask: request.ask,
+            planTalk: request.planTalkLines,
           }),
         demo,
       )
@@ -978,7 +1089,12 @@ function RoomChat({ room }: RoomChatProps) {
     },
   })
   // AI 의 답이나 계획 · 문제를 기다리는 중인지 (그동안은 새 말 · 칩을 막습니다)
-  const isBusy = talk.isPending || topicTalk.isPending || planTalk.isPending || quizTalk.isPending
+  const isBusy =
+    talk.isPending ||
+    topicTalk.isPending ||
+    planTalk.isPending ||
+    quizTalk.isPending ||
+    settingsTalk.isPending
 
   const bubbles = thread.bubbles
   const lastBubble = bubbles[bubbles.length - 1]
@@ -1101,6 +1217,17 @@ function RoomChat({ room }: RoomChatProps) {
     return buildFocusReaction(focus, myEvent?.dDay ?? null, needsPlan)
   }
 
+  /** 알림 설정을 바꿔 달라는 말에 변경안을 보여 줍니다. 모양이 뻔한 말은 코드가, 시각이 든 말은 서버 AI 가 만듭니다. (#594) */
+  function askNotifyChange(request: NotifyRequest, text: string) {
+    const withAsk = withBubble(thread, { speaker: 'me', text })
+    if (request.type === 'ai') {
+      setThread(withAsk)
+      settingsTalk.mutate(text)
+      return
+    }
+    setThread(withNotifyProposal(withAsk, buildNotifyChange(request, loadTalkableSettings())))
+  }
+
   /** 학생의 말을 보냅니다. 진짜 로그인은 서버 AI, 테스트 로그인은 시연용 정해진 답이 답합니다. */
   function sendText(raw: string) {
     // [💬 이 사진으로 물어보기] 로 붙인 사진이 있으면 이번 말에 같이 보냅니다. 글이 없으면 정해 둔 한 줄로.
@@ -1113,6 +1240,12 @@ function RoomChat({ room }: RoomChatProps) {
       // 계획 말풍선이 열려 있으면 학생이 쓴 말은 그 계획을 고치는 요청입니다. (계획 핑퐁)
       if (openPlanBubble?.plan) {
         revisePlan(openPlanBubble, text)
+        return
+      }
+      // "알림 좀 줄여 줘" 처럼 알림 설정을 바꿔 달라고 하면 변경안을 보여 줍니다. (#594, 상담 방만)
+      const notifyRequest = isDailyCoach ? parseNotifyRequest(text) : null
+      if (notifyRequest) {
+        askNotifyChange(notifyRequest, text)
         return
       }
       // "11월 2일 중간고사 미적분 계획 짜 줘" 처럼 긴 계획을 부탁하면 바로 짜 줍니다.
@@ -1267,6 +1400,21 @@ function RoomChat({ room }: RoomChatProps) {
     planTalk.mutate(request)
   }
 
+  /**
+   * AI 가 채팅에서 학생과 정한 값(day_plan)으로 오늘 계획을 바로 짭니다. (#695)
+   * 채팅 답을 받는 중(isBusy)에 부르므로 startPlan 을 거치지 않고 바로 부탁합니다.
+   * 계획 방 대화에는 방금 받은 코치의 답(coachReply)까지 넣습니다. (thread 는 내 말까지 든 가장 최근 대화방)
+   */
+  function startAskedPlan(ask: DayPlanAsk, coachReply: string) {
+    const withReply = withBubble(thread, { speaker: 'ai', text: coachReply })
+    planTalk.mutate({
+      type: 'day',
+      light: false,
+      ask,
+      planTalkLines: planTalkLines(withReply.bubbles, todayKey),
+    })
+  }
+
   /** 열려 있는 계획을 학생의 요청(한 줄)대로 고쳐 달라고 합니다. */
   function revisePlan(bubble: ThreadBubble, request: string) {
     if (!bubble.plan) return
@@ -1276,6 +1424,8 @@ function RoomChat({ room }: RoomChatProps) {
         bubbleId: bubble.id,
         plan: bubble.plan,
         request: request.slice(0, MAX_PLAN_TEXT_LENGTH),
+        // 계획 방에서 오늘 나눈 말도 같이 보내서, 채팅에서 정한 것을 지키며 고치게 합니다. (#695)
+        planTalkLines: planTalkLines(thread.bubbles, todayKey),
       },
       request,
     )
@@ -1660,6 +1810,23 @@ function RoomChat({ room }: RoomChatProps) {
       sendText(chip.label)
       return
     }
+    if (chip.kind === 'notifySettings') {
+      // [✅ 바꿀게] 를 누르면 그제야 이 기기의 설정에 저장하고, 무엇을 바꿨는지 코치가 한 줄로 알려 줍니다.
+      const withAnswer = withBubble(thread, { speaker: 'me', text: chip.label })
+      if (chip.change === null) {
+        setThread(withBubble(withAnswer, { speaker: 'ai', text: '알겠어, 그대로 둘게.' }))
+        return
+      }
+      const rows = getNotifyChangeRows(chip.change, loadTalkableSettings())
+      applyNotifyChange(chip.change)
+      setThread(
+        withBubble(withAnswer, {
+          speaker: 'ai',
+          text: rows.length > 0 ? notifyDoneText(rows) : '이미 그렇게 돼 있어.',
+        }),
+      )
+      return
+    }
     if (chip.kind === 'checkIn') {
       // 오늘의 체크인으로 저장하고(서버로도), 그 말을 보내서 AI 와 이야기를 이어 갑니다. (미션 ① 끝)
       const checkIn = saveQuickCheckIn(chip.condition, chip.emotions)
@@ -1713,7 +1880,12 @@ function RoomChat({ room }: RoomChatProps) {
     }
     if (chip.kind === 'dayPlan') {
       const date = chip.tomorrow ? moveDateKey(todayKey, 1) : undefined
-      startPlan({ type: 'day', light: chip.light === true, date }, chip.label)
+      // 계획 방에서 오늘 나눈 말을 같이 보내서, 채팅에서 말한 것이 계획에 들어가게 합니다. (#695)
+      const talkLines = planTalkLines(thread.bubbles, todayKey)
+      startPlan(
+        { type: 'day', light: chip.light === true, date, planTalkLines: talkLines },
+        chip.label,
+      )
       return
     }
     if (chip.kind === 'longPlan') {
@@ -2070,7 +2242,7 @@ function RoomChat({ room }: RoomChatProps) {
               </Fragment>
             )
           })}
-          {(talk.isPending || topicTalk.isPending) && (
+          {(talk.isPending || topicTalk.isPending || settingsTalk.isPending) && (
             <li>
               <TypingBubble
                 roomName={roomInfo.name}

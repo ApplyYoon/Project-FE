@@ -61,6 +61,9 @@ const RECORD_KEYS = [
   'manual-disputes',
   // 주간 리포트에서 고른 "다음 주에 하나만 해 볼 것" (lib/weeklyPicks.ts)
   'weekly-picks',
+  // 서버로 아직 못 보낸 고른 것의 주들 (#654). 고른 것을 지우면 보낼 것도 없습니다.
+  // ⚠️ 서버에 이미 올라간 고른 것은 이 버튼으로 지워지지 않습니다. (서버에 지우는 주소가 없음, 탈퇴할 때 지워집니다)
+  'weekly-picks-unsent',
   // 날짜마다 "이미 계획으로 넣은 루틴" 표시. 계획을 지우면 이 표시도 같이 지워야 루틴이 다시 채워집니다. (#236)
   'routine-filled',
   // 타이머가 재고 있던 계획 (timer-subject 와 같이 지웁니다)
@@ -104,6 +107,9 @@ const RECORD_KEYS = [
   'session-away',
   // 확인 문제를 푼 결과 (틀린 문제를 다음 날 다시 내려고 남김, lib/studyQuiz.ts)
   'quiz-results',
+  // 확인 문제 결과 중 서버로 보낸 것 · 거절된 것 (#653, lib/quizResultsApi.ts)
+  // ⚠️ 서버에 이미 올라간 결과는 이 버튼으로 지워지지 않습니다. (서버에 지우는 주소가 없음, 탈퇴할 때 지워집니다)
+  'quiz-result-sync',
   // 내가 준비하는 것(lib/studyFocus.ts) · 내 일정(lib/myEvents.ts) · 내 학과 · 계열(lib/schoolTrack.ts)
   'focus',
   'my-events',
