@@ -498,11 +498,20 @@ function closeOpenQuizzes(thread: CoachThread): CoachThread {
   return { ...thread, bubbles }
 }
 
-/** 문제 말풍선을 대화방 끝에 붙입니다. (서버를 부르지 않는 "틀린 문제 다시" 도 이걸로) */
+/**
+ * 문제 말풍선을 대화방 끝에 붙입니다. (서버를 부르지 않는 "틀린 문제 다시" 도 이걸로)
+ * 단원(unit)은 AI 가 낸 문제에만 있습니다. 단원이 있는 결과만 서버에 저장됩니다. (lib/quizResultsApi.ts)
+ */
 function withNewQuiz(
   thread: CoachThread,
   text: string,
-  quiz: { topic: string; cardId: string | null; questions: QuizQuestion[]; isDemo: boolean },
+  quiz: {
+    topic: string
+    cardId: string | null
+    unit?: string | null
+    questions: QuizQuestion[]
+    isDemo: boolean
+  },
 ): CoachThread {
   const made = newQuiz({ ...quiz, now: Date.now() })
   return withBubble(closeOpenQuizzes(thread), { speaker: 'ai', text, quiz: made, typing: true })
@@ -534,6 +543,7 @@ function applyQuizReply(thread: CoachThread, result: QuizReply, input: QuizInput
   return withNewQuiz(thread, lines.join('\n'), {
     topic: input.topic,
     cardId: input.cardId,
+    unit: result.unit,
     questions: result.questions,
     isDemo: result.isDemo,
   })
