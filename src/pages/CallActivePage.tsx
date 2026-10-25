@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button'
 import { PlanCard } from '@/components/ui/PlanCard'
+import { useAuth } from '@/hooks/useAuth'
 import { useCards } from '@/hooks/useCards'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { careThemes, pickGreeting, type CareLevel } from '@/lib/careTheme'
@@ -7,13 +8,14 @@ import { cn } from '@/lib/cn'
 import { loadCallCard } from '@/lib/callCard'
 import {
   buildCallTools,
+  callTalkLines,
   planOutputForAi,
+  readDayPlanArgs,
   readLongPlanArgs,
   readReviseArgs,
   type ToolCall,
 } from '@/lib/callTools'
 import {
-  DEFAULT_DAILY_MINUTES,
   makeDemoDayPlan,
   makeDemoLongPlan,
   planToCards,
@@ -28,12 +30,16 @@ import {
 } from '@/lib/coachPlan'
 import { getTodayKey, moveDateKey } from '@/lib/date'
 import { saveMyEvent } from '@/lib/myEvents'
+import { loadLocalCheckIn } from '@/lib/quickCheckIn'
 import { RealtimeCallError, startRealtimeCall, type RealtimeCall } from '@/lib/realtimeCall'
+import { loadSchoolClass, schoolTodayOrNullQuery, todaySubjectsOf } from '@/lib/schoolToday'
 import { FOCUS_NAME_MAX, loadStudyFocus } from '@/lib/studyFocus'
 import { COACH_PATH } from '@/lib/chatRooms'
+import { otherRoomLines } from '@/lib/coachThread'
 import { getCallTone, getTodayCareLevel, getTodayMaxHarshness } from '@/lib/todayCare'
 import { toCallLines, type CallResultState } from '@/lib/callReview'
 import { applyTranscript, type SubtitleMessage } from '@/lib/transcript'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
@@ -274,6 +280,9 @@ function formatCallTime(totalSeconds: number) {
 export function CallActivePage() {
   const navigate = useNavigate()
   const location = useLocation()
+  // 오늘 채팅 방들의 대화를 꺼낼 때 "누구의 대화방인지" 를 맞추려고 씁니다. (lib/coachThread.ts)
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
   const [seconds, setSeconds] = useState(0)
   // 서버가 정한 통화 한 번의 최대 길이(초). 연결된 뒤에 정해집니다. 서버가 안 알려 줬으면 null (제한 없음)
   const [maxCallSeconds, setMaxCallSeconds] = useState<number | null>(null)
@@ -326,15 +335,34 @@ export function CallActivePage() {
   async function handleToolCall(call: ToolCall): Promise<string> {
     const todayKey = getTodayKey()
     const focus = loadStudyFocus()
+    // 통화에서 오간 말 최근 8줄 ('나: …' / '코치: …'). "2시간만 · 9시부터 · 수학 먼저" 같은 말이 계획에 들어가게 같이 보냅니다. (#699)
+    const planTalk = callTalkLines(messages)
     let result: PlanReply
     setIsPlanBusy(true)
     try {
       if (call.name === 'show_day_plan') {
-        const demo = () =>
-          makeDemoDayPlan({ todayKey, now: Date.now(), subjects: [], light: false })
+        // 채팅 계획 방과 같은 재료: 오늘 시간표 과목 · 오늘 체크인 컨디션 · 오늘 채팅 방들의 이야기 · 대화(planTalk)
+        // 시간표는 채팅 방이 이미 받아 둔 것이 있으면 그것을 쓰고(통화 중에 다시 기다리지 않게), 없으면 받아 옵니다.
+        // 못 받으면 null 이라 과목 없이 짭니다.
+        const school = await queryClient.ensureQueryData(
+          schoolTodayOrNullQuery(loadSchoolClass(), isServerData, todayKey),
+        )
+        const subjects = todaySubjectsOf(school)
+        const condition = loadLocalCheckIn(todayKey)?.condition ?? null
+        const demo = () => makeDemoDayPlan({ todayKey, now: Date.now(), subjects, light: false })
         result = isServerData
           ? await withDemoFallback(
-              () => requestDayPlan({ date: todayKey, focus, subjects: [], condition: null }),
+              () =>
+                requestDayPlan({
+                  date: todayKey,
+                  focus,
+                  subjects,
+                  condition,
+                  otherRooms: otherRoomLines(user?.id ?? 'unknown', null, todayKey),
+                  // AI 가 통화에서 들은 총 분 · 시작 시각 (없으면 보내지 않음)
+                  ask: readDayPlanArgs(call.args),
+                  planTalk,
+                }),
               demo,
             )
           : demo()
@@ -346,7 +374,8 @@ export function CallActivePage() {
         const input = {
           goal: args.goal,
           endDate: args.endDate,
-          dailyMinutes: DEFAULT_DAILY_MINUTES,
+          // 학생이 통화에서 말한 하루 분 (말하지 않았으면 60분)
+          dailyMinutes: args.dailyMinutes,
           image: null,
           focus,
           // 학생이 통화에서 말한 시험 · 대회 날이라 저장할 때 홈 일정에 넣습니다.
@@ -366,7 +395,7 @@ export function CallActivePage() {
             : await withDemoFallback(
                 () =>
                   current.kind === 'day'
-                    ? reviseDayPlan(current, request, { focus, subjects: [] })
+                    ? reviseDayPlan(current, request, { focus, subjects: [], planTalk })
                     : reviseLongPlan(current, request),
                 demo,
               )
