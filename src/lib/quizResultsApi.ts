@@ -1,11 +1,15 @@
 /**
- * 채팅 확인 문제의 결과(lib/studyQuiz.ts)를 서버(BE)에도 저장하는 함수들입니다. (#653, BE #375)
+ * 채팅 확인 문제의 결과(lib/studyQuiz.ts)를 서버(BE)에도 저장하고, 서버의 결과를 받아오는 함수들입니다. (#653, BE #375)
  *
- * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "퀴즈 결과 · 통계") 로그인이 필요합니다.
+ * 서버와 정한 약속입니다. (BE 저장소의 docs/API.md "퀴즈 결과 · 통계") 둘 다 로그인이 필요합니다.
  *   퀴즈 한 번 저장  POST /quiz-results
  *                    { subjectId: 3, unit: '함수', correctCount: 2, totalCount: 3, questionSeconds: [45, 30, 62] }
  *                    -> 201 { id, subjectId, unit, quizDate: '2026-10-25', correctCount, totalCount, questionSeconds }
  *                    날짜는 보내지 않습니다. 서버가 "받은 시각" 으로 정합니다. (새벽 4시 기준, 이 기기와 같은 규칙)
+ *   기간 통계        GET /quiz-results/stats?from=2026-10-12&to=2026-10-25  (한 번에 31일까지)
+ *                    -> 200 { subjects: [{ subjectId: 3, name: '수학',
+ *                               units: [{ unit: '함수', days: [{ date, correctCount, totalCount }, …] }] }, …] }
+ *                    결과 하나하나(문제 · 고른 답 · 찍은 것 같음)는 돌려주지 않고, 과목 · 단원 · 날짜별 맞은 수만 줍니다.
  *   실패             400 값이 틀림 (단원이 비었거나 30자 넘음 · 문제 1 ~ 20개 밖 · 한 문제 3600초 넘음 등)
  *                    404 과목을 찾을 수 없음 (다른 기기에서 그 과목을 지움)
  *
@@ -22,11 +26,16 @@
  *   - 과목을 모르는 결과: 카드에 과목이 없고, 주제 · 카드 제목으로도 내 과목을 못 찾음 (서버는 과목 번호가 꼭 있어야 합니다)
  *   - 오늘(새벽 4시 기준) 푼 것이 아닌 결과: 서버는 받은 날을 푼 날로 저장해서, 어제 것을 오늘 보내면 날짜가 틀어집니다.
  *     그래서 못 보낸 것도 그날 안에만 다시 보냅니다.
+ *
+ * ■ 받아오기: 기록 탭(정답률) · 문제 풀이 리포트가 서버의 통계를 받아 이 기기의 결과와 합쳐 봅니다. (serverQuizCountsQuery)
+ *   - 같은 결과는 한 번만 셉니다. 서버 통계에서 "이 기기에 있고 서버에 보낸 결과" 의 몫을 빼고,
+ *     남은 것(다른 기기에서 푼 것 · 이 기기에서 지워진 것)만 더합니다. (removeThisDeviceCounts)
+ *   - 서버에서 못 받으면 에러 대신 null("모름") 이고, 화면은 이 기기의 결과만 봅니다. 테스트 로그인도 null 입니다.
  */
 import { api, ApiError } from '@/lib/api'
 import { loadSavedCards } from '@/lib/cards'
 import { isServerDataMode } from '@/lib/dataMode'
-import { getTodayKey, isDateKey } from '@/lib/date'
+import { getTodayKey, isDateKey, moveDateKey } from '@/lib/date'
 import { DEMO_ID_PREFIX } from '@/lib/demoPersona'
 import { queryClient } from '@/lib/queryClient'
 import { subjectNameOf } from '@/lib/quizReport'
@@ -34,6 +43,7 @@ import { loadData, saveData } from '@/lib/storage'
 import { loadQuizResults, type QuizResult } from '@/lib/studyQuiz'
 import { subjectsQuery } from '@/lib/subjectsApi'
 import type { Card, Subject } from '@/types'
+import { queryOptions } from '@tanstack/react-query'
 
 /** 서버 응답을 기다리는 최대 시간(밀리초) */
 const REQUEST_TIMEOUT_MS = 10000
@@ -57,6 +67,15 @@ export interface QuizCount {
   correct: number
   total: number
 }
+
+/** 서버 통계의 한 칸. 과목 이름이 같이 옵니다. */
+export interface ServerQuizCount extends QuizCount {
+  /** 과목 이름 (예: '수학') */
+  subjectName: string
+}
+
+/** 확인 문제 통계 쿼리의 이름표 앞부분. 결과를 서버에 보낸 뒤 이 이름표로 "낡았다" 고 표시해서 다시 받게 합니다. */
+export const QUIZ_STATS_QUERY_KEY = ['quiz-stats'] as const
 
 /** 보낸 것 · 거절된 것 */
 export interface QuizResultSyncState {
@@ -269,4 +288,136 @@ export async function pushUnsentQuizResults(): Promise<boolean> {
     isPushing = false
   }
   return didSend
+}
+
+// ---------------------------------------------------------------------------
+// 서버의 결과 받아오기 (기록 탭 · 문제 풀이 리포트)
+// ---------------------------------------------------------------------------
+
+/** 숫자(또는 숫자 글자)인 서버 번호를 글자로 바꿉니다. 아니면 null (3 -> '3') */
+function toServerId(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isInteger(value)) return String(value)
+  if (typeof value === 'string' && /^\d{1,18}$/.test(value)) return value
+  return null
+}
+
+/** 서버 통계의 단원 하나를 날짜 칸들로 풉니다. 문제를 안 푼 날(전체 0)과 모양이 틀린 날은 뺍니다. */
+function toUnitCounts(
+  value: unknown,
+  subject: { subjectId: string; subjectName: string },
+): ServerQuizCount[] {
+  if (typeof value !== 'object' || value === null) return []
+  const item = value as Record<string, unknown>
+  if (typeof item.unit !== 'string' || !Array.isArray(item.days)) return []
+  const unit = item.unit
+  const counts: ServerQuizCount[] = []
+  for (const day of item.days) {
+    if (typeof day !== 'object' || day === null) continue
+    const { date, correctCount, totalCount } = day as Record<string, unknown>
+    if (typeof date !== 'string' || !isDateKey(date)) continue
+    if (typeof correctCount !== 'number' || typeof totalCount !== 'number' || totalCount <= 0) {
+      continue
+    }
+    counts.push({
+      ...subject,
+      unit,
+      date,
+      total: totalCount,
+      correct: Math.min(Math.max(0, correctCount), totalCount),
+    })
+  }
+  return counts
+}
+
+/**
+ * from ~ to (둘 다 포함, 31일까지)의 확인 문제 통계를 받아 과목 · 단원 · 날짜 칸으로 펼칩니다.
+ * 서버에 닿지 못하거나 거절하면 에러를 던집니다.
+ *
+ *   await fetchQuizStats('2026-10-19', '2026-10-25')
+ *     -> [{ subjectId: '3', subjectName: '수학', unit: '함수', date: '2026-10-21', correct: 2, total: 3 }, …]
+ */
+export async function fetchQuizStats(from: string, to: string): Promise<ServerQuizCount[]> {
+  const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  const result = await api<unknown>(`/quiz-results/stats?${query}`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  const subjects =
+    typeof result === 'object' && result !== null
+      ? (result as Record<string, unknown>).subjects
+      : null
+  // 502: 서버가 이상한 모양의 답을 줬다는 뜻으로 씁니다.
+  if (!Array.isArray(subjects)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
+
+  const counts: ServerQuizCount[] = []
+  for (const value of subjects) {
+    if (typeof value !== 'object' || value === null) continue
+    const item = value as Record<string, unknown>
+    const subjectId = toServerId(item.subjectId)
+    if (subjectId === null || typeof item.name !== 'string' || !Array.isArray(item.units)) continue
+    for (const unit of item.units) {
+      counts.push(...toUnitCounts(unit, { subjectId, subjectName: item.name }))
+    }
+  }
+  return counts
+}
+
+/**
+ * 서버 통계에서 "이 기기에 있고 서버에도 보낸 결과" 의 몫을 뺍니다. 그러면 이 기기 결과와 합쳐도 같은 결과를 두 번 세지 않습니다.
+ * 남는 것은 다른 기기에서 푼 것과, 이 기기에서 지워진 결과(100개를 넘어 지워짐 · 모든 기록 지우기)입니다.
+ *
+ *   서버 [수학 · 함수 · 10/25 · 3개 중 2개]  +  이 기기에서 보낸 [수학 · 함수 · 10/25 · 3개 중 2개]  -> []
+ *   서버 [수학 · 함수 · 10/25 · 6개 중 3개]  +  이 기기에서 보낸 [수학 · 함수 · 10/25 · 3개 중 2개]  -> [3개 중 1개]
+ */
+export function removeThisDeviceCounts(
+  server: ServerQuizCount[],
+  results: QuizResult[],
+  sent: Record<string, QuizCount>,
+): ServerQuizCount[] {
+  // 이 기기에 아직 있는 결과 중 서버에 올라간 것 (보낼 때 서버가 저장한 과목 · 단원 · 날짜로 적어 둔 것)
+  const mine = results.flatMap((result) => (sent[result.id] ? [sent[result.id]] : []))
+  return server
+    .map((count) => {
+      const same = mine.filter(
+        (item) =>
+          item.subjectId === count.subjectId &&
+          item.unit === count.unit &&
+          item.date === count.date,
+      )
+      const total = count.total - same.reduce((sum, item) => sum + item.total, 0)
+      const correct = count.correct - same.reduce((sum, item) => sum + item.correct, 0)
+      return {
+        ...count,
+        total: Math.max(0, total),
+        correct: Math.min(Math.max(0, correct), Math.max(0, total)),
+      }
+    })
+    .filter((count) => count.total > 0)
+}
+
+/**
+ * 서버에만 있는 확인 문제 결과(그 주와 지난주, 14일) 쿼리 설정입니다. 기록 탭 · 문제 풀이 리포트가 같은 것을 씁니다.
+ * 화면에서는 useSuspenseQuery 로 받아옵니다. (docs/DATA-FETCHING.md)
+ *
+ * - 테스트 로그인이거나, 서버에 닿지 못하거나 거절하면 에러 대신 null("모름") 입니다. 그러면 화면은 이 기기의 결과만 봅니다.
+ *   확인 문제 결과를 못 받았다고 리포트 전체가 실패 안내로 바뀌지 않게 하려는 것입니다. (lib/weeklyPicksApi.ts 와 같은 방식)
+ * - "이 기기 몫 빼기"(removeThisDeviceCounts)는 받은 바로 그때 한 번 합니다. 결과를 서버에 새로 보내면
+ *   hooks/useQuizResultSync.ts 가 이 이름표를 "낡았다" 고 표시해서 다시 받고 다시 뺍니다.
+ *
+ *   serverQuizCountsQuery('2026-10-19')  -> 2026-10-12 ~ 2026-10-25 를 받습니다.
+ */
+export function serverQuizCountsQuery(weekStart: string) {
+  const from = moveDateKey(weekStart, -7)
+  const to = moveDateKey(weekStart, 6)
+  return queryOptions({
+    queryKey: [...QUIZ_STATS_QUERY_KEY, from, to],
+    queryFn: async (): Promise<ServerQuizCount[] | null> => {
+      if (!isServerDataMode()) return null
+      try {
+        const server = await fetchQuizStats(from, to)
+        return removeThisDeviceCounts(server, loadQuizResults(), loadQuizResultSync().sent)
+      } catch {
+        return null
+      }
+    },
+  })
 }
