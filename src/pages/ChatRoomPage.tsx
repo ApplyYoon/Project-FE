@@ -654,8 +654,9 @@ function RoomChat({ room }: RoomChatProps) {
   })
   const nowCard = todayCards.current ?? todayCards.next
   // 오늘 계획을 고칠 때 바꿀 수 있는 카드: 오늘 하루짜리이고 아직 시작 · 처리하지 않은 카드 (반복 카드는 건드리지 않음)
+  // 중간에 끝내고 이어서 할 수 있는 카드는 기록이 있어서 고치지 않습니다. (#709)
   const editableTodayCards = todayCards.items
-    .filter((item) => item.status === 'waiting' || item.status === 'current')
+    .filter((item) => (item.status === 'waiting' || item.status === 'current') && !item.isResumable)
     .map((item) => item.card)
     .filter((card) => card.date === todayKey && !(card.repeatDays && card.repeatDays.length > 0))
   const todaySubjects = todaySubjectsOf(school)
