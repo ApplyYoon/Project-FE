@@ -135,6 +135,7 @@ import { shrinkPhoto } from '@/lib/photoCards'
 import { loadLocalCheckIn, saveLocalCheckIn, saveQuickCheckIn } from '@/lib/quickCheckIn'
 import { toggleReason } from '@/lib/reasons'
 import { loadRestDays } from '@/lib/restDays'
+import { hasCrisisText } from '@/lib/safetyBrake'
 import { gradeNumberOf } from '@/lib/schoolEvents'
 import { loadSchoolClass, schoolTodayOrNullQuery, todaySubjectsOf } from '@/lib/schoolToday'
 import { SHORTFALL_REASONS } from '@/lib/sessionTags'
@@ -1235,8 +1236,11 @@ function RoomChat({ room }: RoomChatProps) {
     const typed = raw.trim().slice(0, MAX_CHAT_TEXT_LENGTH)
     const text = typed === '' && photo ? '이 사진 봐 줘' : typed
     if (text === '' || isBusy) return
+    // 위기 표현이 든 말은 계획 고치기 · 알림 · 문제 · 이름 저장으로 알아듣지 않고 보통 대화로 보냅니다.
+    // 그래야 서버 AI(테스트 로그인은 시연용 답)가 상담 전화 한 줄을 같이 보여 줍니다. (#705)
+    const isCrisis = hasCrisisText([text])
     // 사진을 붙인 말은 계획 · 문제 부탁으로 알아듣지 않고 바로 AI 에게 보냅니다.
-    if (focusStep === null && photo === null) {
+    if (focusStep === null && photo === null && !isCrisis) {
       // 계획 말풍선이 열려 있으면 학생이 쓴 말은 그 계획을 고치는 요청입니다. (계획 핑퐁)
       if (openPlanBubble?.plan) {
         revisePlan(openPlanBubble, text)
@@ -1317,7 +1321,11 @@ function RoomChat({ room }: RoomChatProps) {
       }
     }
     let focusReaction: CoachMessage | null = null
-    if (focusStep === 'name') {
+    if (isCrisis) {
+      // 준비하는 것의 이름 · 날짜를 묻던 중이면 그 말을 저장하지 않고 묻기를 끝냅니다. (#705)
+      setFocusStep(null)
+      setIsPickingDate(false)
+    } else if (focusStep === 'name') {
       // 대회 · 기타를 고른 뒤 쓴 첫 말은 그 이름으로 저장합니다. ([이름은 나중에] 를 누르면 이름 없이 둡니다)
       const focus = loadStudyFocus()
       const name = focus === null || text === SKIP_FOCUS_NAME_LABEL ? null : cleanFocusName(text)
@@ -1341,7 +1349,11 @@ function RoomChat({ room }: RoomChatProps) {
       focusReaction = focusReactionNow()
     }
     setAttachedPhoto(null)
-    let next = withBubble(thread, { speaker: 'me', text, ...(photo ? { hasPhoto: true } : {}) })
+    // 위기 표현이면 공부 이야기를 멈추므로, 열려 있던 계획 말풍선도 닫아서 계획 버튼을 치웁니다. (#705)
+    const base = isCrisis
+      ? withPlanStatus(thread, (bubble) => (bubble.plan?.status === 'open' ? 'closed' : null))
+      : thread
+    let next = withBubble(base, { speaker: 'me', text, ...(photo ? { hasPhoto: true } : {}) })
     if (!isServerData && focusReaction) {
       // 테스트 로그인: 준비하는 것에 대한 답이면 코드가 바뀐 미션으로 반응합니다.
       setThread(
