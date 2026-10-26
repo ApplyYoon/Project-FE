@@ -38,6 +38,13 @@ import {
 } from '@/lib/dailyRecords'
 import { getTodayKey, isDateKey, isMonthKey, toDayDate, toDayKey } from '@/lib/date'
 import { loadFocusScores, summarizeFocusWeek } from '@/lib/focusScore'
+import {
+  buildMonthlyTrend,
+  formatMonthLabel,
+  monthlyStudyQuery,
+  summarizeTrend,
+  type MonthlyStudy,
+} from '@/lib/monthlyTrend'
 import { useSubjects } from '@/hooks/useSubjects'
 import { mockSubjects } from '@/lib/mock'
 import { EMOTION_OPTIONS, isEmotionTag } from '@/lib/quickCheckIn'
@@ -226,6 +233,9 @@ function StatsView({ sessions }: StatsViewProps) {
         <WeeklyBarCard sessions={sessions} />
         <FocusWeekCard now={now} />
       </div>
+
+      {/* 전체 기간 추세: 첫 기록의 달부터 이번 달까지 달마다 순공시간 (STARFLOW H4). 위 카드들은 최근 28일 · 7일만 봅니다. */}
+      <AllTimeTrendSection sessions={sessions} now={now} />
 
       {/* AI 분석: 최근 28일 기록을 숫자로 묶고(코드), 서버의 AI 가 말로 풀어 줍니다. (#419) */}
       <AiAnalysisCard />
@@ -894,6 +904,120 @@ function WeeklyScoreCard({ weekStart }: WeeklyScoreCardProps) {
       <p className="mt-3 text-xs break-keep text-slate-500">
         점수는 정답률과 공부 달성률의 평균이에요. 나만 볼 수 있어요.
       </p>
+    </Card>
+  )
+}
+
+interface AllTimeTrendSectionProps {
+  /** 화면이 가진 공부 기록. 서버 값을 못 받을 때 이것으로 셉니다 */
+  sessions: StudySession[]
+  now: number
+}
+
+/**
+ * 「전체 기간 추세」 묶음. 진짜 로그인은 서버가 내 기록 전체로 센 값을 받고(lib/monthlyTrend.ts),
+ * 테스트 로그인은 이 기기 기록으로 셉니다.
+ */
+function AllTimeTrendSection({ sessions, now }: AllTimeTrendSectionProps) {
+  const isServerData = useIsServerData()
+  const todayKey = toDayKey(now)
+  if (!isServerData) return <AllTimeTrendCard months={buildMonthlyTrend(sessions, todayKey)} />
+  return (
+    <AsyncBoundary pendingFallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+      <ServerTrend sessions={sessions} todayKey={todayKey} />
+    </AsyncBoundary>
+  )
+}
+
+/** 서버의 달마다 합계를 받아 그립니다. 서버가 아직 이 주소를 모르면(배포 전) 화면이 가진 기록으로 셉니다. */
+function ServerTrend({ sessions, todayKey }: { sessions: StudySession[]; todayKey: string }) {
+  const { data: serverMonths } = useSuspenseQuery(monthlyStudyQuery())
+  return <AllTimeTrendCard months={serverMonths ?? buildMonthlyTrend(sessions, todayKey)} />
+}
+
+interface AllTimeTrendCardProps {
+  /** 첫 기록의 달부터 이번 달까지 (오래된 달부터) */
+  months: MonthlyStudy[]
+}
+
+/** 달마다 순공시간 막대그래프. 차트 라이브러리 없이 div + Tailwind 로 만듭니다. (최근 7일 막대와 같은 방식) */
+function AllTimeTrendCard({ months }: AllTimeTrendCardProps) {
+  const summary = summarizeTrend(months)
+  const maxMinutes = Math.max(0, ...months.map((month) => month.studyMinutes))
+  // 달이 많아지면 막대 아래 글자가 겹쳐서, 6달 넘게 쌓이면 몇 달 건너 하나씩만 씁니다. (맨 끝 달은 늘 씀)
+  const labelStep = Math.max(1, Math.ceil(months.length / 6))
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-[17px] font-bold tracking-tight text-slate-900">전체 기간 추세</h3>
+        {summary.monthCount > 0 && (
+          <p className="text-sm text-slate-500 tabular-nums">{summary.monthCount}개월째</p>
+        )}
+      </div>
+
+      {summary.totalMinutes === 0 ? (
+        <p className="mt-3 text-sm break-keep text-slate-500">
+          아직 공부 기록이 없어요. 타이머로 공부하면 처음 공부한 달부터 달마다 쌓여요.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-slate-600">
+            지금까지{' '}
+            <span className="text-[17px] font-bold text-slate-900 tabular-nums">
+              {formatMinutes(summary.totalMinutes)}
+            </span>{' '}
+            · 공부한 날 <span className="font-semibold tabular-nums">{summary.totalDays}일</span>
+          </p>
+
+          {/* pt-6: 가장 높은 막대 위 시간 글자가 위 줄과 겹치지 않게 자리를 비워 둡니다. flex-1: 달이 늘어도 한 줄 안에서 같은 폭으로 나눕니다 (가로 스크롤 없음) */}
+          <ul className="mt-4 flex gap-1 pt-6 sm:gap-2">
+            {months.map((month, index) => {
+              const percent = maxMinutes === 0 ? 0 : (month.studyMinutes / maxMinutes) * 100
+              const isLast = index === months.length - 1
+              const showLabel = isLast || (months.length - 1 - index) % labelStep === 0
+              return (
+                <li key={month.month} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                  <span className="sr-only">
+                    {formatMonthLabel(month.month, true)}{' '}
+                    {month.studyMinutes === 0
+                      ? '공부 기록 없음'
+                      : `${formatMinutes(month.studyMinutes)}, 공부한 날 ${month.studyDays}일`}
+                  </span>
+                  <div aria-hidden className="relative h-32 w-full max-w-10">
+                    {/* style 을 쓰는 이유: 높이가 계산해서 나온 비율(%)이라 Tailwind 클래스로 미리 적어 둘 수 없습니다. (최근 7일 막대와 같은 예외) */}
+                    <div
+                      className={cn(
+                        'absolute inset-x-0 bottom-0 rounded-t-md',
+                        // 이번 달만 진한 brand 로, 나머지는 연하게 칠합니다.
+                        isLast ? 'bg-brand' : 'bg-indigo-200',
+                        month.studyMinutes > 0 && 'min-h-0.5',
+                      )}
+                      style={{ height: `${percent}%` }}
+                    />
+                  </div>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'text-xs whitespace-nowrap',
+                      isLast ? 'text-brand font-bold' : 'text-slate-600',
+                      !showLabel && 'invisible',
+                    )}
+                  >
+                    {formatMonthLabel(month.month)}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+
+          <p className="mt-4 text-sm break-keep text-slate-500">
+            {summary.bestMonth &&
+              `가장 많이 한 달은 ${formatMonthLabel(summary.bestMonth.month, true)}(${formatMinutes(summary.bestMonth.studyMinutes)})이에요. `}
+            진한 막대가 이번 달이고, 공부를 안 한 달도 빼지 않고 보여 줘요.
+          </p>
+        </>
+      )}
     </Card>
   )
 }
