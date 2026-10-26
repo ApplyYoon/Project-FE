@@ -46,6 +46,11 @@ export interface SafetyBrakeInput {
   exams: ExamDateInput[]
   /** 연락 금지 시간. 안 넘기면 기본값(DEFAULT_QUIET_HOURS, 23시~7시)을 씁니다. (#60) */
   quietHours?: QuietHours
+  /**
+   * 글 말고 다른 곳에서 온 위기 신호. true 면 글에 위기 표현이 없어도 위기로 봅니다.
+   * 채팅에서 서버가 위기를 감지했거나 보호 조치 메시지를 보냈을 때입니다. (lib/crisisSignal.ts)
+   */
+  crisisFlagged?: boolean
 }
 
 export interface SafetyBrakeResult {
@@ -270,7 +275,7 @@ export function getSafetyBrakeResult(input: SafetyBrakeInput): SafetyBrakeResult
   const todayKey = toDayKey(input.now)
   const quietHours = input.quietHours ?? DEFAULT_QUIET_HOURS
 
-  const crisisDetected = hasCrisisText(input.recentTexts)
+  const crisisDetected = input.crisisFlagged === true || hasCrisisText(input.recentTexts)
   const examIsNear = isNearExam(todayKey, input.exams)
   const moodIsLow = hasLowMoodStreak(todayKey, input.recentMoods)
 
