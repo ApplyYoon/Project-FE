@@ -171,7 +171,6 @@ import {
   type QuizQuestion,
   type QuizReply,
 } from '@/lib/studyQuiz'
-import { sendVariantQuizResults } from '@/lib/variantQuizResults'
 import {
   buildNudgeCoachMessage,
   daysAgoText,
@@ -1717,10 +1716,8 @@ function RoomChat({ room }: RoomChatProps) {
     const after = change(before)
     if (before.status !== 'done' && after.status === 'done') {
       const now = Date.now()
-      const result = toQuizResult(after, now, toDayKey(now))
-      saveQuizResult(result)
-      // 진짜 로그인이면 변형 문제의 원본으로도 보냅니다. 기다리지 않고, 실패해도 이 기기의 결과는 그대로입니다.
-      if (isServerData) void sendVariantQuizResults(result)
+      // 서버에는 hooks/useQuizResultSync.ts 가 보냅니다. 변형 문제의 원본도 같은 요청에 실려 갑니다. (lib/quizResultsApi.ts)
+      saveQuizResult(toQuizResult(after, now, toDayKey(now)))
     }
     setThread((current) => withQuiz(current, bubbleId, () => after))
   }
