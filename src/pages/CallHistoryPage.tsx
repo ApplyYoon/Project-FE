@@ -1,4 +1,3 @@
-import { BackToTabLink } from '@/components/layout/BackToTabLink'
 import { AsyncBoundary } from '@/components/ui/AsyncBoundary'
 import { Card } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -6,7 +5,6 @@ import { UnderstandingBadge } from '@/components/ui/UnderstandingBadge'
 import { useIsServerData } from '@/hooks/useIsServerData'
 import { pastCallsQuery, type PastCall } from '@/lib/callHistoryApi'
 import { getTodayKey, moveDateKey } from '@/lib/date'
-import { CHAT_PATH } from '@/lib/tabMenu'
 import { useSuspenseQuery } from '@tanstack/react-query'
 
 const weekdayNames = ['일', '월', '화', '수', '목', '금', '토']
@@ -28,6 +26,7 @@ function formatCallDate(dateKey: string): string {
  * 서버의 내 통화 기록(GET /calls, 최근 30일)을 받아 날짜 · 요약 · 이해도 · 생각 습관을 최근 것부터 보여 줍니다.
  * 끝낸 채팅(글로 하는 통화)도 서버가 같은 목록으로 주어서 같이 보입니다. (lib/callHistoryApi.ts)
  * 채팅 탭의 「📞 매일 통화」 아래 [지난 통화 보기] 와 통화 정리 화면에서 들어옵니다.
+ * 두 곳에서 들어와서, 돌아가기는 헤더의 ‹ 뒤로(바로 전 화면)를 씁니다. (components/layout/Header.tsx)
  */
 export function CallHistoryPage() {
   const isServerData = useIsServerData()
@@ -35,7 +34,6 @@ export function CallHistoryPage() {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
       <div>
-        <BackToTabLink to={CHAT_PATH} label="채팅" />
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">지난 통화</h1>
         <p className="mt-1 text-sm break-keep text-slate-600">
           최근 30일 동안 마무리한 통화와 채팅의 정리예요. 녹음은 남기지 않고 요약만 저장해요.
