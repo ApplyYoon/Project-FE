@@ -28,7 +28,17 @@ import { loadOnboardingAnswers } from '@/lib/onboardingSteps'
 import { toDayMinutes } from '@/lib/planConflict'
 import { loadRestDays } from '@/lib/restDays'
 import { getWeekday, getWeekdayName } from '@/lib/routines'
-import { filterForGrade, gradeNumberOf, groupEventPeriods } from '@/lib/schoolEvents'
+import {
+  daysUntilKey,
+  dismissReplan,
+  filterForGrade,
+  getNextExamPeriod,
+  gradeNumberOf,
+  groupEventPeriods,
+  loadDismissedReplans,
+  shouldSuggestReplan,
+  type SchoolEventPeriod,
+} from '@/lib/schoolEvents'
 import {
   isContestNotice,
   matchesFocusName,
@@ -44,7 +54,7 @@ import {
 } from '@/lib/settingChanges'
 import type { SettingChange } from '@/lib/settingsMapping'
 import { loadStudyFocus } from '@/lib/studyFocus'
-import { COACH_PATH, PLAN_CHAT_PATH } from '@/lib/chatRooms'
+import { COACH_PATH, PLAN_CHAT_PATH, handOffPlanChip } from '@/lib/chatRooms'
 import {
   getTodayCardsState,
   type TodayCardItem,
@@ -260,6 +270,8 @@ const PLAN_STATUS_INFO: Record<TodayCardStatus, { icon: string; label: string }>
   waiting: { icon: '📖', label: '' },
   unhandled: { icon: '⏰', label: '시간 지남' },
   done: { icon: '✅', label: '끝' },
+  // [끝내기] 로 일찍 끝냈고 카드 시간도 끝난 카드 (카드 탭의 '중간에 끝냈어요' 와 같음, #709)
+  endedEarly: { icon: '⏸️', label: '중간에 끝냄' },
   // 미루기 · 실패로 처리했거나, 오늘을 쉰 날로 처리한 카드
   skipped: { icon: '⏭️', label: '넘김' },
 }
@@ -435,7 +447,11 @@ function HomeCalendarSection({
       <GoogleConnectRow connection={connection} />
 
       {/* 카드 탭이 아래 탭에서 빠져서(2026-10-18), 카드 · 목표 관리는 여기서 들어갑니다. */}
-      <div className="mt-1 flex justify-end">
+      {/* 타이머 탭도 빠져서(2026-10-24), 카드 없이 시작 · 미루기 · 폰 내고 시작은 여기서 타이머로 들어갑니다. (#717) */}
+      <div className="mt-1 flex flex-wrap justify-end gap-x-4">
+        <Link to="/timer" className={textLinkClass}>
+          타이머 · 카드 없이 시작 ›
+        </Link>
         <Link to="/cards" className={textLinkClass}>
           카드 · 목표 모두 보기 ›
         </Link>
@@ -786,6 +802,8 @@ function NowCardBlock({ state, heroCard, onStart, onPlanWithCoach, onPhoto }: No
   // 1) 지금 · 다음 카드가 있으면: 형광펜 표시 + 큰 제목 + 시각 + [▶ 시작]
   if (heroCard) {
     const isNow = heroCard === state.current
+    // 중간에 끝냈지만 카드 시간이 남은 카드면 이어서 하자고 씁니다. (#709)
+    const isResumable = state.items.some((item) => item.card === heroCard && item.isResumable)
     return (
       <section aria-label="지금 할 카드" className={blockClass}>
         <span className="bg-now inline-flex rounded-full px-2.5 py-0.5 text-[13px] font-bold text-slate-900">
@@ -803,7 +821,7 @@ function NowCardBlock({ state, heroCard, onStart, onPlanWithCoach, onPhoto }: No
           // 아래 오늘 계획 목록의 줄 버튼("○○ 시작")과 이름이 겹치지 않게 다르게 붙입니다.
           aria-label={`${heroCard.title} 바로 시작`}
         >
-          ▶ 시작
+          {isResumable ? '▶ 이어서 하기' : '▶ 시작'}
         </Button>
       </section>
     )
@@ -893,9 +911,16 @@ function PlanRow({ item, isHero, onStart }: PlanRowProps) {
   // 지금 할 카드와 아직 시간이 안 된 카드만 시작할 수 있습니다.
   const canStart = status === 'current' || status === 'waiting'
   // 끝냈거나 넘긴 카드는 흐리게 보여 줍니다.
-  const isFinished = status === 'done' || status === 'skipped'
+  const isFinished = status === 'done' || status === 'endedEarly' || status === 'skipped'
   // 위 묶음에 나온 카드는 '지금' · '다음' 을 형광펜으로, 나머지는 상태 글자(시간 지남 · 끝 · 넘김)를 그대로 씁니다.
-  const label = isHero ? (status === 'current' ? '지금' : '다음') : info.label
+  // 중간에 끝냈지만 카드 시간이 남은 카드는 '이어 하기' 로 알려 줍니다. (#709)
+  const label = isHero
+    ? status === 'current'
+      ? '지금'
+      : '다음'
+    : item.isResumable
+      ? '이어 하기'
+      : info.label
   return (
     <li className={cn('flex min-h-14 items-center gap-3 py-2', isFinished && 'opacity-60')}>
       <span aria-hidden className={rowIconClass}>
@@ -1112,6 +1137,8 @@ function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTod
   const { data } = useSuspenseQuery(schoolTodayQuery(schoolClass, isServerData, todayKey))
   // 내 일정(대회 등, 코치 채팅에서 날짜를 알려 주면 생김 · lib/myEvents.ts)도 학교 일정과 같은 목록에 보여 줍니다.
   const [myEvents] = useState(() => getUpcomingMyEvents(todayKey, 60))
+  // [괜찮아요] 로 닫은 시험들. 닫은 시험은 그 시험 동안 다시 제안하지 않습니다. (lib/schoolEvents.ts)
+  const [dismissedReplans, setDismissedReplans] = useState(loadDismissedReplans)
   const myRows: UpcomingRow[] = myEvents.map((event) => ({
     key: `mine-${event.name}`,
     name: event.name,
@@ -1154,9 +1181,20 @@ function SchoolTodayView({ todayKey, tab, isServerData, schoolClass }: SchoolTod
   ]
     .sort((a, b) => a.dDay - b.dDay)
     .slice(0, 5)
+  // 다음 시험이 14일 안이면 시험 계획을 짜자고 제안합니다. 시험은 중요해서 어느 탭을 펼쳐도 위에 보여 줍니다.
+  // (카드 탭의 "학교 일정" 칸에 있던 것을 홈으로 옮겼습니다. 학사일정 목록은 이 묶음의 [일정] 탭에 이미 있습니다, #739)
+  const nextExam = getNextExamPeriod(periods, todayKey)
+  const showReplan = shouldSuggestReplan(nextExam, todayKey, dismissedReplans)
 
   return (
     <>
+      {showReplan && nextExam && (
+        <ExamPlanSuggestion
+          exam={nextExam}
+          todayKey={todayKey}
+          onDismiss={() => setDismissedReplans(dismissReplan(nextExam))}
+        />
+      )}
       {tab === 'timetable' &&
         (needsClass ? (
           <>
@@ -1261,6 +1299,48 @@ interface UpcomingListProps {
 }
 
 /** 다가오는 일정 목록. 시험 · 내 일정은 D-day 를 진한 글자로, 학교 행사는 회색으로 보여 줍니다. */
+interface ExamPlanSuggestionProps {
+  exam: SchoolEventPeriod
+  todayKey: string
+  /** [괜찮아요] 를 눌렀을 때 */
+  onDismiss: () => void
+}
+
+/** 시험이 14일 안일 때 "시험 계획 짜기" 제안. 누르면 계획 방이 시험 날까지의 긴 계획을 바로 짭니다. */
+function ExamPlanSuggestion({ exam, todayKey, onDismiss }: ExamPlanSuggestionProps) {
+  const navigate = useNavigate()
+  const daysLeft = Math.max(0, daysUntilKey(exam.start, todayKey))
+
+  function handlePlan() {
+    // 계획 방에 "시험 이름 · 시험 시작 날" 로 긴 계획 칩을 맡깁니다. (계획 방이 열리면서 대신 눌러 줌)
+    navigate(
+      handOffPlanChip({
+        kind: 'makePlan',
+        label: `📅 ${exam.name} 계획 짜 줘`,
+        goal: exam.name,
+        endDate: exam.start,
+      }),
+    )
+  }
+
+  return (
+    <div className="mb-3 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+      <p className="text-sm break-keep text-amber-900">
+        {exam.name}까지 {daysLeft}일 남았어요. 시험 범위에 맞춰 계획을 짜 볼까요?
+      </p>
+      {/* 모바일은 버튼 두 개를 꽉 채워 나란히, sm 부터는 왼쪽에 모읍니다. */}
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={handlePlan}>
+          📅 시험 계획 짜기
+        </Button>
+        <Button variant="ghost" size="sm" className="flex-1 sm:flex-none" onClick={onDismiss}>
+          괜찮아요
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function UpcomingList({ rows }: UpcomingListProps) {
   if (rows.length === 0) {
     return <p className="text-[15px] text-slate-500">30일 안에 일정이 없어요.</p>
