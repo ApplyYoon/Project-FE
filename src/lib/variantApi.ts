@@ -8,7 +8,8 @@
  *   오답노트      GET  /variant/review-items?status=active       -> 200 ReviewItem[]
  *
  * ⚠️ 서버는 답을 내기 전에는 정답 · 해설을 주지 않습니다. 화면도 답을 낸 뒤에만 보여 줍니다.
- * 문제 글의 수식은 $...$ 안의 LaTeX 이고, 선지는 처음부터 LaTeX 입니다. (화면에서 KaTeX 로 그림)
+ * 문제 글 · 지문의 수식은 $...$ 안의 LaTeX 입니다. (화면에서 KaTeX 로 그림)
+ * 선지 · 정답은 문제마다 다릅니다. math 가 true(수학)면 처음부터 LaTeX, false(국어 · 영어 등)면 $...$ 만 수식인 보통 글입니다.
  */
 import { ApiError, api } from '@/lib/api'
 import { queryOptions } from '@tanstack/react-query'
@@ -28,9 +29,13 @@ export interface DailyItem {
   /** -1 단계별 연습 · 0 다시 풀기 · 1 바꿔 풀기 */
   level: number
   format: VariantFormat
+  /** 문제가 기대는 지문 (국어 · 영어 독해 등). 없으면 null. 수식은 $...$ */
+  passage: string | null
   /** 문제 글. 수식은 $...$ */
   problemText: string
-  /** 선지 LaTeX 5개 (단답형이면 빈 목록) */
+  /** true 면 수학 문제(선지 · 정답이 LaTeX), false 면 수학이 아닌 과목(선지 · 정답이 보통 글) */
+  math: boolean
+  /** 선지 5개 (단답형이면 빈 목록). math 가 true 면 LaTeX, false 면 $...$ 만 수식인 글 */
   choicesLatex: string[]
   status: AssignmentStatus
 }
@@ -48,6 +53,7 @@ export interface AttemptResult {
   isCorrect: boolean
   /** 5지선다는 정답 번호 '0' ~ '4', 단답형은 정답 숫자 */
   correctAnswer: string
+  /** 정답을 보여 줄 글. 문제의 math 가 true 면 LaTeX, false 면 $...$ 만 수식인 글 */
   correctAnswerLatex: string
   /** 해설. 수식은 $...$ */
   solution: string
@@ -63,7 +69,11 @@ export interface WeeklyItem {
   /** a: 맞은 문제의 대표 유형 심화 · b: 극복한 오답의 심화 */
   source: 'a' | 'b'
   format: VariantFormat
+  /** 지문. 없으면 null (DailyItem 과 같음) */
+  passage: string | null
   problemText: string
+  /** 수학 문제인지 (DailyItem 과 같음) */
+  math: boolean
   choicesLatex: string[]
   status: AssignmentStatus
 }
@@ -108,6 +118,9 @@ function isProblemFields(value: Record<string, unknown>): boolean {
     typeof value.assignmentId === 'string' &&
     (value.format === 'mc5' || value.format === 'short') &&
     typeof value.problemText === 'string' &&
+    // 옛 서버는 passage · math 를 안 줄 수 있어서 없어도(undefined) 통과시킵니다. 빈칸은 fillProblemDefaults 가 채웁니다.
+    (value.passage === undefined || value.passage === null || typeof value.passage === 'string') &&
+    (value.math === undefined || typeof value.math === 'boolean') &&
     isStringList(value.choicesLatex) &&
     (value.status === 'pending' || value.status === 'answered' || value.status === 'expired')
   )
@@ -164,6 +177,17 @@ function isReviewItems(value: unknown): value is ReviewItem[] {
   )
 }
 
+/**
+ * 옛 서버 응답에 없던 칸을 채웁니다. (일일 · 주간 문제 둘 다에 씁니다)
+ *   지문이 없거나 빈 글이면 null
+ *   math 가 없으면 true (예전처럼 수학 문제로 봄)
+ */
+function fillProblemDefaults<Item extends DailyItem | WeeklyItem>(item: Item): Item {
+  const passage =
+    typeof item.passage === 'string' && item.passage.trim() !== '' ? item.passage : null
+  return { ...item, passage, math: item.math !== false }
+}
+
 /** 서버가 이상한 응답을 줬을 때 (502 를 그런 뜻으로 씁니다) */
 function badResponse(): ApiError {
   return new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
@@ -176,7 +200,7 @@ async function fetchDaily(): Promise<DailyVariants> {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
   if (!isDailyVariants(result)) throw badResponse()
-  return result
+  return { ...result, items: result.items.map(fillProblemDefaults) }
 }
 
 /** 오늘의 일일 과제 쿼리. (오늘 것만 보여 주므로 queryKey 에 날짜 대신 'today' 를 둡니다) */
@@ -198,7 +222,7 @@ async function fetchWeekly(): Promise<WeeklyVariants | null> {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     if (!isWeeklyVariants(result)) throw badResponse()
-    return result
+    return { ...result, items: result.items.map(fillProblemDefaults) }
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null
     throw error

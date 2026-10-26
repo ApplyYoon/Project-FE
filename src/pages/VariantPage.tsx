@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useQueryParam } from '@/hooks/useQueryParam'
-import { getApiErrorMessage } from '@/lib/api'
+import { ApiError, getApiErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { splitMathText } from '@/lib/mathText'
 import {
@@ -124,7 +124,9 @@ function DailyList() {
           badge={levelLabel(item.level)}
           assignmentId={item.assignmentId}
           format={item.format}
+          passage={item.passage}
           problemText={item.problemText}
+          math={item.math}
           choicesLatex={item.choicesLatex}
           status={item.status}
         />
@@ -161,7 +163,9 @@ function WeeklyList() {
           badge={item.source === 'a' ? '맞은 유형 심화' : '극복한 오답 심화'}
           assignmentId={item.assignmentId}
           format={item.format}
+          passage={item.passage}
           problemText={item.problemText}
+          math={item.math}
           choicesLatex={item.choicesLatex}
           status={item.status}
         />
@@ -236,7 +240,11 @@ interface ProblemCardProps {
   badge: string
   assignmentId: string
   format: VariantFormat
+  /** 문제가 기대는 지문. 없으면 null */
+  passage: string | null
   problemText: string
+  /** true 면 선지 · 정답이 LaTeX(수학), false 면 $...$ 만 수식인 보통 글 */
+  math: boolean
   choicesLatex: string[]
   status: AssignmentStatus
 }
@@ -252,7 +260,9 @@ function ProblemCard({
   badge,
   assignmentId,
   format,
+  passage,
   problemText,
+  math,
   choicesLatex,
   status,
 }: ProblemCardProps) {
@@ -270,6 +280,12 @@ function ProblemCard({
       // 과제 상태 · 오답노트가 바뀌었으니 다시 받아오게 합니다.
       void queryClient.invalidateQueries({ queryKey: ['variant'] })
     },
+    onError: (error) => {
+      // 이미 답했거나 마감이 지났으면(409) 목록을 다시 받아서 카드가 "이미 푼 문제" · "마감" 으로 바뀌게 합니다.
+      if (error instanceof ApiError && error.status === 409) {
+        void queryClient.invalidateQueries({ queryKey: ['variant'] })
+      }
+    },
   })
 
   const answered = result !== null
@@ -281,7 +297,8 @@ function ProblemCard({
     mutation.mutate({
       assignmentId,
       answer: answer.trim(),
-      timeSpentSec: Math.max(0, Math.round((Date.now() - startedAt) / 1000)),
+      // 서버는 하루(86400초)보다 길면 400 으로 거절해서, 카드를 오래 열어 뒀어도 하루로 맞춥니다.
+      timeSpentSec: Math.min(86400, Math.max(0, Math.round((Date.now() - startedAt) / 1000))),
     })
   }
 
@@ -292,6 +309,13 @@ function ProblemCard({
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">{badge}</span>
         {format === 'short' && <span className="text-slate-500">단답형</span>}
       </div>
+
+      {passage !== null && (
+        <MathText
+          text={passage}
+          className="rounded-xl bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-800"
+        />
+      )}
 
       <MathText text={problemText} className="text-[16px] leading-relaxed text-slate-900" />
 
@@ -318,7 +342,7 @@ function ProblemCard({
                   )}
                 >
                   <span className="shrink-0 text-slate-500">{CHOICE_MARKS[index]}</span>
-                  <MathFormula latex={latex} />
+                  <AnswerText text={latex} math={math} />
                 </button>
               </li>
             )
@@ -354,7 +378,7 @@ function ProblemCard({
         </p>
       )}
 
-      {result !== null && <ResultPanel result={result} format={format} />}
+      {result !== null && <ResultPanel result={result} format={format} math={math} />}
     </Card>
   )
 }
@@ -369,10 +393,12 @@ function isAnswerReady(format: VariantFormat, answer: string): boolean {
 interface ResultPanelProps {
   result: AttemptResult
   format: VariantFormat
+  /** 정답(correctAnswerLatex)이 LaTeX 인지 (ProblemCard 의 math 와 같음) */
+  math: boolean
 }
 
 /** 채점 결과: 맞음/틀림 · 정답 · 고른 오답의 실수 · 해설 · 내일 나올 문제 */
-function ResultPanel({ result, format }: ResultPanelProps) {
+function ResultPanel({ result, format, math }: ResultPanelProps) {
   return (
     <div
       role="status"
@@ -393,7 +419,7 @@ function ResultPanel({ result, format }: ResultPanelProps) {
         <p className="flex flex-wrap items-center gap-2 text-sm text-slate-800">
           정답:
           {format === 'mc5' && <span>{CHOICE_MARKS[Number(result.correctAnswer)]}</span>}
-          <MathFormula latex={result.correctAnswerLatex} />
+          <AnswerText text={result.correctAnswerLatex} math={math} />
         </p>
       )}
       {result.chosenDistractorRationale !== null && result.chosenDistractorRationale !== '' && (
@@ -416,7 +442,8 @@ function ResultPanel({ result, format }: ResultPanelProps) {
 
 /** 이 답으로 바뀐 학습 항목을 보고 "다음에 무엇이 나오는지" 를 알려 줍니다. */
 function nextStepText(status: string, level: number): string {
-  if (status === 'graduated') return '극복했어요! 다음 달 심화 세트에서 한 번 더 만나요.'
+  if (status === 'graduated')
+    return '극복했어요! 다음 주 월요일 주간 심화 세트에서 한 번 더 만나요.'
   if (status === 'mastered') return '심화까지 통과했어요. 이 문제는 끝!'
   if (level === 1) return '내일은 조금 바꾼 문제가 나와요.'
   if (level === -1) return '내일은 단계를 나눠서 차근차근 풀어 봐요.'
@@ -429,12 +456,15 @@ interface MathTextProps {
   /** 보통 글과 $...$ 수식이 섞인 글 */
   text: string
   className?: string
+  /** true 면 <p> 대신 <span> 으로 그립니다. (버튼 · 문단 안에는 <p> 를 넣을 수 없어서) */
+  inline?: boolean
 }
 
 /** 글 안의 $...$ 만 수식으로 그리고, 나머지는 글자 그대로 둡니다. */
-function MathText({ text, className }: MathTextProps) {
+function MathText({ text, className, inline = false }: MathTextProps) {
+  const Tag = inline ? 'span' : 'p'
   return (
-    <p className={cn('break-keep whitespace-pre-wrap', className)}>
+    <Tag className={cn('break-keep whitespace-pre-wrap', className)}>
       {splitMathText(text).map((part, index) =>
         part.math ? (
           <MathFormula key={index} latex={part.text} />
@@ -442,8 +472,24 @@ function MathText({ text, className }: MathTextProps) {
           <span key={index}>{part.text}</span>
         ),
       )}
-    </p>
+    </Tag>
   )
+}
+
+interface AnswerTextProps {
+  /** 선지 하나 또는 정답 */
+  text: string
+  /** true 면 text 전체가 LaTeX(수학), false 면 $...$ 만 수식인 보통 글 */
+  math: boolean
+}
+
+/**
+ * 선지 · 정답을 그립니다. 수학이 아닌 과목의 글을 통째로 KaTeX 에 넣으면
+ * 띄어쓰기가 사라지고 기울어진 글자가 돼서, math 가 false 면 MathText 로 그립니다.
+ */
+function AnswerText({ text, math }: AnswerTextProps) {
+  if (math) return <MathFormula latex={text} />
+  return <MathText text={text} inline />
 }
 
 interface MathFormulaProps {
