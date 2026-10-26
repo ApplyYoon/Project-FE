@@ -126,7 +126,8 @@ export function useManualItems(serverManual: ServerManual | null = null) {
 
   // 서버 목록을 받으면 이 기기에만 있는 것 · 못 보낸 것을 올립니다.
   useEffect(() => {
-    if (serverManual === null) return
+    // 옛 서버(학생 항목 · 틀렸어요를 모름)면 보내지 않습니다. (lib/manualApi.ts 의 canWrite)
+    if (serverManual === null || !serverManual.canWrite) return
     for (const item of findManualItemsToSend(loadManualItems(), serverManual.items)) sendItem(item)
     // 이 기기에 있던 [틀렸어요] 는 처음 한 번만 올립니다. 그 뒤로는 다른 기기에서 되돌린 것을 다시 적지 않게 서버 값을 믿습니다.
     if (loadData<boolean>(MANUAL_DISPUTES_UPLOADED_KEY, false) !== true) {
@@ -147,6 +148,9 @@ export function useManualItems(serverManual: ServerManual | null = null) {
     ? mergeManualDisputes(localDisputes, serverManual, unsent)
     : localDisputes
 
+  // 서버로 보낼 수 있는지: 진짜 로그인이고, 서버 목록을 못 받았거나(null) 받은 서버가 새 서버일 때
+  const canSend = isServerData && (serverManual === null || serverManual.canWrite)
+
   /** "틀렸어요" 를 누르거나 되돌립니다. */
   function toggleDispute(itemId: string) {
     const willDispute = disputes[itemId] === undefined
@@ -158,7 +162,7 @@ export function useManualItems(serverManual: ServerManual | null = null) {
     })
     // 서버에 있는 항목이거나 서버로 보낼 수 있는 항목이면 서버에도 적습니다. (시연 데이터는 이 기기에만)
     const isOnServer = serverManual?.items.some((item) => item.id === itemId) ?? false
-    if (isServerData && (isOnServer || canSendManualItem({ id: itemId }))) {
+    if (canSend && (isOnServer || canSendManualItem({ id: itemId }))) {
       queueDispute(itemId, willDispute)
     }
   }
@@ -166,7 +170,7 @@ export function useManualItems(serverManual: ServerManual | null = null) {
   /** 항목을 맨 앞에 더합니다. 같은 id 가 이미 있으면 새 내용으로 바꿉니다. (같은 개선안을 두 번 올려도 한 줄) */
   function addItem(item: ManualItem) {
     setLocalItems((prev) => [item, ...prev.filter((existing) => existing.id !== item.id)])
-    if (isServerData && canSendManualItem(item)) sendItem(item)
+    if (canSend && canSendManualItem(item)) sendItem(item)
   }
 
   return { items, addItem, disputes, toggleDispute }

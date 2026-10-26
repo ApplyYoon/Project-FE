@@ -48,6 +48,11 @@ const SERVER_ID_PREFIXES = ['experiment-', 'insight-']
 export interface ServerManual {
   items: ManualItem[]
   disputes: Record<string, number>
+  /**
+   * 서버가 학생 항목 저장 · [틀렸어요] 를 받는지. 옛 서버(목록 줄에 disputedAt 칸이 없음)면 false 이고,
+   * 그때는 서버로 보내지 않고 이 기기 값을 그대로 씁니다. (BE 배포 전에 FE 가 먼저 나가도 누른 것이 사라지지 않게)
+   */
+  canWrite: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +84,11 @@ function toServerRow(value: unknown): { item: ManualItem; disputedAt: number | n
 export async function fetchServerManual(): Promise<ServerManual> {
   const result = await api<unknown>('/manual', { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
   if (!Array.isArray(result)) throw new ApiError('서버 응답 모양이 올바르지 않습니다', 502)
-  const manual: ServerManual = { items: [], disputes: {} }
+  // 줄이 하나라도 있으면 disputedAt 칸이 있는지로 새 서버인지 봅니다. 줄이 없으면 알 수 없어서 새 서버로 봅니다.
+  const canWrite = result.every(
+    (value) => typeof value === 'object' && value !== null && 'disputedAt' in value,
+  )
+  const manual: ServerManual = { items: [], disputes: {}, canWrite }
   for (const value of result) {
     const row = toServerRow(value)
     if (row === null) continue
@@ -167,7 +176,7 @@ export function mergeManualItems(local: ManualItem[], server: ManualItem[]): Man
  *   - 서버에 있는 항목: 아직 못 보낸 것(unsent)이 있으면 그 값, 없으면 서버 값
  *   - 이 기기에만 있는 항목: 이 기기 값
  *
- *   mergeManualDisputes({ a: 1, demo-1: 2 }, { items: [a, b], disputes: { b: 3 } }, { a: false })
+ *   mergeManualDisputes({ a: 1, demo-1: 2 }, { items: [a, b], disputes: { b: 3 }, canWrite: true }, { a: false })
  *     -> { b: 3, demo-1: 2 }   (a 는 되돌린 것을 아직 못 보냄 → 안 누른 것으로)
  */
 export function mergeManualDisputes(
@@ -175,6 +184,8 @@ export function mergeManualDisputes(
   server: ServerManual,
   unsent: Record<string, boolean>,
 ): Record<string, number> {
+  // 옛 서버는 틀렸어요를 모르니 이 기기 값을 그대로 씁니다.
+  if (!server.canWrite) return local
   const serverIds = new Set(server.items.map((item) => item.id))
   const result: Record<string, number> = {}
   for (const id of serverIds) {
